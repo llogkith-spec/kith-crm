@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KITH Cars CRM</title>
+<style>
+:root{
+  --black:#0f0f0f;--surface:#1a1a1a;--surface2:#222;--surface3:#2c2c2c;
+  --border:#333;--border2:#3e3e3e;
+  --gold:#c9a84c;--gold-dim:#8a6d2a;--gold-bg:rgba(201,168,76,.1);
+  --red:#d94f4f;--red-bg:rgba(217,79,79,.12);
+  --green:#4caf78;--green-bg:rgba(76,175,120,.12);
+  --amber:#e08c3a;--amber-bg:rgba(224,140,58,.12);
+  --blue:#4a9fd4;--blue-bg:rgba(74,159,212,.12);
+  --purple:#9b6fd4;--purple-bg:rgba(155,111,212,.12);
+  --teal:#3ab8b8;--teal-bg:rgba(58,184,184,.12);
+  --text:#e8e8e8;--dim:#999;--faint:#555;
+  --r:8px;--rs:5px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;min-height:100vh}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;position:sticky;top:0;z-index:100}
+.brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:15px;letter-spacing:.05em;color:var(--gold);text-transform:uppercase}
+.brand-sub{color:var(--dim);font-weight:400;font-size:12px;letter-spacing:0;text-transform:none}
+.topbar-right{display:flex;gap:8px;align-items:center}
+.tabs{background:var(--surface);border-bottom:1px solid var(--border);display:flex;padding:0 16px;overflow-x:auto}
+.tab{padding:10px 14px;font-size:12px;font-weight:600;color:var(--dim);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap;transition:color .15s;margin-bottom:-1px}
+.tab.on{color:var(--gold);border-bottom-color:var(--gold)}
+.tab:hover:not(.on){color:var(--text)}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:var(--rs);font-size:13px;font-weight:600;cursor:pointer;border:none;transition:opacity .15s;white-space:nowrap;text-decoration:none}
+.btn:hover{opacity:.82}
+.btn-gold{background:var(--gold);color:#000}
+.btn-ghost{background:var(--surface3);color:var(--text);border:1px solid var(--border2)}
+.btn-green{background:var(--green);color:#000}
+.btn-red{background:var(--red);color:#fff}
+.btn-amber{background:var(--amber);color:#000}
+.btn-blue{background:var(--blue);color:#000}
+.btn-wa{background:#25d366;color:#000}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-xs{padding:3px 8px;font-size:11px}
+.btn-full{width:100%;justify-content:center}
+.sheets-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:6px 16px;display:flex;align-items:center;gap:14px;font-size:11px;color:var(--dim);flex-wrap:wrap}
+.sdot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sdot.ok{background:var(--green)}
+.sdot.err{background:var(--red)}
+.sdot.spin{background:var(--amber);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.spill{display:flex;align-items:center;gap:5px}
+.board-wrap{overflow-x:auto;padding:14px 10px}
+.board{display:flex;gap:10px;min-width:max-content;align-items:flex-start}
+.col{width:218px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;flex-shrink:0}
+.col-head{padding:9px 11px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.col-label{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;line-height:1.3}
+.col-n{font-size:11px;font-weight:700;background:var(--surface3);color:var(--dim);padding:2px 7px;border-radius:20px;flex-shrink:0}
+.col-cards{padding:7px;display:flex;flex-direction:column;gap:5px;min-height:60px}
+.s-intake .col-head{border-top:3px solid var(--dim)}
+.s-estimating .col-head{border-top:3px solid var(--blue)}
+.s-parts .col-head{border-top:3px solid var(--amber)}
+.s-estimated .col-head{border-top:3px solid var(--teal)}
+.s-contact1 .col-head{border-top:3px solid var(--gold)}
+.s-waiting .col-head{border-top:3px solid var(--purple)}
+.s-giles-recheck .col-head{border-top:3px solid var(--amber)}
+.s-joel-final .col-head{border-top:3px solid var(--blue)}
+.s-contact2 .col-head{border-top:3px solid var(--gold)}
+.s-booked .col-head{border-top:3px solid var(--green)}
+.s-lost .col-head{border-top:3px solid var(--red)}
+.card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:9px 10px;cursor:pointer;transition:border-color .15s}
+.card:hover{border-color:var(--gold-dim)}
+.card-reg{font-size:13px;font-weight:800;color:var(--gold);font-family:'Courier New',monospace;letter-spacing:.06em}
+.card-name{font-size:12px;margin-top:2px}
+.card-vehicle{font-size:11px;color:var(--dim);margin-top:1px}
+.card-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+.tag{font-size:10px;font-weight:700;padding:2px 6px;border-radius:20px;text-transform:uppercase;letter-spacing:.03em}
+.tag-wa{background:rgba(37,211,102,.15);color:#25d366}
+.tag-ramp{background:var(--amber-bg);color:var(--amber)}
+.tag-parts{background:var(--red-bg);color:var(--red)}
+.tag-tm{background:var(--blue-bg);color:var(--blue)}
+.tag-form{background:var(--gold-bg);color:var(--gold)}
+.card-work{font-size:11px;color:var(--dim);margin-top:6px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card-by{font-size:10px;color:var(--faint);margin-top:5px}
+.list-wrap{padding:14px 16px}
+.ltable{width:100%;border-collapse:collapse}
+.ltable th{text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);border-bottom:1px solid var(--border)}
+.ltable td{padding:8px 10px;font-size:13px;border-bottom:1px solid var(--border)}
+.ltable tr:hover td{background:var(--surface2);cursor:pointer}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:200;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto}
+.overlay.open{display:flex}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);width:100%;max-width:840px;flex-shrink:0}
+.ph{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.preg{font-size:22px;font-weight:900;color:var(--gold);font-family:'Courier New',monospace}
+.psub{font-size:12px;color:var(--dim);margin-top:3px;line-height:1.5}
+.xbtn{background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer;line-height:1;padding:2px 4px}
+.xbtn:hover{color:var(--text)}
+.pb{padding:18px;display:flex;flex-direction:column;gap:18px}
+.sbar{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:11px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.slabel{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:4px 11px;border-radius:20px;letter-spacing:.03em}
+.b-intake{background:rgba(150,150,150,.15);color:#aaa}
+.b-estimating{background:var(--blue-bg);color:var(--blue)}
+.b-parts{background:var(--amber-bg);color:var(--amber)}
+.b-estimated{background:var(--teal-bg);color:var(--teal)}
+.b-contact1{background:var(--gold-bg);color:var(--gold)}
+.b-waiting{background:var(--purple-bg);color:var(--purple)}
+.b-giles-recheck{background:var(--amber-bg);color:var(--amber)}
+.b-joel-final{background:var(--blue-bg);color:var(--blue)}
+.b-contact2{background:var(--gold-bg);color:var(--gold)}
+.b-booked{background:var(--green-bg);color:var(--green)}
+.b-lost{background:var(--red-bg);color:var(--red)}
+.notice{padding:10px 13px;border-radius:var(--rs);font-size:13px;line-height:1.5}
+.n-blue{background:var(--blue-bg);border:1px solid rgba(74,159,212,.3);color:var(--blue)}
+.n-amber{background:var(--amber-bg);border:1px solid rgba(224,140,58,.3);color:var(--amber)}
+.n-green{background:var(--green-bg);border:1px solid rgba(76,175,120,.3);color:var(--green)}
+.n-red{background:var(--red-bg);border:1px solid rgba(217,79,79,.3);color:var(--red)}
+.n-gold{background:var(--gold-bg);border:1px solid rgba(201,168,76,.3);color:var(--gold)}
+.n-purple{background:var(--purple-bg);border:1px solid rgba(155,111,212,.3);color:var(--purple)}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:620px){.two-col{grid-template-columns:1fr}}
+.stitle{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:11px}
+.hr{border:none;border-top:1px solid var(--border)}
+.fg2{display:grid;grid-template-columns:1fr 1fr;gap:7px 14px}
+.fi .fl{font-size:11px;color:var(--faint);margin-bottom:2px}
+.fi .fv{font-size:13px;color:var(--text);line-height:1.4}
+.fv.reg{color:var(--gold);font-family:'Courier New',monospace;font-weight:800}
+.fv.tm{color:var(--blue);font-family:'Courier New',monospace;font-weight:700}
+.fg{display:flex;flex-direction:column;gap:4px}
+.fl2{font-size:12px;color:var(--dim);font-weight:500}
+.req{color:var(--red);margin-left:2px}
+.fi2,.fsel,.fta{background:var(--surface3);border:1px solid var(--border2);color:var(--text);border-radius:var(--rs);padding:8px 10px;font-size:13px;width:100%;font-family:inherit;transition:border-color .15s}
+.fi2:focus,.fsel:focus,.fta:focus{outline:none;border-color:var(--gold-dim)}
+.fta{resize:vertical;min-height:65px}
+.fr2{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.fr3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:11px}
+@media(max-width:560px){.fr2,.fr3{grid-template-columns:1fr}}
+.trow{display:flex;align-items:center;gap:10px}
+.tog{position:relative;width:38px;height:21px;flex-shrink:0}
+.tog input{opacity:0;width:0;height:0;position:absolute}
+.tsl{position:absolute;inset:0;background:var(--surface3);border:1px solid var(--border2);border-radius:21px;cursor:pointer;transition:background .2s}
+.tsl::before{content:'';position:absolute;width:15px;height:15px;background:var(--dim);border-radius:50%;top:2px;left:2px;transition:transform .2s,background .2s}
+.tog input:checked+.tsl{background:var(--green-bg);border-color:var(--green)}
+.tog input:checked+.tsl::before{transform:translateX(17px);background:var(--green)}
+.pt{width:100%;border-collapse:collapse}
+.pt th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);padding:5px 7px;border-bottom:1px solid var(--border)}
+.pt td{padding:5px 4px;border-bottom:1px solid var(--border)}
+.pt tr:last-child td{border-bottom:none}
+.pt .ic input{background:var(--surface3);border:1px solid var(--border2);color:var(--text);border-radius:4px;padding:5px 7px;font-size:12px;width:100%}
+.pt .ic input:focus{outline:none;border-color:var(--gold-dim)}
+.ebox{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:12px 14px}
+.eamt{font-size:26px;font-weight:900;font-family:'Courier New',monospace;color:var(--gold)}
+.eamt.fin{color:#fff}
+.elbl{font-size:11px;color:var(--dim);margin-top:2px}
+.wascript{background:rgba(37,211,102,.07);border:1px solid rgba(37,211,102,.22);border-radius:var(--rs);padding:10px 13px;font-size:12px;color:#ccc;line-height:1.6;font-style:italic;margin-top:7px}
+.tl{display:flex;flex-direction:column}
+.tli{display:flex;gap:11px;position:relative}
+.tli::before{content:'';position:absolute;left:9px;top:21px;bottom:-3px;width:1px;background:var(--border)}
+.tli:last-child::before{display:none}
+.tld{width:19px;height:19px;border-radius:50%;background:var(--surface3);border:2px solid var(--border);flex-shrink:0;margin-top:2px}
+.tld.done{background:var(--gold);border-color:var(--gold)}
+.tlt{padding-bottom:13px}
+.tls{font-size:12px;font-weight:600}
+.tlm{font-size:11px;color:var(--faint);margin-top:1px}
+.empty{text-align:center;padding:22px 8px;font-size:11px;color:var(--faint)}
+.tm-in{border-color:rgba(74,159,212,.5)!important;color:var(--blue)!important;font-family:'Courier New',monospace!important;font-weight:700!important}
+.inbox-wrap{padding:14px 16px}
+.inbox-row{background:var(--surface);border:1px solid var(--gold-dim);border-radius:var(--rs);padding:11px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.pmatch{background:var(--surface2);border:1px solid rgba(201,168,76,.3);border-radius:var(--rs);padding:12px 14px}
+.pmatch-title{font-size:10px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+.prow{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px}
+.prow:last-child{border-bottom:none}
+.prow .pn{font-weight:600}
+.prow .pp{color:var(--green);font-family:'Courier New',monospace;font-weight:700}
+.prow .ps{color:var(--dim)}
+.pst{font-size:11px;font-weight:700}
+.pst.ord{color:var(--green)}
+.pst.pend{color:var(--amber)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <svg width="20" height="20" viewBox="0 0 20 20"><rect x="2" y="8" width="16" height="8" rx="2" fill="#c9a84c"/><rect x="5" y="5" width="10" height="5" rx="1.5" fill="#8a6d2a"/><circle cx="5.5" cy="16.5" r="1.5" fill="#0f0f0f"/><circle cx="14.5" cy="16.5" r="1.5" fill="#0f0f0f"/></svg>
+    KITH Cars <span class="brand-sub">CRM</span>
+  </div>
+  <div class="topbar-right">
+    <button class="btn btn-ghost btn-sm" onclick="refreshSheets()">↻ Sync</button>
+    <button class="btn btn-ghost btn-sm" id="vtog" onclick="toggleView()">☰ List</button>
+    <button class="btn btn-gold btn-sm" onclick="openNew()">+ New Job</button>
+  </div>
+</div>
+
+<div class="sheets-bar">
+  <div class="spill"><div class="sdot spin" id="d-intake"></div><span id="l-intake">Intake Form — connecting...</span></div>
+  <div style="color:var(--faint)">·</div>
+  <div class="spill"><div class="sdot spin" id="d-parts"></div><span id="l-parts">Parts Form — connecting...</span></div>
+  <div style="margin-left:auto;color:var(--faint);font-size:10px" id="sync-time"></div>
+</div>
+
+<div class="tabs">
+  <button class="tab on" onclick="setFilter('all',this)">All Jobs <span id="cnt-all" style="color:var(--faint);font-size:10px"></span></button>
+  <button class="tab" onclick="setFilter('inbox',this)">📥 New Intake <span id="cnt-inbox" style="color:var(--faint);font-size:10px"></span></button>
+  <button class="tab" onclick="setFilter('action',this)">⚡ Needs Action</button>
+  <button class="tab" onclick="setFilter('waiting',this)">⏳ Awaiting Customer</button>
+  <button class="tab" onclick="setFilter('giles',this)">🔧 Giles</button>
+  <button class="tab" onclick="setFilter('joel',this)">📋 Joel</button>
+  <button class="tab" onclick="setFilter('fardeen',this)">📞 Fardeen</button>
+  <button class="tab" onclick="setFilter('lost',this)">✕ Lost</button>
+</div>
+
+<div id="v-inbox" style="display:none">
+  <div class="inbox-wrap">
+    <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text)">📥 New Google Form Submissions <span style="font-size:12px;font-weight:400;color:var(--dim)">— not yet in pipeline</span></div>
+    <div id="inbox-list"><div class="empty">Syncing...</div></div>
+  </div>
+</div>
+<div id="v-board"><div class="board-wrap"><div class="board" id="board"></div></div></div>
+<div id="v-list" style="display:none"><div class="list-wrap"><table class="ltable"><thead><tr><th>Reg</th><th>Customer</th><th>Vehicle</th><th>Stage</th><th>Techman</th><th>Work</th><th></th></tr></thead><tbody id="list-body"></tbody></table></div></div>
+
+<!-- NEW JOB -->
+<div class="overlay" id="ov-new">
+<div class="panel">
+  <div class="ph"><div><div class="preg">New Job</div><div class="psub">Fill in all required fields</div></div><button class="xbtn" onclick="cx('ov-new')">✕</button></div>
+  <div class="pb">
+    <div>
+      <div class="stitle">Customer</div>
+      <div class="fr2">
+        <div class="fg"><label class="fl2">Name<span class="req">*</span></label><input class="fi2" id="n-name" placeholder="Full name"/></div>
+        <div class="fg"><label class="fl2">Phone<span class="req">*</span></label><input class="fi2" id="n-phone" placeholder="07xxx xxxxxx"/></div>
+      </div>
+      <div class="fr2" style="margin-top:10px">
+        <div class="trow"><label class="tog"><input type="checkbox" id="n-wa"><span class="tsl"></span></label><span style="font-size:13px">Customer has WhatsApp</span></div>
+        <div class="fg"><label class="fl2">Email</label><input class="fi2" id="n-email" placeholder="optional"/></div>
+      </div>
+    </div>
+    <hr class="hr">
+    <div>
+      <div class="stitle">Vehicle</div>
+      <div class="fr3">
+        <div class="fg"><label class="fl2">Registration<span class="req">*</span></label><input class="fi2" id="n-reg" placeholder="AB12 CDE" style="text-transform:uppercase;font-family:'Courier New',monospace;font-weight:700;letter-spacing:.06em"/></div>
+        <div class="fg"><label class="fl2">Make</label><input class="fi2" id="n-make" placeholder="Ford"/></div>
+        <div class="fg"><label class="fl2">Model</label><input class="fi2" id="n-model" placeholder="Focus"/></div>
+      </div>
+      <div class="trow" style="margin-top:10px"><label class="tog"><input type="checkbox" id="n-ramp"><span class="tsl"></span></label><span style="font-size:13px">Vehicle already on ramp / courtyard</span></div>
+    </div>
+    <hr class="hr">
+    <div>
+      <div class="stitle">Work Required</div>
+      <div class="fg"><label class="fl2">Work needed<span class="req">*</span></label><textarea class="fta" id="n-work" placeholder="e.g. Full service + brake pads front and rear..."></textarea></div>
+    </div>
+    <hr class="hr">
+    <div>
+      <div class="stitle">Admin</div>
+      <div class="fr2">
+        <div class="fg"><label class="fl2">Source</label><input class="fi2" id="n-source" placeholder="Walk-in, Google, Returning..."/></div>
+        <div class="fg"><label class="fl2">Intake by<span class="req">*</span></label>
+          <select class="fsel" id="n-by"><option value="">— Select —</option><option>Fardeen</option><option>Joel</option><option>Giles</option><option>Logkith</option></select>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="cx('ov-new')">Cancel</button>
+      <button class="btn btn-gold" onclick="createJob()">Create Job →</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- DETAIL -->
+<div class="overlay" id="ov-detail"><div class="panel" id="dp"></div></div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────
+const INTAKE_ID  = '1nXknyg5zjP8d6W4EfU4e8i8iU6wytqSDUw86wSAodck';
+const INTAKE_GID = '2106335668';
+const PARTS_ID   = '1VR982oXrNqZb0x459htTyfEHUrbUcJAjLkfVICCMSm8';
+const PARTS_GID  = '809727405';
+const PARTS_FORM = 'https://docs.google.com/forms/d/1iIwgNLRDQr4a4Kvjv6uEImXxmSDTmvDg78_k1sleYnM/viewform';
+
+// ── STAGES ──────────────────────────────────────────────
+const STAGES=[
+  {id:'intake',        label:'1 · Intake',                   cls:'s-intake',        badge:'b-intake',       owner:'Admin'},
+  {id:'estimating',    label:'2 · Joel Estimating',          cls:'s-estimating',    badge:'b-estimating',   owner:'Joel'},
+  {id:'parts',         label:'2b · Parts Needed',            cls:'s-parts',         badge:'b-parts',        owner:'Giles'},
+  {id:'estimated',     label:'3 · Estimate Ready',           cls:'s-estimated',     badge:'b-estimated',    owner:''},
+  {id:'contact1',      label:'4 · First Contact',            cls:'s-contact1',      badge:'b-contact1',     owner:'Fardeen'},
+  {id:'waiting',       label:'5 · Awaiting Response',        cls:'s-waiting',       badge:'b-waiting',      owner:'Fardeen'},
+  {id:'giles-recheck', label:'6 · Giles Recheck Pricing',    cls:'s-giles-recheck', badge:'b-giles-recheck',owner:'Giles'},
+  {id:'joel-final',    label:'7 · Joel Final Recommendation',cls:'s-joel-final',    badge:'b-joel-final',   owner:'Joel'},
+  {id:'contact2',      label:'8 · Final Contact',            cls:'s-contact2',      badge:'b-contact2',     owner:'Fardeen'},
+  {id:'booked',        label:'9 · Booked into Techman ✓',   cls:'s-booked',        badge:'b-booked',       owner:''},
+  {id:'lost',          label:'✕ Lost',                       cls:'s-lost',          badge:'b-lost',         owner:''},
+];
+
+// ── STATE ───────────────────────────────────────────────
+let jobs=[];
+try{jobs=JSON.parse(localStorage.getItem('kith_v3')||'[]');}catch(e){}
+let intakeData=[], partsData=[];
+let imported=new Set(JSON.parse(localStorage.getItem('kith_imp')||'[]'));
+let filter='all', curId=null, viewMode='board';
+
+function save(){localStorage.setItem('kith_v3',JSON.stringify(jobs));}
+function saveImp(){localStorage.setItem('kith_imp',JSON.stringify([...imported]));}
+function nid(){return'J'+Date.now().toString().slice(-6);}
+function ts(){return new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});}
+function stg(id){return STAGES.find(s=>s.id===id)||STAGES[0];}
+function gj(){return jobs.find(j=>j.id===curId);}
+
+if(!jobs.length){
+  jobs=[
+    {id:'J001',name:'Marcus Webb',phone:'07700900123',wa:true,email:'',reg:'LK22 EFG',make:'BMW',model:'320d',ramp:false,work:'Full service + cambelt replacement',by:'Fardeen',source:'Returning',stage:'estimating',tmJob:'',tmPart:'',est:null,finalEst:null,parts:[],recheckNotes:'',finalNotes:'',fromForm:false,log:[{t:'12 Jun 09:14',s:'Job created by Fardeen'},{t:'12 Jun 09:20',s:'Moved to Joel Estimating'}]},
+    {id:'J002',name:'Priya Desai',phone:'07700900456',wa:true,email:'',reg:'SN71 HJK',make:'Vauxhall',model:'Astra',ramp:false,work:'Brake pads all round + front discs',by:'Fardeen',source:'Google',stage:'parts',tmJob:'',tmPart:'',est:null,finalEst:null,parts:[{name:'Front brake disc pair',num:'BD4521',qty:1,price:'',avail:'',status:'pending'},{name:'Rear brake pads set',num:'BP8812',qty:1,price:'',avail:'',status:'pending'}],recheckNotes:'',finalNotes:'',fromForm:false,log:[{t:'11 Jun 14:30',s:'Job created'},{t:'11 Jun 15:00',s:'Parts form raised — 2 parts to Giles'}]},
+    {id:'J003',name:'Dave Hollis',phone:'07700900789',wa:false,email:'',reg:'YH19 PLM',make:'Mercedes',model:'Sprinter',ramp:true,work:'Engine warning light + exhaust repair',by:'Giles',source:'Walk-in',stage:'waiting',tmJob:'TM-4821',tmPart:'EXH-229',est:1250,finalEst:null,parts:[],recheckNotes:'',finalNotes:'',fromForm:false,log:[{t:'10 Jun 10:00',s:'Job created — on ramp'},{t:'10 Jun 12:00',s:'Estimate £1,250 — Techman TM-4821'},{t:'10 Jun 14:00',s:'Fardeen contacted — awaiting response'}]},
+  ];
+  save();
+}
+
+// ── GOOGLE SHEETS via Visualization API ─────────────────
+// Uses the Google Visualization query API which supports CORS
+function gvizUrl(sheetId, gid){
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&gid=${gid}`;
+}
+
+function parseGviz(text){
+  // response is: /*O_o*/\ngoogle.visualization.Query.setResponse({...});
+  const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
+  if(!match) throw new Error('Unexpected response format');
+  const json = JSON.parse(match[1]);
+  if(json.status==='error') throw new Error(json.errors?.[0]?.message||'Sheet error');
+  const table = json.table;
+  if(!table||!table.cols) return [];
+  const headers = table.cols.map(c=>c.label||c.id||'');
+  return (table.rows||[]).map(row=>{
+    const obj={};
+    headers.forEach((h,i)=>{
+      const cell=row.c?.[i];
+      obj[h]=(cell&&cell.v!=null)?String(cell.v).trim():'';
+    });
+    return obj;
+  }).filter(r=>Object.values(r).some(v=>v));
+}
+
+function setDot(which,state,msg){
+  document.getElementById('d-'+which).className='sdot '+state;
+  document.getElementById('l-'+which).textContent=msg;
+}
+
+async function fetchGviz(sheetId, gid){
+  const url = gvizUrl(sheetId, gid);
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const text = await res.text();
+  return parseGviz(text);
+}
+
+async function refreshSheets(){
+  setDot('intake','spin','Intake Form — syncing...');
+  setDot('parts','spin','Parts Form — syncing...');
+  let ok1=false,ok2=false;
+  try{
+    intakeData = await fetchGviz(INTAKE_ID, INTAKE_GID);
+    setDot('intake','ok','Intake Form — '+intakeData.length+' response'+(intakeData.length!==1?'s':''));
+    ok1=true;
+  }catch(e){
+    setDot('intake','err','Intake Form — failed (check sharing)');
+    console.warn('Intake:',e);
+  }
+  try{
+    partsData = await fetchGviz(PARTS_ID, PARTS_GID);
+    setDot('parts','ok','Parts Form — '+partsData.length+' response'+(partsData.length!==1?'s':''));
+    ok2=true;
+  }catch(e){
+    setDot('parts','err','Parts Form — failed (check sharing)');
+    console.warn('Parts:',e);
+  }
+  document.getElementById('sync-time').textContent='Synced '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  updateInboxBadge();
+  renderAll();
+  if(curId) renderDetail();
+}
+
+// ── INTAKE ROW MAPPING ───────────────────────────────────
+function mapIntake(row){
+  const reg=(row['Vehicle Registration Plate']||'').replace(/\s/g,'').toUpperCase();
+  const mm=(row['Vehicle Make and Model']||'').trim();
+  const spaceIdx=mm.indexOf(' ');
+  const make=spaceIdx>0?mm.slice(0,spaceIdx):mm;
+  const model=spaceIdx>0?mm.slice(spaceIdx+1):'';
+  const phoneRaw=row['customers phone number (ask if they have whatsapp- as this where we will send them an estimate)']||row['customers phone number']||'';
+  return{
+    ts:row['Timestamp']||row['timestamp']||'',
+    name:(row['customers Name']||'').trim(),
+    phone:phoneRaw.trim(),
+    email:(row['Email address.'||'Email address']||row['Email address']||'').trim(),
+    reg, make, model,
+    ramp:(row['Is this vehicle on the ramp/courtyard']||'').toLowerCase().includes('yes'),
+    work:(row['what work is needed? (attach photos if its bodywork)']||'').trim(),
+    photos:(row['attach photos of bodywork- please make sure the customer sends pictures pointing at the damage as well as a picture of the whole car- so estimators can determine the size of the vehicle']||'').trim(),
+    source:(row['where did this customer come from']||'').trim(),
+    by:(row['who filled this out- please put initials']||'').trim(),
+  };
+}
+
+// ── PARTS ROW MAPPING ───────────────────────────────────
+function mapParts(row){
+  const regRaw=(row['REG NUMBER with model and make']||'').toUpperCase();
+  const regMatch=regRaw.match(/[A-Z]{2}\d{2}\s?[A-Z]{3}/);
+  const reg=regMatch?regMatch[0].replace(/\s/g,''):regRaw.split(' ')[0];
+  const parts=[];
+  for(let i=1;i<=6;i++){
+    const v=(row[`part (${i}) required (put a part number if you can)`]||'').trim();
+    if(v) parts.push(v);
+  }
+  return{
+    ts:row['Timestamp']||'',
+    reg,parts,
+    price:(row['price- raw']||'').trim(),
+    supplier:(row['from where?']||'').trim(),
+    eta:(row['ETA?']||'').trim(),
+    returnable:(row['returnable?']||'').trim(),
+    ordered:(row['orderd?']||row['ordered?']||'').trim(),
+  };
+}
+
+function partsForReg(reg){
+  const clean=r=>r.replace(/\s/g,'').toUpperCase();
+  return partsData.map(mapParts).filter(p=>p.reg&&clean(p.reg)===clean(reg));
+}
+
+function newIntakeRows(){
+  return intakeData.filter(r=>{
+    const t=r['Timestamp']||r['timestamp']||'';
+    return t&&!imported.has(t);
+  });
+}
+
+function updateInboxBadge(){
+  const n=newIntakeRows().length;
+  document.getElementById('cnt-inbox').textContent=n?'('+n+')':'';
+}
+
+// ── IMPORT / DISMISS ─────────────────────────────────────
+function importRow(ts){
+  const raw=intakeData.find(r=>(r['Timestamp']||r['timestamp']||'')==ts);
+  if(!raw)return;
+  const d=mapIntake(raw);
+  if(!d.name&&!d.reg){alert('Row missing name and reg.');return;}
+  const job={
+    id:nid(),name:d.name,phone:d.phone,wa:false,email:d.email,
+    reg:d.reg,make:d.make,model:d.model,ramp:d.ramp,
+    work:d.work,photos:d.photos,source:d.source,by:d.by||'Form',
+    stage:'intake',tmJob:'',tmPart:'',est:null,finalEst:null,
+    parts:[],recheckNotes:'',finalNotes:'',fromForm:true,
+    log:[{t:ts2(),s:'Imported from Intake Google Form ('+ts+')'}]
+  };
+  jobs.unshift(job);
+  imported.add(ts);
+  save();saveImp();
+  renderAll();updateInboxBadge();renderInbox();
+  openJob(job.id);
+}
+
+function ts2(){return new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});}
+
+function dismissRow(t){imported.add(t);saveImp();updateInboxBadge();renderInbox();}
+
+// ── RENDER INBOX ─────────────────────────────────────────
+function renderInbox(){
+  const rows=newIntakeRows();
+  const el=document.getElementById('inbox-list');
+  if(!rows.length){el.innerHTML='<div class="empty">No new submissions — all caught up ✓</div>';return;}
+  el.innerHTML=rows.map(r=>{
+    const d=mapIntake(r);
+    const t=(r['Timestamp']||r['timestamp']||'').replace(/'/g,"\\'");
+    return`<div class="inbox-row">
+      <div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">
+          <span style="font-family:'Courier New',monospace;font-weight:800;color:var(--gold)">${d.reg||'No Reg'}</span>
+          <span style="font-weight:600">${d.name||'—'}</span>
+          ${d.ramp?'<span class="tag tag-ramp">On Ramp</span>':''}
+        </div>
+        <div style="font-size:12px;color:var(--dim);margin-bottom:3px">${(d.work||'').slice(0,100)}</div>
+        <div style="font-size:11px;color:var(--faint)">${d.make} ${d.model} · ${d.phone} · From: ${d.source||'—'} · By: ${d.by||'—'}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-gold btn-sm" onclick="importRow('${t}')">+ Add to Pipeline</button>
+        <button class="btn btn-ghost btn-sm" onclick="dismissRow('${t}')">Dismiss</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── FILTERS ──────────────────────────────────────────────
+function fil(){
+  if(filter==='all') return jobs;
+  if(filter==='lost') return jobs.filter(j=>j.stage==='lost');
+  if(filter==='waiting') return jobs.filter(j=>j.stage==='waiting');
+  if(filter==='action') return jobs.filter(j=>!['lost','booked','waiting'].includes(j.stage));
+  if(filter==='giles') return jobs.filter(j=>['parts','giles-recheck'].includes(j.stage));
+  if(filter==='joel') return jobs.filter(j=>['estimating','joel-final'].includes(j.stage));
+  if(filter==='fardeen') return jobs.filter(j=>['contact1','waiting','contact2'].includes(j.stage));
+  return jobs;
+}
+
+// ── BOARD ────────────────────────────────────────────────
+function renderBoard(){
+  document.getElementById('cnt-all').textContent='('+jobs.length+')';
+  const board=document.getElementById('board');
+  board.innerHTML='';
+  STAGES.forEach(s=>{
+    const sj=fil().filter(j=>j.stage===s.id);
+    const col=document.createElement('div');
+    col.className='col '+s.cls;
+    col.innerHTML='<div class="col-head"><span class="col-label">'+s.label+'</span><span class="col-n">'+sj.length+'</span></div>'+
+      '<div class="col-cards">'+(sj.length?sj.map(cardH).join(''):'<div class="empty">—</div>')+'</div>';
+    board.appendChild(col);
+  });
+}
+
+function cardH(j){
+  return'<div class="card" onclick="openJob(\''+j.id+'\')">'+
+    '<div class="card-reg">'+j.reg+'</div>'+
+    '<div class="card-name">'+j.name+'</div>'+
+    '<div class="card-vehicle">'+j.make+' '+j.model+'</div>'+
+    '<div class="card-tags">'+
+      (j.wa?'<span class="tag tag-wa">WA</span>':'')+
+      (j.ramp?'<span class="tag tag-ramp">On Ramp</span>':'')+
+      (j.parts&&j.parts.length?'<span class="tag tag-parts">Parts ⚑</span>':'')+
+      (j.tmJob?'<span class="tag tag-tm">TM</span>':'')+
+      (j.fromForm?'<span class="tag tag-form">Form</span>':'')+
+    '</div>'+
+    '<div class="card-work">'+j.work+'</div>'+
+    '<div class="card-by">By '+j.by+'</div>'+
+  '</div>';
+}
+
+function renderList(){
+  document.getElementById('list-body').innerHTML=fil().map(j=>{
+    const s=stg(j.stage);
+    return'<tr onclick="openJob(\''+j.id+'\')">'+
+      '<td style="font-family:\'Courier New\',monospace;font-weight:800;color:var(--gold)">'+j.reg+'</td>'+
+      '<td>'+j.name+'<br><span style="font-size:11px;color:var(--dim)">'+j.phone+'</span></td>'+
+      '<td style="font-size:12px">'+j.make+' '+j.model+'</td>'+
+      '<td><span class="badge '+s.badge+'">'+s.label+'</span></td>'+
+      '<td style="font-family:\'Courier New\',monospace;font-size:12px;color:var(--blue)">'+(j.tmJob||'—')+'</td>'+
+      '<td style="font-size:12px;color:var(--dim);max-width:180px">'+j.work.slice(0,55)+(j.work.length>55?'…':'')+'</td>'+
+      '<td><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();openJob(\''+j.id+'\')">Open</button></td>'+
+    '</tr>';
+  }).join('');
+}
+
+function renderAll(){renderBoard();renderList();renderInbox();}
+
+// ── DETAIL ───────────────────────────────────────────────
+function openJob(id){curId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
+
+function renderDetail(){
+  const j=gj();if(!j)return;
+  const s=stg(j.stage);
+  const pm=partsForReg(j.reg);
+  document.getElementById('dp').innerHTML=
+    '<div class="ph"><div>'+
+      '<div class="preg">'+j.reg+'</div>'+
+      '<div class="psub">'+j.name+' · '+j.make+' '+j.model+' · '+j.phone+
+        (j.wa?' · <span style="color:#25d366;font-weight:700">WhatsApp ✓</span>':'')+
+        (j.ramp?' · <span style="color:var(--amber)">On Ramp</span>':'')+
+      '</div>'+
+    '</div><button class="xbtn" onclick="cx(\'ov-detail\')">✕</button></div>'+
+    '<div class="pb">'+
+      sbarH(j,s)+
+      (j.ramp?'<div class="notice n-amber">⚠️ Vehicle is on the ramp — additional work on existing job.</div>':'')+
+      '<div class="two-col">'+
+        '<div style="display:flex;flex-direction:column;gap:16px">'+jobH(j)+tmH(j)+estH(j)+'</div>'+
+        '<div>'+actH(j)+'</div>'+
+      '</div>'+
+      (pm.length?pmH(pm):'<div class="notice n-blue" style="font-size:12px">No Parts Form entries found for '+j.reg+' yet — will appear here once Giles submits the form.</div>')+
+      psH(j)+
+      tlH(j)+
+    '</div>';
+}
+
+function sbarH(j,s){
+  return'<div class="sbar">'+
+    '<div><div class="slabel">Current Stage</div><span class="badge '+s.badge+'">'+s.label+'</span></div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+      waB(j)+
+      (j.stage!=='booked'&&j.stage!=='lost'?'<button class="btn btn-ghost btn-sm" onclick="markLost()">✕ Mark Lost</button>':'')+
+    '</div>'+
+  '</div>';
+}
+
+function waB(j){
+  if(!j.wa)return'';
+  const num=j.phone.replace(/\D/g,'').replace(/^0/,'44');
+  const f=j.name.split(' ')[0];
+  const m={
+    contact1:encodeURIComponent('Hi '+f+', this is KITH Cars. We\'ve completed the estimate for your '+j.make+' '+j.model+' ('+j.reg+'). The estimated repair cost is approximately £'+(j.est||'___')+'. Are you happy to proceed?'),
+    waiting:encodeURIComponent('Hi '+f+', just following up on the estimate for your '+j.make+' '+j.model+'. Let us know when you\'re ready and we\'ll get you booked in!'),
+    contact2:encodeURIComponent('Hi '+f+', great news — we\'ve confirmed all parts and availability. The final confirmed price is £'+(j.finalEst||j.est||'___')+'. Would you like to go ahead and get booked in?'),
+    booked:encodeURIComponent('Hi '+f+', you\'re all booked in at KITH Cars! See you soon.'),
+  };
+  return'<a href="https://wa.me/'+num+(m[j.stage]?'?text='+m[j.stage]:'')+'" target="_blank" class="btn btn-wa btn-sm">💬 WhatsApp '+f+'</a>';
+}
+
+function jobH(j){
+  return'<div><div class="stitle">Job Details</div><div class="fg2">'+
+    '<div class="fi"><div class="fl">Registration</div><div class="fv reg">'+j.reg+'</div></div>'+
+    '<div class="fi"><div class="fl">Vehicle</div><div class="fv">'+j.make+' '+j.model+'</div></div>'+
+    '<div class="fi"><div class="fl">Customer</div><div class="fv">'+j.name+'</div></div>'+
+    '<div class="fi"><div class="fl">Phone</div><div class="fv">'+j.phone+'</div></div>'+
+    (j.email?'<div class="fi"><div class="fl">Email</div><div class="fv">'+j.email+'</div></div>':'')+
+    (j.source?'<div class="fi"><div class="fl">Source</div><div class="fv">'+j.source+'</div></div>':'')+
+    '<div class="fi" style="grid-column:1/-1"><div class="fl">Work Required</div><div class="fv" style="line-height:1.5">'+j.work+'</div></div>'+
+    (j.photos?'<div class="fi" style="grid-column:1/-1"><div class="fl">Photos</div><div class="fv"><a href="'+j.photos+'" target="_blank" style="color:var(--blue)">View photos ↗</a></div></div>':'')+
+    '<div class="fi"><div class="fl">Intake By</div><div class="fv">'+j.by+'</div></div>'+
+    '<div class="fi"><div class="fl">Job ID</div><div class="fv" style="color:var(--faint)">'+j.id+'</div></div>'+
+  '</div></div>';
+}
+
+function tmH(j){
+  return'<div><div class="stitle">Techman</div><div class="fg2">'+
+    '<div class="fi"><div class="fl">Techman Job #</div><div class="fv tm">'+(j.tmJob||'Not set')+'</div></div>'+
+    '<div class="fi"><div class="fl">Part Number</div><div class="fv tm">'+(j.tmPart||'Not set')+'</div></div>'+
+  '</div></div>';
+}
+
+function estH(j){
+  if(!j.est&&!j.finalEst)return'';
+  return'<div><div class="stitle">Estimates</div><div style="display:flex;gap:10px;flex-wrap:wrap">'+
+    (j.est?'<div class="ebox" style="flex:1"><div class="eamt">£'+(+j.est).toLocaleString()+'</div><div class="elbl">Estimate</div></div>':'')+
+    (j.finalEst?'<div class="ebox" style="flex:1;border-color:var(--gold-dim)"><div class="eamt fin">£'+(+j.finalEst).toLocaleString()+'</div><div class="elbl">Final Quote</div></div>':'')+
+  '</div>'+(j.recheckNotes?'<div style="margin-top:8px;font-size:12px;color:var(--dim)">Giles notes: '+j.recheckNotes+'</div>':'')+'</div>';
+}
+
+// ── PARTS MATCH (live from sheet) ───────────────────────
+function pmH(rows){
+  const rrows=rows.map(p=>{
+    const ord=p.ordered.toLowerCase().includes('y');
+    const ret=p.returnable.toLowerCase().includes('y');
+    return'<div class="prow">'+
+      '<div class="pn">'+(p.parts.join(' / ')||'—')+'</div>'+
+      '<div class="pp">'+(p.price?'£'+p.price:'—')+'</div>'+
+      '<div class="ps">'+(p.supplier||'—')+'</div>'+
+      '<div class="ps">'+(p.eta||'—')+'</div>'+
+      '<div>'+
+        '<div class="pst '+(ord?'ord':'pend')+'">'+(ord?'✓ Ordered':'⏳ Pending')+'</div>'+
+        (ret?'<div style="font-size:10px;color:var(--blue)">↩ Returnable</div>':'')+
+      '</div>'+
+    '</div>';
+  }).join('');
+  return'<div class="pmatch">'+
+    '<div class="pmatch-title">📋 Parts Form — Giles\'s entries for '+rows[0].reg+' <span style="font-weight:400;color:var(--dim);text-transform:none;font-size:10px;letter-spacing:0">Live from Google Sheets</span></div>'+
+    '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:4px;padding:4px 0;border-bottom:1px solid var(--border);margin-bottom:2px">'+
+      ['Parts','Price','Supplier','ETA','Status'].map(h=>'<span style="font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em">'+h+'</span>').join('')+
+    '</div>'+rrows+'</div>';
+}
+
+// ── ACTION PANEL ─────────────────────────────────────────
+function actH(j){
+  const f=j.name.split(' ')[0];
+  let h='<div class="stitle">Actions — '+(stg(j.stage).owner||'All')+'</div>';
+  switch(j.stage){
+    case'intake':
+      h+='<div class="notice n-blue" style="margin-bottom:12px">New job created. Assign to Joel to begin estimating.</div>'+
+        '<button class="btn btn-gold btn-full" onclick="mv(\'estimating\',\'Assigned to Joel — estimating started\')">Start Estimating (Joel) →</button>';
+      break;
+    case'estimating':
+      h+='<div class="notice n-blue" style="margin-bottom:12px">Joel: build estimate in Techman. Enter job number and part number before proceeding.</div>'+
+        '<div class="fg" style="margin-bottom:8px"><label class="fl2">Techman Job #<span class="req">*</span></label><input class="fi2 tm-in" id="a-tj" placeholder="TM-xxxx" value="'+(j.tmJob||'')+'"/></div>'+
+        '<div class="fg" style="margin-bottom:8px"><label class="fl2">Part Number<span class="req">*</span></label><input class="fi2 tm-in" id="a-tp" placeholder="e.g. CLT-104" value="'+(j.tmPart||'')+'"/></div>'+
+        '<div class="fg" style="margin-bottom:12px"><label class="fl2">Estimate Amount (£)<span class="req">*</span></label><input class="fi2" id="a-est" type="number" placeholder="0.00" value="'+(j.est||'')+'"/></div>'+
+        '<div style="display:flex;flex-direction:column;gap:8px">'+
+          '<button class="btn btn-green btn-full" onclick="joelDone()">✓ Estimate Complete → Ready</button>'+
+          '<button class="btn btn-amber btn-full" onclick="raiseParts()">⚑ Parts Missing → Raise for Giles</button>'+
+        '</div>'+
+        '<div style="margin-top:10px"><a href="'+PARTS_FORM+'" target="_blank" class="btn btn-ghost btn-sm">📋 Open Parts Google Form ↗</a></div>';
+      break;
+    case'parts':
+      h+='<div class="notice n-amber" style="margin-bottom:12px">Giles: find the missing parts. Fill in the Parts Google Form or update the rows below. Parts Form data appears live on this job once submitted.</div>'+
+        '<a href="'+PARTS_FORM+'" target="_blank" class="btn btn-amber btn-full" style="margin-bottom:8px">📋 Open Parts Google Form ↗</a>'+
+        '<button class="btn btn-gold btn-full" onclick="mv(\'estimating\',\'Giles returned parts info — Joel to update estimate\')">✓ Parts Found — Return to Joel</button>';
+      break;
+    case'estimated':
+      const ok=j.tmJob&&j.tmPart;
+      if(!ok){
+        h+='<div class="notice n-red" style="margin-bottom:12px">⚠ Techman job number and part number required before Fardeen can contact the customer.</div>'+
+          '<div class="fg" style="margin-bottom:8px"><label class="fl2">Techman Job #<span class="req">*</span></label><input class="fi2 tm-in" id="a-tj2" placeholder="TM-xxxx" value="'+(j.tmJob||'')+'"/></div>'+
+          '<div class="fg" style="margin-bottom:12px"><label class="fl2">Part Number<span class="req">*</span></label><input class="fi2 tm-in" id="a-tp2" placeholder="e.g. CLT-104" value="'+(j.tmPart||'')+'"/></div>'+
+          '<button class="btn btn-gold btn-full" onclick="saveTM()">Save Techman Numbers</button>';
+      }else{
+        h+='<div class="notice n-green" style="margin-bottom:12px">✓ Estimate ready — Techman '+j.tmJob+' / Part '+j.tmPart+'. Fardeen can contact the customer.</div>'+
+          '<button class="btn btn-gold btn-full" onclick="mv(\'contact1\',\'Estimate ready — Fardeen to make first contact\')">Ready for First Contact (Fardeen) →</button>';
+      }
+      break;
+    case'contact1':
+      h+='<div class="notice n-gold" style="margin-bottom:8px">Fardeen: contact the customer. Use WhatsApp button above or call. Script below.</div>'+
+        '<div class="wascript">"Hi '+f+', this is KITH Cars. We\'ve completed the estimate for your '+j.make+' '+j.model+'. The estimated repair cost is approximately <strong>£'+(j.est||'___')+'</strong>. Are you happy to proceed?"</div>'+
+        '<button class="btn btn-blue btn-full" style="margin-top:12px" onclick="mv(\'waiting\',\'Fardeen contacted customer — awaiting response\')">📤 Customer Contacted → Awaiting Response</button>';
+      break;
+    case'waiting':
+      h+='<div class="notice n-purple" style="margin-bottom:12px">Waiting for customer reply on WhatsApp or phone. Update once they respond.</div>'+
+        '<div style="display:flex;flex-direction:column;gap:8px">'+
+          '<button class="btn btn-green btn-full" onclick="mv(\'giles-recheck\',\'Customer happy — Giles rechecking parts pricing\')">✅ Customer Happy → Giles Recheck Pricing</button>'+
+          '<button class="btn btn-ghost btn-full" onclick="mv(\'giles-recheck\',\'Customer undecided — Giles rechecking pricing anyway\')">🔄 Undecided → Still Recheck Pricing</button>'+
+          '<button class="btn btn-red btn-full" onclick="markLost()">✕ Customer Declined → Lost</button>'+
+        '</div>'+
+        '<div class="notice n-blue" style="margin-top:10px;font-size:12px">Either way — Giles always rechecks pricing to get the best possible deal before we confirm.</div>';
+      break;
+    case'giles-recheck':
+      h+='<div class="notice n-amber" style="margin-bottom:12px">Giles: re-verify all supplier prices, stock and delivery. Find the best possible price. Parts Form data is shown live below.</div>'+
+        '<div class="fg" style="margin-bottom:8px"><label class="fl2">Updated Total Price (£) — if changed</label><input class="fi2" id="a-rp" type="number" placeholder="'+(j.est||'')+'" value="'+(j.finalEst||'')+'"/></div>'+
+        '<div class="fg" style="margin-bottom:12px"><label class="fl2">Recheck Notes (savings, supplier, availability)</label><textarea class="fta" id="a-rn" placeholder="e.g. Found better clutch kit at GSF — saves £80. All in stock, next day...">'+(j.recheckNotes||'')+'</textarea></div>'+
+        '<button class="btn btn-gold btn-full" onclick="recheckDone()">✓ Recheck Done → Joel Final Recommendation</button>';
+      break;
+    case'joel-final':
+      h+='<div class="notice n-blue" style="margin-bottom:10px">Joel: review Giles\'s recheck and confirm or adjust the final quote.</div>'+
+        (j.recheckNotes?'<div class="notice n-amber" style="margin-bottom:10px;font-size:12px">Giles notes: '+j.recheckNotes+'</div>':'')+
+        '<div class="fg" style="margin-bottom:8px"><label class="fl2">Final Quote (£)<span class="req">*</span></label><input class="fi2" id="a-fq" type="number" value="'+(j.finalEst||j.est||'')+'" placeholder="0.00"/></div>'+
+        '<div class="fg" style="margin-bottom:12px"><label class="fl2">Final Notes</label><textarea class="fta" id="a-fn" placeholder="Any scope or pricing changes...">'+(j.finalNotes||'')+'</textarea></div>'+
+        '<button class="btn btn-gold btn-full" onclick="finalDone()">✓ Final Quote Confirmed → Fardeen Final Contact</button>';
+      break;
+    case'contact2':
+      h+='<div class="notice n-gold" style="margin-bottom:8px">Fardeen: present the final confirmed price to the customer.</div>'+
+        '<div class="wascript">"Hi '+f+', we\'ve now confirmed all parts and availability. The final confirmed price is <strong>£'+(j.finalEst||j.est||'___')+'</strong>. Would you like to go ahead and get booked in?"</div>'+
+        '<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">'+
+          '<button class="btn btn-green btn-full" onclick="mv(\'booked\',\'Customer confirmed — job booked into Techman\')">✅ Customer Confirmed → Book into Techman</button>'+
+          '<button class="btn btn-red btn-full" onclick="markLost()">✕ Customer Declined → Lost</button>'+
+        '</div>';
+      break;
+    case'booked':
+      h+='<div class="notice n-green">✅ Job booked into Techman '+(j.tmJob||'')+'. Pipeline complete.</div>';
+      break;
+    case'lost':
+      h+='<div class="notice n-red" style="margin-bottom:10px">✕ Job marked as lost.</div>'+
+        '<button class="btn btn-ghost btn-full" onclick="mv(\'intake\',\'Job reopened\')">↩ Reopen Job</button>';
+      break;
+  }
+  return'<div>'+h+'</div>';
+}
+
+// ── PARTS SECTION (manual CRM) ───────────────────────────
+function psH(j){
+  if(j.stage==='estimating'){
+    return'<div><div class="stitle">Parts Intake — Missing Parts (Joel fills in for Giles)</div>'+
+      '<div id="pw">'+ptH(j)+'</div>'+
+      '<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addP()">+ Add Part</button>'+
+      '<div style="margin-top:8px"><a href="'+PARTS_FORM+'" target="_blank" class="btn btn-ghost btn-sm">📋 Open Parts Google Form ↗</a></div></div>';
+  }
+  if(j.stage==='parts'){
+    return'<div><div class="stitle">Parts Requested (Joel → Giles)</div>'+
+      '<div style="display:flex;flex-direction:column;gap:6px">'+j.parts.map((p,i)=>gRow(p,i)).join('')+'</div></div>';
+  }
+  if(j.parts&&j.parts.length){
+    return'<div><div class="stitle">Parts ('+j.parts.length+')</div>'+
+      '<div style="display:flex;flex-direction:column;gap:5px">'+j.parts.map(pvRow).join('')+'</div></div>';
+  }
+  return'';
+}
+
+function ptH(j){
+  const rows=(j.parts||[]).map((p,i)=>
+    '<tr><td class="ic"><input value="'+p.name+'" onchange="upP('+i+',\'name\',this.value)" placeholder="Part name"/></td>'+
+    '<td class="ic"><input value="'+p.num+'" onchange="upP('+i+',\'num\',this.value)" placeholder="Part number"/></td>'+
+    '<td class="ic" style="width:65px"><input type="number" value="'+p.qty+'" onchange="upP('+i+',\'qty\',this.value)" min="1"/></td>'+
+    '<td><button class="btn btn-ghost btn-xs" onclick="delP('+i+')">✕</button></td></tr>'
+  ).join('');
+  return'<table class="pt"><thead><tr><th>Part Name</th><th>Part No.</th><th>Qty</th><th></th></tr></thead><tbody id="ptb">'+rows+'</tbody></table>';
+}
+
+function gRow(p,i){
+  return'<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:10px 12px;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;align-items:center">'+
+    '<div><div style="font-size:13px;font-weight:600">'+p.name+'</div><div style="font-size:11px;color:var(--dim)">'+p.num+' · Qty '+p.qty+'</div></div>'+
+    '<input class="fi2" style="font-size:12px" placeholder="£ Price" value="'+(p.price||'')+'" onchange="upPG('+i+',\'price\',this.value)"/>'+
+    '<input class="fi2" style="font-size:12px" placeholder="In stock?" value="'+(p.avail||'')+'" onchange="upPG('+i+',\'avail\',this.value)"/>'+
+    '<select class="fsel" style="font-size:12px" onchange="upPG('+i+',\'status\',this.value)">'+
+      '<option value="pending" '+(p.status==='pending'?'selected':'')+'>Pending</option>'+
+      '<option value="found" '+(p.status==='found'?'selected':'')+'>✓ Found</option>'+
+      '<option value="issue" '+(p.status==='issue'?'selected':'')+'>⚠ Issue</option>'+
+    '</select></div>';
+}
+
+function pvRow(p){
+  return'<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:8px 12px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">'+
+    '<div><div style="font-size:13px;font-weight:600">'+p.name+'</div><div style="font-size:11px;color:var(--dim)">'+p.num+' · Qty '+p.qty+'</div></div>'+
+    (p.price?'<div style="font-size:13px;color:var(--gold);font-family:\'Courier New\',monospace">£'+p.price+'</div>':'')+
+    (p.avail?'<div style="font-size:12px;color:var(--dim)">'+p.avail+'</div>':'')+
+    '<div style="font-size:11px;font-weight:700;color:'+(p.status==='found'?'var(--green)':p.status==='issue'?'var(--red)':'var(--dim)')+'">'+(p.status==='found'?'✓ Found':p.status==='issue'?'⚠ Issue':'Pending')+'</div>'+
+  '</div>';
+}
+
+// ── TIMELINE ─────────────────────────────────────────────
+function tlH(j){
+  return'<div><div class="stitle">Activity Log</div><div class="tl">'+
+    [...j.log].reverse().map((e,i)=>
+      '<div class="tli"><div class="tld '+(i===0?'done':'')+'"></div><div class="tlt"><div class="tls">'+e.s+'</div><div class="tlm">'+e.t+'</div></div></div>'
+    ).join('')+
+  '</div></div>';
+}
+
+// ── MOVE / ACTIONS ───────────────────────────────────────
+function mv(stage,msg){const j=gj();if(!j)return;j.stage=stage;j.log.push({t:ts(),s:msg});save();renderAll();renderDetail();}
+function markLost(){mv('lost','Job marked as lost');}
+
+function joelDone(){
+  const j=gj();if(!j)return;
+  const tj=document.getElementById('a-tj')?.value.trim();
+  const tp=document.getElementById('a-tp')?.value.trim();
+  const est=parseFloat(document.getElementById('a-est')?.value);
+  if(!tj||!tp){alert('Enter Techman Job # and Part # before proceeding.');return;}
+  if(isNaN(est)||est<=0){alert('Enter the estimate amount.');return;}
+  j.tmJob=tj;j.tmPart=tp;j.est=est;
+  mv('estimated','Estimate £'+est.toLocaleString()+' — Techman '+tj+' / Part '+tp);
+}
+
+function saveTM(){
+  const j=gj();if(!j)return;
+  const tj=document.getElementById('a-tj2')?.value.trim();
+  const tp=document.getElementById('a-tp2')?.value.trim();
+  if(!tj||!tp){alert('Enter both Techman numbers.');return;}
+  j.tmJob=tj;j.tmPart=tp;
+  j.log.push({t:ts(),s:'Techman numbers saved — Job '+tj+' / Part '+tp});
+  save();renderAll();renderDetail();
+}
+
+function raiseParts(){
+  const j=gj();if(!j)return;
+  const pts=collectP();
+  if(!pts.length){alert('Add at least one part before raising.');return;}
+  j.parts=pts;
+  mv('parts','Parts raised — '+pts.length+' part(s) sent to Giles');
+}
+
+function recheckDone(){
+  const j=gj();if(!j)return;
+  const p=parseFloat(document.getElementById('a-rp')?.value);
+  const n=document.getElementById('a-rn')?.value||'';
+  if(!isNaN(p)&&p>0)j.finalEst=p;
+  j.recheckNotes=n;
+  mv('joel-final','Giles recheck done'+(j.finalEst?' — updated £'+(+j.finalEst).toLocaleString():'')+(n?'. '+n.slice(0,50):''));
+}
+
+function finalDone(){
+  const j=gj();if(!j)return;
+  const v=parseFloat(document.getElementById('a-fq')?.value);
+  const n=document.getElementById('a-fn')?.value||'';
+  if(isNaN(v)||v<=0){alert('Enter the final quote amount.');return;}
+  j.finalEst=v;j.finalNotes=n;
+  mv('contact2','Final quote £'+v.toLocaleString()+' confirmed — Fardeen to contact customer');
+}
+
+function collectP(){
+  const tb=document.getElementById('ptb');
+  if(!tb)return gj()?.parts||[];
+  return Array.from(tb.querySelectorAll('tr')).map(r=>{
+    const ins=r.querySelectorAll('input');
+    return ins[0]?.value.trim()?{name:ins[0].value.trim(),num:ins[1]?.value.trim()||'',qty:parseInt(ins[2]?.value)||1,price:'',avail:'',status:'pending'}:null;
+  }).filter(Boolean);
+}
+
+function addP(){
+  const j=gj();if(!j)return;
+  j.parts=collectP();
+  j.parts.push({name:'',num:'',qty:1,price:'',avail:'',status:'pending'});
+  save();document.getElementById('pw').innerHTML=ptH(j);
+}
+
+function delP(i){
+  const j=gj();if(!j)return;
+  j.parts=collectP();j.parts.splice(i,1);
+  save();document.getElementById('pw').innerHTML=ptH(j);
+}
+
+function upP(i,f,v){const j=gj();if(j&&j.parts[i]){j.parts[i][f]=v;save();}}
+function upPG(i,f,v){const j=gj();if(j&&j.parts[i]){j.parts[i][f]=v;save();}}
+
+// ── NEW JOB ──────────────────────────────────────────────
+function openNew(){
+  ['n-name','n-phone','n-email','n-reg','n-make','n-model','n-work','n-source'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  document.getElementById('n-wa').checked=false;
+  document.getElementById('n-ramp').checked=false;
+  document.getElementById('n-by').value='';
+  document.getElementById('ov-new').classList.add('open');
+}
+
+function createJob(){
+  const name=document.getElementById('n-name').value.trim();
+  const phone=document.getElementById('n-phone').value.trim();
+  const reg=document.getElementById('n-reg').value.trim().toUpperCase();
+  const work=document.getElementById('n-work').value.trim();
+  const by=document.getElementById('n-by').value;
+  if(!name||!phone||!reg||!work||!by){alert('Please fill in all required fields (*)');return;}
+  const job={
+    id:nid(),name,phone,wa:document.getElementById('n-wa').checked,
+    email:document.getElementById('n-email').value.trim(),
+    reg,make:document.getElementById('n-make').value.trim(),
+    model:document.getElementById('n-model').value.trim(),
+    ramp:document.getElementById('n-ramp').checked,
+    work,by,source:document.getElementById('n-source').value.trim(),
+    stage:'intake',tmJob:'',tmPart:'',est:null,finalEst:null,
+    parts:[],recheckNotes:'',finalNotes:'',fromForm:false,
+    log:[{t:ts(),s:'Job created manually by '+by}]
+  };
+  jobs.unshift(job);save();cx('ov-new');renderAll();openJob(job.id);
+}
+
+// ── VIEW / FILTER ────────────────────────────────────────
+function toggleView(){
+  viewMode=viewMode==='board'?'list':'board';
+  document.getElementById('v-board').style.display=viewMode==='board'?'block':'none';
+  document.getElementById('v-list').style.display=viewMode==='list'?'block':'none';
+  document.getElementById('vtog').textContent=viewMode==='board'?'☰ List':'⊞ Board';
+  renderAll();
+}
+
+function setFilter(f,btn){
+  filter=f;
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  const isInbox=f==='inbox';
+  document.getElementById('v-inbox').style.display=isInbox?'block':'none';
+  document.getElementById('v-board').style.display=(!isInbox&&viewMode==='board')?'block':'none';
+  document.getElementById('v-list').style.display=(!isInbox&&viewMode==='list')?'block':'none';
+  renderAll();
+}
+
+function cx(id){document.getElementById(id).classList.remove('open');}
+['ov-new','ov-detail'].forEach(id=>{
+  document.getElementById(id).addEventListener('click',e=>{if(e.target===e.currentTarget)cx(id);});
+});
+
+renderAll();
+refreshSheets();
+setInterval(refreshSheets,120000);
+</script>
+</body>
+</html>
