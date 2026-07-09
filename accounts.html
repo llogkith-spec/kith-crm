@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>KITH Cars — Accounts</title>
+<script>
+var PINS = {Sudha:'6666', Logkith:'0000'};
+var user = null, who = null, pin = '';
+
+function goPin(name) {
+  who = name;
+  pin = '';
+  document.getElementById('s1').style.display = 'none';
+  document.getElementById('s2').style.display = 'block';
+  document.getElementById('s2name').textContent = 'Hi ' + name + ' — Enter PIN';
+  document.getElementById('perr').textContent = '';
+  updDots();
+}
+
+function pd(d) {
+  if(pin.length >= 4) return;
+  pin += d;
+  updDots();
+  if(pin.length === 4) setTimeout(chk, 150);
+}
+
+function updDots() {
+  for(var i=0;i<4;i++) {
+    var el = document.getElementById('dot'+i);
+    if(el) el.style.background = i < pin.length ? '#1a1a2e' : '#eee';
+  }
+}
+
+function chk() {
+  if(pin === PINS[who]) {
+    user = who;
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('uname').textContent = user;
+    loadData();
+  } else {
+    document.getElementById('perr').textContent = 'Wrong PIN — try again';
+    pin = '';
+    updDots();
+  }
+}
+
+function goBack() {
+  pin = ''; who = null;
+  document.getElementById('s2').style.display = 'none';
+  document.getElementById('s1').style.display = 'block';
+}
+
+function doLogout() {
+  user = null;
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login').style.display = 'flex';
+  document.getElementById('s2').style.display = 'none';
+  document.getElementById('s1').style.display = 'block';
+}
+
+// SUPABASE
+var SB = 'https://mxyrxyhvjndgjqupgstu.supabase.co';
+var SK = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
+var SH = {apikey:SK, Authorization:'Bearer '+SK, 'Content-Type':'application/json', Prefer:'resolution=merge-duplicates'};
+
+async function sbGet(t) {
+  try { var r = await fetch(SB+'/rest/v1/'+t+'?select=*&order=updated_at.desc',{headers:SH}); return r.json(); }
+  catch(e) { return []; }
+}
+async function sbUp(t, row) {
+  try { await fetch(SB+'/rest/v1/'+t,{method:'POST',headers:SH,body:JSON.stringify(row)}); }
+  catch(e) { console.warn(e); }
+}
+
+var POs=[], ROs=[], invs=[], bills=[], sales=[];
+
+async function loadData() {
+  try {
+    var pr = await sbGet('kith_pos');
+    var rr = await sbGet('kith_returns');
+    POs = (pr||[]).map(function(r){return r.data||r;}).filter(Boolean);
+    ROs = (rr||[]).map(function(r){return r.data||r;}).filter(Boolean);
+  } catch(e) { POs=[]; ROs=[]; }
+  try { invs = JSON.parse(localStorage.getItem('kith_invs')||'[]'); } catch(e) { invs=[]; }
+  try { bills = JSON.parse(localStorage.getItem('kith_bills2')||'[]'); } catch(e) { bills=[]; }
+  try { sales = JSON.parse(localStorage.getItem('kith_sales')||'[]'); } catch(e) { sales=[]; }
+  showTab('dash');
+}
+
+function ts() { return new Date().toLocaleString('en-GB'); }
+function mid() { return Date.now().toString().slice(-6); }
+function cx(id) { document.getElementById(id).style.display='none'; }
+function openOv(id) { document.getElementById(id).style.display='flex'; }
+function saveInvs() { localStorage.setItem('kith_invs',JSON.stringify(invs)); }
+function saveBills() { localStorage.setItem('kith_bills2',JSON.stringify(bills)); }
+function saveSales() { localStorage.setItem('kith_sales',JSON.stringify(sales)); }
+
+function showTab(tab) {
+  ['dash','pos','ro','bills','expenses','sales'].forEach(function(t){
+    document.getElementById('v-'+t).style.display = t===tab?'block':'none';
+  });
+  document.querySelectorAll('.tab').forEach(function(el){el.classList.remove('on');});
+  var btn = document.getElementById('tab-'+tab);
+  if(btn) btn.classList.add('on');
+  if(tab==='dash') rDash();
+  if(tab==='pos') rPOs();
+  if(tab==='ro') rROs();
+  if(tab==='bills') rBills();
+  if(tab==='expenses') rExp();
+  if(tab==='sales') rSales();
+}
+
+function rDash() {
+  var tPO = POs.reduce(function(s,p){return s+(+p.price||0);},0);
+  var paid = POs.filter(function(p){return p.paid;}).reduce(function(s,p){return s+(+p.price||0);},0);
+  var unpaid = POs.filter(function(p){return !p.paid;});
+  var pendRO = ROs.filter(function(r){return !r.creditReceived;});
+  var credOwed = pendRO.reduce(function(s,r){return s+(+r.price||0);},0);
+
+  document.getElementById('v-dash').innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">'+
+      '<h2 style="font-size:20px;font-weight:800">Accounts Overview</h2>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+        '<button onclick="openOv(\'ov-po\')" style="'+btnStyle('#1a1a2e','#fff')+'">+ Purchase Order</button>'+
+        '<button onclick="openOv(\'ov-ro\')" style="'+btnStyle('#fff','#1a1a2e',true)+'">+ Return Order</button>'+
+        '<button onclick="openOv(\'ov-inv\')" style="'+btnStyle('#fff','#1a1a2e',true)+'">+ Expense</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">'+
+      sc('Total PO Value','£'+tPO.toFixed(2),'#1565c0')+
+      sc('Paid','£'+paid.toFixed(2),'#2e7d32')+
+      sc('Outstanding','£'+(tPO-paid).toFixed(2),'#c62828')+
+      sc('Credits Owed','£'+credOwed.toFixed(2),'#e65100')+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
+      '<div style="'+cardStyle()+'"><div style="'+stitle()+'">Unpaid POs ('+unpaid.length+')</div>'+
+        (unpaid.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+th(['PO#','Reg','Part','Amount',''])+
+          unpaid.slice(0,8).map(function(p){return '<tr>'+
+            td('<span style="font-family:monospace;font-weight:700;color:#b8860b">'+p.id+'</span>')+
+            td('<span style="font-family:monospace;font-weight:700">'+(p.jobReg||'—')+'</span>')+
+            td(p.partName.slice(0,30))+
+            td('<strong>£'+(+p.price).toFixed(2)+'</strong>')+
+            td('<button onclick="mPaid(\''+p.id+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:4px 8px;font-size:11px">✓ Paid</button>')+
+          '</tr>';}).join('')+
+        '</table></div>':'<p style="color:green;margin:8px 0">✓ All POs paid</p>')+
+      '</div>'+
+      '<div style="'+cardStyle()+'"><div style="'+stitle()+'">Pending Credits ('+pendRO.length+')</div>'+
+        (pendRO.length?'<table style="width:100%;border-collapse:collapse">'+th(['RO#','Part','Supplier','Credit'])+
+          pendRO.slice(0,8).map(function(r){return '<tr>'+
+            td('<span style="font-family:monospace;font-weight:700;color:#b8860b">'+r.id+'</span>')+
+            td(r.partName)+td(r.supplier)+
+            td('<strong style="color:#e65100">£'+(+r.price).toFixed(2)+'</strong>')+
+          '</tr>';}).join('')+'</table>':'<p style="color:green;margin:8px 0">✓ No pending credits</p>')+
+      '</div>'+
+    '</div>';
+}
+
+function sc(l,v,c){return'<div style="background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.05)"><div style="font-size:26px;font-weight:900;color:'+c+'">'+v+'</div><div style="font-size:11px;color:#888;margin-top:5px">'+l+'</div></div>';}
+function cardStyle(){return'background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:18px;';}
+function stitle(){return'font-size:11px;font-weight:800;color:#aaa;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;';}
+function btnStyle(bg,col,ghost){return'background:'+bg+';'+(ghost?'border:1.5px solid #ddd;':'border:none;')+'border-radius:8px;color:'+col+';font-size:13px;font-weight:600;padding:9px 16px;cursor:pointer;';}
+function th(cols){return'<thead><tr>'+cols.map(function(c){return'<th style="text-align:left;font-size:11px;color:#999;font-weight:700;padding:8px 10px;border-bottom:2px solid #f0f0f0;background:#fafafa">'+c+'</th>';}).join('')+'</tr></thead>';}
+function td(v){return'<td style="padding:9px 10px;border-bottom:1px solid #f5f5f5;font-size:13px">'+v+'</td>';}
+
+async function mPaid(id) {
+  var p = POs.find(function(x){return x.id===id;});
+  if(!p) return;
+  p.paid=true; p.paidBy=user; p.paidAt=ts();
+  await sbUp('kith_pos',{id:p.id,data:p,updated_at:new Date().toISOString()});
+  rDash(); rPOs();
+}
+
+function rPOs() {
+  var exVat = POs.reduce(function(s,p){return s+(+p.price||0);},0);
+  document.getElementById('v-pos').innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
+      '<h2 style="font-size:18px;font-weight:800">Purchase Orders ('+POs.length+')</h2>'+
+      '<div style="display:flex;gap:8px">'+
+        '<button onclick="openOv(\'ov-po\')" style="'+btnStyle('#1a1a2e','#fff')+'">+ New PO</button>'+
+        '<button onclick="expCSV()" style="'+btnStyle('#fff','#1a1a2e',true)+'">⬇ CSV</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
+    '<table style="width:100%;border-collapse:collapse">'+th(['PO#','Reg','Part(s)','Supplier','ex-VAT','VAT 20%','Total inc-VAT','ETA','Paid',''])+
+    '<tbody>'+POs.map(function(p){
+      var n=+p.price||0,v=n*.2;
+      return'<tr>'+
+        td('<span style="font-family:monospace;font-weight:700;color:#b8860b">'+p.id+'</span>')+
+        td('<span style="font-family:monospace;font-weight:700">'+(p.jobReg||'—')+'</span>')+
+        td('<div style="font-weight:600;max-width:150px">'+p.partName+'</div>'+
+          (p.partLines&&p.partLines.length>1?'<div style="font-size:10px;color:#888">'+p.partLines.length+' parts</div>':''))+
+        td(p.supplier)+
+        td('<strong>£'+n.toFixed(2)+'</strong>')+
+        td('<span style="color:#888">£'+v.toFixed(2)+'</span>')+
+        td('<strong style="color:#1565c0">£'+(n+v).toFixed(2)+'</strong>')+
+        td('<span style="font-size:12px;color:#888">'+(p.eta||'—')+'</span>')+
+        td(p.paid?'<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700">PAID</span>':'<button onclick="mPaid(\''+p.id+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:4px 10px;font-size:11px">✓ Paid</button>')+
+        td('');
+    }).join('')+'</tbody></table></div>'+
+    '<p style="margin-top:10px;font-size:13px;color:#888">'+POs.length+' POs · ex-VAT: <strong>£'+exVat.toFixed(2)+'</strong> · inc-VAT: <strong style="color:#1565c0">£'+(exVat*1.2).toFixed(2)+'</strong></p>';
+}
+
+function rROs() {
+  var pend = ROs.filter(function(r){return !r.creditReceived;});
+  document.getElementById('v-ro').innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
+      '<h2 style="font-size:18px;font-weight:800">Return Orders ('+ROs.length+')</h2>'+
+      '<button onclick="openOv(\'ov-ro\')" style="'+btnStyle('#1a1a2e','#fff')+'">+ New Return Order</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">'+
+      sc('Total Returns',ROs.length,'#1565c0')+
+      sc('Credits Received',ROs.filter(function(r){return r.creditReceived;}).length,'#2e7d32')+
+      sc('Credits Pending','£'+pend.reduce(function(s,r){return s+(+r.price||0);},0).toFixed(2),'#e65100')+
+    '</div>'+
+    '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
+    '<table style="width:100%;border-collapse:collapse">'+th(['RO#','Reg','Part','Supplier','Reason','Price','Status','Credit'])+
+    '<tbody>'+ROs.map(function(r){return'<tr>'+
+      td('<span style="font-family:monospace;font-weight:700;color:#b8860b">'+r.id+'</span>')+
+      td('<span style="font-family:monospace">'+(r.jobReg||'—')+'</span>')+
+      td('<strong>'+r.partName+'</strong>')+td(r.supplier)+td(r.reason)+
+      td('<strong>£'+(+r.price).toFixed(2)+'</strong>')+
+      td(r.status)+
+      td(r.creditReceived?'<span style="color:#2e7d32;font-weight:700">✓ £'+(+r.creditAmount||+r.price).toFixed(2)+'</span>':'<span style="color:#c62828">Pending</span>')+
+    '</tr>';}).join('')+'</tbody></table></div>';
+}
+
+function rBills() {
+  document.getElementById('v-bills').innerHTML =
+    '<h2 style="font-size:18px;font-weight:800;margin-bottom:16px">Bill Scanner</h2>'+
+    '<div style="'+cardStyle()+'">'+
+      '<p style="color:#888;font-size:13px;margin-bottom:12px">Upload a photo or PDF of a supplier bill. Claude AI reads it and matches against your POs.</p>'+
+      '<div onclick="document.getElementById(\'bfi\').click()" style="border:2px dashed #ccc;border-radius:10px;padding:28px;text-align:center;cursor:pointer;background:#fafafa">'+
+        '<input type="file" id="bfi" accept="image/*,.pdf" style="display:none" onchange="scanBill(this.files[0])"/>'+
+        '<div style="font-size:36px;margin-bottom:8px">📄</div>'+
+        '<div style="font-size:15px;font-weight:700;margin-bottom:4px">Tap to upload bill</div>'+
+        '<div style="font-size:12px;color:#888">JPG, PNG or PDF</div>'+
+      '</div>'+
+      '<div id="scan-out" style="margin-top:14px"></div>'+
+    '</div>'+
+    (bills.length?'<div style="'+cardStyle()+'overflow-x:auto;padding:0;margin-top:14px">'+
+    '<table style="width:100%;border-collapse:collapse">'+th(['Scanned','Supplier','Invoice#','Amount','Match','Matched PO'])+
+    '<tbody>'+bills.map(function(b){return'<tr>'+
+      td('<span style="font-size:11px;color:#888">'+b.at+'</span>')+
+      td('<strong>'+b.supplier+'</strong>')+
+      td(b.inv||'—')+td('<strong>£'+b.amount+'</strong>')+
+      td(b.match)+td(b.mpo||'—')+
+    '</tr>';}).join('')+'</tbody></table></div>':'');
+}
+
+function rExp() {
+  var total = invs.reduce(function(s,i){return s+(+(i.net||0))+(+(i.vat||0));},0);
+  document.getElementById('v-expenses').innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
+      '<h2 style="font-size:18px;font-weight:800">Expenses & Invoices</h2>'+
+      '<button onclick="openOv(\'ov-inv\')" style="'+btnStyle('#1a1a2e','#fff')+'">+ New Expense</button>'+
+    '</div>'+
+    '<div style="'+cardStyle()+'margin-bottom:14px"><strong>Total: £'+total.toFixed(2)+'</strong></div>'+
+    (invs.length?'<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
+    '<table style="width:100%;border-collapse:collapse">'+th(['Ref#','Type','Supplier','Date','Due','Net','VAT','Total','Status',''])+
+    '<tbody>'+invs.map(function(inv,i){
+      var tot=(+(inv.net||0))+(+(inv.vat||0));
+      var od=inv.due&&new Date(inv.due)<new Date()&&inv.status!=='paid';
+      return'<tr style="'+(od?'background:#fff5f5':'')+'">'+
+        td('<strong style="color:#b8860b">'+inv.num+'</strong>')+td(inv.type||'Invoice')+
+        td(inv.supplier)+td(inv.date||'—')+
+        td('<span style="color:'+(od?'#c62828':'#888')+'">'+(inv.due||'—')+(od?' ⚠':'')+'</span>')+
+        td('£'+(+(inv.net||0)).toFixed(2))+td('£'+(+(inv.vat||0)).toFixed(2))+
+        td('<strong>£'+tot.toFixed(2)+'</strong>')+
+        td(inv.status==='paid'?'<span style="color:#2e7d32;font-weight:700">Paid</span>':'Unpaid')+
+        td((inv.status!=='paid'?'<button onclick="mInvPaid('+i+')" style="'+btnStyle('#2e7d32','#fff')+'padding:3px 8px;font-size:11px">Paid</button> ':'')+
+           '<button onclick="delInv('+i+')" style="'+btnStyle('#fff','#888',true)+'padding:3px 8px;font-size:11px">✕</button>')+
+      '</tr>';}).join('')+'</tbody></table></div>':'<div style="'+cardStyle()+'color:#888">No expenses yet.</div>');
+}
+
+function rSales() {
+  var total = sales.reduce(function(s,x){return s+(+x.amount||0);},0);
+  document.getElementById('v-sales').innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
+      '<h2 style="font-size:18px;font-weight:800">Sales Records</h2>'+
+      '<div style="display:flex;gap:8px">'+
+        '<button onclick="addSale()" style="'+btnStyle('#1a1a2e','#fff')+'">+ Add Sale</button>'+
+        '<button onclick="expSales()" style="'+btnStyle('#fff','#1a1a2e',true)+'">⬇ CSV</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="'+cardStyle()+'margin-bottom:14px">'+
+      '<div onclick="document.getElementById(\'sfi\').click()" style="border:2px dashed #ccc;border-radius:10px;padding:20px;text-align:center;cursor:pointer;background:#fafafa">'+
+        '<input type="file" id="sfi" accept=".csv,.xlsx,.pdf,image/*" style="display:none" onchange="uploadSales(this.files[0])"/>'+
+        '<div style="font-size:24px;margin-bottom:6px">📈</div>'+
+        '<div style="font-size:14px;font-weight:600">Upload Techman sales export</div>'+
+        '<div style="font-size:12px;color:#888;margin-top:2px">CSV, Excel, PDF or photo</div>'+
+      '</div>'+
+      '<div id="sale-out" style="margin-top:10px"></div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">'+
+      sc('Total Sales','£'+total.toFixed(2),'#2e7d32')+
+      sc('Records',sales.length,'#1565c0')+
+      sc('Avg Sale',sales.length?'£'+(total/sales.length).toFixed(2):'£0','#b8860b')+
+    '</div>'+
+    (sales.length?'<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
+    '<table style="width:100%;border-collapse:collapse">'+th(['Date','Job#','Reg','Customer','Description','Amount','Source',''])+
+    '<tbody>'+sales.map(function(s,i){return'<tr>'+
+      td(s.date)+td('<span style="font-family:monospace;color:#b8860b">'+s.ref+'</span>')+
+      td('<span style="font-family:monospace;font-weight:700">'+s.reg+'</span>')+
+      td(s.customer)+td('<span style="font-size:12px;color:#888">'+s.desc+'</span>')+
+      td('<strong style="color:#2e7d32">£'+(+s.amount).toFixed(2)+'</strong>')+
+      td('<span style="font-size:11px;color:#888">'+s.source+'</span>')+
+      td('<button onclick="delSale('+i+')" style="'+btnStyle('#fff','#888',true)+'padding:3px 8px;font-size:11px">✕</button>')+
+    '</tr>';}).join('')+'</tbody></table></div>':'<div style="'+cardStyle()+'color:#888">No sales records yet.</div>');
+}
+
+// PO FORM
+function calcTotal() {
+  var ps = Array.from(document.querySelectorAll('.pp')).map(function(i){return +(i.value||0);});
+  var qs = Array.from(document.querySelectorAll('.pq')).map(function(i){return +(i.value||1);});
+  var t=0; ps.forEach(function(p,i){t+=p*(qs[i]||1);});
+  var te=document.getElementById('ptot'); var tv=document.getElementById('ptotvat');
+  if(te)te.textContent=t.toFixed(2); if(tv)tv.textContent=(t*1.2).toFixed(2);
+}
+function addRow() {
+  var tb=document.getElementById('ptb');
+  var tr=document.createElement('tr');
+  tr.innerHTML='<td><input placeholder="Part name" class="pp-n" style="width:100%;padding:5px;border:1px solid #ddd;border-radius:4px"/></td>'+
+    '<td><input placeholder="Part no." class="pp-num" style="width:100%;padding:5px;border:1px solid #ddd;border-radius:4px"/></td>'+
+    '<td><input type="number" value="1" min="1" class="pq" style="width:50px;padding:5px;border:1px solid #ddd;border-radius:4px" oninput="calcTotal()"/></td>'+
+    '<td><input type="number" placeholder="0.00" step="0.01" class="pp" style="width:80px;padding:5px;border:1px solid #ddd;border-radius:4px" oninput="calcTotal()"/></td>'+
+    '<td><input placeholder="15 Jun" class="pp-eta" style="width:70px;padding:5px;border:1px solid #ddd;border-radius:4px"/></td>'+
+    '<td><input placeholder="GSF" class="pp-sup" style="width:70px;padding:5px;border:1px solid #ddd;border-radius:4px"/></td>'+
+    '<td><button onclick="this.closest(\'tr\').remove();calcTotal()" style="background:none;border:1px solid #ddd;border-radius:4px;cursor:pointer;padding:3px 7px;color:#888">✕</button></td>';
+  tb.appendChild(tr);
+}
+async function savePO() {
+  var reg=(document.getElementById('po-reg').value||'').trim().toUpperCase();
+  if(!reg){alert('Vehicle reg required.');return;}
+  var rows=Array.from(document.querySelectorAll('#ptb tr')).map(function(tr){return{
+    name:(tr.querySelector('.pp-n')||{}).value||'',num:(tr.querySelector('.pp-num')||{}).value||'',
+    qty:+((tr.querySelector('.pq')||{}).value)||1,price:+((tr.querySelector('.pp')||{}).value)||0,
+    eta:(tr.querySelector('.pp-eta')||{}).value||'',supplier:(tr.querySelector('.pp-sup')||{}).value||''
+  };}).filter(function(r){return r.name;});
+  if(!rows.length){alert('Add at least one part.');return;}
+  var tot=rows.reduce(function(s,r){return s+r.price*r.qty;},0);
+  var po={id:'PO'+mid(),jobReg:reg,jobId:(document.getElementById('po-job')||{}).value||'',
+    partName:rows.map(function(r){return r.name;}).join(', '),
+    partNum:rows.map(function(r){return r.num;}).filter(Boolean).join(', '),
+    partLines:rows,qty:rows.reduce(function(s,r){return s+r.qty;},0),
+    supplier:(document.getElementById('po-sup')||{}).value||'',
+    price:tot,eta:rows.map(function(r){return r.eta;}).filter(Boolean)[0]||'',
+    surcharge:(document.getElementById('po-sc')||{}).checked||false,
+    onRamp:(document.getElementById('po-ramp')||{}).checked||false,
+    paid:false,createdAt:ts(),createdBy:user};
+  await sbUp('kith_pos',{id:po.id,data:po,updated_at:new Date().toISOString()});
+  POs.unshift(po);cx('ov-po');rDash();rPOs();
+}
+
+// RO FORM
+async function saveRO() {
+  var pn=(document.getElementById('ro-part')||{}).value||'';
+  var sup=(document.getElementById('ro-sup')||{}).value||'';
+  if(!pn||!sup){alert('Part name and supplier required.');return;}
+  var ro={id:'RO'+mid(),partName:pn,partNum:(document.getElementById('ro-num')||{}).value||'',
+    jobReg:((document.getElementById('ro-reg')||{}).value||'').toUpperCase(),
+    supplier:sup,reason:(document.getElementById('ro-reason')||{}).value||'Faulty',
+    price:parseFloat((document.getElementById('ro-price')||{}).value)||0,
+    status:'pending',creditReceived:false,createdAt:ts(),createdBy:user};
+  await sbUp('kith_returns',{id:ro.id,data:ro,updated_at:new Date().toISOString()});
+  ROs.unshift(ro);cx('ov-ro');rROs();rDash();
+}
+
+// INVOICE FORM
+function iCalc() {
+  var n=+((document.getElementById('i-net')||{}).value||0);
+  var v=+((document.getElementById('i-vat')||{}).value||0);
+  var t=document.getElementById('i-tot'); if(t)t.value='£'+(n+v).toFixed(2);
+}
+function saveInv() {
+  var num=(document.getElementById('i-num')||{}).value||'';
+  var sup=(document.getElementById('i-sup')||{}).value||'';
+  if(!num||!sup){alert('Reference and supplier required.');return;}
+  invs.unshift({num:num,supplier:sup,type:(document.getElementById('i-type')||{}).value||'Invoice',
+    date:(document.getElementById('i-date')||{}).value||'',due:(document.getElementById('i-due')||{}).value||'',
+    net:(document.getElementById('i-net')||{}).value||0,vat:(document.getElementById('i-vat')||{}).value||0,
+    status:'unpaid',createdAt:ts(),createdBy:user});
+  saveInvs();cx('ov-inv');rExp();
+}
+function mInvPaid(i){invs[i].status='paid';saveInvs();rExp();}
+function delInv(i){if(!confirm('Delete?'))return;invs.splice(i,1);saveInvs();rExp();}
+
+// BILL SCAN
+async function scanBill(file) {
+  if(!file)return;
+  var out=document.getElementById('scan-out');
+  out.innerHTML='<p style="color:#1565c0">⏳ Reading bill with AI...</p>';
+  try{
+    var b64=await new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result.split(',')[1]);};r.onerror=function(){rej(new Error('Failed'));};r.readAsDataURL(file);});
+    var cnt=[];
+    if(file.type.startsWith('image/'))cnt.push({type:'image',source:{type:'base64',media_type:file.type,data:b64}});
+    else cnt.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}});
+    var poSum=POs.slice(0,20).map(function(p){return'PO '+p.id+': '+p.partName+' £'+(+p.price).toFixed(2);}).join('\n');
+    cnt.push({type:'text',text:'Read this supplier bill for KITH Cars. Return ONLY JSON:\n{"supplier":"","invoiceNum":"","subtotal":"","vat":"","total":"","matchedPO":"PO ID or null","matchConf":"high/medium/low/none","matchReason":""}\n\nOur POs:\n'+poSum});
+    var resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,messages:[{role:'user',content:cnt}]})});
+    var data=await resp.json();
+    var txt=(data.content||[]).map(function(c){return c.text||'';}).join('').replace(/```json|```/g,'').trim();
+    var p=JSON.parse(txt);
+    var bill={id:'B'+mid(),at:ts(),supplier:p.supplier||'Unknown',inv:p.invoiceNum||'',
+      amount:p.subtotal||p.total||'?',total:p.total||'',mpo:p.matchedPO||null,
+      match:p.matchConf==='high'?'matched':p.matchConf==='medium'?'partial':'unmatched',reason:p.matchReason||''};
+    bills.unshift(bill);saveBills();
+    out.innerHTML='<div style="background:#e8f5e9;padding:12px;border-radius:8px;margin-top:8px">'+
+      '<strong style="color:#2e7d32">✓ Bill read</strong><br>'+
+      'Supplier: '+bill.supplier+' · Amount: £'+bill.amount+'<br>'+
+      (bill.mpo?'Matched to: '+bill.mpo:'No PO match found')+' — '+bill.reason+'</div>';
+    rBills();
+  }catch(e){out.innerHTML='<p style="color:#c62828">Error: '+e.message+'</p>';}
+}
+
+// SALES
+function addSale() {
+  var d=prompt('Enter: Date, Job#, Reg, Customer, Description, Amount\nE.g.: 08 Jul 2026, TM1234, MT67NXL, John Smith, Full Service, 420.00');
+  if(!d)return;
+  var parts=d.split(',').map(function(x){return x.trim();});
+  if(parts.length<6){alert('Need all 6 fields.');return;}
+  sales.unshift({date:parts[0],ref:parts[1],reg:parts[2],customer:parts[3],desc:parts[4],amount:parseFloat(parts[5])||0,source:'Manual',createdAt:ts()});
+  saveSales();rSales();
+}
+async function uploadSales(file) {
+  if(!file)return;
+  var out=document.getElementById('sale-out');
+  out.innerHTML='<p style="color:#1565c0">⏳ Reading with AI...</p>';
+  try{
+    var b64=await new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result.split(',')[1]);};r.onerror=function(){rej(new Error('Failed'));};r.readAsDataURL(file);});
+    var cnt=[];
+    if(file.type.startsWith('image/'))cnt.push({type:'image',source:{type:'base64',media_type:file.type,data:b64}});
+    else if(file.type==='application/pdf')cnt.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}});
+    cnt.push({type:'text',text:'Extract sales from this document for KITH Cars garage. Return ONLY JSON array:\n[{"date":"","ref":"","reg":"","customer":"","desc":"","amount":0}]'});
+    var resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2000,messages:[{role:'user',content:cnt}]})});
+    var data=await resp.json();
+    var txt=(data.content||[]).map(function(c){return c.text||'';}).join('').replace(/```json|```/g,'').trim();
+    var rows=JSON.parse(txt);
+    if(!Array.isArray(rows)||!rows.length)throw new Error('No records found');
+    rows.forEach(function(r){sales.unshift({date:r.date||'',ref:r.ref||'',reg:r.reg||'',customer:r.customer||'',desc:r.desc||'',amount:+(r.amount)||0,source:'Upload: '+file.name,createdAt:ts()});});
+    saveSales();out.innerHTML='<p style="color:#2e7d32">✓ '+rows.length+' sales imported.</p>';rSales();
+  }catch(e){out.innerHTML='<p style="color:#c62828">Error: '+e.message+'</p>';}
+}
+function delSale(i){if(!confirm('Delete?'))return;sales.splice(i,1);saveSales();rSales();}
+function expSales(){dl([['Date','Job#','Reg','Customer','Description','Amount','Source']].concat(sales.map(function(s){return[s.date,s.ref,s.reg,s.customer,s.desc,(+s.amount).toFixed(2),s.source];})),'KITH-Sales');}
+function expCSV(){dl([['PO#','Reg','Part(s)','Supplier','ex-VAT','VAT','inc-VAT','ETA','Paid']].concat(POs.map(function(p){var n=+p.price||0;return[p.id,p.jobReg||'',p.partName,p.supplier,n.toFixed(2),(n*.2).toFixed(2),(n*1.2).toFixed(2),p.eta||'',p.paid?'Yes':'No'];})),'KITH-POs');}
+function dl(rows,name){var csv=rows.map(function(r){return r.map(function(v){return'"'+String(v||'').replace(/"/g,'""')+'"';}).join(',');}).join('\n');var blob=new Blob(['\uFEFF'+csv],{type:'text/csv'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=name+'-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);}
+</script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#f0f2f5;color:#1a1a2e;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+#login{position:fixed;inset:0;background:linear-gradient(135deg,#1a1a2e,#16213e);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.lbox{background:#fff;border-radius:16px;padding:36px;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.3);display:flex;flex-direction:column;align-items:center;gap:14px}
+.tab{padding:13px 18px;font-size:13px;font-weight:600;color:#888;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap}
+.tab.on{color:#1a1a2e;border-bottom-color:#1a1a2e}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:500;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}
+.panel{background:#fff;border-radius:12px;width:100%;max-width:680px;margin:auto}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div style="color:#c9a84c;font-size:12px;font-weight:700;letter-spacing:.12em;margin-bottom:20px;text-transform:uppercase">KITH CARS GROUP</div>
+  <div class="lbox">
+    <div style="font-size:32px">🚗</div>
+    <div style="font-size:20px;font-weight:900">Accounts System</div>
+    <div style="font-size:12px;color:#888">Authorised access only</div>
+
+    <div id="s1" style="width:100%">
+      <div style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Select your name</div>
+      <button onclick="goPin('Sudha')" style="width:100%;background:#f8f9fa;border:1.5px solid #e0e0e0;border-radius:10px;padding:14px;cursor:pointer;font-size:14px;font-weight:600;text-align:left;display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:22px">💳</span><div><div>Sudha</div><div style="font-size:11px;color:#888;font-weight:400">Accounts Manager</div></div>
+      </button>
+      <button onclick="goPin('Logkith')" style="width:100%;background:#f8f9fa;border:1.5px solid #e0e0e0;border-radius:10px;padding:14px;cursor:pointer;font-size:14px;font-weight:600;text-align:left;display:flex;align-items:center;gap:10px">
+        <span style="font-size:22px">👑</span><div><div>Logkith</div><div style="font-size:11px;color:#888;font-weight:400">Director</div></div>
+      </button>
+    </div>
+
+    <div id="s2" style="display:none;width:100%;text-align:center">
+      <div id="s2name" style="font-size:16px;font-weight:700;margin-bottom:6px"></div>
+      <div style="font-size:12px;color:#888;margin-bottom:12px">Enter 4-digit PIN</div>
+      <div style="display:flex;gap:12px;justify-content:center;margin-bottom:8px">
+        <div id="dot0" style="width:14px;height:14px;border-radius:50%;border:2px solid #ccc;background:#eee"></div>
+        <div id="dot1" style="width:14px;height:14px;border-radius:50%;border:2px solid #ccc;background:#eee"></div>
+        <div id="dot2" style="width:14px;height:14px;border-radius:50%;border:2px solid #ccc;background:#eee"></div>
+        <div id="dot3" style="width:14px;height:14px;border-radius:50%;border:2px solid #ccc;background:#eee"></div>
+      </div>
+      <div id="perr" style="font-size:12px;color:#c62828;min-height:16px;margin-bottom:8px"></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
+        <button onclick="pd('1')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">1</button>
+        <button onclick="pd('2')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">2</button>
+        <button onclick="pd('3')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">3</button>
+        <button onclick="pd('4')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">4</button>
+        <button onclick="pd('5')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">5</button>
+        <button onclick="pd('6')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">6</button>
+        <button onclick="pd('7')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">7</button>
+        <button onclick="pd('8')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">8</button>
+        <button onclick="pd('9')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">9</button>
+        <button onclick="pin='';updDots()" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:12px;font-weight:600;padding:14px;cursor:pointer">Clear</button>
+        <button onclick="pd('0')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">0</button>
+        <button onclick="pin=pin.slice(0,-1);updDots()" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">⌫</button>
+      </div>
+      <button onclick="goBack()" style="background:none;border:1px solid #ddd;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;color:#888">← Back</button>
+    </div>
+    <div style="font-size:11px;color:#aaa;margin-top:4px">Having trouble? <button onclick="localStorage.clear();location.reload()" style="background:none;border:none;color:#aaa;cursor:pointer;text-decoration:underline;font-size:11px">Clear &amp; reload</button></div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <div style="background:#1a1a2e;color:#fff;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100">
+    <div style="font-size:17px;font-weight:900">🚗 KITH Cars <span style="color:#c9a84c;font-size:13px">Accounts</span></div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span id="uname" style="font-size:12px;color:#aaa"></span>
+      <button onclick="doLogout()" style="background:none;border:1px solid #444;border-radius:6px;color:#fff;padding:6px 12px;cursor:pointer;font-size:12px">Log Out</button>
+    </div>
+  </div>
+  <div style="background:#fff;border-bottom:2px solid #e0e0e0;padding:0 20px;display:flex;overflow-x:auto">
+    <button class="tab on" id="tab-dash" onclick="showTab('dash')">📊 Dashboard</button>
+    <button class="tab" id="tab-pos" onclick="showTab('pos')">📦 Purchase Orders</button>
+    <button class="tab" id="tab-ro" onclick="showTab('ro')">↩ Return Orders</button>
+    <button class="tab" id="tab-bills" onclick="showTab('bills')">🧾 Bill Scanner</button>
+    <button class="tab" id="tab-expenses" onclick="showTab('expenses')">💸 Expenses</button>
+    <button class="tab" id="tab-sales" onclick="showTab('sales')">📈 Sales</button>
+  </div>
+  <div style="padding:20px;max-width:1300px;margin:0 auto">
+    <div id="v-dash"></div>
+    <div id="v-pos" style="display:none"></div>
+    <div id="v-ro" style="display:none"></div>
+    <div id="v-bills" style="display:none"></div>
+    <div id="v-expenses" style="display:none"></div>
+    <div id="v-sales" style="display:none"></div>
+  </div>
+</div>
+
+<!-- PO OVERLAY -->
+<div class="overlay" id="ov-po" onclick="if(event.target===this)cx('ov-po')">
+<div class="panel" style="margin:20px auto;max-width:680px">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid #eee;background:#fafafa;border-radius:12px 12px 0 0">
+    <div><div style="font-size:18px;font-weight:800">New Purchase Order</div><div style="font-size:12px;color:#888;margin-top:2px">One PO per vehicle — add all parts</div></div>
+    <button onclick="cx('ov-po')" style="background:none;border:1.5px solid #ddd;color:#888;font-size:16px;cursor:pointer;padding:4px 10px;border-radius:6px">✕</button>
+  </div>
+  <div style="padding:20px;display:flex;flex-direction:column;gap:12px">
+    <div style="background:#e3f2fd;border-left:4px solid #1565c0;color:#0d47a1;padding:10px 14px;border-radius:6px;font-size:12px">RAW ex-VAT prices only — no markup. VAT at 20% calculated automatically.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Vehicle Reg *</label><input id="po-reg" placeholder="AB12 CDE" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-family:monospace;font-weight:700;text-transform:uppercase;font-size:13px"/></div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Job ID</label><input id="po-job" placeholder="J001234" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Primary Supplier</label><input id="po-sup" placeholder="GSF Car Parts" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+      <div style="display:flex;gap:16px;align-items:flex-end;padding-bottom:6px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="po-sc"/> Surcharge</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="po-ramp"/> 🔴 On Ramp</label>
+      </div>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;margin-bottom:-4px">Parts</div>
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:#f5f5f5"><th style="padding:7px 6px;text-align:left;font-size:10px;color:#999;font-weight:700;text-transform:uppercase">Part Name *</th><th style="padding:7px 6px;text-align:left;font-size:10px;color:#999;font-weight:700;text-transform:uppercase">Part No.</th><th style="padding:7px 6px;text-align:left;font-size:10px;color:#999;font-weight:700;text-transform:uppercase">Qty</th><th style="padding:7px 6px;text-align:left;font-size:10px;color:#999;font-weight:700;text-transform:uppercase">Price ex-VAT</th><th style="padding:7px 6px;text-align:left;font-size:10px;color:#999;font-weight:700;text-transform:uppercase">ETA</th><th style="padding:7px 6px;text-align:left;font-size:10px;color:#999;font-weight:700;text-transform:uppercase">Supplier</th><th></th></tr></thead>
+      <tbody id="ptb">
+        <tr>
+          <td style="padding:4px 3px"><input placeholder="Part name" class="pp-n" style="width:100%;padding:5px 7px;border:1px solid #ddd;border-radius:4px;font-size:12px"/></td>
+          <td style="padding:4px 3px"><input placeholder="BD4521" class="pp-num" style="width:100%;padding:5px 7px;border:1px solid #ddd;border-radius:4px;font-size:12px"/></td>
+          <td style="padding:4px 3px"><input type="number" value="1" min="1" class="pq" style="width:50px;padding:5px 7px;border:1px solid #ddd;border-radius:4px;font-size:12px" oninput="calcTotal()"/></td>
+          <td style="padding:4px 3px"><input type="number" placeholder="0.00" step="0.01" class="pp" style="width:80px;padding:5px 7px;border:1px solid #ddd;border-radius:4px;font-size:12px" oninput="calcTotal()"/></td>
+          <td style="padding:4px 3px"><input placeholder="15 Jun" class="pp-eta" style="width:70px;padding:5px 7px;border:1px solid #ddd;border-radius:4px;font-size:12px"/></td>
+          <td style="padding:4px 3px"><input placeholder="GSF" class="pp-sup" style="width:70px;padding:5px 7px;border:1px solid #ddd;border-radius:4px;font-size:12px"/></td>
+          <td style="padding:4px 3px"><button onclick="this.closest('tr').remove();calcTotal()" style="background:none;border:1px solid #ddd;border-radius:4px;cursor:pointer;padding:4px 8px;color:#888;font-size:12px">✕</button></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <button onclick="addRow()" style="background:#fff;border:1.5px solid #ddd;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:600">+ Add Part</button>
+      <div style="font-size:14px;font-weight:800">ex-VAT: £<span id="ptot">0.00</span> &nbsp;|&nbsp; inc-VAT: £<span id="ptotvat">0.00</span></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:8px;border-top:1px solid #eee">
+      <button onclick="cx('ov-po')" style="background:#fff;border:1.5px solid #ddd;border-radius:8px;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">Cancel</button>
+      <button onclick="savePO()" style="background:#1a1a2e;border:none;border-radius:8px;color:#fff;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">Raise PO →</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- RO OVERLAY -->
+<div class="overlay" id="ov-ro" onclick="if(event.target===this)cx('ov-ro')">
+<div class="panel" style="margin:20px auto;max-width:520px">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid #eee;background:#fafafa;border-radius:12px 12px 0 0">
+    <div style="font-size:18px;font-weight:800">New Return Order</div>
+    <button onclick="cx('ov-ro')" style="background:none;border:1.5px solid #ddd;color:#888;font-size:16px;cursor:pointer;padding:4px 10px;border-radius:6px">✕</button>
+  </div>
+  <div style="padding:20px;display:flex;flex-direction:column;gap:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Part Name *</label><input id="ro-part" placeholder="Front Brake Disc Pair" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Part Number</label><input id="ro-num" placeholder="BD4521" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Vehicle Reg</label><input id="ro-reg" placeholder="AB12 CDE" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-family:monospace;font-weight:700;text-transform:uppercase;font-size:13px"/></div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Supplier *</label><input id="ro-sup" placeholder="GSF Car Parts" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Return Reason</label>
+        <select id="ro-reason" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;background:#fff">
+          <option>Faulty</option><option>Wrong Part</option><option>Overordered</option>
+          <option>Customer Declined Job</option><option>Surcharge / Core Return</option><option>Other</option>
+        </select>
+      </div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Price (£)</label><input id="ro-price" type="number" placeholder="0.00" step="0.01" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:8px;border-top:1px solid #eee">
+      <button onclick="cx('ov-ro')" style="background:#fff;border:1.5px solid #ddd;border-radius:8px;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">Cancel</button>
+      <button onclick="saveRO()" style="background:#1a1a2e;border:none;border-radius:8px;color:#fff;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">Create Return Order →</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- INVOICE OVERLAY -->
+<div class="overlay" id="ov-inv" onclick="if(event.target===this)cx('ov-inv')">
+<div class="panel" style="margin:20px auto;max-width:520px">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid #eee;background:#fafafa;border-radius:12px 12px 0 0">
+    <div style="font-size:18px;font-weight:800">New Expense / Invoice</div>
+    <button onclick="cx('ov-inv')" style="background:none;border:1.5px solid #ddd;color:#888;font-size:16px;cursor:pointer;padding:4px 10px;border-radius:6px">✕</button>
+  </div>
+  <div style="padding:20px;display:flex;flex-direction:column;gap:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Reference # *</label><input id="i-num" placeholder="INV-001" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Supplier / Payee *</label><input id="i-sup" placeholder="GSF Car Parts" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Type</label>
+        <select id="i-type" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;background:#fff">
+          <option>Supplier Invoice</option><option>Expense</option><option>Utility</option><option>Rent</option><option>Other</option>
+        </select>
+      </div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Date</label><input id="i-date" type="date" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Amount ex-VAT</label><input id="i-net" type="number" placeholder="0.00" step="0.01" oninput="iCalc()" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">VAT (£)</label><input id="i-vat" type="number" placeholder="0.00" step="0.01" oninput="iCalc()" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Total inc-VAT</label><input id="i-tot" readonly style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;background:#f8f9fa;font-weight:700"/></div>
+    </div>
+    <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Due Date</label><input id="i-due" type="date" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:8px;border-top:1px solid #eee">
+      <button onclick="cx('ov-inv')" style="background:#fff;border:1.5px solid #ddd;border-radius:8px;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">Cancel</button>
+      <button onclick="saveInv()" style="background:#1a1a2e;border:none;border-radius:8px;color:#fff;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">Save →</button>
+    </div>
+  </div>
+</div>
+</div>
+
+</body>
+</html>
