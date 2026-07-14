@@ -3717,6 +3717,8 @@ async function confirmB2BImport(){
         if(!r.ok){
           const txt=await r.text();
           console.warn('B2B save failed:',r.status,txt);
+          // Store first error to show user
+          if(!window._b2bFirstError) window._b2bFirstError=r.status+': '+txt.slice(0,200);
           errors++;
         } else {
           b2bLeads.unshift(lead);
@@ -3724,6 +3726,7 @@ async function confirmB2BImport(){
         }
       }catch(e){
         console.warn('B2B save error:',e.message);
+        if(!window._b2bFirstError) window._b2bFirstError=e.message;
         errors++;
       }
     }));
