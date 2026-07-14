@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="KITH Intake"/>
+<meta name="theme-color" content="#1a1a2e"/>
+<title>KITH Cars — Job Intake</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{--gold:#c9a84c;--dark:#1a1a2e;--red:#c62828;--green:#2e7d32;--amber:#e65100;--blue:#1565c0;--border:#e0e0e0;--bg:#f0f2f5;--surface:#fff;--dim:#666;--faint:#aaa}
+body{background:var(--bg);color:var(--dark);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;padding-bottom:40px}
+.hdr{background:var(--dark);padding:14px 18px;padding-top:calc(14px + env(safe-area-inset-top));display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.hdr-brand{color:#fff;font-size:17px;font-weight:900}.hdr-brand span{color:var(--gold)}
+.hdr-user{font-size:12px;color:#aaa;cursor:pointer}
+.main{max-width:560px;margin:0 auto;padding:14px}
+.card{background:#fff;border-radius:14px;padding:18px;margin-bottom:12px;box-shadow:0 1px 6px rgba(0,0,0,.07)}
+.sec{font-size:10px;font-weight:800;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px}
+.fg{margin-bottom:14px}.fg:last-child{margin-bottom:0}
+.fl{font-size:12px;font-weight:700;color:var(--dim);margin-bottom:5px;display:block}
+.hint{font-size:11px;color:var(--faint);font-style:italic;margin-top:3px}
+.req{color:var(--red)}
+.fi{background:#f8f9fa;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:16px;width:100%;color:var(--dark);-webkit-appearance:none}
+.fi:focus{outline:none;border-color:var(--dark);background:#fff}
+.fi-reg{text-transform:uppercase;font-family:monospace;font-size:20px;font-weight:900;letter-spacing:.12em;text-align:center}
+textarea.fi{min-height:80px;resize:none;line-height:1.5}
+select.fi{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath fill='%23666' d='M6 8L0 0h12z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+/* Service type grid */
+.svc-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.svc-btn{background:#f8f9fa;border:2px solid var(--border);border-radius:12px;padding:13px 10px;cursor:pointer;font-size:13px;font-weight:700;color:var(--dark);text-align:left;width:100%;line-height:1.4;transition:all .12s}
+.svc-btn:active{transform:scale(.97)}
+.svc-btn.sel{border-color:var(--gold);background:rgba(201,168,76,.12);color:#7a5c00}
+.svc-sub{font-size:10px;font-weight:400;color:#888;margin-top:3px;display:block}
+/* Script box */
+.script{background:rgba(21,101,192,.08);border-left:4px solid var(--blue);border-radius:8px;padding:12px 14px;margin-bottom:14px}
+.script-title{font-size:10px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px}
+.script-q{font-size:13px;font-weight:700;color:var(--dark);margin-bottom:4px;padding-left:12px;position:relative}
+.script-q:before{content:"›";position:absolute;left:0;color:var(--blue)}
+/* Checklist */
+.check-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #f0f0f0;cursor:pointer}
+.check-row:last-child{border-bottom:none}
+.check-box{width:22px;height:22px;border:2px solid var(--border);border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px}
+.check-box.checked{background:var(--gold);border-color:var(--gold);color:#fff}
+.check-lbl{font-size:14px;font-weight:600;flex:1}
+/* Notices */
+.notice{padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;margin-bottom:12px}
+.n-blue{background:#e3f2fd;border-left:4px solid var(--blue);color:#0d47a1}
+.n-red{background:#ffebee;border-left:4px solid var(--red);color:#b71c1c}
+.n-green{background:#e8f5e9;border-left:4px solid var(--green);color:#1b5e20}
+.n-amber{background:#fff3e0;border-left:4px solid var(--amber);color:#bf360c}
+.n-gold{background:rgba(201,168,76,.1);border-left:4px solid var(--gold);color:#7a5c00}
+/* Toggle */
+.tog-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f0f0f0}
+.tog-row:last-child{border-bottom:none}
+.tog{position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0}
+.tog input{opacity:0;width:0;height:0}
+.tsl{position:absolute;inset:0;background:#ccc;border-radius:26px;cursor:pointer;transition:.25s}
+.tsl:before{content:'';position:absolute;width:20px;height:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.25s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+input:checked+.tsl{background:var(--gold)}
+input:checked+.tsl:before{transform:translateX(20px)}
+/* Buttons */
+.btn{width:100%;padding:15px;border-radius:12px;border:none;font-size:16px;font-weight:700;cursor:pointer;transition:all .15s}
+.btn:active{transform:scale(.98)}
+.btn-dark{background:var(--dark);color:#fff}
+.btn-gold{background:var(--gold);color:#000}
+.btn-ghost{background:#fff;border:1.5px solid var(--border);color:var(--dark)}
+.btn-row{display:flex;gap:8px;margin-top:4px}
+/* Step bar */
+.step-bar{display:flex;gap:5px;margin-bottom:14px}
+.sdot{flex:1;height:5px;border-radius:5px;background:#e0e0e0;transition:background .3s}
+.sdot.on{background:var(--gold)}
+/* Steps */
+.step{display:none}.step.on{display:block}
+/* Dup warning */
+.dup{background:#ffebee;border:1.5px solid var(--red);border-radius:10px;padding:10px 12px;font-size:12px;color:#b71c1c;margin-top:6px;display:none}
+/* Success */
+#scr-success{display:none;text-align:center;padding:40px 20px}
+.suc-icon{font-size:64px;margin-bottom:14px}
+/* Staff */
+#scr-staff{padding:14px}
+.staff-btn{background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:13px 16px;font-size:15px;font-weight:700;cursor:pointer;width:100%;text-align:left;margin-bottom:8px;display:flex;align-items:center;gap:10px}
+.staff-btn:active{background:#f0f0f0}
+/* Multi-select chips */
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chip{background:#f0f0f0;border:1.5px solid var(--border);border-radius:20px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all .12s}
+.chip.sel{background:rgba(201,168,76,.2);border-color:var(--gold);color:#7a5c00}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-brand">🚗 KITH <span>Intake</span></div>
+  <div class="hdr-user" id="hdr-user" onclick="changeStaff()">Change ▾</div>
+</div>
+
+<!-- STAFF SCREEN -->
+<div id="scr-staff" style="padding:14px">
+  <div style="padding:10px 0 16px;text-align:center">
+    <div style="font-size:22px;font-weight:900;margin-bottom:4px">Who are you?</div>
+    <div style="font-size:13px;color:#888">Saved for next time</div>
+  </div>
+  <button class="staff-btn" onclick="setStaff('Fardeen')"><span style="font-size:20px">📞</span><div><div>Fardeen</div><div style="font-size:11px;color:#888;font-weight:400">Service Adviser</div></div></button>
+  <button class="staff-btn" onclick="setStaff('Joel')"><span style="font-size:20px">📋</span><div><div>Joel</div><div style="font-size:11px;color:#888;font-weight:400">Estimator</div></div></button>
+  <button class="staff-btn" onclick="setStaff('Ian')"><span style="font-size:20px">📐</span><div><div>Ian</div><div style="font-size:11px;color:#888;font-weight:400">Estimator</div></div></button>
+  <button class="staff-btn" onclick="setStaff('Muhammad Talha')"><span style="font-size:20px">📋</span><div><div>Muhammad Talha</div><div style="font-size:11px;color:#888;font-weight:400">Estimator</div></div></button>
+  <button class="staff-btn" onclick="setStaff('Giles')"><span style="font-size:20px">🔧</span><div><div>Giles</div><div style="font-size:11px;color:#888;font-weight:400">Workshop Manager</div></div></button>
+  <button class="staff-btn" onclick="setStaff('Harith')"><span style="font-size:20px">🔩</span><div><div>Harith</div><div style="font-size:11px;color:#888;font-weight:400">Parts</div></div></button>
+  <button class="staff-btn" onclick="setStaff('Logkith')"><span style="font-size:20px">👑</span><div><div>Logkith</div><div style="font-size:11px;color:#888;font-weight:400">Director</div></div></button>
+</div>
+
+<!-- MAIN FORM -->
+<div id="scr-form" style="display:none">
+<div class="main">
+
+  <div class="step-bar">
+    <div class="sdot" id="sd0"></div>
+    <div class="sdot" id="sd1"></div>
+    <div class="sdot" id="sd2"></div>
+    <div class="sdot" id="sd3"></div>
+  </div>
+
+  <!-- STEP 0: Service Type -->
+  <div class="step on" id="s0">
+    <div class="card">
+      <div class="sec">Step 1 of 4 — What does the customer need?</div>
+      <div class="svc-grid">
+        <button class="svc-btn" id="svc-service" onclick="pickSvc('service')">🔧 Servicing & MOT<span class="svc-sub">Service, oil change, MOT</span></button>
+        <button class="svc-btn" id="svc-brakes" onclick="pickSvc('brakes')">🛑 Brakes<span class="svc-sub">Pads, discs, calipers</span></button>
+        <button class="svc-btn" id="svc-tyres" onclick="pickSvc('tyres')">🔄 Tyres & Wheels<span class="svc-sub">Supply, fit, tracking</span></button>
+        <button class="svc-btn" id="svc-diagnostic" onclick="pickSvc('diagnostic')">🔍 Diagnostic<span class="svc-sub">Warning lights, faults</span></button>
+        <button class="svc-btn" id="svc-suspension" onclick="pickSvc('suspension')">🚗 Suspension & Steering<span class="svc-sub">Shocks, springs, steering</span></button>
+        <button class="svc-btn" id="svc-exhaust" onclick="pickSvc('exhaust')">💨 Exhaust & DPF<span class="svc-sub">Exhaust, DPF, remap</span></button>
+        <button class="svc-btn" id="svc-electrical" onclick="pickSvc('electrical')">⚡ Electrical<span class="svc-sub">Battery, lights, sensors</span></button>
+        <button class="svc-btn" id="svc-engine" onclick="pickSvc('engine')">🔩 Engine & Cooling<span class="svc-sub">Cambelt, head gasket, cooling</span></button>
+        <button class="svc-btn" id="svc-clutch" onclick="pickSvc('clutch')">⚙️ Clutch & Gearbox<span class="svc-sub">Clutch, gearbox, transmission</span></button>
+        <button class="svc-btn" id="svc-bodywork" onclick="pickSvc('bodywork')">🚙 Bodywork & Paint<span class="svc-sub">Dents, panels, SMART, respray</span></button>
+        <button class="svc-btn" id="svc-ramp" onclick="pickSvc('ramp')">🔴 On Ramp / Additional<span class="svc-sub">Car in — extra work found</span></button>
+        <button class="svc-btn" id="svc-other" onclick="pickSvc('other')">📝 Other / Not Listed<span class="svc-sub">Describe manually</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 1: Vehicle -->
+  <div class="step" id="s1">
+    <div class="card">
+      <div class="sec">Step 2 of 4 — Vehicle Details</div>
+      <div class="fg">
+        <label class="fl">Registration Plate <span class="req">*</span></label>
+        <input class="fi fi-reg" id="f-reg" maxlength="8" placeholder="AB12 CDE" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'');dupCheck(this.value)"/>
+        <div class="dup" id="dup-msg"></div>
+      </div>
+      <div class="grid2">
+        <div class="fg"><label class="fl">Make</label><input class="fi" id="f-make" placeholder="e.g. BMW"/></div>
+        <div class="fg"><label class="fl">Model</label><input class="fi" id="f-model" placeholder="e.g. 3 Series"/></div>
+      </div>
+      <div class="grid2">
+        <div class="fg"><label class="fl">Year</label><input class="fi" id="f-year" type="number" placeholder="2019"/></div>
+        <div class="fg"><label class="fl">Mileage</label><input class="fi" id="f-mileage" placeholder="e.g. 85,000"/></div>
+      </div>
+      <div class="fg">
+        <label class="fl">Fuel Type</label>
+        <select class="fi" id="f-fuel">
+          <option value="">— Select —</option>
+          <option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option>
+        </select>
+      </div>
+      <div id="svc-vehicle-extra"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="go(0)" style="flex:.4">← Back</button>
+      <button class="btn btn-dark" onclick="go(2)" style="flex:1">Next →</button>
+    </div>
+  </div>
+
+  <!-- STEP 2: Guided Questions -->
+  <div class="step" id="s2">
+    <div id="guided-content"></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="go(1)" style="flex:.4">← Back</button>
+      <button class="btn btn-dark" onclick="go(3)" style="flex:1">Next →</button>
+    </div>
+  </div>
+
+  <!-- STEP 3: Customer + Submit -->
+  <div class="step" id="s3">
+    <div class="card">
+      <div class="sec">Step 4 of 4 — Customer Details</div>
+      <div class="fg"><label class="fl">Customer Name <span class="req">*</span></label><input class="fi" id="f-name" placeholder="Full name" autocomplete="off"/></div>
+      <div class="grid2">
+        <div class="fg"><label class="fl">Phone <span class="req">*</span></label><input class="fi" id="f-phone" type="tel" placeholder="07..."/></div>
+        <div class="fg"><label class="fl">WhatsApp?</label>
+          <select class="fi" id="f-haswa">
+            <option value="yes">Yes — same number</option>
+            <option value="diff">Yes — different number</option>
+            <option value="no">No WhatsApp</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg"><label class="fl">Lead Source</label>
+        <select class="fi" id="f-source">
+          <option>Walk In</option><option>Phone Call</option><option>Google</option>
+          <option>Referral</option><option>Returning Customer</option><option>B2B / Fleet</option><option>Website</option><option>Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="card">
+      <div class="sec">Flags</div>
+      <div class="tog-row">
+        <label class="tog"><input type="checkbox" id="f-asap"><span class="tsl"></span></label>
+        <div><div style="font-size:14px;font-weight:700;color:var(--red)">⚡ ASAP — Urgent</div><div style="font-size:11px;color:#888">Jumps to top of queue</div></div>
+      </div>
+      <div class="tog-row">
+        <label class="tog"><input type="checkbox" id="f-b2b"><span class="tsl"></span></label>
+        <div><div style="font-size:14px;font-weight:700">🏢 B2B / Fleet Customer</div><div style="font-size:11px;color:#888">No auto follow-up messages</div></div>
+      </div>
+      <div class="tog-row">
+        <label class="tog"><input type="checkbox" id="f-custparts"><span class="tsl"></span></label>
+        <div><div style="font-size:14px;font-weight:700">Customer supplying parts</div><div style="font-size:11px;color:#888">Skip parts check</div></div>
+      </div>
+    </div>
+    <div class="fg"><label class="fl">Additional Notes</label><textarea class="fi" id="f-notes" placeholder="Anything else the team should know..." rows="2"></textarea></div>
+    <div id="err-msg" class="notice n-red" style="display:none;margin-bottom:10px"></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="go(2)" style="flex:.4">← Back</button>
+      <button class="btn btn-gold" id="sub-btn" onclick="submitJob()" style="flex:1;font-size:16px">✓ Submit Job</button>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- SUCCESS -->
+<div id="scr-success" class="main">
+  <div style="text-align:center;padding:30px 0">
+    <div class="suc-icon">✅</div>
+    <h2 style="font-size:22px;font-weight:900;margin-bottom:8px">Job Submitted!</h2>
+    <div id="suc-msg" style="color:#555;font-size:14px;line-height:1.7;margin-bottom:24px"></div>
+    <button class="btn btn-dark" onclick="resetForm()">+ New Job Intake</button>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────
+var SB_URL='https://mxyrxyhvjndgjqupgstu.supabase.co';
+var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
+var GAS_URL='YOUR_APPS_SCRIPT_URL_HERE';
+
+// ── SERVICE DEFINITIONS ───────────────────────────────────
+var SERVICES={
+  service:{
+    label:'🔧 Servicing & MOT',
+    stage:'estimating',
+    vehicleExtras:'<div class="fg"><label class="fl">Last Service Date / Mileage</label><input class="fi" id="v-last-service" placeholder="e.g. Jan 2024 / 60,000 miles"/></div>',
+    guided:function(){return'<div class="card"><div class="sec">Servicing Questions — Ask the customer</div>'+
+      script([
+        'What type of service are they looking for? (Interim / Full / Major / Oil & Filter only)',
+        'When was the last service and approximately what mileage?',
+        'Any warning lights on the dashboard?',
+        'Any other issues noticed — noises, smells, vibrations?',
+        'Do they need an MOT at the same time? (Class 4 car £50 / Class 7 van £55)'
+      ])+
+      fld('Service Type','f-svc-type','select',['Interim Service (25-point)','Full Service (40-point)','Major Service (60-point)','Oil & Filter Change Only','MOT Only','MOT + Interim Service','MOT + Full Service','MOT + Major Service','Standalone Inspection'])+
+      fld('MOT Class (if applicable)','f-mot-class','select',['N/A','Class 4 — Car (£50)','Class 5 (£55)','Class 7 — Van up to 3.5t (£55)'])+
+      fld('Warning Lights?','f-warnings','text','e.g. Engine management, oil pressure...')+
+      fld('Other Issues Reported','f-other-issues','textarea','Any noises, smells, vibrations the customer mentions...')+
+    '</div>';},
+    noPO:false
+  },
+
+  brakes:{
+    label:'🛑 Brakes',
+    stage:'estimating',
+    vehicleExtras:'',
+    guided:function(){return'<div class="card"><div class="sec">Brake Questions — Ask the customer</div>'+
+      script([
+        'Which brakes — front, rear, or all four?',
+        'Pads and discs, or just pads? (Check if discs are worn or scored)',
+        'Any brake warning light on the dashboard?',
+        'Any squealing, grinding, or pulling to one side when braking?',
+        'Has the vehicle had recent brake work?'
+      ])+
+      '<div class="fg"><label class="fl">Which axle(s)?</label><div class="chips" id="chip-axle">'+
+        chip('Front Only','axle')+chip('Rear Only','axle')+chip('All Four','axle')+
+      '</div></div>'+
+      '<div class="fg"><label class="fl">Work needed</label><div class="chips" id="chip-brakework">'+
+        chip('Pads Only','brakework')+chip('Pads & Discs','brakework')+chip('Calipers','brakework')+chip('Handbrake','brakework')+chip('Brake Hose','brakework')+chip('Brake Fluid','brakework')+chip('Warning Light / Squeak — Investigate','brakework')+
+      '</div></div>'+
+      fld('Symptoms','f-brake-symptoms','textarea','e.g. Grinding noise on left front, pulling to the right when braking...')+
+    '</div>';},
+    noPO:false
+  },
+
+  tyres:{
+    label:'🔄 Tyres & Wheels',
+    stage:'estimating',
+    vehicleExtras:'',
+    guided:function(){return'<div class="card"><div class="sec">Tyre Questions — Ask the customer</div>'+
+      script([
+        'How many tyres do they need?',
+        'Do they know the tyre size? (Check sidewall: e.g. 205/55 R16)',
+        'Brand preference — Premium (Michelin, Pirelli etc), Mid-range, or Budget?',
+        'Puncture repair or full replacement?',
+        'Do they need wheel alignment / tracking after? (Recommend after new tyres)'
+      ])+
+      fld('Number of tyres','f-tyre-qty','select',['1 tyre','2 tyres','3 tyres','4 tyres','Puncture repair only','Tyre reseal','Balance only','Tracking / Alignment only'])+
+      fld('Tyre Size (if known)','f-tyre-size','text','e.g. 205/55 R16 or unknown')+
+      '<div class="fg"><label class="fl">Brand Tier Preference</label><div class="chips" id="chip-tyre-brand">'+
+        chip('Budget','tyre-brand')+chip('Mid-Range','tyre-brand')+chip('Premium','tyre-brand')+chip('No preference','tyre-brand')+
+      '</div></div>'+
+      fld('Tracking / Alignment needed?','f-tracking','select',['Yes — recommend after new tyres','No / Already done','Customer declined'])+
+    '</div>';},
+    noPO:false
+  },
+
+  diagnostic:{
+    label:'🔍 Diagnostic',
+    stage:'estimating',
+    vehicleExtras:'',
+    guided:function(){return'<div class="card"><div class="sec">Diagnostic Questions — Ask the customer</div>'+
+      script([
+        'What warning lights are showing? (Take note of exact light names)',
+        'What symptoms is the customer experiencing? (Noise, smoke, vibration, poor performance)',
+        'When did it start — was it sudden or gradual?',
+        'Has anyone else looked at it or done any work recently?',
+        'Is the vehicle driveable / safe to bring in?'
+      ])+
+      '<div class="notice n-blue" style="margin-bottom:12px"><strong>Diagnostic Pricing:</strong><br>Plug-in report only: £30+VAT<br>Mechanical inspection (no machine): £60+VAT<br>Oil leak diagnostic: £90+VAT<br>Deep/complex (limp mode, misfire, gearbox): £122+VAT</div>'+
+      fld('Diagnostic Type','f-diag-type','select',['Plug-In Report (£30+VAT)','Mechanical Inspection (£60+VAT)','Oil Leak Diagnostic (£90+VAT)','Deep / Complex Diagnostic (£122+VAT)','Unknown — Joel to advise'])+
+      fld('Warning Lights On','f-diag-lights','text','e.g. Engine management, ABS, oil pressure...')+
+      fld('Symptoms Described','f-diag-symptoms','textarea','What is the customer experiencing? When does it happen?')+
+      fld('Is vehicle driveable?','f-driveable','select',['Yes — drives fine','Yes — but not confident','No — needs recovery / trailer'])+
+    '</div>';},
+    noPO:true
+  },
+
+  suspension:{
+    label:'🚗 Suspension & Steering',
+    stage:'estimating',
+    vehicleExtras:'',
+    guided:function(){return'<div class="card"><div class="sec">Suspension & Steering — Ask the customer</div>'+
+      script([
+        'Where is the noise / problem — front, rear, left, right?',
+        'What does it sound like — knocking, clunking, rubbing, squeaking?',
+        'Does it happen when going over bumps, turning, or braking?',
+        'Any pulling to one side when driving straight?',
+        'Any recent MOT advisory on suspension?'
+      ])+
+      '<div class="fg"><label class="fl">Location</label><div class="chips" id="chip-susp-loc">'+
+        chip('Front Left','susp-loc')+chip('Front Right','susp-loc')+chip('Rear Left','susp-loc')+chip('Rear Right','susp-loc')+chip('Front Both','susp-loc')+chip('Rear Both','susp-loc')+chip('Unknown','susp-loc')+
+      '</div></div>'+
+      '<div class="fg"><label class="fl">Type of work</label><div class="chips" id="chip-susp-work">'+
+        chip('Shock Absorbers','susp-work')+chip('Coil Springs','susp-work')+chip('Anti-Roll Bar Links','susp-work')+chip('Wishbone / Control Arm','susp-work')+chip('Track Rod End','susp-work')+chip('Steering Rack','susp-work')+chip('CV Joint / Driveshaft','susp-work')+chip('Wheel Bearing','susp-work')+chip('Not sure — investigate','susp-work')+
+      '</div></div>'+
+      fld('Symptoms','f-susp-symptoms','textarea','Describe the noise and when it happens...')+
+    '</div>';},
+    noPO:false
+  },
+
+  exhaust:{
+    label:'💨 Exhaust & DPF',
+    stage:'estimating',
+    vehicleExtras:'',
+    guided:function(){return'<div class="card"><div class="sec">Exhaust & DPF — Ask the customer</div>'+
+      script([
+        'Is it an exhaust noise/leak, or is it a DPF warning light?',
+        'For exhaust: where is the noise coming from — front, middle, back?',
+        'For DPF: has it been cleaned or regenerated before? Any warning lights?',
+        'Is it diesel? (DPF only applies to diesel)',
+        'Any smoke from exhaust — what colour?'
+      ])+
+      '<div class="fg"><label class="fl">Service Type</label><div class="chips" id="chip-exhaust-type">'+
+        chip('Exhaust Repair (patch/clamp)','exhaust-type')+chip('Exhaust Welding','exhaust-type')+chip('Back Box Replacement','exhaust-type')+chip('Full Exhaust System','exhaust-type')+chip('DPF Step 1 — Scan & Regen (£72)','exhaust-type')+chip('DPF Step 2 — Chemical Clean (£144)','exhaust-type')+chip('DPF Step 3 — Remove & Flush (£240)','exhaust-type')+chip('DPF Delete (£450 fixed)','exhaust-type')+chip('Remap Stage 1 (£220)','exhaust-type')+chip('Remap Stage 2 (£310)','exhaust-type')+chip('AdBlue Delete (£250)','exhaust-type')+
+      '</div></div>'+
+      fld('Symptoms / Description','f-exhaust-symptoms','textarea','Noise, smoke colour, warning lights...')+
+    '</div>';},
+    noPO:false
+  },
+
+  electrical:{
+    label:'⚡ Electrical',
+    stage:'estimating',
+    vehicleExtras:'',
+    guided:function(){return'<div class="card"><div class="sec">Electrical Questions — Ask the customer</div>'+
+      script([
+        'What is the problem — battery, lights, warning light, sensor?',
+        'For battery: does it struggle to start, or completely flat?',
+        'For lights: which light — headlight, brake light, indicator, interior?',
+        'Any fault codes shown? Has anyone scanned it?',
+        'How old is the current battery?'
+      ])+
+      '<div class="fg"><label class="fl">Type of work</label><div class="chips" id="chip-elec-work">'+
+        chip('Battery Replacement','elec-work')+chip('Battery Diagnostic (£50)','elec-work')+chip('Alternator','elec-work')+chip('Starter Motor','elec-work')+chip('Glow Plugs (diesel)','elec-work')+chip('ABS / Speed Sensor','elec-work')+chip('Headlight / Bulb','elec-work')+chip('Wiper Blades','elec-work')+chip('Warning Light — Investigate','elec-work')+
+      '</div></div>'+
+      fld('Fault Description','f-elec-symptoms','textarea','Battery flat, which light is out, fault codes if known...')+
+    '</div>';},
+    noPO:false
+  },
+
+  engine:{
+    label:'🔩 Engine & Cooling',
+    stage:'estimating',
+    vehicleExtras:'',
+    guided:function(){return'<div class="card"><div class="sec">Engine & Cooling — Ask the customer</div>'+
+      script([
+        'What is the issue — overheating, oil leak, timing belt, other?',
+        'Any warning lights — temperature, oil pressure, check engine?',
+        'Is the vehicle overheating or losing coolant?',
+        'Any oil on the ground or smoke from the engine bay?',
+        'When was the cambelt / timing chain last done? (Critical for older vehicles)'
+      ])+
+      '<div class="notice n-amber" style="margin-bottom:12px">⚠ Head gasket, timing chain and wet belt jobs must be escalated to Giles before quoting.</div>'+
+      '<div class="fg"><label class="fl">Type of work</label><div class="chips" id="chip-eng-work">'+
+        chip('Cambelt / Timing Belt','eng-work')+chip('Cambelt + Water Pump','eng-work')+chip('Timing Chain','eng-work')+chip('Head Gasket','eng-work')+chip('Water Pump','eng-work')+chip('Radiator','eng-work')+chip('Thermostat','eng-work')+chip('Turbo','eng-work')+chip('Oil Leak','eng-work')+chip('Engine Mount','eng-work')+chip('Other — describe below','eng-work')+
+      '</div></div>'+
+      fld('Symptoms / Description','f-eng-symptoms','textarea','Overheating, oil leak location, noises...')+
+    '</div>';},
+    noPO:false
+  },
+
+  clutch:{
+    label:'⚙️ Clutch & Gearbox',
+    stage:'estimating',
+    vehicleExtras:'',
+    guided:function(){return'<div class="card"><div class="sec">Clutch & Gearbox — Ask the customer</div>'+
+      script([
+        'Is it the clutch or gearbox? Or both?',
+        'For clutch: does it slip, stick, or make a noise?',
+        'For gearbox: which gears are affected? Any crunching or jumping out of gear?',
+        'Is the vehicle manual or automatic?',
+        'Any fluid leaks noticed under the car?'
+      ])+
+      '<div class="fg"><label class="fl">Type of work</label><div class="chips" id="chip-clutch-work">'+
+        chip('Clutch Replacement','clutch-work')+chip('Clutch & Flywheel','clutch-work')+chip('Clutch Cable','clutch-work')+chip('Clutch Hydraulic','clutch-work')+chip('Gearbox Oil Change','clutch-work')+chip('Auto Transmission Service','clutch-work')+chip('Gearbox Diagnostic (£122)','clutch-work')+chip('Gearbox Removal & Replacement','clutch-work')+
+      '</div></div>'+
+      fld('Manual or Automatic?','f-gearbox-type','select',['Manual','Automatic','Semi-Auto / DSG','CVT'])+
+      fld('Symptoms','f-clutch-symptoms','textarea','Slipping, crunching, noises, which gears affected...')+
+    '</div>';},
+    noPO:false
+  },
+
+  bodywork:{
+    label:'🚙 Bodywork & Paint',
+    stage:'estimating',
+    vehicleExtras:'<div class="fg"><label class="fl">Vehicle Size / Category</label><select class="fi" id="v-body-cat"><option value="">— Select —</option><option>Small / 5-Seater (car, hatchback, saloon)</option><option>7-Seater / Large SUV (+£40/panel)</option><option>9-Seater Van / Minibus (+£80/panel)</option><option>Large Van / Above 9-Seater (+£100/panel)</option></select></div>',
+    guided:function(){return'<div class="card"><div class="sec">Bodywork Questions — Ask the customer</div>'+
+      script([
+        'Which panels are damaged? (Be specific — front bumper, driver door, rear quarter)',
+        'Is it a dent, scratch, or does it need a full panel repaint?',
+        'How many panels are affected? (Multi-panel discount applies from 2nd panel)',
+        'How old is the vehicle? (Affects SMART repair pricing)',
+        'Do they have insurance or is it private pay?'
+      ])+
+      '<div class="fg"><label class="fl">Panels affected</label><div class="chips" id="chip-panels">'+
+        chip('Front Bumper','panels')+chip('Rear Bumper','panels')+chip('Bonnet','panels')+chip('Boot / Tailgate','panels')+chip('Roof','panels')+chip('Front Door (L)','panels')+chip('Front Door (R)','panels')+chip('Rear Door (L)','panels')+chip('Rear Door (R)','panels')+chip('Front Quarter Panel','panels')+chip('Rear Quarter Panel','panels')+chip('Sliding Door','panels')+chip('Trim / Moulding','panels')+
+      '</div></div>'+
+      '<div class="fg"><label class="fl">Type of repair</label><div class="chips" id="chip-body-type">'+
+        chip('Full Panel Repaint','body-type')+chip('Dent Repair Only','body-type')+chip('SMART Repair (scratch/scuff)','body-type')+chip('Dent + Repaint','body-type')+chip('Welding / Rust','body-type')+chip('Full Respray','body-type')+
+      '</div></div>'+
+      fld('Damage Description','f-body-desc','textarea','Describe the damage — size, depth, location on panel...')+
+      fld('Insurance or Private Pay?','f-body-pay','select',['Private pay','Insurance claim','Not confirmed'])+
+    '</div>';},
+    noPO:true,
+    noPartsCheck:true
+  },
+
+  ramp:{
+    label:'🔴 On Ramp / Additional',
+    stage:'parts',
+    vehicleExtras:'',
+    guided:function(){return'<div class="card"><div class="notice n-red" style="margin-bottom:12px">🔴 Car is already in — this goes straight to Giles for parts check first, then to estimators for labour.</div>'+
+      '<div class="sec">Additional Work Found</div>'+
+      script([
+        'What additional work has been found?',
+        'Has the customer been informed yet?',
+        'Is it safe to leave the vehicle as is, or urgent?',
+        'Who found it — mechanic or during inspection?'
+      ])+
+      fld('Additional Work Found','f-ramp-work','textarea','Describe exactly what was found and where...')+
+      fld('Customer informed?','f-ramp-informed','select',['Not yet — needs contacting','Yes — they have approved','Yes — they want a quote first','No — waiting for estimate'])+
+      fld('Urgency','f-ramp-urgency','select',['Can wait','Should do this visit','URGENT — safety concern'])+
+    '</div>';},
+    noPO:false,
+    ramp:true,
+    priority:true
+  },
+
+  other:{
+    label:'📝 Other',
+    stage:'estimating',
+    vehicleExtras:'',
+    guided:function(){return'<div class="card"><div class="sec">Work Required</div>'+
+      fld('Describe the work needed','f-other-work','textarea','Give as much detail as possible — what the customer wants and any symptoms...')+
+      fld('Any warning lights or fault codes?','f-other-lights','text','e.g. Engine management, ABS...')+
+    '</div>';},
+    noPO:false
+  }
+};
+
+// ── HELPERS ───────────────────────────────────────────────
+function script(qs){
+  return'<div class="script"><div class="script-title">💬 Ask the customer:</div>'+
+    qs.map(function(q){return'<div class="script-q">'+q+'</div>';}).join('')+
+  '</div>';
+}
+
+function fld(label,id,type,opts){
+  var el='';
+  if(type==='select'){
+    el='<select class="fi" id="'+id+'"><option value="">— Select —</option>'+
+      (Array.isArray(opts)?opts:opts.split(',')).map(function(o){return'<option>'+o.trim()+'</option>';}).join('')+
+    '</select>';
+  } else if(type==='textarea'){
+    el='<textarea class="fi" id="'+id+'" rows="2" placeholder="'+opts+'"></textarea>';
+  } else {
+    el='<input class="fi" id="'+id+'" placeholder="'+opts+'"/>';
+  }
+  return'<div class="fg"><label class="fl">'+label+'</label>'+el+'</div>';
+}
+
+function chip(label,group){
+  return'<div class="chip" data-group="'+group+'" onclick="toggleChip(this)">'+label+'</div>';
+}
+
+function toggleChip(el){
+  el.classList.toggle('sel');
+}
+
+function getChips(group){
+  return Array.from(document.querySelectorAll('.chip[data-group="'+group+'"].sel')).map(function(c){return c.textContent;}).join(', ');
+}
+
+function fval(id){var e=document.getElementById(id);return e?e.value.trim():'';}
+
+// ── STATE ─────────────────────────────────────────────────
+var staffName=localStorage.getItem('kith_staff')||null;
+var svcType=null;
+var curStep=0;
+
+// Auto-login if staff saved
+if(staffName){
+  document.getElementById('scr-staff').style.display='none';
+  document.getElementById('scr-form').style.display='block';
+  document.getElementById('hdr-user').textContent=staffName+' ▾';
+}
+
+function setStaff(name){
+  staffName=name;
+  localStorage.setItem('kith_staff',name);
+  document.getElementById('scr-staff').style.display='none';
+  document.getElementById('scr-form').style.display='block';
+  document.getElementById('hdr-user').textContent=name+' ▾';
+}
+
+function changeStaff(){
+  if(confirm('Change staff member?')){
+    document.getElementById('scr-form').style.display='none';
+    document.getElementById('scr-success').style.display='none';
+    document.getElementById('scr-staff').style.display='block';
+  }
+}
+
+// ── SERVICE PICK ──────────────────────────────────────────
+function pickSvc(type){
+  svcType=type;
+  document.querySelectorAll('.svc-btn').forEach(function(b){b.classList.remove('sel');});
+  var btn=document.getElementById('svc-'+type);
+  if(btn)btn.classList.add('sel');
+  setTimeout(function(){go(1);},300);
+}
+
+// ── STEPS ─────────────────────────────────────────────────
+function go(n){
+  if(n>curStep){
+    if(curStep===0&&!svcType){alert('Please select a service type.');return;}
+    if(curStep===1){
+      if(!document.getElementById('f-reg').value.trim()){alert('Vehicle registration required.');return;}
+    }
+    if(curStep===2){
+      // nothing mandatory in guided step
+    }
+  }
+  curStep=n;
+  document.querySelectorAll('.step').forEach(function(s){s.classList.remove('on');});
+  document.getElementById('s'+n).classList.add('on');
+  for(var i=0;i<4;i++){
+    document.getElementById('sd'+i).className='sdot'+(i<=n?' on':'');
+  }
+  // Build vehicle extras
+  if(n===1&&svcType&&SERVICES[svcType]){
+    document.getElementById('svc-vehicle-extra').innerHTML=SERVICES[svcType].vehicleExtras||'';
+  }
+  // Build guided content
+  if(n===2&&svcType&&SERVICES[svcType]){
+    document.getElementById('guided-content').innerHTML=SERVICES[svcType].guided();
+  }
+  window.scrollTo(0,60);
+}
+
+// ── DUP CHECK ─────────────────────────────────────────────
+var _dt=null;
+function dupCheck(val){
+  clearTimeout(_dt);
+  if(val.length<4)return;
+  _dt=setTimeout(async function(){
+    try{
+      var r=await fetch(SB_URL+'/rest/v1/kith_jobs?select=id,data&limit=100',{
+        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
+      });
+      var rows=await r.json();
+      var active=(rows||[]).map(function(x){return x.data||x;}).filter(function(j){
+        return j&&(j.reg||'').replace(/\s/g,'').toUpperCase()===val&&
+               !['archived','lost'].includes(j.stage);
+      });
+      var el=document.getElementById('dup-msg');
+      if(active.length){
+        el.style.display='block';
+        el.innerHTML='⚠ Active job exists for '+val+':<br>'+active.map(function(j){return j.id+' · '+(j.name||'')+' · '+j.stage;}).join('<br>');
+      } else {el.style.display='none';}
+    }catch(e){}
+  },800);
+}
+
+// ── COLLECT ANSWERS ───────────────────────────────────────
+function collectGuidedAnswers(){
+  var answers={};
+  var s=SERVICES[svcType];
+  if(!s)return answers;
+
+  // Collect all inputs in guided section
+  document.querySelectorAll('#guided-content input, #guided-content select, #guided-content textarea').forEach(function(el){
+    if(el.id&&el.value)answers[el.id]=el.value;
+  });
+  // Collect chips
+  var groups=['axle','brakework','tyre-brand','susp-loc','susp-work','exhaust-type','elec-work','eng-work','clutch-work','panels','body-type'];
+  groups.forEach(function(g){
+    var v=getChips(g);
+    if(v)answers['chips-'+g]=v;
+  });
+  return answers;
+}
+
+// ── SUBMIT ────────────────────────────────────────────────
+async function submitJob(){
+  var btn=document.getElementById('sub-btn');
+  var nm=fval('f-name'),ph=fval('f-phone');
+  if(!nm){alert('Customer name required.');return;}
+  if(!ph){alert('Phone number required.');return;}
+
+  btn.textContent='Submitting...';btn.disabled=true;
+
+  var svc=SERVICES[svcType]||{label:svcType,stage:'estimating'};
+  var ts=new Date().toLocaleString('en-GB');
+  var id='J'+Date.now().toString().slice(-6);
+  var reg=fval('f-reg').toUpperCase();
+  var answers=collectGuidedAnswers();
+
+  // Build work description from answers
+  var workParts=[];
+  if(fval('f-svc-type'))workParts.push(fval('f-svc-type'));
+  if(answers['chips-axle'])workParts.push('Axle: '+answers['chips-axle']);
+  if(answers['chips-brakework'])workParts.push('Work: '+answers['chips-brakework']);
+  if(answers['chips-exhaust-type'])workParts.push(answers['chips-exhaust-type']);
+  if(answers['chips-elec-work'])workParts.push(answers['chips-elec-work']);
+  if(answers['chips-eng-work'])workParts.push(answers['chips-eng-work']);
+  if(answers['chips-clutch-work'])workParts.push(answers['chips-clutch-work']);
+  if(answers['chips-susp-work'])workParts.push(answers['chips-susp-work']);
+  if(answers['chips-panels'])workParts.push('Panels: '+answers['chips-panels']);
+  if(answers['chips-body-type'])workParts.push(answers['chips-body-type']);
+  if(fval('f-other-work'))workParts.push(fval('f-other-work'));
+  if(fval('f-ramp-work'))workParts.push(fval('f-ramp-work'));
+  var workStr=workParts.join(' · ')||svc.label;
+
+  var job={
+    id:id,reg:reg,
+    name:nm,phone:ph,
+    make:fval('f-make'),model:fval('f-model'),
+    year:fval('f-year'),mileage:fval('f-mileage'),
+    fuel:fval('f-fuel'),
+    work:workStr,
+    serviceType:svcType,
+    serviceLabel:svc.label,
+    guidedAnswers:answers,
+    source:fval('f-source'),
+    notes:fval('f-notes'),
+    by:staffName,
+    asap:document.getElementById('f-asap').checked,
+    isB2B:document.getElementById('f-b2b').checked,
+    customerSuppliedParts:document.getElementById('f-custparts').checked,
+    jobType:svcType,jobTypeLabel:svc.label,
+    noPO:svc.noPO||false,
+    noPartsCheck:svc.noPartsCheck||false,
+    ramp:svc.ramp||false,
+    priority:svc.priority||document.getElementById('f-asap').checked||false,
+    stage:document.getElementById('f-asap').checked?'estimating':(svc.stage||'estimating'),
+    log:[{t:ts,s:'Job created via KITH Intake App by '+staffName+' — '+svc.label}],
+    createdAt:ts,pathway:2
+  };
+
+  var saved=false;
+  try{
+    var r=await fetch(SB_URL+'/rest/v1/kith_jobs',{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+      body:JSON.stringify({id:job.id,data:job,updated_at:new Date().toISOString()})
+    });
+    saved=r.ok;
+    if(!r.ok)console.warn('Save failed:',await r.text());
+  }catch(e){console.warn(e);}
+
+  // Offline queue if failed
+  if(!saved){
+    var q=JSON.parse(localStorage.getItem('kith_queue')||'[]');
+    q.push(job);localStorage.setItem('kith_queue',JSON.stringify(q));
+  }
+
+  // Google Sheets backup
+  if(GAS_URL&&GAS_URL!=='YOUR_APPS_SCRIPT_URL_HERE'){
+    try{
+      await fetch(GAS_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          Timestamp:ts,'customers Name':job.name,
+          'customers phone number (ask if they have whatsapp- as':job.phone,
+          'Vehicle Registration Plate':job.reg,
+          'Vehicle Make and Model':(job.make+' '+job.model).trim(),
+          'Is this vehicle on the ramp/courtyard':job.ramp?'yes':'no',
+          'what work is required':job.work,
+          'Job Type':job.serviceLabel,'Taken By':job.by,
+          'Source':job.source,'ASAP':job.asap?'yes':'no',
+          'B2B':job.isB2B?'yes':'no','Notes':job.notes,'Job ID':job.id,'Stage':job.stage
+        })
+      });
+    }catch(e){}
+  }
+
+  btn.disabled=false;btn.textContent='✓ Submit Job';
+  document.getElementById('scr-form').style.display='none';
+  document.getElementById('scr-success').style.display='block';
+  document.getElementById('suc-msg').innerHTML=
+    '<strong style="font-family:monospace;font-size:18px">'+job.id+'</strong><br>'+
+    '<strong style="font-family:monospace">'+reg+'</strong> · '+nm+'<br><br>'+
+    '<strong>'+svc.label+'</strong><br>'+workStr+'<br><br>'+
+    (saved?'<span style="color:var(--green)">✓ Saved to CRM</span>':'<span style="color:var(--amber)">⚠ Saved offline — will sync when online</span>');
+
+  // Sync offline queue
+  syncQueue();
+}
+
+async function syncQueue(){
+  var q=JSON.parse(localStorage.getItem('kith_queue')||'[]');
+  if(!q.length)return;
+  var rem=[];
+  for(var i=0;i<q.length;i++){
+    try{
+      var r=await fetch(SB_URL+'/rest/v1/kith_jobs',{method:'POST',
+        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+        body:JSON.stringify({id:q[i].id,data:q[i],updated_at:new Date().toISOString()})
+      });
+      if(!r.ok)rem.push(q[i]);
+    }catch(e){rem.push(q[i]);}
+  }
+  localStorage.setItem('kith_queue',JSON.stringify(rem));
+}
+
+function resetForm(){
+  svcType=null;curStep=0;
+  document.querySelectorAll('.svc-btn').forEach(function(b){b.classList.remove('sel');});
+  ['f-reg','f-make','f-model','f-year','f-mileage','f-name','f-phone','f-notes'].forEach(function(id){
+    var e=document.getElementById(id);if(e)e.value='';
+  });
+  ['f-asap','f-b2b','f-custparts'].forEach(function(id){
+    var e=document.getElementById(id);if(e)e.checked=false;
+  });
+  document.getElementById('dup-msg').style.display='none';
+  document.getElementById('scr-success').style.display='none';
+  document.getElementById('scr-form').style.display='block';
+  document.querySelectorAll('.step').forEach(function(s){s.classList.remove('on');});
+  document.getElementById('s0').classList.add('on');
+  for(var i=0;i<4;i++){document.getElementById('sd'+i).className='sdot';}
+  window.scrollTo(0,0);
+  syncQueue();
+}
+
+syncQueue();
+</script>
+</body>
+</html>
