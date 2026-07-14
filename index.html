@@ -2929,7 +2929,8 @@ function setFilter(f,btn){
 
 function cx(id){document.getElementById(id).classList.remove('open');}
 ['ov-new','ov-detail','ov-lost','ov-newpo','ov-po','ov-b2b-new','ov-b2b-detail','ov-b2b-import','ov-ro','ov-new-ro','ov-employee','ov-suppliers','ov-shift','ov-audit'].forEach(id=>{
-  document.getElementById(id).addEventListener('click',e=>{if(e.target===e.currentTarget)cx(id);});
+  var el=document.getElementById(id);
+  if(el) el.addEventListener('click',function(e){if(e.target===e.currentTarget)cx(id);});
 });
 
 // ── LOGIN ───────────────────────────────────────────────
