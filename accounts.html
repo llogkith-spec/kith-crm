@@ -235,7 +235,7 @@ function rBills() {
         '<input type="file" id="bfi" accept="image/*,application/pdf" capture="environment" style="display:none" onchange="scanBill(this.files[0])"/>'+
         '<div style="font-size:36px;margin-bottom:8px">📄</div>'+
         '<div style="font-size:15px;font-weight:700;margin-bottom:4px">Tap to upload bill</div>'+
-        '<div style="font-size:12px;color:#888">JPG, PNG or PDF</div>'+
+        '<div style="font-size:12px;color:#888">Photo, PDF or screenshot — any angle or size</div>'+
       '</div>'+
       '<div id="scan-out" style="margin-top:14px"></div>'+
     '</div>'+
@@ -367,17 +367,223 @@ async function saveRO() {
   ROs.unshift(ro);cx('ov-ro');rROs();rDash();
 }
 
-// INVOICE FORM
+// ========== DOCUMENT SCANNING HELPERS ==========
+
+// ⚠️  PASTE THE GOOGLE APPS SCRIPT WEB APP URL HERE
+// (See anthropic-proxy.gs — deploy that as a Web App, copy the URL, paste it below)
+var PROXY_URL = 'https://script.google.com/macros/s/AKfycbyUGppzV1hOyq-9U4-k60lz68j9lpPloXw2am7j4iXDMhG4shbuVbbEd9crukVr_Nhj-A/exec';
+
+// Send a request to Anthropic via the Apps Script proxy.
+// Sending no Content-Type keeps it a "simple" CORS request — no preflight
+// OPTIONS call, which Apps Script Web Apps don't handle.
+async function callClaude(payload) {
+  if (PROXY_URL.indexOf('PASTE') !== -1) {
+    throw new Error('Proxy URL not configured — see anthropic-proxy.gs');
+  }
+  var resp = await fetch(PROXY_URL, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    redirect: 'follow'
+  });
+  if (!resp.ok) throw new Error('Proxy HTTP ' + resp.status);
+  var data = await resp.json();
+  if (data && data.error) throw new Error(data.error.message || 'API error');
+  return data;
+}
+
+// Read file as base64 (strip data URL prefix)
+function fileToB64(file) {
+  return new Promise(function(res, rej) {
+    var r = new FileReader();
+    r.onload = function() { res(r.result.split(',')[1]); };
+    r.onerror = function() { rej(new Error('Could not read file')); };
+    r.readAsDataURL(file);
+  });
+}
+
+// Preprocess image: fix EXIF orientation, cap large photos, flatten onto white
+// Handles: iPhone photos taken sideways, huge camera files, poorly lit shots,
+// long thin receipts, wide landscape bills, PNG/JPG/HEIC-converted
+function preprocessImage(file) {
+  return new Promise(function(resolve) {
+    if (!file.type.startsWith('image/')) { resolve(file); return; }
+
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var img = new Image();
+      img.onload = function() {
+        // Cap the longest edge at 2000px — big enough for OCR, small enough
+        // to be fast on 4G. Preserves aspect ratio so long receipts stay readable.
+        var MAX = 2000;
+        var w = img.naturalWidth, h = img.naturalHeight;
+        if (w > MAX || h > MAX) {
+          if (w >= h) { h = Math.round(h * (MAX/w)); w = MAX; }
+          else { w = Math.round(w * (MAX/h)); h = MAX; }
+        }
+
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        // White background — helps dark or shadowy photos, and dodges the
+        // black-background bug when JPEGs get flattened without an alpha channel
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+
+        canvas.toBlob(function(blob) {
+          if (blob) resolve(new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', {type:'image/jpeg'}));
+          else resolve(file); // fall back to original if canvas fails
+        }, 'image/jpeg', 0.90);
+      };
+      img.onerror = function() { resolve(file); }; // fall back if decode fails
+      img.src = e.target.result;
+    };
+    reader.onerror = function() { resolve(file); };
+    reader.readAsDataURL(file);
+  });
+}
+
+// Universal document scanner — sends image or PDF to Claude, expects JSON back.
+// Robust to weird photos: tilted, dark, cropped, portrait, landscape, long receipts.
+async function scanDocument(file, prompt) {
+  var processed = await preprocessImage(file);
+  var b64 = await fileToB64(processed);
+
+  var contentBlock;
+  if (processed.type.startsWith('image/')) {
+    contentBlock = {type:'image', source:{type:'base64', media_type:processed.type, data:b64}};
+  } else if (processed.type === 'application/pdf') {
+    contentBlock = {type:'document', source:{type:'base64', media_type:'application/pdf', data:b64}};
+  } else {
+    throw new Error('Unsupported file type: ' + (processed.type || 'unknown'));
+  }
+
+  var data = await callClaude({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1500,
+    messages: [{role:'user', content:[contentBlock, {type:'text', text:prompt}]}]
+  });
+
+  var txt = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
+  // strip markdown fences if the model added them
+  txt = txt.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  // find the JSON block if there's stray prose
+  var firstBrace = txt.search(/[\{\[]/);
+  if (firstBrace > 0) txt = txt.slice(firstBrace);
+
+  return JSON.parse(txt);
+}
+
+// Shared instructions telling the model to be forgiving about photo quality
+var ROBUST_HINT =
+  'IMPORTANT — the document may be:\n' +
+  '- photographed at an angle, rotated, or upside down (mentally rotate to read)\n' +
+  '- in poor lighting, shadowed, glare-affected, or slightly blurred\n' +
+  '- a long thin till receipt, a wide landscape invoice, or a standard A4 page\n' +
+  '- partially cropped at the edges, or a screenshot\n' +
+  '- handwritten, printed, or mixed\n' +
+  'Read everything you can. If a field is not visible, return "" (empty string) for it — do not guess.\n\n';
+
+// ========== INVOICE / EXPENSE OVERLAY ==========
+
 var invFileData = null;
-function handleInvFile(input) {
-  var file = input.files[0];
-  if(!file) return;
+
+async function scanInvoiceDoc(file) {
+  if (!file) return;
+  var out = document.getElementById('inv-scan-out');
+  var zone = document.getElementById('inv-upload-zone');
   var nameEl = document.getElementById('inv-file-name');
-  if(nameEl) nameEl.textContent = '✓ ' + file.name;
+
+  if (nameEl) nameEl.textContent = '📎 ' + file.name;
+  if (zone) zone.style.borderColor = '#1565c0';
+  if (out) out.innerHTML = '<div style="background:#e3f2fd;padding:10px;border-radius:8px;font-size:13px;color:#0d47a1;margin-top:8px">⏳ Reading document with AI…</div>';
+
   invFileData = {name: file.name, type: file.type};
-  // Auto-scan with AI if it's an image or PDF
-  var zoneEl = document.getElementById('inv-upload-zone');
-  if(zoneEl) zoneEl.style.borderColor = '#2e7d32';
+
+  var prompt = ROBUST_HINT +
+    'This is a supplier invoice, receipt, or bill for KITH Cars (UK garage).\n' +
+    'Extract the following. Return ONLY a JSON object, no prose, no code fences:\n' +
+    '{\n' +
+    '  "reference": "invoice number or receipt number",\n' +
+    '  "supplier": "vendor / supplier / payee name",\n' +
+    '  "type": "one of: Supplier Invoice, Expense, Utility, Rent, Other",\n' +
+    '  "date": "issue date in YYYY-MM-DD format",\n' +
+    '  "dueDate": "due date in YYYY-MM-DD or empty",\n' +
+    '  "net": "amount excluding VAT as a plain number (no currency symbol)",\n' +
+    '  "vat": "VAT amount as a plain number",\n' +
+    '  "total": "total including VAT as a plain number",\n' +
+    '  "notes": "one short line describing what this is for"\n' +
+    '}\n\n' +
+    'If VAT is shown as 20% but only the net or total is given, compute the missing one.\n' +
+    'UK date formats (DD/MM/YYYY) are common — convert them to YYYY-MM-DD.';
+
+  try {
+    var p = await scanDocument(file, prompt);
+
+    // Auto-fill fields — never overwrite one the user has already typed
+    setIfEmpty('i-num', p.reference);
+    setIfEmpty('i-sup', p.supplier);
+    setIfEmpty('i-date', p.date);
+    setIfEmpty('i-due', p.dueDate);
+    setIfEmpty('i-net', p.net);
+    setIfEmpty('i-vat', p.vat);
+
+    // Type dropdown — best-effort match
+    if (p.type) {
+      var sel = document.getElementById('i-type');
+      if (sel) {
+        var want = String(p.type).toLowerCase();
+        for (var i = 0; i < sel.options.length; i++) {
+          var opt = sel.options[i].text.toLowerCase();
+          if (opt === want || opt.indexOf(want) > -1 || want.indexOf(opt) > -1) {
+            sel.selectedIndex = i;
+            break;
+          }
+        }
+      }
+    }
+
+    iCalc();
+
+    if (zone) zone.style.borderColor = '#2e7d32';
+    if (out) out.innerHTML =
+      '<div style="background:#e8f5e9;padding:10px;border-radius:8px;font-size:13px;color:#2e7d32;margin-top:8px">' +
+        '<strong>✓ Read successfully</strong> — check the fields below and adjust anything wrong before saving.' +
+        (p.notes ? '<br><span style="color:#555;font-weight:400">' + escapeHtml(p.notes) + '</span>' : '') +
+      '</div>';
+  } catch (e) {
+    if (zone) zone.style.borderColor = '#c62828';
+    if (out) out.innerHTML =
+      '<div style="background:#ffebee;padding:10px;border-radius:8px;font-size:13px;color:#c62828;margin-top:8px">' +
+        '<strong>Could not read document.</strong> ' + escapeHtml(e.message) +
+        '<br><span style="color:#555">You can still fill the fields manually and save.</span>' +
+      '</div>';
+  }
+}
+
+function setIfEmpty(id, val) {
+  if (val === undefined || val === null || val === '') return;
+  var el = document.getElementById(id);
+  if (el && !el.value) el.value = val;
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+function resetInvForm() {
+  ['i-num','i-sup','i-date','i-due','i-net','i-vat','i-tot'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  var sel = document.getElementById('i-type'); if (sel) sel.selectedIndex = 0;
+  invFileData = null;
+  var fn = document.getElementById('inv-file-name'); if (fn) fn.textContent = '';
+  var iz = document.getElementById('inv-upload-zone'); if (iz) iz.style.borderColor = '';
+  var out = document.getElementById('inv-scan-out'); if (out) out.innerHTML = '';
+  var fi = document.getElementById('inv-file'); if (fi) fi.value = '';
 }
 
 function iCalc() {
@@ -385,6 +591,7 @@ function iCalc() {
   var v=+((document.getElementById('i-vat')||{}).value||0);
   var t=document.getElementById('i-tot'); if(t)t.value='£'+(n+v).toFixed(2);
 }
+
 function saveInv() {
   var num=(document.getElementById('i-num')||{}).value||'';
   var sup=(document.getElementById('i-sup')||{}).value||'';
@@ -394,45 +601,68 @@ function saveInv() {
     net:(document.getElementById('i-net')||{}).value||0,vat:(document.getElementById('i-vat')||{}).value||0,
     receipt:invFileData?invFileData.name:null,
     status:'unpaid',createdAt:ts(),createdBy:user});
-  saveInvs();cx('ov-inv');
-  invFileData=null;
-  var fn=document.getElementById('inv-file-name'); if(fn) fn.textContent='';
-  var iz=document.getElementById('inv-upload-zone'); if(iz) iz.style.borderColor='';
-  document.getElementById('inv-file').value='';
+  saveInvs();
+  cx('ov-inv');
+  resetInvForm();
   rExp();
 }
+
 function mInvPaid(i){invs[i].status='paid';saveInvs();rExp();}
 function delInv(i){if(!confirm('Delete?'))return;invs.splice(i,1);saveInvs();rExp();}
 
-// BILL SCAN
+// ========== BILL SCANNER TAB ==========
 async function scanBill(file) {
-  if(!file)return;
-  var out=document.getElementById('scan-out');
-  out.innerHTML='<p style="color:#1565c0">⏳ Reading bill with AI...</p>';
-  try{
-    var b64=await new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result.split(',')[1]);};r.onerror=function(){rej(new Error('Failed'));};r.readAsDataURL(file);});
-    var cnt=[];
-    if(file.type.startsWith('image/'))cnt.push({type:'image',source:{type:'base64',media_type:file.type,data:b64}});
-    else cnt.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}});
-    var poSum=POs.slice(0,20).map(function(p){return'PO '+p.id+': '+p.partName+' £'+(+p.price).toFixed(2);}).join('\n');
-    cnt.push({type:'text',text:'Read this supplier bill for KITH Cars. Return ONLY JSON:\n{"supplier":"","invoiceNum":"","subtotal":"","vat":"","total":"","matchedPO":"PO ID or null","matchConf":"high/medium/low/none","matchReason":""}\n\nOur POs:\n'+poSum});
-    var resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,messages:[{role:'user',content:cnt}]})});
-    var data=await resp.json();
-    var txt=(data.content||[]).map(function(c){return c.text||'';}).join('').replace(/```json|```/g,'').trim();
-    var p=JSON.parse(txt);
-    var bill={id:'B'+mid(),at:ts(),supplier:p.supplier||'Unknown',inv:p.invoiceNum||'',
-      amount:p.subtotal||p.total||'?',total:p.total||'',mpo:p.matchedPO||null,
-      match:p.matchConf==='high'?'matched':p.matchConf==='medium'?'partial':'unmatched',reason:p.matchReason||''};
-    bills.unshift(bill);saveBills();
-    out.innerHTML='<div style="background:#e8f5e9;padding:12px;border-radius:8px;margin-top:8px">'+
-      '<strong style="color:#2e7d32">✓ Bill read</strong><br>'+
-      'Supplier: '+bill.supplier+' · Amount: £'+bill.amount+'<br>'+
-      (bill.mpo?'Matched to: '+bill.mpo:'No PO match found')+' — '+bill.reason+'</div>';
+  if (!file) return;
+  var out = document.getElementById('scan-out');
+  out.innerHTML = '<div style="background:#e3f2fd;padding:10px;border-radius:8px;color:#0d47a1;font-size:13px">⏳ Reading bill with AI…</div>';
+
+  try {
+    var poSum = POs.slice(0,20).map(function(p){
+      return 'PO '+p.id+' (reg '+(p.jobReg||'?')+'): '+p.partName+' — £'+(+p.price).toFixed(2)+' from '+(p.supplier||'?');
+    }).join('\n');
+
+    var prompt = ROBUST_HINT +
+      'This is a supplier bill for KITH Cars (UK garage). Extract the header data and try to match it against one of our open Purchase Orders below.\n\n' +
+      'Return ONLY a JSON object:\n' +
+      '{\n' +
+      '  "supplier":"","invoiceNum":"","invoiceDate":"YYYY-MM-DD or empty",\n' +
+      '  "subtotal":"number, no symbol","vat":"number","total":"number",\n' +
+      '  "matchedPO":"PO ID from the list, or null if no confident match",\n' +
+      '  "matchConf":"high | medium | low | none",\n' +
+      '  "matchReason":"one short line explaining the match or non-match"\n' +
+      '}\n\n' +
+      'Match on supplier name AND (amount within 10% OR part description overlap).\n\n' +
+      'Our recent POs:\n' + (poSum || '(none)');
+
+    var p = await scanDocument(file, prompt);
+
+    var bill = {
+      id:'B'+mid(), at:ts(),
+      supplier: p.supplier || 'Unknown',
+      inv: p.invoiceNum || '',
+      amount: p.subtotal || p.total || '?',
+      total: p.total || '',
+      mpo: p.matchedPO || null,
+      match: p.matchConf === 'high' ? 'matched' : (p.matchConf === 'medium' ? 'partial' : 'unmatched'),
+      reason: p.matchReason || ''
+    };
+    bills.unshift(bill); saveBills();
+
+    out.innerHTML =
+      '<div style="background:#e8f5e9;padding:12px;border-radius:8px;color:#2e7d32">' +
+        '<strong>✓ Bill read</strong><br>' +
+        'Supplier: ' + escapeHtml(bill.supplier) + ' · Amount: £' + escapeHtml(String(bill.amount)) + '<br>' +
+        (bill.mpo ? 'Matched to: <strong>' + escapeHtml(bill.mpo) + '</strong>' : 'No confident PO match') +
+        (bill.reason ? ' — <span style="color:#555">' + escapeHtml(bill.reason) + '</span>' : '') +
+      '</div>';
     rBills();
-  }catch(e){out.innerHTML='<p style="color:#c62828">Error: '+e.message+'</p>';}
+  } catch(e) {
+    out.innerHTML = '<div style="background:#ffebee;padding:10px;border-radius:8px;color:#c62828">Error: ' + escapeHtml(e.message) + '</div>';
+  }
 }
 
-// SALES
+// ========== SALES ==========
+
 function addSale() {
   var d=prompt('Enter: Date, Job#, Reg, Customer, Description, Amount\nE.g.: 08 Jul 2026, TM1234, MT67NXL, John Smith, Full Service, 420.00');
   if(!d)return;
@@ -441,25 +671,55 @@ function addSale() {
   sales.unshift({date:parts[0],ref:parts[1],reg:parts[2],customer:parts[3],desc:parts[4],amount:parseFloat(parts[5])||0,source:'Manual',createdAt:ts()});
   saveSales();rSales();
 }
+
 async function uploadSales(file) {
-  if(!file)return;
-  var out=document.getElementById('sale-out');
-  out.innerHTML='<p style="color:#1565c0">⏳ Reading with AI...</p>';
-  try{
-    var b64=await new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result.split(',')[1]);};r.onerror=function(){rej(new Error('Failed'));};r.readAsDataURL(file);});
-    var cnt=[];
-    if(file.type.startsWith('image/'))cnt.push({type:'image',source:{type:'base64',media_type:file.type,data:b64}});
-    else if(file.type==='application/pdf')cnt.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}});
-    cnt.push({type:'text',text:'Extract sales from this document for KITH Cars garage. Return ONLY JSON array:\n[{"date":"","ref":"","reg":"","customer":"","desc":"","amount":0}]'});
-    var resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2000,messages:[{role:'user',content:cnt}]})});
-    var data=await resp.json();
-    var txt=(data.content||[]).map(function(c){return c.text||'';}).join('').replace(/```json|```/g,'').trim();
-    var rows=JSON.parse(txt);
-    if(!Array.isArray(rows)||!rows.length)throw new Error('No records found');
-    rows.forEach(function(r){sales.unshift({date:r.date||'',ref:r.ref||'',reg:r.reg||'',customer:r.customer||'',desc:r.desc||'',amount:+(r.amount)||0,source:'Upload: '+file.name,createdAt:ts()});});
-    saveSales();out.innerHTML='<p style="color:#2e7d32">✓ '+rows.length+' sales imported.</p>';rSales();
-  }catch(e){out.innerHTML='<p style="color:#c62828">Error: '+e.message+'</p>';}
+  if (!file) return;
+  var out = document.getElementById('sale-out');
+  out.innerHTML = '<div style="background:#e3f2fd;padding:10px;border-radius:8px;color:#0d47a1;font-size:13px">⏳ Reading with AI…</div>';
+
+  try {
+    // CSV/Excel path — read as text and let the model extract rows
+    var isImage = file.type.startsWith('image/');
+    var isPdf   = file.type === 'application/pdf';
+
+    var prompt = ROBUST_HINT +
+      'Extract sales records from this Techman export (KITH Cars garage). Return ONLY a JSON array — no prose:\n' +
+      '[{"date":"YYYY-MM-DD","ref":"Job number","reg":"Vehicle reg","customer":"Customer name","desc":"Work description","amount":0}]\n\n' +
+      'One row per sale/invoice. Amount is the total sale value (a plain number). If the document has none, return [].';
+
+    var rows;
+    if (isImage || isPdf) {
+      rows = await scanDocument(file, prompt);
+    } else {
+      // CSV, TSV, TXT — send as text
+      var text = await file.text();
+      var data = await callClaude({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2500,
+        messages: [{role:'user', content:[{type:'text', text: prompt + '\n\nDocument content:\n' + text.slice(0, 40000)}]}]
+      });
+      var txt = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
+      txt = txt.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+      var brace = txt.search(/[\{\[]/); if (brace > 0) txt = txt.slice(brace);
+      rows = JSON.parse(txt);
+    }
+
+    if (!Array.isArray(rows) || !rows.length) throw new Error('No sales records found in document');
+
+    rows.forEach(function(r){
+      sales.unshift({
+        date:r.date||'', ref:r.ref||'', reg:r.reg||'', customer:r.customer||'',
+        desc:r.desc||'', amount:+(r.amount)||0, source:'Upload: '+file.name, createdAt:ts()
+      });
+    });
+    saveSales();
+    out.innerHTML = '<div style="background:#e8f5e9;padding:10px;border-radius:8px;color:#2e7d32">✓ ' + rows.length + ' sales imported.</div>';
+    rSales();
+  } catch(e) {
+    out.innerHTML = '<div style="background:#ffebee;padding:10px;border-radius:8px;color:#c62828">Error: ' + escapeHtml(e.message) + '</div>';
+  }
 }
+
 function delSale(i){if(!confirm('Delete?'))return;sales.splice(i,1);saveSales();rSales();}
 function expSales(){dl([['Date','Job#','Reg','Customer','Description','Amount','Source']].concat(sales.map(function(s){return[s.date,s.ref,s.reg,s.customer,s.desc,(+s.amount).toFixed(2),s.source];})),'KITH-Sales');}
 function expCSV(){dl([['PO#','Reg','Part(s)','Supplier','ex-VAT','VAT','inc-VAT','ETA','Paid']].concat(POs.map(function(p){var n=+p.price||0;return[p.id,p.jobReg||'',p.partName,p.supplier,n.toFixed(2),(n*.2).toFixed(2),(n*1.2).toFixed(2),p.eta||'',p.paid?'Yes':'No'];})),'KITH-POs');}
@@ -641,6 +901,18 @@ body{background:#f0f2f5;color:#1a1a2e;font-family:-apple-system,BlinkMacSystemFo
     <button onclick="cx('ov-inv')" style="background:none;border:1.5px solid #ddd;color:#888;font-size:16px;cursor:pointer;padding:4px 10px;border-radius:6px">✕</button>
   </div>
   <div style="padding:20px;display:flex;flex-direction:column;gap:12px">
+
+    <!-- DOCUMENT SCAN ZONE — was missing entirely -->
+    <div id="inv-upload-zone" onclick="document.getElementById('inv-file').click()"
+         style="border:2px dashed #ccc;border-radius:10px;padding:18px;text-align:center;cursor:pointer;background:#fafafa;transition:border-color .2s">
+      <input type="file" id="inv-file" accept="image/*,application/pdf" capture="environment" style="display:none" onchange="scanInvoiceDoc(this.files[0])"/>
+      <div style="font-size:30px;margin-bottom:6px">📄</div>
+      <div style="font-size:14px;font-weight:700;margin-bottom:2px">Tap to scan bill / receipt</div>
+      <div style="font-size:11px;color:#888">Photo, PDF or screenshot — any angle, lighting or size. Fields auto-fill.</div>
+      <div id="inv-file-name" style="font-size:11px;color:#2e7d32;margin-top:6px;font-weight:600"></div>
+    </div>
+    <div id="inv-scan-out"></div>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Reference # *</label><input id="i-num" placeholder="INV-001" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
       <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Supplier / Payee *</label><input id="i-sup" placeholder="GSF Car Parts" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
@@ -660,7 +932,7 @@ body{background:#f0f2f5;color:#1a1a2e;font-family:-apple-system,BlinkMacSystemFo
     </div>
     <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Due Date</label><input id="i-due" type="date" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:8px;border-top:1px solid #eee">
-      <button onclick="cx('ov-inv')" style="background:#fff;border:1.5px solid #ddd;border-radius:8px;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">Cancel</button>
+      <button onclick="cx('ov-inv');resetInvForm()" style="background:#fff;border:1.5px solid #ddd;border-radius:8px;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">Cancel</button>
       <button onclick="saveInv()" style="background:#1a1a2e;border:none;border-radius:8px;color:#fff;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">Save →</button>
     </div>
   </div>
