@@ -35,6 +35,7 @@ function updDots() {
 function chk() {
   if(pin === PINS[who]) {
     user = who;
+    try { localStorage.setItem('kith_user', user); } catch(e){}
     document.getElementById('login').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     document.getElementById('uname').textContent = user;
@@ -54,11 +55,26 @@ function goBack() {
 
 function doLogout() {
   user = null;
+  try { localStorage.removeItem('kith_user'); } catch(e){}
   document.getElementById('app').style.display = 'none';
   document.getElementById('login').style.display = 'flex';
   document.getElementById('s2').style.display = 'none';
   document.getElementById('s1').style.display = 'block';
 }
+
+// Restore saved login on page load — no more retyping the PIN every refresh
+function autoLogin() {
+  var savedUser = null;
+  try { savedUser = localStorage.getItem('kith_user'); } catch(e){}
+  if (savedUser && PINS[savedUser]) {
+    user = savedUser;
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('uname').textContent = user;
+    loadData();
+  }
+}
+window.addEventListener('DOMContentLoaded', autoLogin);
 
 // SUPABASE
 var SB = 'https://mxyrxyhvjndgjqupgstu.supabase.co';
@@ -73,6 +89,23 @@ async function sbUp(t, row) {
   try { await fetch(SB+'/rest/v1/'+t,{method:'POST',headers:SH,body:JSON.stringify(row)}); }
   catch(e) { console.warn(e); }
 }
+async function sbDel(t, id) {
+  try { await fetch(SB+'/rest/v1/'+t+'?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:SH}); }
+  catch(e) { console.warn(e); }
+}
+
+// Push a Bill/Expense to Supabase + update local cache. Called after every add/edit.
+function persistInv(inv) {
+  if (!inv.id) inv.id = 'INV' + Date.now() + Math.floor(Math.random()*1000);
+  try { localStorage.setItem('kith_invs', JSON.stringify(invs)); } catch(e){}
+  sbUp('kith_invs', {id: inv.id, data: inv, updated_at: new Date().toISOString()});
+}
+
+// Remove a Bill/Expense from Supabase + local cache.
+function forgetInv(id) {
+  try { localStorage.setItem('kith_invs', JSON.stringify(invs)); } catch(e){}
+  if (id) sbDel('kith_invs', id);
+}
 
 var POs=[], ROs=[], invs=[], sales=[];
 
@@ -80,10 +113,28 @@ async function loadData() {
   try {
     var pr = await sbGet('kith_pos');
     var rr = await sbGet('kith_returns');
+    var ir = await sbGet('kith_invs');
     POs = (pr||[]).map(function(r){return r.data||r;}).filter(Boolean);
     ROs = (rr||[]).map(function(r){return r.data||r;}).filter(Boolean);
-  } catch(e) { POs=[]; ROs=[]; }
-  try { invs = JSON.parse(localStorage.getItem('kith_invs')||'[]'); } catch(e) { invs=[]; }
+    invs = (ir||[]).map(function(r){return r.data||r;}).filter(Boolean);
+  } catch(e) { POs=[]; ROs=[]; invs=[]; }
+
+  // Migrate any local-only invs (from before Supabase sync) up to Supabase
+  try {
+    var localInvs = JSON.parse(localStorage.getItem('kith_invs')||'[]');
+    if (localInvs.length) {
+      var haveIds = {};
+      invs.forEach(function(e){ if(e.id) haveIds[e.id] = true; });
+      localInvs.forEach(function(e) {
+        if (!e.id) e.id = 'INV' + Date.now() + Math.floor(Math.random()*10000);
+        if (!haveIds[e.id]) {
+          invs.push(e);
+          sbUp('kith_invs', {id: e.id, data: e, updated_at: new Date().toISOString()});
+        }
+      });
+    }
+  } catch(e) { console.warn('Invs migration skipped:', e); }
+
   // Migrate old separate Bill Scanner entries into the unified expenses list, then clean up
   try {
     var oldBills = JSON.parse(localStorage.getItem('kith_bills2')||'[]');
@@ -94,14 +145,16 @@ async function loadData() {
         var total = parseFloat(b.total) || parseFloat(b.amount) || 0;
         var net = total > 0 ? total / 1.2 : 0;
         var vat = total - net;
-        invs.push({
+        var newEntry = {
+          id: 'INV' + Date.now() + Math.floor(Math.random()*10000),
           num: ref, supplier: b.supplier || 'Unknown', type: 'Supplier Invoice',
           date: '', due: '', net: net.toFixed(2), vat: vat.toFixed(2),
           matchedPO: b.mpo || null, matchConf: b.match || null,
           source: 'scan', status: 'unpaid', createdAt: b.at || ts(), createdBy: 'migrated'
-        });
+        };
+        invs.push(newEntry);
+        sbUp('kith_invs', {id: newEntry.id, data: newEntry, updated_at: new Date().toISOString()});
       });
-      saveInvs();
       localStorage.removeItem('kith_bills2');
     }
   } catch(e) { console.warn('Bill migration skipped:', e); }
@@ -646,20 +699,29 @@ function saveInv() {
       return;
     }
   }
-  invs.unshift({num:num,supplier:sup,type:(document.getElementById('i-type')||{}).value||'Invoice',
+  var newEntry = {
+    id: 'INV' + Date.now() + Math.floor(Math.random()*1000),
+    num:num,supplier:sup,type:(document.getElementById('i-type')||{}).value||'Invoice',
     date:(document.getElementById('i-date')||{}).value||'',due:(document.getElementById('i-due')||{}).value||'',
     net:(document.getElementById('i-net')||{}).value||0,vat:(document.getElementById('i-vat')||{}).value||0,
     receipt:invFileData?invFileData.name:null,
     source:'manual',
-    status:'unpaid',createdAt:ts(),createdBy:user});
-  saveInvs();
+    status:'unpaid',createdAt:ts(),createdBy:user
+  };
+  invs.unshift(newEntry);
+  persistInv(newEntry);
   cx('ov-inv');
   resetInvForm();
   rExp();
 }
 
-function mInvPaid(i){invs[i].status='paid';saveInvs();rExp();}
-function delInv(i){if(!confirm('Delete?'))return;invs.splice(i,1);saveInvs();rExp();}
+function mInvPaid(i){ invs[i].status='paid'; persistInv(invs[i]); rExp(); }
+function delInv(i){
+  if(!confirm('Delete?'))return;
+  var deleted = invs.splice(i,1)[0];
+  forgetInv(deleted && deleted.id);
+  rExp();
+}
 
 // Scan the whole list for duplicates and remove them, keeping the earliest of each set.
 // Prefers to keep entries that are marked Paid — you don't want to lose that state.
@@ -686,7 +748,8 @@ function dedupInvs() {
   if (!removed.length) { alert('No duplicates found.'); return; }
   if (!confirm('Found ' + removed.length + ' duplicate(s). Remove them?\n\n(Paid records are kept over unpaid ones where both exist.)')) return;
   invs = kept;
-  saveInvs();
+  try { localStorage.setItem('kith_invs', JSON.stringify(invs)); } catch(e){}
+  removed.forEach(function(r){ if (r && r.id) sbDel('kith_invs', r.id); });
   rExp();
 }
 
@@ -758,6 +821,7 @@ async function scanBill(file) {
     else if (net > 0 && vat === 0)   { vat = total - net;   if (vat < 0) vat = net * 0.2; }
 
     var entry = {
+      id:         'INV' + Date.now() + Math.floor(Math.random()*1000),
       num:        p.invoiceNum || 'B'+mid(),
       supplier:   p.supplier || 'Unknown',
       type:       'Supplier Invoice',
@@ -793,7 +857,7 @@ async function scanBill(file) {
     }
 
     invs.unshift(entry);
-    saveInvs();
+    persistInv(entry);
 
     out.innerHTML =
       '<div style="background:#e8f5e9;padding:12px;border-radius:8px;color:#2e7d32">' +
