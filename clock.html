@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
+<title>KITH Cars — Clock In / Out</title>
+<meta name="theme-color" content="#1a1a2e"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:#1a1a2e;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh}
+.wrap{padding:16px;max-width:600px;margin:0 auto}
+.hdr{text-align:center;padding:16px 0 20px}
+.logo{color:#c9a84c;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
+.title{font-size:22px;font-weight:900;margin-top:6px}
+.subtitle{font-size:12px;color:#aaa;margin-top:4px}
+.clock{font-size:14px;color:#c9a84c;margin-top:8px;font-variant-numeric:tabular-nums}
+
+.tile{background:#22243a;border:1.5px solid #333;border-radius:14px;padding:16px 18px;cursor:pointer;transition:.15s;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;user-select:none}
+.tile:active{background:#2d3050;transform:scale(.98)}
+.tile-name{font-size:16px;font-weight:700}
+.tile-role{font-size:11px;color:#aaa;margin-top:2px}
+.tile-in{color:#4caf50;font-size:12px;font-weight:600;text-align:right}
+.tile-out{color:#666;font-size:12px;text-align:right}
+
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100;display:flex;align-items:center;justify-content:center;padding:16px}
+.panel{background:#22243a;border-radius:16px;padding:24px 20px;max-width:400px;width:100%;text-align:center}
+.title-lg{font-size:20px;font-weight:800}
+.title-sub{font-size:12px;color:#aaa;margin-top:4px}
+.pinbig{font-size:32px;letter-spacing:12px;margin:20px 0 6px;height:44px;font-weight:900;font-variant-numeric:tabular-nums}
+.pinpad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}
+.pinbtn{background:#2d3050;border:none;color:#fff;font-size:22px;font-weight:700;padding:16px;border-radius:10px;cursor:pointer;user-select:none}
+.pinbtn:active{background:#3a3f5f}
+.error{color:#f44336;font-size:13px;min-height:20px;padding:4px}
+.result-ok{font-size:56px;color:#4caf50;margin-bottom:12px;line-height:1}
+.result-msg{font-size:22px;font-weight:800;margin-bottom:10px}
+.result-details{font-size:14px;color:#ccc;line-height:1.6}
+.result-time{font-size:20px;color:#c9a84c;margin-top:12px;font-weight:800}
+.btn-close{background:#c9a84c;color:#1a1a2e;border:none;border-radius:10px;padding:12px 28px;font-size:14px;font-weight:700;cursor:pointer;margin-top:24px}
+.btn-cancel{background:none;border:1px solid #444;color:#aaa;border-radius:8px;padding:10px 20px;margin-top:16px;font-size:13px;cursor:pointer}
+</style>
+<script>
+// Supabase (same project as CRM + accounts)
+var SB = 'https://mxyrxyhvjndgjqupgstu.supabase.co';
+var SK = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
+var SH = {apikey:SK, Authorization:'Bearer '+SK, 'Content-Type':'application/json', Prefer:'return=representation'};
+
+// KITH Cars — Unit 1 Soho Mills, London Road, Hackbridge SM6 7HN
+// Update these coords if the geofence isn't quite right (test then tweak)
+var WORKSHOP_LAT = 51.3660;
+var WORKSHOP_LNG = -0.1520;
+var GEO_TOLERANCE_M = 300;    // metres — how far away we still allow
+
+var staff = [];
+var selected = null;
+var pin = '';
+
+// ─────────────────────────────────────────────────────────
+async function loadStaff() {
+  document.getElementById('tiles').innerHTML = '<div style="text-align:center;color:#888;padding:40px">Loading…</div>';
+  try {
+    var r = await fetch(SB+'/rest/v1/kith_staff?active=eq.true&select=*&order=name.asc', {headers:SH});
+    staff = await r.json() || [];
+  } catch(e) { staff = []; console.warn(e); }
+
+  // Attach any open (in-progress) shift to each person
+  try {
+    var r = await fetch(SB+'/rest/v1/kith_shifts?clock_out=is.null&select=staff_id,clock_in', {headers:SH});
+    var open = await r.json() || [];
+    var byId = {};
+    open.forEach(function(o){ byId[o.staff_id] = o; });
+    staff.forEach(function(s){ s._open = byId[s.id] || null; });
+  } catch(e) { console.warn(e); }
+
+  renderTiles();
+}
+
+function renderTiles() {
+  var el = document.getElementById('tiles');
+  if (!staff.length) {
+    el.innerHTML = '<div style="text-align:center;color:#aaa;padding:40px;line-height:1.6">' +
+      'No staff configured yet.<br><br>' +
+      'Run <strong>kith-timesheets-schema.sql</strong> in Supabase to seed your team, then reload.' +
+      '</div>';
+    return;
+  }
+  el.innerHTML = staff.map(function(s){
+    var status = s._open
+      ? '<div class="tile-in">● In since '+formatTime(s._open.clock_in)+'</div>'
+      : '<div class="tile-out">○ Off</div>';
+    return '<div class="tile" onclick="pickStaff(\''+s.id+'\')">'+
+      '<div>'+
+        '<div class="tile-name">'+escapeHtml(s.name)+'</div>'+
+        '<div class="tile-role">'+escapeHtml(s.role||'')+(s.site===false?' · Remote':'')+'</div>'+
+      '</div>'+
+      status +
+    '</div>';
+  }).join('');
+}
+
+// ─────────────────────────────────────────────────────────
+function pickStaff(id) {
+  selected = staff.find(function(s){return s.id===id;});
+  if (!selected) return;
+  pin = '';
+  document.getElementById('overlay-title').textContent = selected.name;
+  document.getElementById('overlay-sub').textContent = selected._open
+    ? 'Currently clocked in — enter PIN to clock OUT'
+    : 'Enter PIN to clock IN';
+  updatePinDisplay();
+  document.getElementById('perr').textContent = '';
+  document.getElementById('pin-overlay').style.display='flex';
+  document.getElementById('result-overlay').style.display='none';
+}
+
+function pd(d) {
+  if (pin.length >= 4) return;
+  pin += d;
+  updatePinDisplay();
+  if (pin.length === 4) setTimeout(submitPin, 150);
+}
+function pinBack()  { pin = pin.slice(0, -1); updatePinDisplay(); }
+function pinClear() { pin = ''; updatePinDisplay(); }
+function updatePinDisplay() {
+  var dots = '●●●●'.slice(0, pin.length) + '____'.slice(pin.length);
+  document.getElementById('pinbig').textContent = dots;
+}
+
+// ─────────────────────────────────────────────────────────
+async function submitPin() {
+  if (String(pin) !== String(selected.pin)) {
+    document.getElementById('perr').textContent = '✕ Wrong PIN';
+    pin = ''; updatePinDisplay();
+    return;
+  }
+  document.getElementById('perr').textContent = '⏳ Working…';
+
+  // Get GPS if on-site (silent skip if permission denied or too slow)
+  var loc = null;
+  if (selected.site !== false && navigator.geolocation) {
+    try {
+      loc = await new Promise(function(res) {
+        var done = false;
+        navigator.geolocation.getCurrentPosition(
+          function(p){ if(!done){done=true; res({lat:p.coords.latitude, lng:p.coords.longitude, acc:p.coords.accuracy});} },
+          function() { if(!done){done=true; res(null);} },
+          {timeout:6000, maximumAge:60000, enableHighAccuracy:false}
+        );
+        setTimeout(function(){ if(!done){done=true; res(null);} }, 6500);
+      });
+    } catch(e) { loc = null; }
+
+    // Warn if they're far from the workshop (but let them override)
+    if (loc && (loc.acc || 999) < 500) {
+      var d = haversine(loc.lat, loc.lng, WORKSHOP_LAT, WORKSHOP_LNG);
+      if (d > GEO_TOLERANCE_M) {
+        if (!confirm('You appear to be about ' + Math.round(d) + 'm from the workshop.\n\nStill clock ' + (selected._open?'OUT':'IN') + '?')) {
+          document.getElementById('perr').textContent = 'Cancelled';
+          pin = ''; updatePinDisplay();
+          return;
+        }
+      }
+    }
+  }
+
+  var method = selected.site === false ? 'remote' : 'on-site';
+
+  try {
+    if (selected._open) {
+      // Clock OUT — PATCH the open shift
+      var r = await fetch(SB+'/rest/v1/kith_shifts?staff_id=eq.'+encodeURIComponent(selected.id)+'&clock_out=is.null', {
+        method:'PATCH', headers:SH,
+        body: JSON.stringify({clock_out: new Date().toISOString()})
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      var arr = await r.json();
+      showResult('Clocked OUT', arr && arr[0], true);
+    } else {
+      // Clock IN — new row (server sets clock_in via default now())
+      var body = {staff_id: selected.id, method: method};
+      if (loc) { body.lat = loc.lat; body.lng = loc.lng; }
+      var r = await fetch(SB+'/rest/v1/kith_shifts', {
+        method:'POST', headers:SH,
+        body: JSON.stringify(body)
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      var arr = await r.json();
+      showResult('Clocked IN', arr && arr[0], false);
+    }
+  } catch(e) {
+    document.getElementById('perr').textContent = 'Error: ' + e.message;
+  }
+}
+
+function showResult(title, shift, wasOut) {
+  document.getElementById('pin-overlay').style.display = 'none';
+  document.getElementById('result-msg').textContent = title;
+  var details = document.getElementById('result-details');
+
+  if (shift) {
+    if (wasOut) {
+      var inT  = new Date(shift.clock_in);
+      var outT = new Date(shift.clock_out || new Date());
+      var mins = Math.max(0, Math.floor((outT - inT) / 60000));
+      var h = Math.floor(mins/60), m = mins%60;
+      details.innerHTML =
+        selected.name + '<br>' +
+        'In: <strong>'+formatTime(shift.clock_in)+'</strong> &nbsp;·&nbsp; Out: <strong>'+formatTime(shift.clock_out)+'</strong>' +
+        '<div class="result-time">'+h+'h '+m+'m worked</div>';
+    } else {
+      details.innerHTML =
+        selected.name + '<br>' +
+        '<div class="result-time">'+formatTime(shift.clock_in)+'</div>' +
+        '<div style="font-size:12px;margin-top:8px;color:#999">Have a good shift.</div>';
+    }
+  }
+  document.getElementById('result-overlay').style.display = 'flex';
+  // Auto-close & refresh after 6 seconds
+  setTimeout(function(){
+    document.getElementById('result-overlay').style.display = 'none';
+    loadStaff();
+  }, 6000);
+}
+
+function closeResult() { document.getElementById('result-overlay').style.display = 'none'; loadStaff(); }
+function closePin()    { document.getElementById('pin-overlay').style.display = 'none'; }
+
+// ─────────────────────────────────────────────────────────
+function formatTime(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+function haversine(lat1,lng1,lat2,lng2) {
+  var R=6371000, toRad=function(x){return x*Math.PI/180;};
+  var dLat=toRad(lat2-lat1), dLng=toRad(lng2-lng1);
+  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function escapeHtml(s) {
+  return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+// Live clock in the header
+function tickClock() {
+  var d = new Date();
+  var t = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0');
+  var el = document.getElementById('now'); if (el) el.textContent = t;
+}
+setInterval(tickClock, 1000);
+
+window.addEventListener('DOMContentLoaded', function(){ tickClock(); loadStaff(); });
+</script>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="hdr">
+    <div class="logo">🚗 KITH CARS</div>
+    <div class="title">🕐 Clock In / Out</div>
+    <div class="subtitle">Tap your name → enter PIN</div>
+    <div class="clock" id="now">--:--:--</div>
+  </div>
+  <div id="tiles"></div>
+</div>
+
+<!-- PIN entry -->
+<div class="overlay" id="pin-overlay" style="display:none">
+  <div class="panel">
+    <div class="title-lg" id="overlay-title"></div>
+    <div class="title-sub" id="overlay-sub"></div>
+    <div class="pinbig" id="pinbig">____</div>
+    <div class="error" id="perr"></div>
+    <div class="pinpad">
+      <button class="pinbtn" onclick="pd('1')">1</button>
+      <button class="pinbtn" onclick="pd('2')">2</button>
+      <button class="pinbtn" onclick="pd('3')">3</button>
+      <button class="pinbtn" onclick="pd('4')">4</button>
+      <button class="pinbtn" onclick="pd('5')">5</button>
+      <button class="pinbtn" onclick="pd('6')">6</button>
+      <button class="pinbtn" onclick="pd('7')">7</button>
+      <button class="pinbtn" onclick="pd('8')">8</button>
+      <button class="pinbtn" onclick="pd('9')">9</button>
+      <button class="pinbtn" onclick="pinClear()" style="font-size:13px">Clear</button>
+      <button class="pinbtn" onclick="pd('0')">0</button>
+      <button class="pinbtn" onclick="pinBack()">⌫</button>
+    </div>
+    <button onclick="closePin()" class="btn-cancel">Cancel</button>
+  </div>
+</div>
+
+<!-- Confirmation -->
+<div class="overlay" id="result-overlay" style="display:none">
+  <div class="panel">
+    <div class="result-ok">✓</div>
+    <div class="result-msg" id="result-msg"></div>
+    <div class="result-details" id="result-details"></div>
+    <button onclick="closeResult()" class="btn-close">Done</button>
+  </div>
+</div>
+
+</body>
+</html>
