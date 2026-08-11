@@ -1,0 +1,1986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>KITH Cars — Accounts</title>
+<script>
+var PINS = {Sudha:'6666', Logkith:'0000'};
+var user = null, who = null, pin = '';
+
+function goPin(name) {
+  who = name;
+  pin = '';
+  document.getElementById('s1').style.display = 'none';
+  document.getElementById('s2').style.display = 'block';
+  document.getElementById('s2name').textContent = 'Hi ' + name + ' — Enter PIN';
+  document.getElementById('perr').textContent = '';
+  updDots();
+}
+
+function pd(d) {
+  if(pin.length >= 4) return;
+  pin += d;
+  updDots();
+  if(pin.length === 4) setTimeout(chk, 150);
+}
+
+function updDots() {
+  for(var i=0;i<4;i++) {
+    var el = document.getElementById('dot'+i);
+    if(el) el.style.background = i < pin.length ? '#1a1a2e' : '#eee';
+  }
+}
+
+function chk() {
+  if(pin === PINS[who]) {
+    user = who;
+    try { localStorage.setItem('kith_user', user); } catch(e){}
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('uname').textContent = user;
+    loadData();
+  } else {
+    document.getElementById('perr').textContent = 'Wrong PIN — try again';
+    pin = '';
+    updDots();
+  }
+}
+
+function goBack() {
+  pin = ''; who = null;
+  document.getElementById('s2').style.display = 'none';
+  document.getElementById('s1').style.display = 'block';
+}
+
+function doLogout() {
+  user = null;
+  try { localStorage.removeItem('kith_user'); } catch(e){}
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login').style.display = 'flex';
+  document.getElementById('s2').style.display = 'none';
+  document.getElementById('s1').style.display = 'block';
+}
+
+// Restore saved login on page load — no more retyping the PIN every refresh
+function autoLogin() {
+  var savedUser = null;
+  try { savedUser = localStorage.getItem('kith_user'); } catch(e){}
+  if (savedUser && PINS[savedUser]) {
+    user = savedUser;
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('uname').textContent = user;
+    loadData();
+  }
+}
+window.addEventListener('DOMContentLoaded', autoLogin);
+
+// SUPABASE
+var SB = 'https://mxyrxyhvjndgjqupgstu.supabase.co';
+var SK = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
+var SH = {apikey:SK, Authorization:'Bearer '+SK, 'Content-Type':'application/json', Prefer:'resolution=merge-duplicates'};
+
+async function sbGet(t) {
+  try { var r = await fetch(SB+'/rest/v1/'+t+'?select=*&order=updated_at.desc',{headers:SH}); return r.json(); }
+  catch(e) { return []; }
+}
+async function sbUp(t, row) {
+  try { await fetch(SB+'/rest/v1/'+t,{method:'POST',headers:SH,body:JSON.stringify(row)}); }
+  catch(e) { console.warn(e); }
+}
+async function sbDel(t, id) {
+  try { await fetch(SB+'/rest/v1/'+t+'?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:SH}); }
+  catch(e) { console.warn(e); }
+}
+
+// ---- CRM SYNC ----
+// The CRM (index.html) stores every PO — including return orders — in ONE Supabase
+// row: table 'jobs', id='__pos__', data.pos = [array]. Returns are POs whose status
+// is 'Return Requested' or 'Returned'. This app now reads the same source of truth
+// so raising a PO in the CRM shows up in accounts automatically.
+async function fetchCRMPos() {
+  try {
+    var r = await fetch(SB+'/rest/v1/jobs?id=eq.__pos__&select=id,data', {headers:SH});
+    if (!r.ok) return [];
+    var arr = await r.json();
+    return (arr && arr[0] && arr[0].data && arr[0].data.pos) || [];
+  } catch(e) { console.warn('CRM PO fetch:', e); return []; }
+}
+
+// Also fetch job records so we can look up regs / customer info for display
+async function fetchCRMJobs() {
+  try {
+    var r = await fetch(SB+'/rest/v1/jobs?select=id,data', {headers:SH});
+    if (!r.ok) return [];
+    var arr = await r.json();
+    return (arr||[]).filter(function(x){return x.id && !x.id.startsWith('__');})
+                    .map(function(x){return x.data || x;});
+  } catch(e) { return []; }
+}
+
+// Save the whole POs array back to the CRM's __pos__ row
+async function saveCRMPos(posArray) {
+  try {
+    await fetch(SB+'/rest/v1/jobs', {
+      method:'POST', headers:SH,
+      body:JSON.stringify({id:'__pos__', data:{pos:posArray}, updated_at:new Date().toISOString()})
+    });
+  } catch(e) { console.warn('CRM PO save:', e); }
+}
+
+// Convert a CRM PO into the shape the accounts UI expects (flattens items → partLines/name list)
+function crmPOtoAccounts(p, jobsById) {
+  var items = p.items || [];
+  var partLines = items.map(function(i){
+    return {name:i.name||'', num:i.num||'', qty:parseInt(i.qty)||1, price:parseFloat(i.price)||0};
+  });
+  var totalPrice = partLines.reduce(function(s,l){return s+l.price*l.qty;},0);
+  var job = p.jobId && jobsById ? jobsById[p.jobId] : null;
+  return {
+    id:         p.id,
+    num:        p.num || p.id,
+    jobId:      p.jobId || '',
+    jobReg:     job ? (job.reg||'') : '',
+    partName:   partLines.map(function(l){return l.name;}).filter(Boolean).join(', '),
+    partNum:    partLines.map(function(l){return l.num;}).filter(Boolean).join(', '),
+    partLines:  partLines,
+    qty:        partLines.reduce(function(s,l){return s+l.qty;},0),
+    supplier:   p.supplier || '',
+    price:      totalPrice,
+    eta:        p.eta || '',
+    paid:       !!p.paid,
+    paidAt:     p.paidAt || '',
+    paidBy:     p.paidBy || '',
+    status:     p.status || 'Ordered',
+    createdAt:  p.createdAt || '',
+    createdBy:  p.createdBy || ''
+  };
+}
+
+// Convert a CRM PO in return status into the RO shape
+function crmPOtoRO(p, jobsById) {
+  var items = p.items || [];
+  var partLines = items.map(function(i){
+    return {name:i.name||'', num:i.num||'', qty:parseInt(i.qty)||1, price:parseFloat(i.price)||0};
+  });
+  var totalPrice = partLines.reduce(function(s,l){return s+l.price*l.qty;},0);
+  var job = p.jobId && jobsById ? jobsById[p.jobId] : null;
+  return {
+    id:              p.id,
+    num:             p.num || p.id,
+    partName:        partLines.map(function(l){return l.name;}).filter(Boolean).join(', '),
+    partNum:         partLines.map(function(l){return l.num;}).filter(Boolean).join(', '),
+    jobReg:          job ? (job.reg||'') : '',
+    supplier:        p.supplier || '',
+    reason:          p.returnReason || 'Return',
+    price:           totalPrice,
+    status:          p.status,
+    creditReceived:  !!p.creditReceived,
+    creditAmount:    parseFloat(p.creditAmount) || totalPrice,
+    returnAt:        p.returnAt || '',
+    createdAt:       p.createdAt || '',
+    createdBy:       p.createdBy || ''
+  };
+}
+
+// Push a Bill/Expense to Supabase + update local cache. Called after every add/edit.
+function persistInv(inv) {
+  if (!inv.id) inv.id = 'INV' + Date.now() + Math.floor(Math.random()*1000);
+  try { localStorage.setItem('kith_invs', JSON.stringify(invs)); } catch(e){}
+  sbUp('kith_invs', {id: inv.id, data: inv, updated_at: new Date().toISOString()});
+}
+
+// Remove a Bill/Expense from Supabase + local cache.
+function forgetInv(id) {
+  try { localStorage.setItem('kith_invs', JSON.stringify(invs)); } catch(e){}
+  if (id) sbDel('kith_invs', id);
+}
+
+var POs=[], ROs=[], invs=[], sales=[];
+
+async function loadData() {
+  try {
+    // POs (and returns) now come from the CRM's __pos__ row in the jobs table
+    var crmPos = await fetchCRMPos();
+    var jobs = await fetchCRMJobs();
+    var jobsById = {};
+    jobs.forEach(function(j){ if (j && j.id) jobsById[j.id] = j; });
+
+    POs = crmPos.filter(function(p){
+      return p.status !== 'Return Requested' && p.status !== 'Returned';
+    }).map(function(p){ return crmPOtoAccounts(p, jobsById); });
+
+    ROs = crmPos.filter(function(p){
+      return p.status === 'Return Requested' || p.status === 'Returned';
+    }).map(function(p){ return crmPOtoRO(p, jobsById); });
+
+    var ir = await sbGet('kith_invs');
+    invs = (ir||[]).map(function(r){return r.data||r;}).filter(Boolean);
+  } catch(e) { POs=[]; ROs=[]; invs=[]; console.warn('loadData:', e); }
+
+  // Migrate any local-only invs (from before Supabase sync) up to Supabase
+  try {
+    var localInvs = JSON.parse(localStorage.getItem('kith_invs')||'[]');
+    if (localInvs.length) {
+      var haveIds = {};
+      invs.forEach(function(e){ if(e.id) haveIds[e.id] = true; });
+      localInvs.forEach(function(e) {
+        if (!e.id) e.id = 'INV' + Date.now() + Math.floor(Math.random()*10000);
+        if (!haveIds[e.id]) {
+          invs.push(e);
+          sbUp('kith_invs', {id: e.id, data: e, updated_at: new Date().toISOString()});
+        }
+      });
+    }
+  } catch(e) { console.warn('Invs migration skipped:', e); }
+
+  // Migrate old separate Bill Scanner entries into the unified expenses list, then clean up
+  try {
+    var oldBills = JSON.parse(localStorage.getItem('kith_bills2')||'[]');
+    if (oldBills.length) {
+      oldBills.forEach(function(b) {
+        var ref = b.inv || b.id || 'B'+mid();
+        if (invs.find(function(x){return x.num === ref;})) return; // already migrated
+        var total = parseFloat(b.total) || parseFloat(b.amount) || 0;
+        var net = total > 0 ? total / 1.2 : 0;
+        var vat = total - net;
+        var newEntry = {
+          id: 'INV' + Date.now() + Math.floor(Math.random()*10000),
+          num: ref, supplier: b.supplier || 'Unknown', type: 'Supplier Invoice',
+          date: '', due: '', net: net.toFixed(2), vat: vat.toFixed(2),
+          matchedPO: b.mpo || null, matchConf: b.match || null,
+          source: 'scan', status: 'unpaid', createdAt: b.at || ts(), createdBy: 'migrated'
+        };
+        invs.push(newEntry);
+        sbUp('kith_invs', {id: newEntry.id, data: newEntry, updated_at: new Date().toISOString()});
+      });
+      localStorage.removeItem('kith_bills2');
+    }
+  } catch(e) { console.warn('Bill migration skipped:', e); }
+  try { sales = JSON.parse(localStorage.getItem('kith_sales')||'[]'); } catch(e) { sales=[]; }
+  showTab('dash');
+}
+
+function ts() { return new Date().toLocaleString('en-GB'); }
+function mid() { return Date.now().toString().slice(-6); }
+function cx(id) { document.getElementById(id).style.display='none'; }
+function openOv(id) { document.getElementById(id).style.display='flex'; }
+function saveInvs() { localStorage.setItem('kith_invs',JSON.stringify(invs)); }
+function saveSales() { localStorage.setItem('kith_sales',JSON.stringify(sales)); }
+
+function showTab(tab) {
+  ['dash','pos','ro','ap','ar','expenses','payroll','sales'].forEach(function(t){
+    var el = document.getElementById('v-'+t);
+    if (el) el.style.display = t===tab?'block':'none';
+  });
+  document.querySelectorAll('.tab').forEach(function(el){el.classList.remove('on');});
+  var btn = document.getElementById('tab-'+tab);
+  if(btn) btn.classList.add('on');
+  if(tab==='dash') rDash();
+  if(tab==='pos') rPOs();
+  if(tab==='ro') rROs();
+  if(tab==='ap') rAP();
+  if(tab==='ar') rAR();
+  if(tab==='expenses') rExp();
+  if(tab==='payroll') rPayroll();
+  if(tab==='sales') rSales();
+}
+
+function rDash() {
+  var tPO = POs.reduce(function(s,p){return s+(+p.price||0);},0);
+  var paid = POs.filter(function(p){return p.paid;}).reduce(function(s,p){return s+(+p.price||0);},0);
+  var unpaid = POs.filter(function(p){return !p.paid;});
+  var pendRO = ROs.filter(function(r){return !r.creditReceived;});
+  var credOwed = pendRO.reduce(function(s,r){return s+(+r.price||0);},0);
+
+  // AP + AR headline numbers
+  var apUnpaid = invs.filter(function(i){return i.status!=='paid';});
+  var apTotal = apUnpaid.reduce(function(s,i){return s+(parseFloat(i.net)||0)+(parseFloat(i.vat)||0);},0);
+  var today = new Date().toISOString().slice(0,10);
+  var apOverdue = apUnpaid.filter(function(i){
+    var d = i.due || (i.date ? shiftDate(i.date, 30) : '');
+    return d && d < today;
+  }).reduce(function(s,i){return s+(parseFloat(i.net)||0)+(parseFloat(i.vat)||0);},0);
+
+  var arUnpaid = sales.filter(function(s){return !s.paid;});
+  var arTotal = arUnpaid.reduce(function(s,x){return s+(parseFloat(x.amount)||0);},0);
+  var arOverdue = arUnpaid.filter(function(s){
+    var saleDate = normDate(s.date);
+    if (!saleDate) return false;
+    var due = shiftDate(saleDate, AR_PAYMENT_TERMS_DAYS);
+    return due < today;
+  }).reduce(function(s,x){return s+(parseFloat(x.amount)||0);},0);
+
+  document.getElementById('v-dash').innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">'+
+      '<h2 style="font-size:20px;font-weight:800">Accounts Overview</h2>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+        '<button onclick="openOv(\'ov-inv\')" style="'+btnStyle('#1a1a2e','#fff')+'">+ Expense</button>'+
+        '<button class="sheets-btn" onclick="syncToSheets()" style="'+btnStyle('#fff','#1a1a2e',true)+'">📊 Sync all to Sheets</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">'+
+      sc('Total PO Value','£'+tPO.toFixed(2),'#1565c0')+
+      sc('Paid','£'+paid.toFixed(2),'#2e7d32')+
+      sc('Outstanding','£'+(tPO-paid).toFixed(2),'#c62828')+
+      sc('Credits Owed','£'+credOwed.toFixed(2),'#e65100')+
+    '</div>'+
+
+    // AP + AR spotlight — click through to detail
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">'+
+      '<div onclick="showTab(\'ap\')" style="'+cardStyle()+'cursor:pointer;border-left:4px solid '+(apOverdue>0?'#c62828':'#1565c0')+'">'+
+        '<div style="font-size:11px;color:#888;font-weight:700;letter-spacing:.08em;text-transform:uppercase">💳 To Pay</div>'+
+        '<div style="font-size:26px;font-weight:900;color:#1a1a2e;margin-top:6px">£'+apTotal.toFixed(2)+'</div>'+
+        '<div style="font-size:12px;color:'+(apOverdue>0?'#c62828':'#888')+';margin-top:4px">'+
+          (apOverdue>0?'£'+apOverdue.toFixed(2)+' overdue':'All within terms')+' · '+apUnpaid.length+' bill'+(apUnpaid.length===1?'':'s')+
+        '</div>'+
+      '</div>'+
+      '<div onclick="showTab(\'ar\')" style="'+cardStyle()+'cursor:pointer;border-left:4px solid '+(arOverdue>0?'#c62828':'#2e7d32')+'">'+
+        '<div style="font-size:11px;color:#888;font-weight:700;letter-spacing:.08em;text-transform:uppercase">💰 To Collect</div>'+
+        '<div style="font-size:26px;font-weight:900;color:#1a1a2e;margin-top:6px">£'+arTotal.toFixed(2)+'</div>'+
+        '<div style="font-size:12px;color:'+(arOverdue>0?'#c62828':'#888')+';margin-top:4px">'+
+          (arOverdue>0?'£'+arOverdue.toFixed(2)+' overdue':'All within terms')+' · '+arUnpaid.length+' sale'+(arUnpaid.length===1?'':'s')+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
+      '<div style="'+cardStyle()+'"><div style="'+stitle()+'">Unpaid POs ('+unpaid.length+')</div>'+
+        (unpaid.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+th(['PO#','Reg','Part','Amount',''])+
+          unpaid.slice(0,8).map(function(p){return '<tr>'+
+            td('<span style="font-family:monospace;font-weight:700;color:#b8860b">'+p.id+'</span>')+
+            td('<span style="font-family:monospace;font-weight:700">'+(p.jobReg||'—')+'</span>')+
+            td(p.partName.slice(0,30))+
+            td('<strong>£'+(+p.price).toFixed(2)+'</strong>')+
+            td('<button onclick="mPaid(\''+p.id+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:4px 8px;font-size:11px">✓ Paid</button>')+
+          '</tr>';}).join('')+
+        '</table></div>':'<p style="color:green;margin:8px 0">✓ All POs paid</p>')+
+      '</div>'+
+      '<div style="'+cardStyle()+'"><div style="'+stitle()+'">Pending Credits ('+pendRO.length+')</div>'+
+        (pendRO.length?'<table style="width:100%;border-collapse:collapse">'+th(['RO#','Part','Supplier','Credit'])+
+          pendRO.slice(0,8).map(function(r){return '<tr>'+
+            td('<span style="font-family:monospace;font-weight:700;color:#b8860b">'+r.id+'</span>')+
+            td(r.partName)+td(r.supplier)+
+            td('<strong style="color:#e65100">£'+(+r.price).toFixed(2)+'</strong>')+
+          '</tr>';}).join('')+'</table>':'<p style="color:green;margin:8px 0">✓ No pending credits</p>')+
+      '</div>'+
+    '</div>';
+}
+
+function sc(l,v,c){return'<div style="background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.05)"><div style="font-size:26px;font-weight:900;color:'+c+'">'+v+'</div><div style="font-size:11px;color:#888;margin-top:5px">'+l+'</div></div>';}
+function cardStyle(){return'background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:18px;';}
+function stitle(){return'font-size:11px;font-weight:800;color:#aaa;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;';}
+function btnStyle(bg,col,ghost){return'background:'+bg+';'+(ghost?'border:1.5px solid #ddd;':'border:none;')+'border-radius:8px;color:'+col+';font-size:13px;font-weight:600;padding:9px 16px;cursor:pointer;';}
+function th(cols){return'<thead><tr>'+cols.map(function(c){return'<th style="text-align:left;font-size:11px;color:#999;font-weight:700;padding:8px 10px;border-bottom:2px solid #f0f0f0;background:#fafafa">'+c+'</th>';}).join('')+'</tr></thead>';}
+function td(v){return'<td style="padding:9px 10px;border-bottom:1px solid #f5f5f5;font-size:13px">'+v+'</td>';}
+
+async function mPaid(id) {
+  var p = POs.find(function(x){return x.id===id;});
+  if(!p) return;
+  p.paid=true; p.paidBy=user; p.paidAt=ts();
+  // Update the CRM's __pos__ row — this is the shared source of truth
+  var crmPos = await fetchCRMPos();
+  var target = crmPos.find(function(x){return x.id===id;});
+  if (target) {
+    target.paid = true;
+    target.paidBy = user;
+    target.paidAt = p.paidAt;
+    await saveCRMPos(crmPos);
+  }
+  rDash(); rPOs();
+}
+
+// Mark a Return Order as credit received — same pattern, writes to CRM
+async function mROCredit(id) {
+  var r = ROs.find(function(x){return x.id===id;});
+  if(!r) return;
+  var amtStr = prompt('Credit amount received (£):', r.creditAmount.toFixed(2));
+  if (amtStr === null) return;
+  var amt = parseFloat(amtStr);
+  if (isNaN(amt)) { alert('Not a valid number.'); return; }
+  r.creditReceived = true;
+  r.creditAmount = amt;
+  r.status = 'Returned';
+  var crmPos = await fetchCRMPos();
+  var target = crmPos.find(function(x){return x.id===id;});
+  if (target) {
+    target.creditReceived = true;
+    target.creditAmount = amt;
+    target.status = 'Returned';
+    await saveCRMPos(crmPos);
+  }
+  rDash(); rROs();
+}
+
+function rPOs() {
+  var exVat = POs.reduce(function(s,p){return s+(+p.price||0);},0);
+  var paidCount = POs.filter(function(p){return p.paid;}).length;
+  var unpaidCount = POs.length - paidCount;
+
+  // Monthly breakdown by createdAt
+  var monthlyGroups = groupByMonth(POs,
+    function(p){ return normDate(p.createdAt); },
+    function(p){ return (+p.price||0) * 1.2; }
+  );
+
+  document.getElementById('v-pos').innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
+      '<h2 style="font-size:18px;font-weight:800">Purchase Orders ('+POs.length+')</h2>'+
+      '<button onclick="expCSV()" style="'+btnStyle('#fff','#1a1a2e',true)+'">⬇ CSV</button>'+
+    '</div>'+
+    '<div style="background:#e3f2fd;border-left:4px solid #1565c0;color:#0d47a1;padding:10px 14px;border-radius:6px;font-size:12px;margin-bottom:14px">'+
+      'ℹ Purchase Orders are raised in the CRM (llogkith-spec.github.io/kith-crm). This view is read + mark-paid only.'+
+    '</div>'+
+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">'+
+      sc('Total inc-VAT','£'+(exVat*1.2).toFixed(2),'#1a1a2e')+
+      sc('Paid',paidCount,'#2e7d32')+
+      sc('Unpaid',unpaidCount,'#c62828')+
+    '</div>'+
+
+    // Monthly breakdown
+    monthCard('📅 POs raised — by month', monthlyGroups, '#c62828')+
+
+    '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
+    '<table style="width:100%;border-collapse:collapse">'+th(['PO#','Reg','Part(s)','Supplier','ex-VAT','VAT 20%','Total inc-VAT','ETA','Paid'])+
+    '<tbody>'+POs.map(function(p){
+      var n=+p.price||0,v=n*.2;
+      return'<tr>'+
+        td('<span style="font-family:monospace;font-weight:700;color:#b8860b">'+escapeHtml(p.num||p.id)+'</span>')+
+        td('<span style="font-family:monospace;font-weight:700">'+escapeHtml(p.jobReg||'—')+'</span>')+
+        td('<div style="font-weight:600;max-width:150px">'+escapeHtml(p.partName||'—')+'</div>'+
+          (p.partLines&&p.partLines.length>1?'<div style="font-size:10px;color:#888">'+p.partLines.length+' parts</div>':''))+
+        td(escapeHtml(p.supplier||''))+
+        td('<strong>£'+n.toFixed(2)+'</strong>')+
+        td('<span style="color:#888">£'+v.toFixed(2)+'</span>')+
+        td('<strong style="color:#1565c0">£'+(n+v).toFixed(2)+'</strong>')+
+        td('<span style="font-size:12px;color:#888">'+escapeHtml(p.eta||'—')+'</span>')+
+        td(p.paid?'<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700">PAID</span>':'<button onclick="mPaid(\''+p.id+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:4px 10px;font-size:11px">✓ Paid</button>');
+    }).join('')+'</tbody></table></div>'+
+    '<p style="margin-top:10px;font-size:13px;color:#888">'+POs.length+' POs · ex-VAT: <strong>£'+exVat.toFixed(2)+'</strong> · inc-VAT: <strong style="color:#1565c0">£'+(exVat*1.2).toFixed(2)+'</strong></p>';
+}
+
+function rROs() {
+  var pend = ROs.filter(function(r){return !r.creditReceived;});
+  var recd = ROs.filter(function(r){return r.creditReceived;});
+  var pendTotal = pend.reduce(function(s,r){return s+(+r.price||0);},0);
+  var recdTotal = recd.reduce(function(s,r){return s+(parseFloat(r.creditAmount)||parseFloat(r.price)||0);},0);
+
+  var monthlyGroups = groupByMonth(ROs,
+    function(r){ return normDate(r.createdAt); },
+    function(r){ return +r.price || 0; }
+  );
+
+  document.getElementById('v-ro').innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
+      '<h2 style="font-size:18px;font-weight:800">Return Orders ('+ROs.length+')</h2>'+
+    '</div>'+
+    '<div style="background:#e3f2fd;border-left:4px solid #1565c0;color:#0d47a1;padding:10px 14px;border-radius:6px;font-size:12px;margin-bottom:14px">'+
+      'ℹ Return Orders are raised in the CRM. This view is read + mark-credit-received only.'+
+    '</div>'+
+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">'+
+      sc('Total Returns',ROs.length,'#1565c0')+
+      sc('Credits Received','£'+recdTotal.toFixed(2),'#2e7d32')+
+      sc('Credits Pending','£'+pendTotal.toFixed(2),'#e65100')+
+    '</div>'+
+
+    // Monthly breakdown of returns raised
+    monthCard('📅 Returns raised — by month', monthlyGroups, '#e65100')+
+
+    '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
+    '<table style="width:100%;border-collapse:collapse">'+th(['RO#','Reg','Part','Supplier','Reason','Value','Status','Credit',''])+
+    '<tbody>'+ROs.map(function(r){return'<tr>'+
+      td('<span style="font-family:monospace;font-weight:700;color:#b8860b">'+escapeHtml(r.num||r.id)+'</span>')+
+      td('<span style="font-family:monospace">'+escapeHtml(r.jobReg||'—')+'</span>')+
+      td('<strong>'+escapeHtml(r.partName||'—')+'</strong>')+
+      td(escapeHtml(r.supplier||''))+
+      td(escapeHtml(r.reason||''))+
+      td('<strong>£'+(+r.price||0).toFixed(2)+'</strong>')+
+      td('<span style="font-size:11px">'+escapeHtml(r.status||'—')+'</span>')+
+      td(r.creditReceived
+         ? '<span style="color:#2e7d32;font-weight:700">✓ £'+((parseFloat(r.creditAmount)||parseFloat(r.price))||0).toFixed(2)+'</span>'
+         : '<span style="color:#c62828">Pending</span>')+
+      td(r.creditReceived?'':'<button onclick="mROCredit(\''+r.id+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:4px 10px;font-size:11px">✓ Credit</button>')+
+    '</tr>';}).join('')+'</tbody></table></div>';
+}
+
+function rExp() {
+  var totalNet = invs.reduce(function(s,i){return s+(parseFloat(i.net)||0);},0);
+  var totalVat = invs.reduce(function(s,i){return s+(parseFloat(i.vat)||0);},0);
+  var totalInc = totalNet + totalVat;
+  var paidInc  = invs.filter(function(i){return i.status==='paid';})
+                     .reduce(function(s,i){return s+((parseFloat(i.net)||0)+(parseFloat(i.vat)||0));},0);
+  var unpaidInc = totalInc - paidInc;
+
+  document.getElementById('v-expenses').innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
+      '<h2 style="font-size:18px;font-weight:800">Bills &amp; Expenses</h2>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+        (invs.length?'<button class="sheets-btn" onclick="syncToSheets()" style="'+btnStyle('#fff','#1a1a2e',true)+'">📊 Sync all to Sheets</button>':'')+
+        (invs.length?'<button onclick="expInvsCSV()" style="'+btnStyle('#fff','#1a1a2e',true)+'">⬇ CSV</button>':'')+
+        (invs.length>1?'<button onclick="dedupInvs()" style="'+btnStyle('#fff','#888',true)+'font-size:12px">🧹 Clean duplicates</button>':'')+
+        '<button onclick="openOv(\'ov-inv\')" style="'+btnStyle('#1a1a2e','#fff')+'">+ Add manually</button>'+
+      '</div>'+
+    '</div>'+
+
+    // SCAN ZONE — always visible at top
+    '<div style="'+cardStyle()+'margin-bottom:14px">'+
+      '<p style="color:#888;font-size:13px;margin-bottom:12px">Scan any supplier bill or receipt — Claude reads it, breaks out VAT, matches your POs and saves it here automatically.</p>'+
+      '<div onclick="document.getElementById(\'bfi\').click()" style="border:2px dashed #ccc;border-radius:10px;padding:24px;text-align:center;cursor:pointer;background:#fafafa">'+
+        '<input type="file" id="bfi" accept="image/*,application/pdf" capture="environment" style="display:none" onchange="scanBill(this.files[0])"/>'+
+        '<div style="font-size:34px;margin-bottom:6px">📄</div>'+
+        '<div style="font-size:15px;font-weight:700;margin-bottom:2px">Tap to scan a bill</div>'+
+        '<div style="font-size:12px;color:#888">Photo, PDF or screenshot — any angle or size</div>'+
+      '</div>'+
+      '<div id="scan-out" style="margin-top:12px"></div>'+
+    '</div>'+
+
+    // SUMMARY CARDS
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">'+
+      sc('Total ex-VAT','£'+totalNet.toFixed(2),'#1565c0')+
+      sc('Total VAT','£'+totalVat.toFixed(2),'#888')+
+      sc('Total inc-VAT','£'+totalInc.toFixed(2),'#1a1a2e')+
+      sc('Outstanding','£'+unpaidInc.toFixed(2),'#c62828')+
+    '</div>'+
+
+    // TABLE
+    (invs.length?'<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
+    '<table style="width:100%;border-collapse:collapse">'+th(['Ref#','Supplier','Date','ex-VAT','VAT','inc-VAT','Matched PO','Status',''])+
+    '<tbody>'+invs.map(function(inv,i){
+      var n=parseFloat(inv.net)||0, v=parseFloat(inv.vat)||0, t=n+v;
+      var od=inv.due&&new Date(inv.due)<new Date()&&inv.status!=='paid';
+      return'<tr style="'+(od?'background:#fff5f5':'')+'">'+
+        td('<strong style="color:#b8860b">'+escapeHtml(inv.num)+'</strong>'+
+           (inv.source==='scan'?'<div style="font-size:9px;color:#888;margin-top:2px">📄 scanned</div>':''))+
+        td('<div style="font-weight:600">'+escapeHtml(inv.supplier||'—')+'</div>'+
+           (inv.type&&inv.type!=='Supplier Invoice'?'<div style="font-size:10px;color:#888">'+escapeHtml(inv.type)+'</div>':''))+
+        td('<span style="font-size:12px;color:#888">'+escapeHtml(inv.date||'—')+
+           (inv.due?'<br><span style="color:'+(od?'#c62828':'#888')+'">Due: '+escapeHtml(inv.due)+(od?' ⚠':'')+'</span>':'')+'</span>')+
+        td('<strong>£'+n.toFixed(2)+'</strong>')+
+        td('<span style="color:#888">£'+v.toFixed(2)+'</span>')+
+        td('<strong style="color:#1565c0">£'+t.toFixed(2)+'</strong>')+
+        td(inv.matchedPO?'<span style="background:#e8f5e9;color:#2e7d32;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700">'+escapeHtml(inv.matchedPO)+'</span>':'<span style="color:#ccc;font-size:11px">—</span>')+
+        td(inv.status==='paid'
+           ?'<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700">PAID</span>'
+           :'<span style="color:#c62828;font-size:11px;font-weight:700">Unpaid</span>')+
+        td((inv.status!=='paid'?'<button onclick="mInvPaid('+i+')" style="'+btnStyle('#2e7d32','#fff')+'padding:3px 8px;font-size:11px">✓</button> ':'')+
+           '<button onclick="delInv('+i+')" style="'+btnStyle('#fff','#888',true)+'padding:3px 8px;font-size:11px">✕</button>')+
+      '</tr>';}).join('')+'</tbody></table></div>'
+    :'<div style="'+cardStyle()+'color:#888;text-align:center;padding:30px">No bills or expenses yet. Scan a bill above to get started.</div>');
+}
+
+// ========== ACCOUNTS PAYABLE / RECEIVABLE ==========
+
+// Days between two YYYY-MM-DD strings (or between a date and today if end omitted)
+function daysBetween(startYmd, endYmd) {
+  if (!startYmd) return 0;
+  var s = new Date(startYmd + 'T00:00:00');
+  var e = endYmd ? new Date(endYmd + 'T00:00:00') : new Date();
+  return Math.floor((e - s) / (1000*60*60*24));
+}
+
+// Bucket a "days overdue" number into an aging bracket
+function agingBucket(days) {
+  if (days <= 0) return 'current';
+  if (days <= 30) return '1-30';
+  if (days <= 60) return '31-60';
+  if (days <= 90) return '61-90';
+  return '90+';
+}
+
+// Group items into monthly buckets keyed as "YYYY-MM" (or "overdue" for past-due)
+// getDate(item) returns the YYYY-MM-DD due/expected date for that item
+// getAmount(item) returns the £ amount
+function groupByMonth(items, getDate, getAmount) {
+  var today = new Date().toISOString().slice(0,10);
+  var groups = {};
+  items.forEach(function(it) {
+    var d = getDate(it);
+    var amt = getAmount(it);
+    var key;
+    if (!d) key = 'unknown';
+    else if (d < today) key = 'overdue';
+    else key = d.slice(0, 7); // YYYY-MM
+    if (!groups[key]) groups[key] = {total: 0, count: 0, key: key};
+    groups[key].total += amt;
+    groups[key].count += 1;
+  });
+  // Return sorted array: overdue first, then months chronologically, unknown last
+  var keys = Object.keys(groups);
+  keys.sort(function(a,b) {
+    if (a === 'overdue') return -1;
+    if (b === 'overdue') return 1;
+    if (a === 'unknown') return 1;
+    if (b === 'unknown') return -1;
+    return a.localeCompare(b);
+  });
+  return keys.map(function(k){ return groups[k]; });
+}
+
+// Pretty month label: "August 2026", or "Overdue" / "No date"
+function monthLabel(key) {
+  if (key === 'overdue') return 'Overdue';
+  if (key === 'unknown') return 'No date';
+  var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var parts = key.split('-');
+  return months[parseInt(parts[1],10)-1] + ' ' + parts[0];
+}
+
+// Render a "By month" card given the grouped data + a colour scheme for overdue
+function monthCard(title, groups, overdueColor) {
+  if (!groups.length) return '';
+  var rows = groups.map(function(g) {
+    var isOverdue = g.key === 'overdue';
+    var color = isOverdue ? overdueColor : '#1a1a2e';
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid #f0f0f0">'+
+      '<div>'+
+        '<div style="font-weight:700;color:'+color+'">'+monthLabel(g.key)+'</div>'+
+        '<div style="font-size:11px;color:#888;margin-top:1px">'+g.count+' item'+(g.count===1?'':'s')+'</div>'+
+      '</div>'+
+      '<div style="font-size:16px;font-weight:800;color:'+color+'">£'+g.total.toFixed(2)+'</div>'+
+    '</div>';
+  }).join('');
+  var total = groups.reduce(function(s,g){return s+g.total;},0);
+  return '<div style="'+cardStyle()+'margin-bottom:14px;padding:0">'+
+    '<div style="'+stitle()+'padding:14px 14px 8px 14px;margin:0">'+title+'</div>'+
+    rows +
+    '<div style="display:flex;justify-content:space-between;padding:12px 14px;background:#fafafa;border-radius:0 0 12px 12px">'+
+      '<strong>Total</strong>'+
+      '<strong>£'+total.toFixed(2)+'</strong>'+
+    '</div>'+
+  '</div>';
+}
+
+// Colour a row by aging severity
+function ageColor(days) {
+  if (days <= 0) return '#888';
+  if (days <= 30) return '#e65100';
+  if (days <= 60) return '#c62828';
+  return '#b71c1c';
+}
+
+// ---- ACCOUNTS PAYABLE (bills we owe suppliers) ----
+function rAP() {
+  var today = new Date().toISOString().slice(0,10);
+  var unpaid = invs.filter(function(i){ return i.status !== 'paid'; });
+
+  // Compute days overdue for each (based on due date; fall back to invoice date + 30)
+  unpaid.forEach(function(inv) {
+    var dueDate = inv.due || (inv.date ? shiftDate(inv.date, 30) : '');
+    inv._due = dueDate;
+    inv._daysOverdue = dueDate ? daysBetween(dueDate, today) : 0;
+    inv._total = (parseFloat(inv.net)||0) + (parseFloat(inv.vat)||0);
+  });
+
+  // Sort oldest-due first
+  unpaid.sort(function(a,b){ return b._daysOverdue - a._daysOverdue; });
+
+  var totals = {current:0, '1-30':0, '31-60':0, '61-90':0, '90+':0};
+  unpaid.forEach(function(inv){ totals[agingBucket(inv._daysOverdue)] += inv._total; });
+  var grandTotal = unpaid.reduce(function(s,i){return s+i._total;},0);
+  var overdueTotal = unpaid.filter(function(i){return i._daysOverdue>0;}).reduce(function(s,i){return s+i._total;},0);
+
+  document.getElementById('v-ap').innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
+      '<div><h2 style="font-size:20px;font-weight:800">💳 Accounts Payable</h2>'+
+       '<div style="font-size:12px;color:#888;margin-top:2px">Bills you owe suppliers</div></div>'+
+      '<button onclick="showTab(\'expenses\')" style="'+btnStyle('#fff','#1a1a2e',true)+'">+ Add / scan bill</button>'+
+    '</div>'+
+
+    '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px">'+
+      sc('Total Outstanding','£'+grandTotal.toFixed(2),'#1a1a2e')+
+      sc('Overdue','£'+overdueTotal.toFixed(2),'#c62828')+
+    '</div>'+
+
+    // Aging summary
+    '<div style="'+cardStyle()+'margin-bottom:14px">'+
+      '<div style="'+stitle()+'">Aging</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;text-align:center">'+
+        ageCell('Current','£'+totals.current.toFixed(2),'#2e7d32')+
+        ageCell('1-30 days','£'+totals['1-30'].toFixed(2),'#e65100')+
+        ageCell('31-60 days','£'+totals['31-60'].toFixed(2),'#c62828')+
+        ageCell('61-90 days','£'+totals['61-90'].toFixed(2),'#b71c1c')+
+        ageCell('90+ days','£'+totals['90+'].toFixed(2),'#7b0000')+
+      '</div>'+
+    '</div>'+
+
+    // Monthly breakdown — what's due each month
+    monthCard('📅 Payments to make — by month',
+      groupByMonth(unpaid, function(i){return i._due;}, function(i){return i._total;}),
+      '#c62828')+
+
+    (unpaid.length?
+      '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
+      '<table style="width:100%;border-collapse:collapse">'+th(['Ref#','Supplier','Due','Days','Amount',''])+
+      '<tbody>'+unpaid.map(function(inv){
+        var isOver = inv._daysOverdue > 0;
+        return '<tr style="'+(isOver?'background:#fff5f5':'')+'">'+
+          td('<strong style="color:#b8860b">'+escapeHtml(inv.num)+'</strong>')+
+          td('<div style="font-weight:600">'+escapeHtml(inv.supplier||'—')+'</div>')+
+          td('<span style="font-size:12px">'+escapeHtml(inv._due||'—')+'</span>')+
+          td(isOver
+            ? '<strong style="color:'+ageColor(inv._daysOverdue)+'">'+inv._daysOverdue+' days over</strong>'
+            : (inv._daysOverdue < 0 ? '<span style="color:#2e7d32">'+Math.abs(inv._daysOverdue)+' days left</span>' : '<span style="color:#e65100">Due today</span>'))+
+          td('<strong>£'+inv._total.toFixed(2)+'</strong>')+
+          td('<button onclick="mInvPaidById(\''+inv.id+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:4px 10px;font-size:11px">✓ Paid</button>')+
+        '</tr>';
+      }).join('')+'</tbody></table></div>'
+    :'<div style="'+cardStyle()+'color:#2e7d32;text-align:center;padding:30px">✓ Nothing outstanding — all bills paid.</div>');
+}
+
+function ageCell(label, val, color) {
+  return '<div style="padding:10px;border-radius:8px;background:#fafafa">'+
+    '<div style="font-size:14px;font-weight:800;color:'+color+'">'+val+'</div>'+
+    '<div style="font-size:10px;color:#888;margin-top:2px">'+label+'</div>'+
+  '</div>';
+}
+
+// Return YYYY-MM-DD n days after startYmd
+function shiftDate(startYmd, n) {
+  var d = new Date(startYmd + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0,10);
+}
+
+// Mark an invoice paid by id (used from AP view where we don't have array index)
+function mInvPaidById(id) {
+  for (var i = 0; i < invs.length; i++) {
+    if (invs[i].id === id) {
+      invs[i].status = 'paid';
+      invs[i].paidAt = ts();
+      invs[i].paidBy = user;
+      persistInv(invs[i]);
+      rAP(); rExp(); rDash();
+      return;
+    }
+  }
+}
+
+// ---- ACCOUNTS RECEIVABLE (customers who owe us) ----
+
+// Customer becomes "overdue" after this many days (garage industry default)
+var AR_PAYMENT_TERMS_DAYS = 14;
+
+// Business phone shown in chase SMS (edit this if your number changes)
+var KITH_PHONE = '020 8000 0000';
+
+function rAR() {
+  var today = new Date().toISOString().slice(0,10);
+  var unpaid = sales.filter(function(s){ return !s.paid; });
+
+  unpaid.forEach(function(s) {
+    var saleDate = normDate(s.date);
+    var dueDate  = saleDate ? shiftDate(saleDate, AR_PAYMENT_TERMS_DAYS) : '';
+    s._due = dueDate;
+    s._daysOverdue = dueDate ? daysBetween(dueDate, today) : 0;
+    s._amount = parseFloat(s.amount) || 0;
+  });
+
+  unpaid.sort(function(a,b){ return b._daysOverdue - a._daysOverdue; });
+
+  var totals = {current:0, '1-30':0, '31-60':0, '61-90':0, '90+':0};
+  unpaid.forEach(function(s){ totals[agingBucket(s._daysOverdue)] += s._amount; });
+  var grandTotal = unpaid.reduce(function(sum,s){return sum+s._amount;},0);
+  var overdueTotal = unpaid.filter(function(s){return s._daysOverdue>0;}).reduce(function(sum,s){return sum+s._amount;},0);
+
+  document.getElementById('v-ar').innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
+      '<div><h2 style="font-size:20px;font-weight:800">💰 Accounts Receivable</h2>'+
+       '<div style="font-size:12px;color:#888;margin-top:2px">Customers who owe you (default '+AR_PAYMENT_TERMS_DAYS+'-day terms)</div></div>'+
+      '<button onclick="showTab(\'sales\')" style="'+btnStyle('#fff','#1a1a2e',true)+'">+ Add sale</button>'+
+    '</div>'+
+
+    '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px">'+
+      sc('Total Outstanding','£'+grandTotal.toFixed(2),'#1a1a2e')+
+      sc('Overdue','£'+overdueTotal.toFixed(2),'#c62828')+
+    '</div>'+
+
+    '<div style="'+cardStyle()+'margin-bottom:14px">'+
+      '<div style="'+stitle()+'">Aging</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;text-align:center">'+
+        ageCell('Current','£'+totals.current.toFixed(2),'#2e7d32')+
+        ageCell('1-30 days','£'+totals['1-30'].toFixed(2),'#e65100')+
+        ageCell('31-60 days','£'+totals['31-60'].toFixed(2),'#c62828')+
+        ageCell('61-90 days','£'+totals['61-90'].toFixed(2),'#b71c1c')+
+        ageCell('90+ days','£'+totals['90+'].toFixed(2),'#7b0000')+
+      '</div>'+
+    '</div>'+
+
+    // Monthly breakdown — expected receipts by month
+    monthCard('📅 Payments to receive — by month',
+      groupByMonth(unpaid, function(s){return s._due;}, function(s){return s._amount;}),
+      '#c62828')+
+
+    (unpaid.length?
+      '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
+      '<table style="width:100%;border-collapse:collapse">'+th(['Job#','Customer','Reg','Phone','Sale Date','Days','Amount','Chase',''])+
+      '<tbody>'+unpaid.map(function(s){
+        var isOver = s._daysOverdue > 0;
+        return '<tr style="'+(isOver?'background:#fff5f5':'')+'">'+
+          td('<span style="font-family:monospace;color:#b8860b">'+escapeHtml(s.ref||'—')+'</span>')+
+          td('<div style="font-weight:600">'+escapeHtml(s.customer||'—')+'</div>'+
+             (s.desc?'<div style="font-size:10px;color:#888">'+escapeHtml(s.desc)+'</div>':''))+
+          td('<span style="font-family:monospace;font-weight:700">'+escapeHtml(s.reg||'—')+'</span>')+
+          td(s.phone
+             ? '<a href="tel:'+encodeURIComponent(s.phone)+'" style="color:#1565c0;text-decoration:none;font-family:monospace">'+escapeHtml(s.phone)+'</a>'
+             : '<button onclick="editSalePhoneById(\''+escapeHtml(s.ref||s.createdAt)+'\')" style="'+btnStyle('#fff','#888',true)+'padding:3px 8px;font-size:10px">+ Add</button>')+
+          td('<span style="font-size:12px">'+escapeHtml(s.date||'—')+'</span>'+
+             (s.chasedAt?'<div style="font-size:10px;color:#888;margin-top:2px">Last chased '+escapeHtml(s.chasedAt.slice(0,10))+'</div>':''))+
+          td(isOver
+             ? '<strong style="color:'+ageColor(s._daysOverdue)+'">'+s._daysOverdue+' days over</strong>'
+             : (s._daysOverdue < 0 ? '<span style="color:#2e7d32">'+Math.abs(s._daysOverdue)+' days left</span>' : '<span style="color:#e65100">Due today</span>'))+
+          td('<strong>£'+s._amount.toFixed(2)+'</strong>')+
+          td(s.phone
+             ? '<button onclick="chaseSaleById(\''+escapeHtml(s.ref||s.createdAt)+'\')" style="'+btnStyle('#1565c0','#fff')+'padding:4px 10px;font-size:11px">💬 Chase</button>'
+             : '<span style="color:#ccc;font-size:11px">no phone</span>')+
+          td('<button onclick="markSalePaidById(\''+escapeHtml(s.ref||s.createdAt)+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:4px 10px;font-size:11px">✓ Paid</button>')+
+        '</tr>';
+      }).join('')+'</tbody></table></div>'
+    :'<div style="'+cardStyle()+'color:#2e7d32;text-align:center;padding:30px">✓ Nothing outstanding — all customers paid.</div>');
+}
+
+// Normalise a date string into YYYY-MM-DD (accepts "08 Jul 2026" or "2026-07-08")
+function normDate(s) {
+  if (!s) return '';
+  s = String(s).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  // Try "08 Jul 2026" or "08/07/2026"
+  var d = new Date(s);
+  if (!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+  return '';
+}
+
+// Find a sale by its ref or createdAt (fallback identifier)
+function findSaleIdx(id) {
+  for (var i = 0; i < sales.length; i++) {
+    if ((sales[i].ref && sales[i].ref === id) || sales[i].createdAt === id) return i;
+  }
+  return -1;
+}
+
+function editSalePhoneById(id) {
+  var i = findSaleIdx(id); if (i < 0) return;
+  var current = sales[i].phone || '';
+  var p = prompt('Customer phone number for ' + (sales[i].customer||'this sale') + ':\n(UK format e.g. 07123 456789)', current);
+  if (p == null) return;
+  sales[i].phone = p.trim();
+  saveSales();
+  rAR();
+}
+
+function markSalePaidById(id) {
+  var i = findSaleIdx(id); if (i < 0) return;
+  sales[i].paid = true;
+  sales[i].paidAt = ts();
+  sales[i].paidBy = user;
+  saveSales();
+  rAR(); rSales(); rDash();
+}
+
+// Open the phone's Messages app with a pre-filled chase SMS
+function chaseSaleById(id) {
+  var i = findSaleIdx(id); if (i < 0) return;
+  var s = sales[i];
+  if (!s.phone) { alert('Add a phone number first.'); return; }
+
+  var amount = (parseFloat(s.amount)||0).toFixed(2);
+  var name = (s.customer || '').split(' ')[0] || 'there';
+  var desc = s.desc || 'your recent job';
+  var body =
+    'Hi ' + name + ', this is a friendly reminder from KITH Cars that £' + amount +
+    ' for ' + desc + (s.reg ? ' (' + s.reg + ')' : '') +
+    ' is outstanding. Please could you settle at your earliest convenience? ' +
+    'Any queries call us on ' + KITH_PHONE + '. Thanks — KITH Cars';
+
+  // Track the chase attempt
+  s.chasedAt = new Date().toISOString();
+  s.chaseCount = (s.chaseCount || 0) + 1;
+  saveSales();
+
+  // Trigger iOS Messages / Android SMS app
+  var url = 'sms:' + encodeURIComponent(s.phone) + '?&body=' + encodeURIComponent(body);
+  window.location.href = url;
+
+  setTimeout(rAR, 500);
+}
+
+// ========== PAYROLL ==========
+// Reads clock-in shifts from kith_shifts + kith_staff, groups by month,
+// multiplies by hourly rate, tracks paid status per person per month.
+var currentPayrollMonth = new Date().toISOString().slice(0,7);  // "YYYY-MM"
+
+async function fetchStaff() {
+  try {
+    var r = await fetch(SB+'/rest/v1/kith_staff?select=*&order=name.asc', {headers:SH});
+    return await r.json() || [];
+  } catch(e) { console.warn('fetchStaff:',e); return []; }
+}
+async function fetchShifts(month) {
+  try {
+    var start = month + '-01T00:00:00';
+    var d = new Date(month + '-01T00:00:00');
+    d.setMonth(d.getMonth()+1);
+    var end = d.toISOString().slice(0,10) + 'T00:00:00';
+    var url = SB+'/rest/v1/kith_shifts?clock_in=gte.'+start+'&clock_in=lt.'+end+'&select=*';
+    var r = await fetch(url, {headers:SH});
+    return await r.json() || [];
+  } catch(e) { console.warn('fetchShifts:',e); return []; }
+}
+async function fetchPayrollPaid(month) {
+  try {
+    var r = await fetch(SB+'/rest/v1/kith_payroll?month=eq.'+encodeURIComponent(month)+'&select=*', {headers:SH});
+    return await r.json() || [];
+  } catch(e) { return []; }
+}
+function shiftMonth(ym, delta) {
+  var parts = ym.split('-');
+  var d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, 1);
+  d.setMonth(d.getMonth()+delta);
+  return d.toISOString().slice(0,7);
+}
+function setPayrollMonth(ym) { currentPayrollMonth = ym; rPayroll(); }
+
+async function rPayroll() {
+  var el = document.getElementById('v-payroll');
+  el.innerHTML = '<div style="padding:40px;text-align:center;color:#888">Loading payroll…</div>';
+
+  var staff = await fetchStaff();
+  var shifts = await fetchShifts(currentPayrollMonth);
+  var paidRecs = await fetchPayrollPaid(currentPayrollMonth);
+
+  if (!staff.length) {
+    el.innerHTML =
+      '<h2 style="font-size:20px;font-weight:800">💷 Payroll</h2>'+
+      '<div style="'+cardStyle()+'color:#888;text-align:center;padding:30px;margin-top:14px">'+
+        'No staff set up yet. Run <strong>kith-timesheets-schema.sql</strong> in Supabase to seed your team.'+
+      '</div>';
+    return;
+  }
+
+  // Aggregate minutes worked per staff for this month
+  var byStaff = {};
+  staff.forEach(function(s){
+    byStaff[s.id] = {
+      id:s.id, name:s.name, role:s.role||'', rate:parseFloat(s.hourly_rate)||0,
+      mins:0, shifts:0, paid:false, paidAt:null
+    };
+  });
+  shifts.forEach(function(sh){
+    var b = byStaff[sh.staff_id];
+    if (!b) return;
+    if (!sh.clock_out) return;  // still open — skip
+    var mins = Math.max(0, Math.floor((new Date(sh.clock_out) - new Date(sh.clock_in)) / 60000));
+    b.mins += mins; b.shifts += 1;
+  });
+  paidRecs.forEach(function(rec){
+    if (byStaff[rec.staff_id]) {
+      byStaff[rec.staff_id].paid = !!rec.paid;
+      byStaff[rec.staff_id].paidAt = rec.paid_at;
+    }
+  });
+
+  var list = Object.keys(byStaff).map(function(k){return byStaff[k];});
+  list.forEach(function(p){ p.hours = p.mins/60; p.gross = p.hours * p.rate; });
+
+  var totalHours = list.reduce(function(s,x){return s+x.hours;},0);
+  var totalGross = list.reduce(function(s,x){return s+x.gross;},0);
+  var paidTotal   = list.filter(function(x){return x.paid;}).reduce(function(s,x){return s+x.gross;},0);
+  var unpaidTotal = totalGross - paidTotal;
+
+  var prev = shiftMonth(currentPayrollMonth,-1);
+  var next = shiftMonth(currentPayrollMonth,+1);
+
+  el.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
+      '<div>'+
+        '<h2 style="font-size:20px;font-weight:800">💷 Payroll</h2>'+
+        '<div style="font-size:12px;color:#888;margin-top:2px">Hours from clock-in ×  hourly rate</div>'+
+      '</div>'+
+      '<button onclick="expPayrollCSV()" style="'+btnStyle('#fff','#1a1a2e',true)+'">⬇ CSV</button>'+
+    '</div>'+
+
+    // Month picker
+    '<div style="display:flex;justify-content:center;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">'+
+      '<button onclick="setPayrollMonth(\''+prev+'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:8px 14px;font-size:12px">←</button>'+
+      '<div style="font-size:18px;font-weight:800;padding:0 12px;min-width:180px;text-align:center">'+monthLabel(currentPayrollMonth)+'</div>'+
+      '<button onclick="setPayrollMonth(\''+next+'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:8px 14px;font-size:12px">→</button>'+
+    '</div>'+
+
+    // Summary tiles
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">'+
+      sc('Total Hours', totalHours.toFixed(1),  '#1565c0')+
+      sc('Total Gross', '£'+totalGross.toFixed(2),  '#1a1a2e')+
+      sc('Paid',   '£'+paidTotal.toFixed(2),  '#2e7d32')+
+      sc('Unpaid', '£'+unpaidTotal.toFixed(2),'#c62828')+
+    '</div>'+
+
+    '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
+    '<table style="width:100%;border-collapse:collapse">'+
+    th(['Name','Role','Shifts','Hours','Rate £/h','Gross','Status',''])+
+    '<tbody>'+list.map(function(p){
+      var h = Math.floor(p.mins/60), m = p.mins%60;
+      var noRate = !p.rate;
+      var noWork = p.mins === 0;
+      return '<tr style="'+(noRate && !noWork?'background:#fff5f5':'')+'">'+
+        td('<strong>'+escapeHtml(p.name)+'</strong>')+
+        td('<span style="font-size:12px;color:#888">'+escapeHtml(p.role)+'</span>')+
+        td(p.shifts||'—')+
+        td(noWork?'<span style="color:#ccc">—</span>':('<strong>'+h+'h '+m+'m</strong>'))+
+        td('<span onclick="editRate(\''+p.id+'\')" style="cursor:pointer;color:'+(noRate?'#c62828':'#1565c0')+';text-decoration:underline">'+(noRate?'Set rate':'£'+p.rate.toFixed(2))+'</span>')+
+        td(noRate||noWork?'<span style="color:#ccc">—</span>':('<strong style="color:#1565c0">£'+p.gross.toFixed(2)+'</strong>'))+
+        td(p.paid
+           ? '<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700">PAID</span>'
+           : (noWork?'<span style="color:#ccc;font-size:11px">—</span>':'<span style="color:#c62828;font-size:11px;font-weight:700">Unpaid</span>'))+
+        td(noWork
+           ? ''
+           : p.paid
+             ? '<button onclick="markPayrollUnpaid(\''+p.id+'\')" style="'+btnStyle('#fff','#888',true)+'padding:3px 8px;font-size:10px">Undo</button>'
+             : (noRate ? '<span style="font-size:10px;color:#c62828">Set rate first</span>'
+                        : '<button onclick="markPayrollPaid(\''+p.id+'\','+p.mins+','+p.rate+')" style="'+btnStyle('#2e7d32','#fff')+'padding:4px 10px;font-size:11px">✓ Paid</button>'))+
+      '</tr>';
+    }).join('')+'</tbody></table></div>'+
+    '<p style="margin-top:12px;font-size:12px;color:#888">Tap the rate to set/edit it. Tap ✓ Paid once you\'ve settled with the person — the figure locks against that month.</p>';
+}
+
+async function editRate(staffId) {
+  var r = prompt('Hourly rate (£) — enter as a number, e.g. 12.50');
+  if (r === null) return;
+  var n = parseFloat(r);
+  if (isNaN(n) || n < 0) { alert('Not a valid number.'); return; }
+  try {
+    var resp = await fetch(SB+'/rest/v1/kith_staff?id=eq.'+encodeURIComponent(staffId), {
+      method:'PATCH', headers:SH,
+      body: JSON.stringify({hourly_rate: n})
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  } catch(e) { alert('Save failed: '+e.message); return; }
+  rPayroll();
+}
+
+async function markPayrollPaid(staffId, mins, rate) {
+  var hours = mins/60;
+  var gross = hours * rate;
+  var body = {
+    id: staffId + '_' + currentPayrollMonth,
+    staff_id: staffId, month: currentPayrollMonth,
+    hours: hours, rate: rate, gross: gross,
+    paid: true, paid_at: new Date().toISOString(), paid_by: user
+  };
+  try {
+    await fetch(SB+'/rest/v1/kith_payroll', {
+      method:'POST', headers:SH,
+      body: JSON.stringify(body)
+    });
+  } catch(e) { alert('Save failed: '+e.message); return; }
+  rPayroll();
+}
+async function markPayrollUnpaid(staffId) {
+  try {
+    await fetch(SB+'/rest/v1/kith_payroll?id=eq.'+encodeURIComponent(staffId+'_'+currentPayrollMonth), {
+      method:'DELETE', headers:SH
+    });
+  } catch(e) {}
+  rPayroll();
+}
+
+function expPayrollCSV() {
+  // Re-render then export whatever the table currently shows
+  fetchStaff().then(function(staff){
+    fetchShifts(currentPayrollMonth).then(function(shifts){
+      fetchPayrollPaid(currentPayrollMonth).then(function(paidRecs){
+        var byStaff = {};
+        staff.forEach(function(s){ byStaff[s.id] = {name:s.name, role:s.role||'', rate:parseFloat(s.hourly_rate)||0, mins:0, shifts:0}; });
+        shifts.forEach(function(sh){
+          var b=byStaff[sh.staff_id]; if(!b||!sh.clock_out) return;
+          b.mins += Math.max(0, Math.floor((new Date(sh.clock_out)-new Date(sh.clock_in))/60000));
+          b.shifts += 1;
+        });
+        var rows = [['Name','Role','Shifts','Hours','Rate £/h','Gross £','Status','Paid At']];
+        Object.keys(byStaff).forEach(function(id){
+          var p = byStaff[id];
+          var rec = paidRecs.find(function(x){return x.staff_id===id;});
+          rows.push([
+            p.name, p.role, p.shifts, (p.mins/60).toFixed(2),
+            p.rate.toFixed(2), (p.mins/60*p.rate).toFixed(2),
+            rec&&rec.paid?'PAID':'Unpaid',
+            rec&&rec.paid_at?rec.paid_at.slice(0,10):''
+          ]);
+        });
+        dl(rows, 'KITH-Payroll-'+currentPayrollMonth);
+      });
+    });
+  });
+}
+
+function rSales() {
+  var total = sales.reduce(function(s,x){return s+(+x.amount||0);},0);
+  document.getElementById('v-sales').innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
+      '<h2 style="font-size:18px;font-weight:800">Sales Records</h2>'+
+      '<div style="display:flex;gap:8px">'+
+        '<button onclick="addSale()" style="'+btnStyle('#1a1a2e','#fff')+'">+ Add Sale</button>'+
+        '<button onclick="expSales()" style="'+btnStyle('#fff','#1a1a2e',true)+'">⬇ CSV</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="'+cardStyle()+'margin-bottom:14px">'+
+      '<div onclick="document.getElementById(\'sfi\').click()" style="border:2px dashed #ccc;border-radius:10px;padding:20px;text-align:center;cursor:pointer;background:#fafafa">'+
+        '<input type="file" id="sfi" accept="image/*,application/pdf,.csv" capture="environment" style="display:none" onchange="uploadSales(this.files[0])"/>'+
+        '<div style="font-size:24px;margin-bottom:6px">📈</div>'+
+        '<div style="font-size:14px;font-weight:600">Upload Techman sales export</div>'+
+        '<div style="font-size:12px;color:#888;margin-top:2px">CSV, Excel, PDF or photo</div>'+
+      '</div>'+
+      '<div id="sale-out" style="margin-top:10px"></div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">'+
+      sc('Total Sales','£'+total.toFixed(2),'#2e7d32')+
+      sc('Records',sales.length,'#1565c0')+
+      sc('Avg Sale',sales.length?'£'+(total/sales.length).toFixed(2):'£0','#b8860b')+
+    '</div>'+
+    (sales.length?'<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
+    '<table style="width:100%;border-collapse:collapse">'+th(['Date','Job#','Reg','Customer','Description','Amount','Source',''])+
+    '<tbody>'+sales.map(function(s,i){return'<tr>'+
+      td(s.date)+td('<span style="font-family:monospace;color:#b8860b">'+s.ref+'</span>')+
+      td('<span style="font-family:monospace;font-weight:700">'+s.reg+'</span>')+
+      td(s.customer)+td('<span style="font-size:12px;color:#888">'+s.desc+'</span>')+
+      td('<strong style="color:#2e7d32">£'+(+s.amount).toFixed(2)+'</strong>')+
+      td('<span style="font-size:11px;color:#888">'+s.source+'</span>')+
+      td('<button onclick="delSale('+i+')" style="'+btnStyle('#fff','#888',true)+'padding:3px 8px;font-size:11px">✕</button>')+
+    '</tr>';}).join('')+'</tbody></table></div>':'<div style="'+cardStyle()+'color:#888">No sales records yet.</div>');
+}
+
+// PO FORM
+function calcTotal() {
+  var ps = Array.from(document.querySelectorAll('.pp')).map(function(i){return +(i.value||0);});
+  var qs = Array.from(document.querySelectorAll('.pq')).map(function(i){return +(i.value||1);});
+  var t=0; ps.forEach(function(p,i){t+=p*(qs[i]||1);});
+  var te=document.getElementById('ptot'); var tv=document.getElementById('ptotvat');
+  if(te)te.textContent=t.toFixed(2); if(tv)tv.textContent=(t*1.2).toFixed(2);
+}
+function addRow() {
+  var tb=document.getElementById('ptb');
+  var tr=document.createElement('tr');
+  tr.innerHTML='<td><input placeholder="Part name" class="pp-n" style="width:100%;padding:5px;border:1px solid #ddd;border-radius:4px"/></td>'+
+    '<td><input placeholder="Part no." class="pp-num" style="width:100%;padding:5px;border:1px solid #ddd;border-radius:4px"/></td>'+
+    '<td><input type="number" value="1" min="1" class="pq" style="width:50px;padding:5px;border:1px solid #ddd;border-radius:4px" oninput="calcTotal()"/></td>'+
+    '<td><input type="number" placeholder="0.00" step="0.01" class="pp" style="width:80px;padding:5px;border:1px solid #ddd;border-radius:4px" oninput="calcTotal()"/></td>'+
+    '<td><input placeholder="15 Jun" class="pp-eta" style="width:70px;padding:5px;border:1px solid #ddd;border-radius:4px"/></td>'+
+    '<td><input placeholder="GSF" class="pp-sup" style="width:70px;padding:5px;border:1px solid #ddd;border-radius:4px"/></td>'+
+    '<td><button onclick="this.closest(\'tr\').remove();calcTotal()" style="background:none;border:1px solid #ddd;border-radius:4px;cursor:pointer;padding:3px 7px;color:#888">✕</button></td>';
+  tb.appendChild(tr);
+}
+async function savePO() {
+  var reg=(document.getElementById('po-reg').value||'').trim().toUpperCase();
+  if(!reg){alert('Vehicle reg required.');return;}
+  var rows=Array.from(document.querySelectorAll('#ptb tr')).map(function(tr){return{
+    name:(tr.querySelector('.pp-n')||{}).value||'',num:(tr.querySelector('.pp-num')||{}).value||'',
+    qty:+((tr.querySelector('.pq')||{}).value)||1,price:+((tr.querySelector('.pp')||{}).value)||0,
+    eta:(tr.querySelector('.pp-eta')||{}).value||'',supplier:(tr.querySelector('.pp-sup')||{}).value||''
+  };}).filter(function(r){return r.name;});
+  if(!rows.length){alert('Add at least one part.');return;}
+  var tot=rows.reduce(function(s,r){return s+r.price*r.qty;},0);
+  var po={id:'PO'+mid(),jobReg:reg,jobId:(document.getElementById('po-job')||{}).value||'',
+    partName:rows.map(function(r){return r.name;}).join(', '),
+    partNum:rows.map(function(r){return r.num;}).filter(Boolean).join(', '),
+    partLines:rows,qty:rows.reduce(function(s,r){return s+r.qty;},0),
+    supplier:(document.getElementById('po-sup')||{}).value||'',
+    price:tot,eta:rows.map(function(r){return r.eta;}).filter(Boolean)[0]||'',
+    surcharge:(document.getElementById('po-sc')||{}).checked||false,
+    onRamp:(document.getElementById('po-ramp')||{}).checked||false,
+    paid:false,createdAt:ts(),createdBy:user};
+  await sbUp('kith_pos',{id:po.id,data:po,updated_at:new Date().toISOString()});
+  POs.unshift(po);cx('ov-po');rDash();rPOs();
+}
+
+// RO FORM
+async function saveRO() {
+  var pn=(document.getElementById('ro-part')||{}).value||'';
+  var sup=(document.getElementById('ro-sup')||{}).value||'';
+  if(!pn||!sup){alert('Part name and supplier required.');return;}
+  var ro={id:'RO'+mid(),partName:pn,partNum:(document.getElementById('ro-num')||{}).value||'',
+    jobReg:((document.getElementById('ro-reg')||{}).value||'').toUpperCase(),
+    supplier:sup,reason:(document.getElementById('ro-reason')||{}).value||'Faulty',
+    price:parseFloat((document.getElementById('ro-price')||{}).value)||0,
+    status:'pending',creditReceived:false,createdAt:ts(),createdBy:user};
+  await sbUp('kith_returns',{id:ro.id,data:ro,updated_at:new Date().toISOString()});
+  ROs.unshift(ro);cx('ov-ro');rROs();rDash();
+}
+
+// ========== DOCUMENT SCANNING HELPERS ==========
+
+// PASTE THE GOOGLE APPS SCRIPT WEB APP URL HERE
+// (See anthropic-proxy.gs — deploy that as a Web App, copy the URL, paste it below)
+var PROXY_URL = 'https://script.google.com/macros/s/AKfycbyUGppzV1hOyq-9U4-k60lz68j9lpPloXw2am7j4iXDMhG4shbuVbbEd9crukVr_Nhj-A/exec';
+
+// PASTE THE GOOGLE SHEETS SYNC APPS SCRIPT URL HERE
+// (See sheets-sync.gs — deploy it, then paste the Web app URL below)
+var SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxn70bYufAL0Ig8ssP70jiCc9aZryb7OLN8dO_HHESBWmrqsfN9O_ike4CTu4uqZvnAKw/exec';
+
+// Send a request to Anthropic via the Apps Script proxy.
+// Sending no Content-Type keeps it a "simple" CORS request — no preflight
+// OPTIONS call, which Apps Script Web Apps don't handle.
+async function callClaude(payload) {
+  if (PROXY_URL.indexOf('PASTE') !== -1) {
+    throw new Error('Proxy URL not configured — see anthropic-proxy.gs');
+  }
+  var resp = await fetch(PROXY_URL, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    redirect: 'follow'
+  });
+  if (!resp.ok) throw new Error('Proxy HTTP ' + resp.status);
+  var data = await resp.json();
+  if (data && data.error) throw new Error(data.error.message || 'API error');
+  return data;
+}
+
+// Read file as base64 (strip data URL prefix)
+function fileToB64(file) {
+  return new Promise(function(res, rej) {
+    var r = new FileReader();
+    r.onload = function() { res(r.result.split(',')[1]); };
+    r.onerror = function() { rej(new Error('Could not read file')); };
+    r.readAsDataURL(file);
+  });
+}
+
+// Preprocess image: fix EXIF orientation, cap large photos, flatten onto white
+// Handles: iPhone photos taken sideways, huge camera files, poorly lit shots,
+// long thin receipts, wide landscape bills, PNG/JPG/HEIC-converted
+function preprocessImage(file) {
+  return new Promise(function(resolve) {
+    if (!file.type.startsWith('image/')) { resolve(file); return; }
+
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var img = new Image();
+      img.onload = function() {
+        // Cap the longest edge at 2000px — big enough for OCR, small enough
+        // to be fast on 4G. Preserves aspect ratio so long receipts stay readable.
+        var MAX = 2000;
+        var w = img.naturalWidth, h = img.naturalHeight;
+        if (w > MAX || h > MAX) {
+          if (w >= h) { h = Math.round(h * (MAX/w)); w = MAX; }
+          else { w = Math.round(w * (MAX/h)); h = MAX; }
+        }
+
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        // White background — helps dark or shadowy photos, and dodges the
+        // black-background bug when JPEGs get flattened without an alpha channel
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+
+        canvas.toBlob(function(blob) {
+          if (blob) resolve(new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', {type:'image/jpeg'}));
+          else resolve(file); // fall back to original if canvas fails
+        }, 'image/jpeg', 0.90);
+      };
+      img.onerror = function() { resolve(file); }; // fall back if decode fails
+      img.src = e.target.result;
+    };
+    reader.onerror = function() { resolve(file); };
+    reader.readAsDataURL(file);
+  });
+}
+
+// Universal document scanner — sends image or PDF to Claude, expects JSON back.
+// Robust to weird photos: tilted, dark, cropped, portrait, landscape, long receipts.
+async function scanDocument(file, prompt) {
+  var processed = await preprocessImage(file);
+  var b64 = await fileToB64(processed);
+
+  var contentBlock;
+  if (processed.type.startsWith('image/')) {
+    contentBlock = {type:'image', source:{type:'base64', media_type:processed.type, data:b64}};
+  } else if (processed.type === 'application/pdf') {
+    contentBlock = {type:'document', source:{type:'base64', media_type:'application/pdf', data:b64}};
+  } else {
+    throw new Error('Unsupported file type: ' + (processed.type || 'unknown'));
+  }
+
+  var data = await callClaude({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1500,
+    messages: [{role:'user', content:[contentBlock, {type:'text', text:prompt}]}]
+  });
+
+  var txt = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
+  // strip markdown fences if the model added them
+  txt = txt.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  // find the JSON block if there's stray prose
+  var firstBrace = txt.search(/[\{\[]/);
+  if (firstBrace > 0) txt = txt.slice(firstBrace);
+
+  return JSON.parse(txt);
+}
+
+// Shared instructions telling the model to be forgiving about photo quality
+var ROBUST_HINT =
+  'IMPORTANT — the document may be:\n' +
+  '- photographed at an angle, rotated, or upside down (mentally rotate to read)\n' +
+  '- in poor lighting, shadowed, glare-affected, or slightly blurred\n' +
+  '- a long thin till receipt, a wide landscape invoice, or a standard A4 page\n' +
+  '- partially cropped at the edges, or a screenshot\n' +
+  '- handwritten, printed, or mixed\n' +
+  'Read everything you can. If a field is not visible, return "" (empty string) for it — do not guess.\n\n';
+
+// ========== INVOICE / EXPENSE OVERLAY ==========
+
+var invFileData = null;
+
+async function scanInvoiceDoc(file) {
+  if (!file) return;
+  var out = document.getElementById('inv-scan-out');
+  var zone = document.getElementById('inv-upload-zone');
+  var nameEl = document.getElementById('inv-file-name');
+
+  if (nameEl) nameEl.textContent = '📎 ' + file.name;
+  if (zone) zone.style.borderColor = '#1565c0';
+  if (out) out.innerHTML = '<div style="background:#e3f2fd;padding:10px;border-radius:8px;font-size:13px;color:#0d47a1;margin-top:8px">⏳ Reading document with AI…</div>';
+
+  invFileData = {name: file.name, type: file.type};
+
+  var prompt = ROBUST_HINT +
+    'This is a supplier invoice, receipt, or bill for KITH Cars (UK garage).\n' +
+    'Extract the following. Return ONLY a JSON object, no prose, no code fences:\n' +
+    '{\n' +
+    '  "reference": "invoice number or receipt number",\n' +
+    '  "supplier": "vendor / supplier / payee name",\n' +
+    '  "type": "one of: Supplier Invoice, Expense, Utility, Rent, Other",\n' +
+    '  "date": "issue date in YYYY-MM-DD format",\n' +
+    '  "dueDate": "due date in YYYY-MM-DD or empty",\n' +
+    '  "net": "amount excluding VAT as a plain number (no currency symbol)",\n' +
+    '  "vat": "VAT amount as a plain number",\n' +
+    '  "total": "total including VAT as a plain number",\n' +
+    '  "notes": "one short line describing what this is for"\n' +
+    '}\n\n' +
+    'If VAT is shown as 20% but only the net or total is given, compute the missing one.\n' +
+    'UK date formats (DD/MM/YYYY) are common — convert them to YYYY-MM-DD.';
+
+  try {
+    var p = await scanDocument(file, prompt);
+
+    // Auto-fill fields — never overwrite one the user has already typed
+    setIfEmpty('i-num', p.reference);
+    setIfEmpty('i-sup', p.supplier);
+    setIfEmpty('i-date', p.date);
+    setIfEmpty('i-due', p.dueDate);
+    setIfEmpty('i-net', p.net);
+    setIfEmpty('i-vat', p.vat);
+
+    // Type dropdown — best-effort match
+    if (p.type) {
+      var sel = document.getElementById('i-type');
+      if (sel) {
+        var want = String(p.type).toLowerCase();
+        for (var i = 0; i < sel.options.length; i++) {
+          var opt = sel.options[i].text.toLowerCase();
+          if (opt === want || opt.indexOf(want) > -1 || want.indexOf(opt) > -1) {
+            sel.selectedIndex = i;
+            break;
+          }
+        }
+      }
+    }
+
+    iCalc();
+
+    if (zone) zone.style.borderColor = '#2e7d32';
+    if (out) out.innerHTML =
+      '<div style="background:#e8f5e9;padding:10px;border-radius:8px;font-size:13px;color:#2e7d32;margin-top:8px">' +
+        '<strong>✓ Read successfully</strong> — check the fields below and adjust anything wrong before saving.' +
+        (p.notes ? '<br><span style="color:#555;font-weight:400">' + escapeHtml(p.notes) + '</span>' : '') +
+      '</div>';
+  } catch (e) {
+    if (zone) zone.style.borderColor = '#c62828';
+    if (out) out.innerHTML =
+      '<div style="background:#ffebee;padding:10px;border-radius:8px;font-size:13px;color:#c62828;margin-top:8px">' +
+        '<strong>Could not read document.</strong> ' + escapeHtml(e.message) +
+        '<br><span style="color:#555">You can still fill the fields manually and save.</span>' +
+      '</div>';
+  }
+}
+
+function setIfEmpty(id, val) {
+  if (val === undefined || val === null || val === '') return;
+  var el = document.getElementById(id);
+  if (el && !el.value) el.value = val;
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+function resetInvForm() {
+  ['i-num','i-sup','i-date','i-due','i-net','i-vat','i-tot'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  var sel = document.getElementById('i-type'); if (sel) sel.selectedIndex = 0;
+  invFileData = null;
+  var fn = document.getElementById('inv-file-name'); if (fn) fn.textContent = '';
+  var iz = document.getElementById('inv-upload-zone'); if (iz) iz.style.borderColor = '';
+  var out = document.getElementById('inv-scan-out'); if (out) out.innerHTML = '';
+  var fi = document.getElementById('inv-file'); if (fi) fi.value = '';
+}
+
+function iCalc() {
+  var n=+((document.getElementById('i-net')||{}).value||0);
+  var v=+((document.getElementById('i-vat')||{}).value||0);
+  var t=document.getElementById('i-tot'); if(t)t.value='£'+(n+v).toFixed(2);
+}
+
+function saveInv() {
+  var num=(document.getElementById('i-num')||{}).value||'';
+  var sup=(document.getElementById('i-sup')||{}).value||'';
+  if(!num||!sup){alert('Reference and supplier required.');return;}
+  var candidate = {
+    num:num,
+    supplier:sup,
+    net:(document.getElementById('i-net')||{}).value||0,
+    vat:(document.getElementById('i-vat')||{}).value||0
+  };
+  var dup = findDuplicate(candidate);
+  if (dup) {
+    var ex = invs[dup.index];
+    var exTot = (parseFloat(ex.net)||0)+(parseFloat(ex.vat)||0);
+    if (!confirm('⚠ Duplicate detected — matches existing:\n\n'+
+                 ex.supplier+' · '+ex.num+' · £'+exTot.toFixed(2)+
+                 '\n\n('+dup.reason+')\n\nAdd this entry anyway?')) {
+      return;
+    }
+  }
+  var newEntry = {
+    id: 'INV' + Date.now() + Math.floor(Math.random()*1000),
+    num:num,supplier:sup,type:(document.getElementById('i-type')||{}).value||'Invoice',
+    date:(document.getElementById('i-date')||{}).value||'',due:(document.getElementById('i-due')||{}).value||'',
+    net:(document.getElementById('i-net')||{}).value||0,vat:(document.getElementById('i-vat')||{}).value||0,
+    receipt:invFileData?invFileData.name:null,
+    source:'manual',
+    status:'unpaid',createdAt:ts(),createdBy:user
+  };
+  invs.unshift(newEntry);
+  persistInv(newEntry);
+  cx('ov-inv');
+  resetInvForm();
+  rExp();
+}
+
+function mInvPaid(i){ invs[i].status='paid'; persistInv(invs[i]); rExp(); }
+function delInv(i){
+  if(!confirm('Delete?'))return;
+  var deleted = invs.splice(i,1)[0];
+  forgetInv(deleted && deleted.id);
+  rExp();
+}
+
+// Push EVERYTHING (Bills & Expenses, POs, ROs, Sales) to Google Sheets in one go
+async function syncToSheets() {
+  if (SHEETS_URL.indexOf('PASTE') !== -1) {
+    alert('Google Sheets sync is not set up yet.\n\nSee sheets-sync.gs — deploy it and paste the URL into accounts.html.');
+    return;
+  }
+  var total = invs.length + POs.length + ROs.length + sales.length;
+  if (!total) { alert('Nothing to sync yet.'); return; }
+
+  var btns = document.querySelectorAll('.sheets-btn');
+  var origs = [];
+  btns.forEach(function(b,i){ origs[i]=b.innerHTML; b.disabled=true; b.innerHTML='⏳ Syncing…'; });
+
+  try {
+    var resp = await fetch(SHEETS_URL, {
+      method: 'POST',
+      body: JSON.stringify({invs: invs, pos: POs, ros: ROs, sales: sales}),
+      redirect: 'follow'
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    var data = await resp.json();
+    if (data.error) throw new Error(data.error);
+
+    var msg = '✓ Synced to Google Sheets:\n\n';
+    (data.results || []).forEach(function(r){ msg += '• ' + r.tab + ': ' + r.rows + ' rows\n'; });
+    alert(msg);
+  } catch(e) {
+    alert('Sync failed: ' + e.message);
+  } finally {
+    btns.forEach(function(b,i){ b.disabled=false; b.innerHTML=origs[i]; });
+  }
+}
+
+// CSV export — instant fallback that always works, no setup needed
+function expInvsCSV() {
+  var rows = [['Reference #','Supplier','Type','Date','Due Date','ex-VAT','VAT','inc-VAT','Status','Source','Matched PO','Added By','Added At']];
+  invs.forEach(function(inv) {
+    var net = parseFloat(inv.net)||0, vat = parseFloat(inv.vat)||0;
+    rows.push([
+      inv.num||'', inv.supplier||'', inv.type||'', inv.date||'', inv.due||'',
+      net.toFixed(2), vat.toFixed(2), (net+vat).toFixed(2),
+      inv.status||'', inv.source||'', inv.matchedPO||'',
+      inv.createdBy||'', inv.createdAt||''
+    ]);
+  });
+  dl(rows, 'KITH-Bills-Expenses');
+}
+
+// Scan the whole list for duplicates and remove them, keeping the earliest of each set.
+// Prefers to keep entries that are marked Paid — you don't want to lose that state.
+function dedupInvs() {
+  var kept = [];
+  var removed = [];
+  invs.forEach(function(inv) {
+    // check against already-kept entries
+    var savedInvs = invs; invs = kept;
+    var dup = findDuplicate(inv);
+    invs = savedInvs;
+    if (dup) {
+      // If the new one is paid but the kept one isn't, swap — keep the paid record.
+      if (inv.status === 'paid' && kept[dup.index].status !== 'paid') {
+        removed.push(kept[dup.index]);
+        kept[dup.index] = inv;
+      } else {
+        removed.push(inv);
+      }
+    } else {
+      kept.push(inv);
+    }
+  });
+  if (!removed.length) { alert('No duplicates found.'); return; }
+  if (!confirm('Found ' + removed.length + ' duplicate(s). Remove them?\n\n(Paid records are kept over unpaid ones where both exist.)')) return;
+  invs = kept;
+  try { localStorage.setItem('kith_invs', JSON.stringify(invs)); } catch(e){}
+  removed.forEach(function(r){ if (r && r.id) sbDel('kith_invs', r.id); });
+  rExp();
+}
+
+// Duplicate detection.
+// Rule 1 — Definite match: same supplier + same invoice number = same bill.
+// Rule 2 — OCR-misread fallback: same supplier + same total + same date, ONLY when the
+//          invoice numbers are missing or agree (never when both are present and differ).
+// This stops two legit bills for the same amount from the same supplier on different
+// dates being wrongly merged.
+function findDuplicate(entry) {
+  var num   = String(entry.num || '').trim().toLowerCase();
+  var sup   = String(entry.supplier || '').trim().toLowerCase();
+  var date  = String(entry.date || '').trim();
+  var total = (parseFloat(entry.net)||0) + (parseFloat(entry.vat)||0);
+
+  for (var i = 0; i < invs.length; i++) {
+    var e     = invs[i];
+    var eNum  = String(e.num || '').trim().toLowerCase();
+    var eSup  = String(e.supplier || '').trim().toLowerCase();
+    var eDate = String(e.date || '').trim();
+    var eTot  = (parseFloat(e.net)||0) + (parseFloat(e.vat)||0);
+
+    // Different (or missing) supplier → skip
+    if (!sup || !eSup || sup !== eSup) continue;
+
+    // Rule 1: strong — same supplier + same invoice #
+    if (num && eNum && num === eNum) {
+      return {index: i, reason: 'same invoice number & supplier'};
+    }
+
+    // Rule 2: fallback for OCR misreads — same supplier + same total + same date
+    if (total > 5 && Math.abs(total - eTot) < 0.01) {
+      // If both have invoice numbers and they differ, they're different bills
+      if (num && eNum && num !== eNum) continue;
+      // If both have dates and they differ, they're different bills
+      if (date && eDate && date !== eDate) continue;
+      return {index: i, reason: 'same supplier, total & date'};
+    }
+  }
+  return null;
+}
+
+// ========== BILL SCAN → auto-save to Bills & Expenses ==========
+async function scanBill(file) {
+  if (!file) return;
+  var out = document.getElementById('scan-out');
+  out.innerHTML = '<div style="background:#e3f2fd;padding:10px;border-radius:8px;color:#0d47a1;font-size:13px">⏳ Reading bill with AI…</div>';
+
+  try {
+    var poSum = POs.slice(0,20).map(function(p){
+      return 'PO '+p.id+' (reg '+(p.jobReg||'?')+'): '+p.partName+' — £'+(+p.price).toFixed(2)+' from '+(p.supplier||'?');
+    }).join('\n');
+
+    var prompt = ROBUST_HINT +
+      'This is a supplier bill for KITH Cars (UK garage). Extract the header data with a clean VAT breakdown, and try to match it against one of our open Purchase Orders below.\n\n' +
+      'Return ONLY a JSON object — plain numbers, no currency symbols, no strings for the amounts:\n' +
+      '{\n' +
+      '  "supplier": "",\n' +
+      '  "invoiceNum": "",\n' +
+      '  "invoiceDate": "YYYY-MM-DD or empty",\n' +
+      '  "dueDate": "YYYY-MM-DD or empty",\n' +
+      '  "subtotal": 0,  // amount ex-VAT\n' +
+      '  "vat": 0,       // VAT amount\n' +
+      '  "total": 0,     // amount inc-VAT\n' +
+      '  "matchedPO": "PO ID or null",\n' +
+      '  "matchConf": "high | medium | low | none",\n' +
+      '  "matchReason": "one short line"\n' +
+      '}\n\n' +
+      'UK VAT is 20%. If only one of subtotal/total is visible on the bill, compute the other from the 20% rule. If only "total" is shown with no VAT breakdown, assume it INCLUDES VAT and derive: subtotal = total / 1.2, vat = total - subtotal.\n' +
+      'Convert UK DD/MM/YYYY dates to YYYY-MM-DD.\n' +
+      'Match on supplier name AND (amount within 10% OR part description overlap).\n\n' +
+      'Our recent POs:\n' + (poSum || '(none)');
+
+    var p = await scanDocument(file, prompt);
+
+    // Normalise + derive missing figures using UK 20% VAT rule
+    var net   = parseFloat(p.subtotal) || 0;
+    var vat   = parseFloat(p.vat) || 0;
+    var total = parseFloat(p.total) || 0;
+    if (total > 0 && net === 0)      { net = total / 1.2;   vat = total - net; }
+    else if (net > 0 && total === 0) { vat = net * 0.2;     total = net + vat; }
+    else if (net > 0 && vat === 0)   { vat = total - net;   if (vat < 0) vat = net * 0.2; }
+
+    var entry = {
+      id:         'INV' + Date.now() + Math.floor(Math.random()*1000),
+      num:        p.invoiceNum || 'B'+mid(),
+      supplier:   p.supplier || 'Unknown',
+      type:       'Supplier Invoice',
+      date:       p.invoiceDate || '',
+      due:        p.dueDate || '',
+      net:        net.toFixed(2),
+      vat:        vat.toFixed(2),
+      matchedPO:  p.matchedPO || null,
+      matchConf:  p.matchConf || 'none',
+      matchReason:p.matchReason || '',
+      source:     'scan',
+      status:     'unpaid',
+      createdAt:  ts(),
+      createdBy:  user
+    };
+
+    // Duplicate check — don't add if we already have this bill
+    var dup = findDuplicate(entry);
+    if (dup) {
+      var ex = invs[dup.index];
+      var exTot = (parseFloat(ex.net)||0)+(parseFloat(ex.vat)||0);
+      out.innerHTML =
+        '<div style="background:#fff3e0;padding:12px;border-radius:8px;color:#e65100">' +
+          '<strong>⚠ Duplicate — not added</strong>' +
+          '<div style="margin-top:6px;font-size:13px;color:#333">' +
+            'Matches existing entry (' + escapeHtml(dup.reason) + '):<br>' +
+            escapeHtml(ex.supplier) + ' · Inv ' + escapeHtml(ex.num) + ' · £' + exTot.toFixed(2) +
+            (ex.status==='paid'?' · <strong style="color:#2e7d32">PAID</strong>':' · Unpaid') +
+            '<br><span style="font-size:12px;color:#555">If this is genuinely a different bill, edit the reference number in the existing entry, or add this one manually.</span>' +
+          '</div>' +
+        '</div>';
+      return;
+    }
+
+    invs.unshift(entry);
+    persistInv(entry);
+
+    out.innerHTML =
+      '<div style="background:#e8f5e9;padding:12px;border-radius:8px;color:#2e7d32">' +
+        '<strong>✓ Bill scanned &amp; saved to expenses</strong>' +
+        '<div style="margin-top:6px;font-size:13px;color:#333">' +
+          escapeHtml(entry.supplier) + ' · Inv ' + escapeHtml(entry.num) + '<br>' +
+          'ex-VAT £' + entry.net + ' &nbsp;+&nbsp; VAT £' + entry.vat + ' &nbsp;=&nbsp; <strong>inc-VAT £' + total.toFixed(2) + '</strong><br>' +
+          (entry.matchedPO
+            ? 'Matched to <strong>' + escapeHtml(entry.matchedPO) + '</strong>'
+            : 'No confident PO match') +
+          (entry.matchReason ? ' — <span style="color:#555">' + escapeHtml(entry.matchReason) + '</span>' : '') +
+        '</div>' +
+      '</div>';
+    rExp();
+  } catch(e) {
+    out.innerHTML = '<div style="background:#ffebee;padding:10px;border-radius:8px;color:#c62828">Error: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+// ========== SALES ==========
+
+function addSale() {
+  var d=prompt('Enter: Date, Job#, Reg, Customer, Phone, Description, Amount\nE.g.: 08 Jul 2026, TM1234, MT67NXL, John Smith, 07123 456789, Full Service, 420.00\n\n(Phone optional — leave blank with two commas in a row if unknown)');
+  if(!d)return;
+  var parts=d.split(',').map(function(x){return x.trim();});
+  if(parts.length<7){alert('Need all 7 fields. Use empty comma-comma for missing phone.');return;}
+  sales.unshift({
+    date:parts[0], ref:parts[1], reg:parts[2], customer:parts[3],
+    phone:parts[4], desc:parts[5],
+    amount:parseFloat(parts[6])||0,
+    paid:false, source:'Manual', createdAt:ts()
+  });
+  saveSales();rSales();
+}
+
+async function uploadSales(file) {
+  if (!file) return;
+  var out = document.getElementById('sale-out');
+  out.innerHTML = '<div style="background:#e3f2fd;padding:10px;border-radius:8px;color:#0d47a1;font-size:13px">⏳ Reading with AI…</div>';
+
+  try {
+    // CSV/Excel path — read as text and let the model extract rows
+    var isImage = file.type.startsWith('image/');
+    var isPdf   = file.type === 'application/pdf';
+
+    var prompt = ROBUST_HINT +
+      'Extract sales records from this Techman export (KITH Cars garage). Return ONLY a JSON array — no prose:\n' +
+      '[{"date":"YYYY-MM-DD","ref":"Job number","reg":"Vehicle reg","customer":"Customer name","phone":"Phone if visible, else empty","desc":"Work description","amount":0}]\n\n' +
+      'One row per sale/invoice. Amount is the total sale value (a plain number). Phone can be empty. If the document has none, return [].';
+
+    var rows;
+    if (isImage || isPdf) {
+      rows = await scanDocument(file, prompt);
+    } else {
+      // CSV, TSV, TXT — send as text
+      var text = await file.text();
+      var data = await callClaude({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2500,
+        messages: [{role:'user', content:[{type:'text', text: prompt + '\n\nDocument content:\n' + text.slice(0, 40000)}]}]
+      });
+      var txt = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
+      txt = txt.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+      var brace = txt.search(/[\{\[]/); if (brace > 0) txt = txt.slice(brace);
+      rows = JSON.parse(txt);
+    }
+
+    if (!Array.isArray(rows) || !rows.length) throw new Error('No sales records found in document');
+
+    rows.forEach(function(r){
+      sales.unshift({
+        date:r.date||'', ref:r.ref||'', reg:r.reg||'', customer:r.customer||'',
+        phone:r.phone||'', desc:r.desc||'', amount:+(r.amount)||0,
+        paid:false, source:'Upload: '+file.name, createdAt:ts()
+      });
+    });
+    saveSales();
+    out.innerHTML = '<div style="background:#e8f5e9;padding:10px;border-radius:8px;color:#2e7d32">✓ ' + rows.length + ' sales imported.</div>';
+    rSales();
+  } catch(e) {
+    out.innerHTML = '<div style="background:#ffebee;padding:10px;border-radius:8px;color:#c62828">Error: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+function delSale(i){if(!confirm('Delete?'))return;sales.splice(i,1);saveSales();rSales();}
+function expSales(){dl([['Date','Job#','Reg','Customer','Description','Amount','Source']].concat(sales.map(function(s){return[s.date,s.ref,s.reg,s.customer,s.desc,(+s.amount).toFixed(2),s.source];})),'KITH-Sales');}
+function expCSV(){dl([['PO#','Reg','Part(s)','Supplier','ex-VAT','VAT','inc-VAT','ETA','Paid']].concat(POs.map(function(p){var n=+p.price||0;return[p.id,p.jobReg||'',p.partName,p.supplier,n.toFixed(2),(n*.2).toFixed(2),(n*1.2).toFixed(2),p.eta||'',p.paid?'Yes':'No'];})),'KITH-POs');}
+function dl(rows,name){var csv=rows.map(function(r){return r.map(function(v){return'"'+String(v||'').replace(/"/g,'""')+'"';}).join(',');}).join('\n');var blob=new Blob(['\uFEFF'+csv],{type:'text/csv'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=name+'-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);}
+</script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#f0f2f5;color:#1a1a2e;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+#login{position:fixed;inset:0;background:linear-gradient(135deg,#1a1a2e,#16213e);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.lbox{background:#fff;border-radius:16px;padding:36px;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.3);display:flex;flex-direction:column;align-items:center;gap:14px}
+.tab{padding:13px 18px;font-size:13px;font-weight:600;color:#888;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap}
+.tab.on{color:#1a1a2e;border-bottom-color:#1a1a2e}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:500;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}
+.panel{background:#fff;border-radius:12px;width:100%;max-width:680px;margin:auto}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div style="color:#c9a84c;font-size:12px;font-weight:700;letter-spacing:.12em;margin-bottom:20px;text-transform:uppercase">KITH CARS GROUP</div>
+  <div class="lbox">
+    <div style="font-size:32px">🚗</div>
+    <div style="font-size:20px;font-weight:900">Accounts System</div>
+    <div style="font-size:12px;color:#888">Authorised access only</div>
+
+    <div id="s1" style="width:100%">
+      <div style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Select your name</div>
+      <button onclick="goPin('Sudha')" style="width:100%;background:#f8f9fa;border:1.5px solid #e0e0e0;border-radius:10px;padding:14px;cursor:pointer;font-size:14px;font-weight:600;text-align:left;display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:22px">💳</span><div><div>Sudha</div><div style="font-size:11px;color:#888;font-weight:400">Accounts Manager</div></div>
+      </button>
+      <button onclick="goPin('Logkith')" style="width:100%;background:#f8f9fa;border:1.5px solid #e0e0e0;border-radius:10px;padding:14px;cursor:pointer;font-size:14px;font-weight:600;text-align:left;display:flex;align-items:center;gap:10px">
+        <span style="font-size:22px">👑</span><div><div>Logkith</div><div style="font-size:11px;color:#888;font-weight:400">Director</div></div>
+      </button>
+    </div>
+
+    <div id="s2" style="display:none;width:100%;text-align:center">
+      <div id="s2name" style="font-size:16px;font-weight:700;margin-bottom:6px"></div>
+      <div style="font-size:12px;color:#888;margin-bottom:12px">Enter 4-digit PIN</div>
+      <div style="display:flex;gap:12px;justify-content:center;margin-bottom:8px">
+        <div id="dot0" style="width:14px;height:14px;border-radius:50%;border:2px solid #ccc;background:#eee"></div>
+        <div id="dot1" style="width:14px;height:14px;border-radius:50%;border:2px solid #ccc;background:#eee"></div>
+        <div id="dot2" style="width:14px;height:14px;border-radius:50%;border:2px solid #ccc;background:#eee"></div>
+        <div id="dot3" style="width:14px;height:14px;border-radius:50%;border:2px solid #ccc;background:#eee"></div>
+      </div>
+      <div id="perr" style="font-size:12px;color:#c62828;min-height:16px;margin-bottom:8px"></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
+        <button onclick="pd('1')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">1</button>
+        <button onclick="pd('2')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">2</button>
+        <button onclick="pd('3')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">3</button>
+        <button onclick="pd('4')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">4</button>
+        <button onclick="pd('5')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">5</button>
+        <button onclick="pd('6')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">6</button>
+        <button onclick="pd('7')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">7</button>
+        <button onclick="pd('8')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">8</button>
+        <button onclick="pd('9')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">9</button>
+        <button onclick="pin='';updDots()" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:12px;font-weight:600;padding:14px;cursor:pointer">Clear</button>
+        <button onclick="pd('0')" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">0</button>
+        <button onclick="pin=pin.slice(0,-1);updDots()" style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;font-size:22px;font-weight:700;padding:14px;cursor:pointer">⌫</button>
+      </div>
+      <button onclick="goBack()" style="background:none;border:1px solid #ddd;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;color:#888">← Back</button>
+    </div>
+    <div style="font-size:11px;color:#aaa;margin-top:4px">Having trouble? <button onclick="localStorage.clear();location.reload()" style="background:none;border:none;color:#aaa;cursor:pointer;text-decoration:underline;font-size:11px">Clear &amp; reload</button></div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <div style="background:#1a1a2e;color:#fff;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100">
+    <div style="font-size:17px;font-weight:900">🚗 KITH Cars <span style="color:#c9a84c;font-size:13px">Accounts</span></div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span id="uname" style="font-size:12px;color:#aaa"></span>
+      <button onclick="doLogout()" style="background:none;border:1px solid #444;border-radius:6px;color:#fff;padding:6px 12px;cursor:pointer;font-size:12px">Log Out</button>
+    </div>
+  </div>
+  <div style="background:#fff;border-bottom:2px solid #e0e0e0;padding:0 20px;display:flex;overflow-x:auto">
+    <button class="tab on" id="tab-dash" onclick="showTab('dash')">📊 Dashboard</button>
+    <button class="tab" id="tab-pos" onclick="showTab('pos')">📦 Purchase Orders</button>
+    <button class="tab" id="tab-ro" onclick="showTab('ro')">↩ Return Orders</button>
+    <button class="tab" id="tab-ap" onclick="showTab('ap')">💳 To Pay</button>
+    <button class="tab" id="tab-ar" onclick="showTab('ar')">💰 To Collect</button>
+    <button class="tab" id="tab-expenses" onclick="showTab('expenses')">🧾 Bills &amp; Expenses</button>
+    <button class="tab" id="tab-payroll" onclick="showTab('payroll')">💷 Payroll</button>
+    <button class="tab" id="tab-sales" onclick="showTab('sales')">📈 Sales</button>
+  </div>
+  <div style="padding:20px;max-width:1300px;margin:0 auto">
+    <div id="v-dash"></div>
+    <div id="v-pos" style="display:none"></div>
+    <div id="v-ro" style="display:none"></div>
+    <div id="v-ap" style="display:none"></div>
+    <div id="v-ar" style="display:none"></div>
+    <div id="v-expenses" style="display:none"></div>
+    <div id="v-payroll" style="display:none"></div>
+    <div id="v-sales" style="display:none"></div>
+  </div>
+</div>
+
+<!-- PO OVERLAY -->
+<div class="overlay" id="ov-po" onclick="if(event.target===this)cx('ov-po')">
+<div class="panel" style="margin:20px auto;max-width:680px">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid #eee;background:#fafafa;border-radius:12px 12px 0 0">
+    <div><div style="font-size:18px;font-weight:800">New Purchase Order</div><div style="font-size:12px;color:#888;margin-top:2px">One PO per vehicle — add all parts</div></div>
+    <button onclick="cx('ov-po')" style="background:none;border:1.5px solid #ddd;color:#888;font-size:16px;cursor:pointer;padding:4px 10px;border-radius:6px">✕</button>
+  </div>
+  <div style="padding:20px;display:flex;flex-direction:column;gap:12px">
+    <div style="background:#e3f2fd;border-left:4px solid #1565c0;color:#0d47a1;padding:10px 14px;border-radius:6px;font-size:12px">RAW ex-VAT prices only — no markup. VAT at 20% calculated automatically.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Vehicle Reg *</label><input id="po-reg" placeholder="AB12 CDE" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-family:monospace;font-weight:700;text-transform:uppercase;font-size:13px"/></div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Job ID</label><input id="po-job" placeholder="J001234" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Primary Supplier</label><input id="po-sup" placeholder="GSF Car Parts" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+      <div style="display:flex;gap:16px;align-items:flex-end;padding-bottom:6px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="po-sc"/> Surcharge</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="po-ramp"/> 🔴 On Ramp</label>
+      </div>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;margin-bottom:-4px">Parts</div>
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:#f5f5f5"><th style="padding:7px 6px;text-align:left;font-size:10px;color:#999;font-weight:700;text-transform:uppercase">Part Name *</th><th style="padding:7px 6px;text-align:left;font-size:10px;color:#999;font-weight:700;text-transform:uppercase">Part No.</th><th style="padding:7px 6px;text-align:left;font-size:10px;color:#999;font-weight:700;text-transform:uppercase">Qty</th><th style="padding:7px 6px;text-align:left;font-size:10px;color:#999;font-weight:700;text-transform:uppercase">Price ex-VAT</th><th style="padding:7px 6px;text-align:left;font-size:10px;color:#999;font-weight:700;text-transform:uppercase">ETA</th><th style="padding:7px 6px;text-align:left;font-size:10px;color:#999;font-weight:700;text-transform:uppercase">Supplier</th><th></th></tr></thead>
+      <tbody id="ptb">
+        <tr>
+          <td style="padding:4px 3px"><input placeholder="Part name" class="pp-n" style="width:100%;padding:5px 7px;border:1px solid #ddd;border-radius:4px;font-size:12px"/></td>
+          <td style="padding:4px 3px"><input placeholder="BD4521" class="pp-num" style="width:100%;padding:5px 7px;border:1px solid #ddd;border-radius:4px;font-size:12px"/></td>
+          <td style="padding:4px 3px"><input type="number" value="1" min="1" class="pq" style="width:50px;padding:5px 7px;border:1px solid #ddd;border-radius:4px;font-size:12px" oninput="calcTotal()"/></td>
+          <td style="padding:4px 3px"><input type="number" placeholder="0.00" step="0.01" class="pp" style="width:80px;padding:5px 7px;border:1px solid #ddd;border-radius:4px;font-size:12px" oninput="calcTotal()"/></td>
+          <td style="padding:4px 3px"><input placeholder="15 Jun" class="pp-eta" style="width:70px;padding:5px 7px;border:1px solid #ddd;border-radius:4px;font-size:12px"/></td>
+          <td style="padding:4px 3px"><input placeholder="GSF" class="pp-sup" style="width:70px;padding:5px 7px;border:1px solid #ddd;border-radius:4px;font-size:12px"/></td>
+          <td style="padding:4px 3px"><button onclick="this.closest('tr').remove();calcTotal()" style="background:none;border:1px solid #ddd;border-radius:4px;cursor:pointer;padding:4px 8px;color:#888;font-size:12px">✕</button></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <button onclick="addRow()" style="background:#fff;border:1.5px solid #ddd;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:600">+ Add Part</button>
+      <div style="font-size:14px;font-weight:800">ex-VAT: &pound;<span id="ptot">0.00</span> &nbsp;|&nbsp; inc-VAT: &pound;<span id="ptotvat">0.00</span></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:8px;border-top:1px solid #eee">
+      <button onclick="cx('ov-po')" style="background:#fff;border:1.5px solid #ddd;border-radius:8px;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">Cancel</button>
+      <button onclick="savePO()" style="background:#1a1a2e;border:none;border-radius:8px;color:#fff;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">Raise PO →</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- RO OVERLAY -->
+<div class="overlay" id="ov-ro" onclick="if(event.target===this)cx('ov-ro')">
+<div class="panel" style="margin:20px auto;max-width:520px">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid #eee;background:#fafafa;border-radius:12px 12px 0 0">
+    <div style="font-size:18px;font-weight:800">New Return Order</div>
+    <button onclick="cx('ov-ro')" style="background:none;border:1.5px solid #ddd;color:#888;font-size:16px;cursor:pointer;padding:4px 10px;border-radius:6px">✕</button>
+  </div>
+  <div style="padding:20px;display:flex;flex-direction:column;gap:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Part Name *</label><input id="ro-part" placeholder="Front Brake Disc Pair" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Part Number</label><input id="ro-num" placeholder="BD4521" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Vehicle Reg</label><input id="ro-reg" placeholder="AB12 CDE" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-family:monospace;font-weight:700;text-transform:uppercase;font-size:13px"/></div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Supplier *</label><input id="ro-sup" placeholder="GSF Car Parts" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Return Reason</label>
+        <select id="ro-reason" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;background:#fff">
+          <option>Faulty</option><option>Wrong Part</option><option>Overordered</option>
+          <option>Customer Declined Job</option><option>Surcharge / Core Return</option><option>Other</option>
+        </select>
+      </div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Price (&pound;)</label><input id="ro-price" type="number" placeholder="0.00" step="0.01" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:8px;border-top:1px solid #eee">
+      <button onclick="cx('ov-ro')" style="background:#fff;border:1.5px solid #ddd;border-radius:8px;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">Cancel</button>
+      <button onclick="saveRO()" style="background:#1a1a2e;border:none;border-radius:8px;color:#fff;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">Create Return Order →</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- INVOICE OVERLAY -->
+<div class="overlay" id="ov-inv" onclick="if(event.target===this)cx('ov-inv')">
+<div class="panel" style="margin:20px auto;max-width:520px">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid #eee;background:#fafafa;border-radius:12px 12px 0 0">
+    <div style="font-size:18px;font-weight:800">New Expense / Invoice</div>
+    <button onclick="cx('ov-inv')" style="background:none;border:1.5px solid #ddd;color:#888;font-size:16px;cursor:pointer;padding:4px 10px;border-radius:6px">✕</button>
+  </div>
+  <div style="padding:20px;display:flex;flex-direction:column;gap:12px">
+
+    <!-- DOCUMENT SCAN ZONE — was missing entirely -->
+    <div id="inv-upload-zone" onclick="document.getElementById('inv-file').click()"
+         style="border:2px dashed #ccc;border-radius:10px;padding:18px;text-align:center;cursor:pointer;background:#fafafa;transition:border-color .2s">
+      <input type="file" id="inv-file" accept="image/*,application/pdf" capture="environment" style="display:none" onchange="scanInvoiceDoc(this.files[0])"/>
+      <div style="font-size:30px;margin-bottom:6px">📄</div>
+      <div style="font-size:14px;font-weight:700;margin-bottom:2px">Tap to scan bill / receipt</div>
+      <div style="font-size:11px;color:#888">Photo, PDF or screenshot — any angle, lighting or size. Fields auto-fill.</div>
+      <div id="inv-file-name" style="font-size:11px;color:#2e7d32;margin-top:6px;font-weight:600"></div>
+    </div>
+    <div id="inv-scan-out"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Reference # *</label><input id="i-num" placeholder="INV-001" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Supplier / Payee *</label><input id="i-sup" placeholder="GSF Car Parts" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Type</label>
+        <select id="i-type" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;background:#fff">
+          <option>Supplier Invoice</option><option>Expense</option><option>Utility</option><option>Rent</option><option>Other</option>
+        </select>
+      </div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Date</label><input id="i-date" type="date" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Amount ex-VAT</label><input id="i-net" type="number" placeholder="0.00" step="0.01" oninput="iCalc()" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">VAT (&pound;)</label><input id="i-vat" type="number" placeholder="0.00" step="0.01" oninput="iCalc()" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Total inc-VAT</label><input id="i-tot" readonly style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;background:#f8f9fa;font-weight:700"/></div>
+    </div>
+    <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Due Date</label><input id="i-due" type="date" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:8px;border-top:1px solid #eee">
+      <button onclick="cx('ov-inv');resetInvForm()" style="background:#fff;border:1.5px solid #ddd;border-radius:8px;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">Cancel</button>
+      <button onclick="saveInv()" style="background:#1a1a2e;border:none;border-radius:8px;color:#fff;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:600">Save →</button>
+    </div>
+  </div>
+</div>
+</div>
+
+</body>
+</html>
