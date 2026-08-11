@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>KITH Cars — Marketing Hub</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.5.0/Recharts.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%;font-family:'Inter',sans-serif;background:#080b12;color:#e8eaf2;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#2a3050;border-radius:99px}
+button{cursor:pointer;font-family:inherit;border:none;outline:none}
+input,select,textarea{font-family:inherit;outline:none;border:none}
+</style>
+</head>
+<body><div id="root"></div>
+<script>
+const {useState,useEffect,useCallback}=React;
+const {AreaChart,Area,BarChart,Bar,LineChart,Line,XAxis,YAxis,CartesianGrid,Tooltip,ResponsiveContainer,PieChart,Pie,Cell}=Recharts;
+
+const STORE='kith_hub_v3';
+const load=()=>{try{const d=localStorage.getItem(STORE);return d?JSON.parse(d):null}catch{return null}};
+const save=d=>{try{localStorage.setItem(STORE,JSON.stringify(d))}catch{}};
+
+const blank=()=>({
+  website:{weekly:[{w:'Wk1',sessions:0,leads:0,calls:0},{w:'Wk2',sessions:0,leads:0,calls:0},{w:'Wk3',sessions:0,leads:0,calls:0},{w:'Wk4',sessions:0,leads:0,calls:0}]},
+  seo:{weekly:[{w:'Wk1',impressions:0,clicks:0,position:0},{w:'Wk2',impressions:0,clicks:0,position:0},{w:'Wk3',impressions:0,clicks:0,position:0},{w:'Wk4',impressions:0,clicks:0,position:0}],topKw:[]},
+  social:{instagram:{followers:0,reach:0,posts:0,eng:0,hist:[]},facebook:{followers:0,reach:0,posts:0,eng:0,hist:[]},tiktok:{followers:0,views:0,posts:0,eng:0,hist:[]},linkedin:{connections:0,impressions:0,posts:0,eng:0,hist:[]}},
+  calls:{log:[],total:0,answered:0,booked:0},
+  sms:{log:[],sent:0,replied:0,booked:0},
+  email:{log:[],sent:0,opened:0,replied:0,booked:0},
+  linout:{log:[],sent:0,accepted:0,replied:0,booked:0},
+  b2b:{log:[],sent:0,opened:0,replied:0,booked:0},
+  reviews:{count:0,rating:0,recent:[]},
+  updated:null,
+});
+
+const C={red:'#dc2626',redd:'rgba(220,38,38,0.12)',green:'#10b981',gd:'rgba(16,185,129,0.12)',blue:'#3b82f6',bd:'rgba(59,130,246,0.12)',amber:'#f59e0b',ad:'rgba(245,158,11,0.12)',purple:'#8b5cf6',pd:'rgba(139,92,246,0.12)',teal:'#14b8a6',td:'rgba(20,184,166,0.12)',pink:'#ec4899',surf:'#0e1320',surf2:'#141b2d',bdr:'rgba(255,255,255,0.06)',muted:'#6b7a99',text:'#e8eaf2',t2:'#b0b8d4'};
+
+const Card=({ch,s={}})=><div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem',...s}}>{ch}</div>;
+
+const KPI=({label,val,sub,col=C.red,icon})=>(
+  <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+    <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}><span style={{fontSize:12,color:C.muted,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em'}}>{label}</span><span style={{fontSize:20}}>{icon}</span></div>
+    <div style={{fontSize:26,fontWeight:800,color:C.text,letterSpacing:'-0.03em',marginBottom:4}}>{val}</div>
+    {sub&&<div style={{fontSize:11,color:C.muted}}>{sub}</div>}
+    <div style={{height:2,background:`linear-gradient(90deg,${col},transparent)`,borderRadius:2,marginTop:8}}/>
+  </div>
+);
+
+const Btn=({ch,onClick,col=C.red,out=false,s={}})=>(
+  <button onClick={onClick} style={{padding:'8px 16px',borderRadius:8,fontSize:13,fontWeight:600,background:out?'transparent':col,color:out?col:C.text,border:out?`1px solid ${col}`:'none',transition:'opacity 0.15s',...s}}
+    onMouseOver={e=>e.currentTarget.style.opacity='0.8'} onMouseOut={e=>e.currentTarget.style.opacity='1'}>{ch}</button>
+);
+
+const Inp=({label,val,set,type='text',ph='',s={}})=>(
+  <div style={{display:'flex',flexDirection:'column',gap:4}}>
+    {label&&<label style={{fontSize:11,color:C.muted,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.06em'}}>{label}</label>}
+    <input type={type} value={val} onChange={e=>set(e.target.value)} placeholder={ph} style={{background:C.surf2,border:`1px solid ${C.bdr}`,borderRadius:8,padding:'8px 12px',fontSize:13,color:C.text,...s}}/>
+  </div>
+);
+
+const Sel=({label,val,set,opts})=>(
+  <div style={{display:'flex',flexDirection:'column',gap:4}}>
+    {label&&<label style={{fontSize:11,color:C.muted,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.06em'}}>{label}</label>}
+    <select value={val} onChange={e=>set(e.target.value)} style={{background:C.surf2,border:`1px solid ${C.bdr}`,borderRadius:8,padding:'8px 12px',fontSize:13,color:C.text}}>
+      {opts.map(o=><option key={o.v||o} value={o.v||o}>{o.l||o}</option>)}
+    </select>
+  </div>
+);
+
+const Hdr=({title,sub,action})=>(
+  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'1.5rem'}}>
+    <div><h2 style={{fontSize:20,fontWeight:800,letterSpacing:'-0.02em'}}>{title}</h2>{sub&&<p style={{fontSize:13,color:C.muted,marginTop:3}}>{sub}</p>}</div>
+    {action}
+  </div>
+);
+
+const ttp={contentStyle:{background:C.surf2,border:`1px solid ${C.bdr}`,borderRadius:8,fontSize:12,color:C.text}};
+const grid={CartesianGrid:{strokeDasharray:'3 3',stroke:C.bdr}};
+const ax={tick:{fill:C.muted,fontSize:11},axisLine:false,tickLine:false};
+
+// ─── OVERVIEW ────────────────────────────────────────────────────────────────
+function Overview({d}){
+  const lw=d.website.weekly[d.website.weekly.length-1]||{};
+  const ls=d.seo.weekly[d.seo.weekly.length-1]||{};
+  const booked=(d.calls.booked||0)+(d.email.booked||0)+(d.b2b.booked||0)+(d.sms.booked||0);
+  const outSent=(d.email.sent||0)+(d.b2b.sent||0)+(d.linout.sent||0);
+  const chart=d.website.weekly.map(w=>({name:w.w,Sessions:w.sessions,Leads:w.leads,Calls:w.calls||0}));
+  const funnel=[
+    {name:'Impressions',v:d.seo.weekly.reduce((s,w)=>s+(w.impressions||0),0),c:C.blue},
+    {name:'Sessions',v:d.website.weekly.reduce((s,w)=>s+w.sessions,0),c:C.purple},
+    {name:'Enquiries',v:d.website.weekly.reduce((s,w)=>s+w.leads,0),c:C.amber},
+    {name:'Booked',v:booked,c:C.green},
+  ];
+  return(
+    <div>
+      <Hdr title="KITH Cars — Marketing Overview" sub={`Last updated: ${d.updated||'Never — start entering data below'}`}/>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(175px,1fr))',gap:'1rem',marginBottom:'1.5rem'}}>
+        <KPI label="Sessions (this week)" val={lw.sessions||0} sub="From Google Analytics" col={C.blue} icon="🌐"/>
+        <KPI label="Search Impressions" val={(ls.impressions||0).toLocaleString()} sub="From Search Console" col={C.purple} icon="🔍"/>
+        <KPI label="Calls Booked" val={d.calls.booked||0} sub="From call log" col={C.green} icon="📞"/>
+        <KPI label="Outreach Sent" val={outSent} sub="Email + LinkedIn + B2B" col={C.amber} icon="✉️"/>
+        <KPI label="Google Rating" val={d.reviews.rating||'—'} sub={`${d.reviews.count||0} reviews`} col={C.amber} icon="⭐"/>
+        <KPI label="Total Booked" val={booked} sub="All channels combined" col={C.red} icon="✅"/>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1.5fr 0.5fr',gap:'1rem',marginBottom:'1rem'}}>
+        <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+          <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:'1rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Weekly Traffic & Leads</div>
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={chart}>
+              <defs>
+                <linearGradient id="gb" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={C.blue} stopOpacity={0.3}/><stop offset="95%" stopColor={C.blue} stopOpacity={0}/></linearGradient>
+                <linearGradient id="gg" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={C.green} stopOpacity={0.3}/><stop offset="95%" stopColor={C.green} stopOpacity={0}/></linearGradient>
+              </defs>
+              <CartesianGrid {...grid.CartesianGrid}/>
+              <XAxis dataKey="name" {...ax}/><YAxis {...ax}/>
+              <Tooltip {...ttp}/>
+              <Area type="monotone" dataKey="Sessions" stroke={C.blue} fill="url(#gb)" strokeWidth={2}/>
+              <Area type="monotone" dataKey="Leads" stroke={C.green} fill="url(#gg)" strokeWidth={2}/>
+              <Area type="monotone" dataKey="Calls" stroke={C.red} fill="none" strokeWidth={2} strokeDasharray="4 2"/>
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+        <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+          <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:'1rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Conversion Funnel</div>
+          {funnel.map(f=>(
+            <div key={f.name} style={{marginBottom:14}}>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}><span style={{color:C.t2}}>{f.name}</span><span style={{color:C.text,fontWeight:600}}>{f.v.toLocaleString()}</span></div>
+              <div style={{height:6,background:C.surf2,borderRadius:99}}><div style={{height:'100%',width:`${funnel[0].v?Math.min(100,(f.v/funnel[0].v)*100):0}%`,background:f.c,borderRadius:99,transition:'width 0.5s'}}/></div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'1rem'}}>
+        {[{l:'Instagram',v:d.social.instagram.followers,i:'📸'},{l:'Facebook',v:d.social.facebook.followers,i:'👥'},{l:'TikTok',v:d.social.tiktok.followers,i:'🎵'},{l:'LinkedIn',v:d.social.linkedin.connections,i:'💼'},{l:'SMS Booked',v:d.sms.booked,i:'💬'},{l:'Email Booked',v:d.email.booked,i:'📧'}].map(s=>(
+          <div key={s.l} style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:10,padding:'1rem',textAlign:'center'}}>
+            <div style={{fontSize:22,marginBottom:4}}>{s.i}</div>
+            <div style={{fontSize:20,fontWeight:800,color:C.text}}>{(s.v||0).toLocaleString()}</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:2}}>{s.l}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── WEBSITE ─────────────────────────────────────────────────────────────────
+function Website({d,upd}){
+  const [f,sf]=useState({w:'',sessions:'',leads:'',calls:''});
+  const add=()=>{
+    if(!f.w)return;
+    upd(prev=>{const n={...prev};n.website={weekly:[...prev.website.weekly.filter(x=>x.w!==f.w),{w:f.w,sessions:+f.sessions||0,leads:+f.leads||0,calls:+f.calls||0}].slice(-12)};n.updated=new Date().toLocaleDateString('en-GB');return n});
+    sf({w:'',sessions:'',leads:'',calls:''});
+  };
+  const tot={s:d.website.weekly.reduce((a,w)=>a+w.sessions,0),l:d.website.weekly.reduce((a,w)=>a+w.leads,0),c:d.website.weekly.reduce((a,w)=>a+(w.calls||0),0)};
+  const cvr=tot.s?((tot.l/tot.s)*100).toFixed(1):0;
+  return(
+    <div>
+      <Hdr title="Website Analytics" sub="Copy data from Google Analytics each week"/>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'1rem',marginBottom:'1.5rem'}}>
+        <KPI label="Total Sessions" val={tot.s.toLocaleString()} col={C.blue} icon="🌐"/>
+        <KPI label="Total Leads" val={tot.l} col={C.green} icon="📋"/>
+        <KPI label="Total Calls" val={tot.c} col={C.red} icon="📞"/>
+        <KPI label="Conversion Rate" val={`${cvr}%`} sub="Leads / Sessions" col={C.purple} icon="📊"/>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:'1rem'}}>
+        <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+          <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:'1rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Weekly Breakdown</div>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={d.website.weekly}>
+              <CartesianGrid {...grid.CartesianGrid}/><XAxis dataKey="w" {...ax}/><YAxis {...ax}/>
+              <Tooltip {...ttp}/>
+              <Bar dataKey="sessions" fill={C.blue} radius={[4,4,0,0]} name="Sessions"/>
+              <Bar dataKey="leads" fill={C.green} radius={[4,4,0,0]} name="Leads"/>
+              <Bar dataKey="calls" fill={C.red} radius={[4,4,0,0]} name="Calls"/>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+          <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:'1rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Add Weekly Data</div>
+          <div style={{display:'grid',gap:10}}>
+            <Inp label="Week" val={f.w} set={v=>sf({...f,w:v})} ph="e.g. Wk5"/>
+            <Inp label="Sessions" val={f.sessions} set={v=>sf({...f,sessions:v})} type="number" ph="0"/>
+            <Inp label="Form Leads" val={f.leads} set={v=>sf({...f,leads:v})} type="number" ph="0"/>
+            <Inp label="Calls from site" val={f.calls} set={v=>sf({...f,calls:v})} type="number" ph="0"/>
+            <Btn ch="Save Week" onClick={add}/>
+          </div>
+          <p style={{fontSize:11,color:C.muted,marginTop:'1rem'}}>Get data from <a href="https://analytics.google.com" target="_blank" style={{color:C.blue}}>Google Analytics</a> → Reports → Acquisition</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── SEO ─────────────────────────────────────────────────────────────────────
+function SEO({d,upd}){
+  const [f,sf]=useState({w:'',impressions:'',clicks:'',position:''});
+  const [kw,skw]=useState({q:'',clicks:'',pos:''});
+  const add=()=>{
+    if(!f.w)return;
+    upd(prev=>{const n={...prev};n.seo={...prev.seo,weekly:[...prev.seo.weekly.filter(x=>x.w!==f.w),{w:f.w,impressions:+f.impressions||0,clicks:+f.clicks||0,position:+f.position||0}].slice(-12)};n.updated=new Date().toLocaleDateString('en-GB');return n});
+    sf({w:'',impressions:'',clicks:'',position:''});
+  };
+  const addKw=()=>{
+    if(!kw.q)return;
+    upd(prev=>{const n={...prev};n.seo={...prev.seo,topKw:[...prev.seo.topKw.filter(k=>k.q!==kw.q),{q:kw.q,clicks:+kw.clicks||0,pos:+kw.pos||0}].slice(0,25)};return n});
+    skw({q:'',clicks:'',pos:''});
+  };
+  const ti=d.seo.weekly.reduce((a,w)=>a+(w.impressions||0),0);
+  const tc=d.seo.weekly.reduce((a,w)=>a+(w.clicks||0),0);
+  const ap=d.seo.weekly.filter(w=>w.position>0);
+  const avgP=ap.length?ap.reduce((a,w)=>a+w.position,0)/ap.length:0;
+  const ctr=ti?((tc/ti)*100).toFixed(1):0;
+  return(
+    <div>
+      <Hdr title="Google Search Console" sub="Track your search visibility and keyword rankings"/>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'1rem',marginBottom:'1.5rem'}}>
+        <KPI label="Total Impressions" val={ti.toLocaleString()} col={C.purple} icon="👁️"/>
+        <KPI label="Total Clicks" val={tc.toLocaleString()} col={C.blue} icon="🖱️"/>
+        <KPI label="Click Rate" val={`${ctr}%`} col={C.green} icon="📊"/>
+        <KPI label="Avg Position" val={avgP?avgP.toFixed(1):'—'} sub="Lower is better" col={C.amber} icon="🏆"/>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:'1rem',marginBottom:'1rem'}}>
+        <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+          <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:'1rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Search Visibility Trend</div>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={d.seo.weekly}>
+              <CartesianGrid {...grid.CartesianGrid}/>
+              <XAxis dataKey="w" {...ax}/><YAxis yAxisId="l" {...ax}/><YAxis yAxisId="r" orientation="right" {...ax}/>
+              <Tooltip {...ttp}/>
+              <Line yAxisId="l" type="monotone" dataKey="impressions" stroke={C.purple} strokeWidth={2} dot={false} name="Impressions"/>
+              <Line yAxisId="l" type="monotone" dataKey="clicks" stroke={C.blue} strokeWidth={2} dot={false} name="Clicks"/>
+              <Line yAxisId="r" type="monotone" dataKey="position" stroke={C.amber} strokeWidth={2} dot={false} name="Avg Position" strokeDasharray="4 2"/>
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+          <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:'1rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Add Weekly Data</div>
+          <div style={{display:'grid',gap:10}}>
+            <Inp label="Week" val={f.w} set={v=>sf({...f,w:v})} ph="e.g. Wk5"/>
+            <Inp label="Impressions" val={f.impressions} set={v=>sf({...f,impressions:v})} type="number"/>
+            <Inp label="Clicks" val={f.clicks} set={v=>sf({...f,clicks:v})} type="number"/>
+            <Inp label="Avg Position" val={f.position} set={v=>sf({...f,position:v})} type="number" ph="e.g. 12.4"/>
+            <Btn ch="Save Week" onClick={add}/>
+          </div>
+          <p style={{fontSize:11,color:C.muted,marginTop:'0.75rem'}}>Data from <a href="https://search.google.com/search-console" target="_blank" style={{color:C.blue}}>Search Console</a> → Performance</p>
+        </div>
+      </div>
+      <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
+          <div style={{fontSize:12,fontWeight:600,color:C.muted,textTransform:'uppercase',letterSpacing:'0.05em'}}>Top Keywords</div>
+          <div style={{display:'flex',gap:8}}>
+            <Inp val={kw.q} set={v=>skw({...kw,q:v})} ph="Keyword" s={{width:180}}/>
+            <Inp val={kw.clicks} set={v=>skw({...kw,clicks:v})} ph="Clicks" type="number" s={{width:75}}/>
+            <Inp val={kw.pos} set={v=>skw({...kw,pos:v})} ph="Position" type="number" s={{width:85}}/>
+            <Btn ch="Add" onClick={addKw}/>
+          </div>
+        </div>
+        {d.seo.topKw.length===0?<p style={{fontSize:13,color:C.muted,textAlign:'center',padding:'2rem'}}>Add your top Search Console queries to track position changes</p>:
+          d.seo.topKw.sort((a,b)=>b.clicks-a.clicks).map(k=>(
+            <div key={k.q} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 12px',background:C.surf2,borderRadius:8,marginBottom:6}}>
+              <span style={{fontSize:13,color:C.text}}>{k.q}</span>
+              <div style={{display:'flex',gap:12,alignItems:'center'}}>
+                <span style={{fontSize:12,color:C.blue}}>{k.clicks} clicks</span>
+                <span style={{fontSize:12,color:k.pos<=10?C.green:k.pos<=30?C.amber:C.muted}}>#{k.pos}</span>
+                <span style={{fontSize:11,padding:'2px 8px',borderRadius:99,background:k.pos<=3?C.gd:k.pos<=10?C.ad:C.bdr,color:k.pos<=3?C.green:k.pos<=10?C.amber:C.muted}}>{k.pos<=3?'Top 3':k.pos<=10?'Page 1':k.pos<=20?'Page 2':'Page 3+'}</span>
+              </div>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  );
+}
+
+// ─── SOCIAL ──────────────────────────────────────────────────────────────────
+function Social({d,upd}){
+  const [plat,setPlat]=useState('instagram');
+  const platforms=[{id:'instagram',l:'Instagram',i:'📸',c:C.pink,fields:['followers','reach','posts','eng']},{id:'facebook',l:'Facebook',i:'👥',c:C.blue,fields:['followers','reach','posts','eng']},{id:'tiktok',l:'TikTok',i:'🎵',c:C.teal,fields:['followers','views','posts','eng']},{id:'linkedin',l:'LinkedIn',i:'💼',c:C.blue,fields:['connections','impressions','posts','eng']}];
+  const p=platforms.find(x=>x.id===plat);
+  const pd=d.social[plat];
+  const [f,sf]=useState({});
+  const save=()=>{
+    const up={};p.fields.forEach(fld=>{up[fld]=+f[fld]||pd[fld]||0});
+    const he={date:new Date().toLocaleDateString('en-GB'),...up};
+    upd(prev=>{const n={...prev};n.social={...prev.social,[plat]:{...prev.social[plat],...up,hist:[...prev.social[plat].hist,he].slice(-12)}};n.updated=new Date().toLocaleDateString('en-GB');return n});
+    sf({});
+  };
+  const labels={followers:'Followers',connections:'Connections',reach:'Reach',views:'Views',posts:'Posts',impressions:'Impressions',eng:'Engagement'};
+  return(
+    <div>
+      <Hdr title="Social Media" sub="Track followers and engagement across all platforms"/>
+      <div style={{display:'flex',gap:8,marginBottom:'1.5rem'}}>
+        {platforms.map(pl=><button key={pl.id} onClick={()=>setPlat(pl.id)} style={{padding:'8px 16px',borderRadius:8,fontSize:13,fontWeight:600,background:plat===pl.id?pl.c+'22':'transparent',color:plat===pl.id?pl.c:C.muted,border:`1px solid ${plat===pl.id?pl.c:C.bdr}`,transition:'all 0.15s'}}>{pl.i} {pl.l}</button>)}
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'1rem',marginBottom:'1.5rem'}}>
+        {p.fields.map(fld=><KPI key={fld} label={labels[fld]||fld} val={(pd[fld]||0).toLocaleString()} col={p.c} icon={p.i}/>)}
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:'1rem'}}>
+        <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+          <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:'1rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>{p.l} Growth</div>
+          {pd.hist.length>0?(
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={pd.hist.map(h=>({name:h.date,...h}))}>
+                <defs><linearGradient id="gS" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={p.c} stopOpacity={0.3}/><stop offset="95%" stopColor={p.c} stopOpacity={0}/></linearGradient></defs>
+                <CartesianGrid {...grid.CartesianGrid}/><XAxis dataKey="name" {...ax}/><YAxis {...ax}/>
+                <Tooltip {...ttp}/>
+                <Area type="monotone" dataKey={p.fields[0]} stroke={p.c} fill="url(#gS)" strokeWidth={2} name={labels[p.fields[0]]}/>
+              </AreaChart>
+            </ResponsiveContainer>
+          ):<div style={{height:200,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,color:C.muted}}>Save first update to see growth chart</div>}
+        </div>
+        <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+          <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:'1rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Update {p.l}</div>
+          <div style={{display:'grid',gap:10}}>
+            {p.fields.map(fld=><Inp key={fld} label={labels[fld]||fld} val={f[fld]||''} set={v=>sf({...f,[fld]:v})} type="number" ph={String(pd[fld]||0)}/>)}
+            <Btn ch={`Save ${p.l}`} onClick={save} col={p.c}/>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── CALLS & SMS ─────────────────────────────────────────────────────────────
+function Calls({d,upd}){
+  const [type,setType]=useState('call');
+  const [f,sf]=useState({name:'',phone:'',source:'Website',outcome:'Booked',notes:''});
+  const srcs=['Website','Google Maps','Word of mouth','Social media','Repeat customer','Flyer/leaflet','Other'];
+  const outs=['Booked','Quoted','Follow-up needed','Not interested','Voicemail','Wrong number'];
+  const log=()=>{
+    if(!f.name&&!f.phone)return;
+    const e={...f,type,date:new Date().toLocaleDateString('en-GB'),time:new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),id:Date.now()};
+    upd(prev=>{const n={...prev};
+      if(type==='call'){n.calls={...prev.calls,log:[e,...prev.calls.log].slice(0,100),total:(prev.calls.total||0)+1,answered:(prev.calls.answered||0)+(f.outcome!=='Voicemail'&&f.outcome!=='Wrong number'?1:0),booked:(prev.calls.booked||0)+(f.outcome==='Booked'?1:0)}}
+      else{n.sms={...prev.sms,log:[e,...prev.sms.log].slice(0,100),sent:(prev.sms.sent||0)+1,replied:(prev.sms.replied||0)+(f.outcome==='Booked'||f.outcome==='Follow-up needed'?1:0),booked:(prev.sms.booked||0)+(f.outcome==='Booked'?1:0)}}
+      n.updated=new Date().toLocaleDateString('en-GB');return n});
+    sf({name:'',phone:'',source:'Website',outcome:'Booked',notes:''});
+  };
+  const allLog=[...d.calls.log,...d.sms.log].sort((a,b)=>b.id-a.id).slice(0,25);
+  const pie=[{name:'Booked',v:d.calls.booked||0},{name:'Quoted',v:Math.max(0,(d.calls.answered||0)-(d.calls.booked||0))},{name:'Other',v:Math.max(0,(d.calls.total||0)-(d.calls.answered||0))}];
+  const pc=[C.green,C.blue,C.muted];
+  return(
+    <div>
+      <Hdr title="Calls & SMS" sub="Log every call and SMS to track where your bookings come from"/>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'1rem',marginBottom:'1.5rem'}}>
+        <KPI label="Total Calls" val={d.calls.total||0} col={C.red} icon="📞"/>
+        <KPI label="Answered" val={d.calls.answered||0} col={C.green} icon="✅"/>
+        <KPI label="Booked (calls)" val={d.calls.booked||0} col={C.green} icon="📅"/>
+        <KPI label="SMS Sent" val={d.sms.sent||0} col={C.blue} icon="💬"/>
+        <KPI label="SMS Replied" val={d.sms.replied||0} col={C.teal} icon="↩️"/>
+        <KPI label="Booked (SMS)" val={d.sms.booked||0} col={C.green} icon="📅"/>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem',marginBottom:'1rem'}}>
+        <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+          <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:'1rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Log a Call or SMS</div>
+          <div style={{display:'flex',gap:8,marginBottom:'1rem'}}>
+            {['call','sms'].map(t=><button key={t} onClick={()=>setType(t)} style={{padding:'6px 14px',borderRadius:8,fontSize:12,fontWeight:600,background:type===t?C.red+'22':'transparent',color:type===t?C.red:C.muted,border:`1px solid ${type===t?C.red:C.bdr}`}}>{t==='call'?'📞 Call':'💬 SMS'}</button>)}
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <Inp label="Name" val={f.name} set={v=>sf({...f,name:v})} ph="Customer name"/>
+            <Inp label="Phone" val={f.phone} set={v=>sf({...f,phone:v})} ph="07..."/>
+            <Sel label="Source" val={f.source} set={v=>sf({...f,source:v})} opts={srcs}/>
+            <Sel label="Outcome" val={f.outcome} set={v=>sf({...f,outcome:v})} opts={outs}/>
+          </div>
+          <Inp label="Notes" val={f.notes} set={v=>sf({...f,notes:v})} ph="Job description..." s={{marginTop:10}}/>
+          <Btn ch={`Log ${type==='call'?'Call':'SMS'}`} onClick={log} s={{marginTop:10,width:'100%'}}/>
+        </div>
+        <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+          <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:'1rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Call Outcomes</div>
+          <ResponsiveContainer width="100%" height={150}><PieChart><Pie data={pie} cx="50%" cy="50%" innerRadius={35} outerRadius={65} paddingAngle={3} dataKey="v">{pie.map((e,i)=><Cell key={i} fill={pc[i]}/>)}</Pie><Tooltip {...ttp}/></PieChart></ResponsiveContainer>
+          <div style={{display:'flex',gap:'1rem',justifyContent:'center',flexWrap:'wrap',marginTop:8}}>
+            {pie.map((p2,i)=><div key={p2.name} style={{display:'flex',alignItems:'center',gap:4,fontSize:11,color:C.muted}}><div style={{width:8,height:8,borderRadius:'50%',background:pc[i]}}/>{p2.name}: {p2.v}</div>)}
+          </div>
+        </div>
+      </div>
+      <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+        <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:'1rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Recent Log</div>
+        {allLog.length===0?<p style={{fontSize:13,color:C.muted,textAlign:'center',padding:'2rem'}}>No calls or SMS logged yet — start logging to track your enquiries</p>:
+          allLog.map(e=>(
+            <div key={e.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:`1px solid ${C.bdr}`}}>
+              <span style={{fontSize:20}}>{e.type==='call'?'📞':'💬'}</span>
+              <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:C.text}}>{e.name||e.phone||'Unknown'}</div><div style={{fontSize:11,color:C.muted}}>{e.source} · {e.date} {e.time}{e.notes?` · ${e.notes}`:''}</div></div>
+              <span style={{fontSize:11,padding:'3px 8px',borderRadius:99,background:e.outcome==='Booked'?C.gd:e.outcome==='Quoted'?C.bd:C.bdr,color:e.outcome==='Booked'?C.green:e.outcome==='Quoted'?C.blue:C.muted}}>{e.outcome}</span>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  );
+}
+
+// ─── OUTREACH ─────────────────────────────────────────────────────────────────
+function Outreach({d,upd}){
+  const [tab,setTab]=useState('email');
+  const [f,sf]=useState({name:'',company:'',contact:'',outcome:'Sent',notes:''});
+  const tabs=[{id:'email',l:'Email Outreach',i:'📧'},{id:'linout',l:'LinkedIn',i:'💼'},{id:'b2b',l:'B2B Cold Email',i:'🏢'}];
+  const tData=d[tab];
+  const outs=['Sent','Opened','Replied','Booked','Not interested','Bounced'];
+  const logIt=()=>{
+    if(!f.name&&!f.company)return;
+    const e={...f,date:new Date().toLocaleDateString('en-GB'),id:Date.now()};
+    upd(prev=>{const n={...prev};const cur=prev[tab];n[tab]={...cur,log:[e,...cur.log].slice(0,200),sent:(cur.sent||0)+1,opened:(cur.opened||0)+(f.outcome==='Opened'||f.outcome==='Replied'||f.outcome==='Booked'?1:0),replied:(cur.replied||0)+(f.outcome==='Replied'||f.outcome==='Booked'?1:0),booked:(cur.booked||0)+(f.outcome==='Booked'?1:0)};n.updated=new Date().toLocaleDateString('en-GB');return n});
+    sf({name:'',company:'',contact:'',outcome:'Sent',notes:''});
+  };
+  const rr=tData.sent?((tData.replied/tData.sent)*100).toFixed(1):0;
+  const or_=tData.sent?((tData.opened/tData.sent)*100).toFixed(1):0;
+  const br=tData.sent?((tData.booked/tData.sent)*100).toFixed(1):0;
+  const pipe=[{l:'Sent',v:tData.sent||0,c:C.blue},{l:'Opened',v:tData.opened||0,c:C.amber},{l:'Replied',v:tData.replied||0,c:C.teal},{l:'Booked',v:tData.booked||0,c:C.green}];
+  return(
+    <div>
+      <Hdr title="Outreach Tracker" sub="Track email, LinkedIn and B2B cold outreach"/>
+      <div style={{display:'flex',gap:8,marginBottom:'1.5rem'}}>
+        {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{padding:'8px 16px',borderRadius:8,fontSize:13,fontWeight:600,background:tab===t.id?C.red+'22':'transparent',color:tab===t.id?C.red:C.muted,border:`1px solid ${tab===t.id?C.red:C.bdr}`}}>{t.i} {t.l}</button>)}
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'1rem',marginBottom:'1.5rem'}}>
+        <KPI label="Sent" val={tData.sent||0} col={C.blue} icon="📤"/>
+        <KPI label="Opened" val={`${tData.opened||0} (${or_}%)`} col={C.amber} icon="👁️"/>
+        <KPI label="Replied" val={`${tData.replied||0} (${rr}%)`} col={C.teal} icon="↩️"/>
+        <KPI label="Booked" val={`${tData.booked||0} (${br}%)`} col={C.green} icon="📅"/>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem',marginBottom:'1rem'}}>
+        <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+          <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:'1rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Log Contact</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <Inp label="Contact Name" val={f.name} set={v=>sf({...f,name:v})} ph="Name"/>
+            <Inp label="Company" val={f.company} set={v=>sf({...f,company:v})} ph="Company"/>
+            <Inp label="Email / Profile" val={f.contact} set={v=>sf({...f,contact:v})} ph="contact info"/>
+            <Sel label="Outcome" val={f.outcome} set={v=>sf({...f,outcome:v})} opts={outs}/>
+          </div>
+          <Inp label="Notes" val={f.notes} set={v=>sf({...f,notes:v})} ph="Brief notes..." s={{marginTop:10}}/>
+          <Btn ch="Log Contact" onClick={logIt} s={{marginTop:10,width:'100%'}}/>
+        </div>
+        <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+          <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:'1rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Pipeline</div>
+          {pipe.map(s=>(
+            <div key={s.l} style={{marginBottom:14}}>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}><span style={{color:C.t2}}>{s.l}</span><span style={{color:s.c,fontWeight:600}}>{s.v}</span></div>
+              <div style={{height:6,background:C.surf2,borderRadius:99}}><div style={{height:'100%',width:`${tData.sent?Math.min(100,(s.v/tData.sent)*100):0}%`,background:s.c,borderRadius:99}}/></div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+        <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:'1rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Contact Log</div>
+        {tData.log.length===0?<p style={{fontSize:13,color:C.muted,textAlign:'center',padding:'2rem'}}>No outreach logged yet</p>:
+          tData.log.slice(0,20).map(e=>(
+            <div key={e.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:`1px solid ${C.bdr}`}}>
+              <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:C.text}}>{e.name}{e.company?` · ${e.company}`:''}</div><div style={{fontSize:11,color:C.muted}}>{e.contact} · {e.date}{e.notes?` · ${e.notes}`:''}</div></div>
+              <span style={{fontSize:11,padding:'3px 8px',borderRadius:99,background:e.outcome==='Booked'?C.gd:e.outcome==='Replied'?C.td:e.outcome==='Opened'?C.ad:C.bdr,color:e.outcome==='Booked'?C.green:e.outcome==='Replied'?C.teal:e.outcome==='Opened'?C.amber:C.muted}}>{e.outcome}</span>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  );
+}
+
+// ─── REVIEWS ─────────────────────────────────────────────────────────────────
+function Reviews({d,upd}){
+  const [f,sf]=useState({count:'',rating:'',author:'',text:'',stars:'5'});
+  const save=()=>{
+    upd(prev=>{const n={...prev};n.reviews={...prev.reviews,count:+f.count||prev.reviews.count||0,rating:+f.rating||prev.reviews.rating||0,recent:[...(f.author?[{author:f.author,text:f.text,stars:+f.stars||5,date:new Date().toLocaleDateString('en-GB')}]:[]),...prev.reviews.recent].slice(0,10)};n.updated=new Date().toLocaleDateString('en-GB');return n});
+    sf({count:'',rating:'',author:'',text:'',stars:'5'});
+  };
+  const stars=n=>'★'.repeat(n)+'☆'.repeat(5-n);
+  return(
+    <div>
+      <Hdr title="Google Reviews" sub="Track your reputation and review count"/>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'1rem',marginBottom:'1.5rem'}}>
+        <KPI label="Total Reviews" val={d.reviews.count||0} col={C.amber} icon="⭐"/>
+        <KPI label="Average Rating" val={d.reviews.rating||'—'} sub="out of 5.0" col={C.amber} icon="🏆"/>
+        <KPI label="Target" val="4.9 ★" sub="Keep requesting reviews" col={C.green} icon="🎯"/>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+        <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+          <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:'1rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Update Review Stats</div>
+          <div style={{display:'grid',gap:10}}>
+            <Inp label="Total Google Reviews" val={f.count} set={v=>sf({...f,count:v})} type="number" ph={String(d.reviews.count||0)}/>
+            <Inp label="Average Rating" val={f.rating} set={v=>sf({...f,rating:v})} type="number" ph={String(d.reviews.rating||4.9)}/>
+            <div style={{borderTop:`1px solid ${C.bdr}`,paddingTop:10,fontSize:11,color:C.muted,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:4}}>Add a Recent Review</div>
+            <Inp label="Reviewer Name" val={f.author} set={v=>sf({...f,author:v})} ph="Customer name"/>
+            <Sel label="Stars" val={f.stars} set={v=>sf({...f,stars:v})} opts={['5','4','3','2','1']}/>
+            <Inp label="Review Text" val={f.text} set={v=>sf({...f,text:v})} ph="What they wrote..."/>
+            <Btn ch="Save" onClick={save}/>
+          </div>
+          <a href="https://www.google.com/maps/place/KITH+Cars/" target="_blank" style={{display:'block',marginTop:'0.75rem',fontSize:12,color:C.amber,textDecoration:'none'}}>→ Open Google Business Profile ↗</a>
+        </div>
+        <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.25rem'}}>
+          <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:'1rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Recent Reviews</div>
+          {d.reviews.recent.length===0?<p style={{fontSize:13,color:C.muted,textAlign:'center',padding:'2rem'}}>Add your best reviews to track them here</p>:
+            d.reviews.recent.map((r,i)=>(
+              <div key={i} style={{padding:'12px 0',borderBottom:`1px solid ${C.bdr}`}}>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{fontSize:13,fontWeight:600,color:C.text}}>{r.author}</span><span style={{color:C.amber}}>{stars(r.stars)}</span></div>
+                {r.text&&<p style={{fontSize:12,color:C.t2,lineHeight:1.6,fontStyle:'italic'}}>"{r.text}"</p>}
+                <div style={{fontSize:11,color:C.muted,marginTop:4}}>{r.date}</div>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AI REPORT ────────────────────────────────────────────────────────────────
+function AIReport({d}){
+  const [report,setReport]=useState('');
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState('');
+
+  const run=async()=>{
+    setLoading(true);setErr('');setReport('');
+    const sum={
+      website:{sessions:d.website.weekly.reduce((s,w)=>s+w.sessions,0),leads:d.website.weekly.reduce((s,w)=>s+w.leads,0),calls:d.website.weekly.reduce((s,w)=>s+(w.calls||0),0)},
+      seo:{impressions:d.seo.weekly.reduce((s,w)=>s+(w.impressions||0),0),clicks:d.seo.weekly.reduce((s,w)=>s+(w.clicks||0),0),topKw:d.seo.topKw.slice(0,5)},
+      social:{instagram:d.social.instagram.followers,facebook:d.social.facebook.followers,tiktok:d.social.tiktok.followers,linkedin:d.social.linkedin.connections},
+      calls:{total:d.calls.total,booked:d.calls.booked},sms:{sent:d.sms.sent,booked:d.sms.booked},
+      email:{sent:d.email.sent,replied:d.email.replied,booked:d.email.booked},
+      b2b:{sent:d.b2b.sent,replied:d.b2b.replied,booked:d.b2b.booked},
+      linkedin_outreach:{sent:d.linout.sent,replied:d.linout.replied,booked:d.linout.booked},
+      reviews:{count:d.reviews.count,rating:d.reviews.rating},
+    };
+    try{
+      const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:`You are the marketing analyst for KITH Cars Garage, an independent garage at Hackbridge SM6 7HN, South London. They do mechanical repairs, servicing, MOT, bodywork, fleet and recovery. Here is their current marketing data: ${JSON.stringify(sum)}. Write a concise, actionable weekly marketing report. Cover: 1) What is working well across their channels, 2) What needs improving, 3) Three specific actions to take this week to get more bookings. Be direct, practical and specific to a garage business. Format clearly with headers. Under 400 words.`}]})});
+      const data=await res.json();
+      if(data.content&&data.content[0])setReport(data.content[0].text);
+      else if(data.error)setErr(data.error.message||'API error — try again');
+    }catch(e){setErr('Connection error — check internet and try again')}
+    setLoading(false);
+  };
+
+  const booked=(d.calls.booked||0)+(d.email.booked||0)+(d.b2b.booked||0)+(d.sms.booked||0);
+
+  return(
+    <div>
+      <Hdr title="AI Marketing Report" sub="Instant analysis of all your channels with specific actions to take this week"
+        action={<Btn ch={loading?'Analysing...':'Generate Report 🤖'} onClick={run}/>}/>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'1rem',marginBottom:'1.5rem'}}>
+        <KPI label="Total Sessions" val={d.website.weekly.reduce((s,w)=>s+w.sessions,0).toLocaleString()} col={C.blue} icon="🌐"/>
+        <KPI label="Search Clicks" val={d.seo.weekly.reduce((s,w)=>s+(w.clicks||0),0)} col={C.purple} icon="🔍"/>
+        <KPI label="Total Booked" val={booked} col={C.green} icon="📅"/>
+        <KPI label="All Outreach" val={(d.email.sent||0)+(d.b2b.sent||0)+(d.linout.sent||0)} col={C.amber} icon="✉️"/>
+      </div>
+      {err&&<div style={{background:C.redd,border:`1px solid ${C.red}33`,borderRadius:12,padding:'1rem',marginBottom:'1rem',fontSize:13,color:C.red}}>{err}</div>}
+      {!report&&!loading&&!err&&(
+        <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'4rem 2rem',textAlign:'center'}}>
+          <div style={{fontSize:56,marginBottom:'1rem'}}>🤖</div>
+          <h3 style={{fontSize:18,fontWeight:800,marginBottom:'0.5rem'}}>AI Marketing Analyst</h3>
+          <p style={{fontSize:14,color:C.muted,maxWidth:400,margin:'0 auto 1.5rem',lineHeight:1.7}}>Get an instant AI analysis of all your marketing data. Shows what's working, what's not, and exactly what to do this week to get more bookings.</p>
+          <Btn ch="Generate Report 🤖" onClick={run}/>
+        </div>
+      )}
+      {loading&&<div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'4rem',textAlign:'center',fontSize:14,color:C.muted}}>Analysing your marketing data across all channels...</div>}
+      {report&&(
+        <div style={{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:12,padding:'1.75rem'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.25rem'}}>
+            <div style={{fontSize:12,fontWeight:600,color:C.muted,textTransform:'uppercase',letterSpacing:'0.05em'}}>AI Report — {new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
+            <Btn ch="Regenerate" onClick={run} out/>
+          </div>
+          <div style={{fontSize:14,color:C.t2,lineHeight:1.9,whiteSpace:'pre-wrap'}}>{report}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── APP ──────────────────────────────────────────────────────────────────────
+const NAVS=[{id:'overview',l:'Overview',i:'◉'},{id:'website',l:'Website',i:'🌐'},{id:'seo',l:'Search Console',i:'🔍'},{id:'social',l:'Social Media',i:'📱'},{id:'calls',l:'Calls & SMS',i:'📞'},{id:'outreach',l:'Outreach',i:'✉️'},{id:'reviews',l:'Reviews',i:'⭐'},{id:'ai',l:'AI Report',i:'🤖'}];
+
+function App(){
+  const [view,setView]=useState('overview');
+  const [d,setRaw]=useState(()=>load()||blank());
+  const upd=useCallback(fn=>{setRaw(prev=>{const next=typeof fn==='function'?fn(prev):fn;save(next);return next});},[]);
+  const views={overview:<Overview d={d}/>,website:<Website d={d} upd={upd}/>,seo:<SEO d={d} upd={upd}/>,social:<Social d={d} upd={upd}/>,calls:<Calls d={d} upd={upd}/>,outreach:<Outreach d={d} upd={upd}/>,reviews:<Reviews d={d} upd={upd}/>,ai:<AIReport d={d}/>};
+  const booked=(d.calls.booked||0)+(d.email.booked||0)+(d.b2b.booked||0)+(d.sms.booked||0);
+  return(
+    <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
+      <div style={{width:216,background:C.surf,borderRight:`1px solid ${C.bdr}`,display:'flex',flexDirection:'column',flexShrink:0}}>
+        <div style={{padding:'1.5rem 1.25rem 1.25rem',borderBottom:`1px solid ${C.bdr}`}}>
+          <div style={{fontSize:17,fontWeight:900,letterSpacing:'0.04em'}}>KITH <span style={{color:C.red}}>Cars</span></div>
+          <div style={{fontSize:11,color:C.muted,marginTop:2,fontWeight:500}}>Marketing Hub</div>
+        </div>
+        <nav style={{flex:1,padding:'0.75rem',overflowY:'auto'}}>
+          {NAVS.map(n=><button key={n.id} onClick={()=>setView(n.id)} style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:8,marginBottom:2,fontSize:13,fontWeight:view===n.id?600:400,textAlign:'left',background:view===n.id?C.red+'1a':'transparent',color:view===n.id?C.red:C.t2,border:'none',transition:'all 0.15s'}}><span style={{fontSize:15}}>{n.i}</span>{n.l}</button>)}
+        </nav>
+        <div style={{padding:'1.25rem',borderTop:`1px solid ${C.bdr}`}}>
+          <div style={{fontSize:11,color:C.muted,fontWeight:500,marginBottom:4}}>Total Booked</div>
+          <div style={{fontSize:28,fontWeight:900,color:C.green,letterSpacing:'-0.03em'}}>{booked}</div>
+          <div style={{fontSize:11,color:C.muted}}>across all channels</div>
+          {d.updated&&<div style={{fontSize:10,color:C.muted,marginTop:6}}>Updated {d.updated}</div>}
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:'2rem'}}>
+        <div style={{maxWidth:1100,margin:'0 auto'}}>{views[view]}</div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+</script>
+</body>
+</html>
