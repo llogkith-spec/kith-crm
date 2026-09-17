@@ -1,0 +1,1323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="KITH Intake"/>
+<meta name="theme-color" content="#1a1a2e"/>
+<title>KITH Cars — Job Intake v2.3</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{--gold:#c9a84c;--dark:#1a1a2e;--red:#c62828;--green:#2e7d32;--amber:#e65100;--blue:#1565c0;--purple:#5b3a8c;--teal:#00695c;--border:#e0e0e0;--bg:#f0f2f5;--dim:#666;--faint:#aaa}
+body{background:var(--bg);color:var(--dark);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;padding-bottom:40px}
+.hdr{background:var(--dark);padding:14px 18px;padding-top:calc(14px + env(safe-area-inset-top));display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.hdr-brand{color:#fff;font-size:17px;font-weight:900}.hdr-brand span{color:var(--gold)}
+.hdr-user{font-size:12px;color:#aaa;cursor:pointer}
+.main{max-width:560px;margin:0 auto;padding:14px}
+.card{background:#fff;border-radius:14px;padding:18px;margin-bottom:12px;box-shadow:0 1px 6px rgba(0,0,0,.07)}
+.sec{font-size:10px;font-weight:800;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px}
+.fg{margin-bottom:14px}.fg:last-child{margin-bottom:0}
+.fl{font-size:12px;font-weight:700;color:var(--dim);margin-bottom:5px;display:block}
+.hint{font-size:11px;color:var(--faint);font-style:italic;margin-top:3px}
+.req{color:var(--red)}
+.fi{background:#f8f9fa;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:16px;width:100%;color:var(--dark);-webkit-appearance:none}
+.fi:focus{outline:none;border-color:var(--dark);background:#fff}
+.fi-reg{text-transform:uppercase;font-family:monospace;font-size:20px;font-weight:900;letter-spacing:.12em;text-align:center}
+textarea.fi{min-height:80px;resize:none;line-height:1.5}
+select.fi{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath fill='%23666' d='M6 8L0 0h12z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.svc-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.svc-btn{background:#f8f9fa;border:2px solid var(--border);border-radius:12px;padding:13px 10px;cursor:pointer;font-size:13px;font-weight:700;color:var(--dark);text-align:left;width:100%;line-height:1.4;transition:all .12s}
+.svc-btn:active{transform:scale(.97)}
+.svc-btn.sel{border-color:var(--gold);background:rgba(201,168,76,.12);color:#7a5c00}
+.svc-sub{font-size:10px;font-weight:400;color:#888;margin-top:3px;display:block}
+.big-btn{background:#f8f9fa;border:2px solid var(--border);border-radius:12px;padding:16px 14px;cursor:pointer;font-size:15px;font-weight:800;color:var(--dark);text-align:left;width:100%;line-height:1.4;margin-bottom:8px;transition:all .12s;display:flex;gap:12px;align-items:flex-start}
+.big-btn:active{transform:scale(.98)}
+.big-btn.sel{border-color:var(--gold);background:rgba(201,168,76,.12);color:#7a5c00}
+.big-btn.aa.sel{border-color:var(--purple);background:rgba(91,58,140,.1);color:var(--purple)}
+.big-btn.war.sel{border-color:var(--teal);background:rgba(0,105,92,.1);color:var(--teal)}
+.big-btn .ic{font-size:22px;line-height:1;flex-shrink:0}
+.drill{border-left:3px solid var(--gold);padding-left:12px;margin-top:14px}
+.drill-lbl{font-size:11px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+.script{background:rgba(21,101,192,.08);border-left:4px solid var(--blue);border-radius:8px;padding:12px 14px;margin-bottom:14px}
+.script-title{font-size:10px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px}
+.script-q{font-size:13px;font-weight:700;margin-bottom:4px;padding-left:12px;position:relative}
+.script-q:before{content:"›";position:absolute;left:0;color:var(--blue)}
+.notice{padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;margin-bottom:12px}
+.n-blue{background:#e3f2fd;border-left:4px solid var(--blue);color:#0d47a1}
+.n-red{background:#ffebee;border-left:4px solid var(--red);color:#b71c1c}
+.n-green{background:#e8f5e9;border-left:4px solid var(--green);color:#1b5e20}
+.n-amber{background:#fff3e0;border-left:4px solid var(--amber);color:#bf360c}
+.n-gold{background:rgba(201,168,76,.1);border-left:4px solid var(--gold);color:#7a5c00}
+.n-purple{background:rgba(91,58,140,.08);border-left:4px solid var(--purple);color:#4a2d73}
+.n-teal{background:rgba(0,105,92,.08);border-left:4px solid var(--teal);color:#004d40}
+.tog-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f0f0f0}
+.tog-row:last-child{border-bottom:none}
+.tog{position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0}
+.tog input{opacity:0;width:0;height:0}
+.tsl{position:absolute;inset:0;background:#ccc;border-radius:26px;cursor:pointer;transition:.25s}
+.tsl:before{content:'';position:absolute;width:20px;height:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.25s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+input:checked+.tsl{background:var(--gold)}
+input:checked+.tsl:before{transform:translateX(20px)}
+.btn{width:100%;padding:15px;border-radius:12px;border:none;font-size:16px;font-weight:700;cursor:pointer;transition:all .15s}
+.btn:active{transform:scale(.98)}
+.btn-dark{background:var(--dark);color:#fff}
+.btn-gold{background:var(--gold);color:#000}
+.btn-ghost{background:#fff;border:1.5px solid var(--border);color:var(--dark)}
+.btn-row{display:flex;gap:8px;margin-top:4px}
+.step-bar{display:flex;gap:5px;margin-bottom:14px}
+.sdot{flex:1;height:5px;border-radius:5px;background:#e0e0e0;transition:background .3s}
+.sdot.on{background:var(--gold)}
+.step{display:none}.step.on{display:block}
+.dup{background:#ffebee;border:1.5px solid var(--red);border-radius:10px;padding:10px 12px;font-size:12px;color:#b71c1c;margin-top:6px;display:none}
+#scr-success{display:none;text-align:center;padding:40px 20px}
+.suc-icon{font-size:64px;margin-bottom:14px}
+#scr-staff{padding:14px}
+.staff-btn{background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:13px 16px;font-size:15px;font-weight:700;cursor:pointer;width:100%;text-align:left;margin-bottom:8px;display:flex;align-items:center;gap:10px}
+.staff-btn:active{background:#f0f0f0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chip{background:#f0f0f0;border:1.5px solid var(--border);border-radius:20px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all .12s}
+.chip.sel{background:rgba(201,168,76,.2);border-color:var(--gold);color:#7a5c00}
+.safety-row{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #f0f0f0;cursor:pointer}
+.safety-row:last-child{border-bottom:none}
+.safety-box{width:24px;height:24px;border:2px solid var(--border);border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;margin-top:1px}
+.safety-box.on{background:var(--red);border-color:var(--red);color:#fff}
+.safety-lbl{font-size:14px;font-weight:600;flex:1;line-height:1.35}
+.ref{background:#fafafa;border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:12px;line-height:1.7}
+.ref-row{display:flex;justify-content:space-between;padding:2px 0}
+.brain{background:linear-gradient(135deg,rgba(201,168,76,.14),rgba(26,26,46,.05));border:2px solid var(--gold);border-radius:14px;padding:14px;margin-bottom:14px}
+.brain-hd{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.brain-hd .t{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#7a5c00;flex:1}
+.sugg{background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px}
+.sugg-lbl{font-size:10px;font-weight:800;color:var(--faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.sugg-val{font-size:15px;font-weight:800;margin-bottom:2px}
+.sugg-why{font-size:12px;color:#666;line-height:1.45}
+.say{background:#fff;border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:12px 14px;font-size:14px;line-height:1.6;margin-bottom:8px}
+.say-lbl{font-size:10px;font-weight:800;color:var(--green);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.qlist{counter-reset:q;list-style:none;padding:0;margin:0}
+.qlist li{counter-increment:q;position:relative;padding:8px 0 8px 30px;border-bottom:1px solid #f0f0f0;font-size:14px;font-weight:600;line-height:1.45}
+.qlist li:last-child{border-bottom:none}
+.qlist li:before{content:counter(q);position:absolute;left:0;top:9px;width:20px;height:20px;background:var(--blue);color:#fff;border-radius:50%;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(201,168,76,.3);border-top-color:var(--gold);border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}
+.conf{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:2px 7px;border-radius:4px}
+.conf.high{background:#e8f5e9;color:var(--green)}
+.conf.medium{background:#fff3e0;color:var(--amber)}
+.conf.low{background:#ffebee;color:var(--red)}
+.pend{font-size:10px;font-weight:800;color:var(--amber);text-transform:uppercase;letter-spacing:.06em;background:#fff3e0;padding:2px 6px;border-radius:4px;display:inline-block;margin-left:6px}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-brand">🚗 KITH <span>Intake</span></div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <div id="ai-pill" onclick="aiSettings()" style="font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:20px;border:1px solid #555;color:#888;cursor:pointer">AI off</div>
+    <div class="hdr-user" id="hdr-user" onclick="changeStaff()">Change ▾</div>
+  </div>
+</div>
+
+<div id="scr-staff" style="padding:14px">
+  <div style="padding:10px 0 16px;text-align:center">
+    <div style="font-size:22px;font-weight:900;margin-bottom:4px">Who are you?</div>
+    <div style="font-size:13px;color:#888">Saved for next time</div>
+  </div>
+  <div id="staff-list"></div>
+</div>
+
+<div id="scr-form" style="display:none">
+<div class="main">
+
+  <div class="step-bar">
+    <div class="sdot" id="sd0"></div><div class="sdot" id="sd1"></div>
+    <div class="sdot" id="sd2"></div><div class="sdot" id="sd3"></div><div class="sdot" id="sd4"></div>
+  </div>
+
+  <!-- STEP 0 — JOB TYPE, drilling down to area then category -->
+  <div class="step on" id="s0">
+    <div class="card">
+      <div class="sec">Step 1 of 5 — What kind of job is this?</div>
+
+      <div class="brain">
+        <div class="brain-hd"><span style="font-size:18px">&#129504;</span>
+          <span class="t">Type what the customer said</span></div>
+        <textarea class="fi" id="f-words" rows="3" placeholder="Their words, not yours. e.g. horrible grinding when I stop and the orange light came on yesterday"></textarea>
+        <button class="btn btn-gold" id="brain-btn" onclick="runTriage()" style="margin-top:10px;padding:12px">Work out where this goes</button>
+        <div style="font-size:11px;color:#8a7340;margin-top:8px;line-height:1.45">It suggests — you decide. It never gives a price and never says a car is safe to drive.</div>
+      </div>
+      <div id="brain-out"></div>
+
+      <div id="jobtype-grid"></div>
+      <div id="area-drill"></div>
+      <div id="cat-drill"></div>
+    </div>
+  </div>
+
+  <!-- STEP 1 — WHO IS PAYING -->
+  <div class="step" id="s1">
+    <div class="card">
+      <div class="sec">Step 2 of 5 — Who is paying?</div>
+      <div class="notice n-gold">This decides the whole price. Seven types, and they don't share a rate card.</div>
+      <div id="cust-grid"></div>
+      <div id="cust-followup"></div>
+    </div>
+    <div class="btn-row"><button class="btn btn-ghost" onclick="go(0)">← Back</button></div>
+  </div>
+
+  <!-- STEP 2 — VEHICLE -->
+  <div class="step" id="s2">
+    <div class="card">
+      <div class="sec">Step 3 of 5 — Vehicle</div>
+      <div class="fg">
+        <label class="fl">Registration Plate <span class="req">*</span></label>
+        <input class="fi fi-reg" id="f-reg" maxlength="8" placeholder="AB12 CDE" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'');dupCheck(this.value)"/>
+        <div class="dup" id="dup-msg"></div>
+      </div>
+      <div class="grid2">
+        <div class="fg"><label class="fl">Make</label><input class="fi" id="f-make" placeholder="e.g. BMW"/></div>
+        <div class="fg"><label class="fl">Model</label><input class="fi" id="f-model" placeholder="e.g. 3 Series"/></div>
+      </div>
+      <div class="grid2">
+        <div class="fg"><label class="fl">Year</label><input class="fi" id="f-year" type="number" placeholder="2019"/></div>
+        <div class="fg"><label class="fl">Mileage today</label><input class="fi" id="f-mileage" type="number" placeholder="85000" oninput="deriveWarranty()"/></div>
+      </div>
+      <div class="grid2">
+        <div class="fg"><label class="fl">Fuel</label>
+          <select class="fi" id="f-fuel"><option value="">— Select —</option>
+            <option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></div>
+        <div class="fg"><label class="fl">Engine size</label><input class="fi" id="f-engine" placeholder="e.g. 1.6"/></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sec">Vehicle shape — look at the car, don't guess</div>
+      <div class="notice n-blue">These four answers set the bodywork column, the MOT class, and whether it fits our ramp. You're not judging anything — just describing what's in front of you.</div>
+      <div class="fg"><label class="fl">1. What shape is it? <span class="req">*</span></label>
+        <select class="fi" id="f-shape" onchange="deriveRamp()">
+          <option value="">— Select —</option>
+          <option value="car">Car — hatchback, saloon, estate, coupé</option>
+          <option value="suv">SUV or 4x4 — normal height</option>
+          <option value="pickup">Pickup — Hilux, Ranger, L200, Navara</option>
+          <option value="van_std">Van — standard roof (Caddy, Connect, Berlingo)</option>
+          <option value="van_high">Van — HIGH TOP, Luton or box body</option>
+          <option value="minibus">Minibus — 9 seats or more</option>
+          <option value="motorhome">Motorhome or camper</option>
+        </select></div>
+      <div class="fg"><label class="fl">2. How many seats? <span class="req">*</span></label>
+        <select class="fi" id="f-seats" onchange="deriveRamp()">
+          <option value="">— Select —</option>
+          <option value="5">Up to 5 seats</option>
+          <option value="7">6, 7 or 8 seats</option>
+          <option value="9">9 seats or more</option>
+        </select></div>
+      <div class="fg"><label class="fl">3. Anything on the roof? <span class="req">*</span></label>
+        <select class="fi" id="f-roof" onchange="deriveRamp()">
+          <option value="">— Select —</option>
+          <option value="no">Nothing on the roof</option>
+          <option value="yes">Roof bars, rack, box, ladder rack or aerial mast</option>
+        </select></div>
+      <div class="fg"><label class="fl">4. Open the driver's door. Read the metal plate on the frame — what's the top weight? <span class="req">*</span></label>
+        <select class="fi" id="f-gvw" onchange="deriveRamp()">
+          <option value="">— Select —</option>
+          <option value="under">Under 3,500 kg</option>
+          <option value="at">Exactly 3,500 kg</option>
+          <option value="over">Over 3,500 kg</option>
+          <option value="unknown">Can't find it / can't read it</option>
+        </select>
+        <div class="hint">A sticker or metal plate in the door frame. The top number is the gross weight.</div></div>
+      <div id="ramp-result"></div>
+      <div id="cat-result"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="go(1)" style="flex:.4">← Back</button>
+      <button class="btn btn-dark" onclick="go(3)" style="flex:1">Next →</button>
+    </div>
+  </div>
+
+  <!-- STEP 3 — SAFETY + GUIDED -->
+  <div class="step" id="s3">
+    <div id="comeback-card"></div>
+    <div class="card" id="safety-card">
+      <div class="sec">Safety check — ask before anything else</div>
+      <div class="notice n-red"><strong>Tick anything the customer mentions.</strong> If any apply, the car goes for a diagnostic first. We do not price a repair off a description.</div>
+      <div id="safety-list"></div>
+      <div id="safety-result"></div>
+    </div>
+    <div id="guided-content"></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="go(2)" style="flex:.4">← Back</button>
+      <button class="btn btn-dark" onclick="go(4)" style="flex:1">Next →</button>
+    </div>
+  </div>
+
+  <!-- STEP 4 — CUSTOMER + SUBMIT -->
+  <div class="step" id="s4">
+    <div class="card" id="contact-card">
+      <div class="sec">Step 5 of 5 — Customer details</div>
+      <div class="fg"><label class="fl">Customer Name <span class="req">*</span></label><input class="fi" id="f-name" placeholder="Full name"/></div>
+      <div class="grid2">
+        <div class="fg"><label class="fl">Phone <span class="req">*</span></label><input class="fi" id="f-phone" type="tel" placeholder="07..."/></div>
+        <div class="fg"><label class="fl">WhatsApp?</label>
+          <select class="fi" id="f-haswa"><option value="yes">Yes — same number</option>
+            <option value="diff">Yes — different number</option><option value="no">No WhatsApp</option></select></div>
+      </div>
+      <div class="fg"><label class="fl">Lead Source</label>
+        <select class="fi" id="f-source">
+          <option>Walk In</option><option>Phone Call</option><option>Google</option><option>Referral</option>
+          <option>Returning Customer</option><option>AA</option><option>Warranty company</option>
+          <option>B2B / Fleet</option><option>Website</option><option>Other</option></select></div>
+    </div>
+
+    <div class="card">
+      <div class="sec">Flags</div>
+      <div class="tog-row">
+        <label class="tog"><input type="checkbox" id="f-asap"><span class="tsl"></span></label>
+        <div><div style="font-size:14px;font-weight:700;color:var(--red)">⚡ ASAP — Urgent</div>
+          <div style="font-size:11px;color:#888">Jumps to top of queue</div></div>
+      </div>
+      <div class="tog-row">
+        <label class="tog"><input type="checkbox" id="f-custparts" onchange="custPartsWarn()"><span class="tsl"></span></label>
+        <div><div style="font-size:14px;font-weight:700">Customer wants to supply their own parts</div>
+          <div style="font-size:11px;color:#888">Default answer is no — this is a hard stop</div></div>
+      </div>
+      <div id="custparts-warn"></div>
+    </div>
+
+    <div class="fg"><label class="fl">Additional Notes</label><textarea class="fi" id="f-notes" rows="2" placeholder="Anything else the team should know..."></textarea></div>
+    <div id="summary-card"></div>
+    <button class="btn btn-ghost" id="check-btn" onclick="runIntakeCheck()" style="margin-bottom:10px">&#129504; Check this before I submit</button>
+    <div id="check-out"></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="go(3)" style="flex:.4">← Back</button>
+      <button class="btn btn-gold" id="sub-btn" onclick="submitJob()" style="flex:1">✓ Submit Job</button>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<div id="scr-success" class="main">
+  <div style="text-align:center;padding:30px 0">
+    <div class="suc-icon">✅</div>
+    <h2 style="font-size:22px;font-weight:900;margin-bottom:8px">Job Submitted</h2>
+    <div id="suc-msg" style="color:#555;font-size:14px;line-height:1.7;margin-bottom:24px"></div>
+    <button class="btn btn-dark" onclick="resetForm()">+ New Job Intake</button>
+  </div>
+</div>
+
+<script>
+// =============================================================================
+// CONFIG
+// =============================================================================
+var SB_URL='https://mxyrxyhvjndgjqupgstu.supabase.co';
+var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
+var SOP_VERSION='8.0';
+var INTAKE_BUILD='2.3';
+// The CRM keeps one row per job in `jobs` ({id, data, updated_at}).
+// Earlier builds wrote to `kith_jobs`, which nothing reads — jobs vanished.
+var JOBS_TABLE='jobs';
+// Intake answers → the names the CRM's customer-type picker uses.
+// Business is left blank on purpose: retail or trade is decided in the CRM.
+var CRM_CUST={retail:'Retail',business:'',warranty:'Warranty',
+  aa_smart:'AA',aa_towin:'AA',aa_pgc:'AA',aa_fleet:'AA Fleet'};
+var CLOSED_STAGES=['archived','lost','done','accounts','receivable','review','followup'];
+function sbHdr(extra){var h={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY};
+  for(var k in (extra||{}))h[k]=extra[k];return h;}
+function newJobId(){return 'J'+Date.now().toString().slice(-6);}
+function newIntakeKey(){return 'IK'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
+var AI={url:localStorage.getItem('kith_ai_url')||'',secret:localStorage.getItem('kith_ai_secret')||''};
+var triageResult=null;
+
+// The ONLY prices in this file. Advisers quote these two things and nothing
+// else. When the SOP changes, change it here and nowhere else.
+var PRICES={
+  mot:{'4':50,'5':58,'7':58},
+  diagnostic:{'Mechanical diagnostic':60,'Oil and coolant leak diagnostic':90,
+              'Deep diagnostic':120,'Electrical diagnostic':150},
+  recovery:[{max:3,p:90},{max:5,p:110},{max:7,p:150},{max:10,p:180}],
+  collection:[{max:3,p:30},{max:5,p:45},{max:7,p:60},{max:10,p:75}]
+};
+
+// WARRANTY WINDOWS — SOP v8.0 §42
+var WARRANTY={
+  mechanical:{months:3,miles:12000,label:'3 months or 12,000 miles, whichever comes first'},
+  bodywork:{months:12,miles:null,label:'12 months from invoice, no mileage cap'}
+};
+
+// RAMP CRITERIA — PROPOSED, AWAITING LOGAN (SOP v8.0 open item 1)
+var RAMP_RULES={
+  shapes_always:['van_high','minibus','motorhome'],
+  shapes_check:['van_std','pickup','suv'],
+  gvw_over:['over'], gvw_flag:['at','unknown']
+};
+
+var STAFF=[
+  {n:'Fardeen',r:'Service Adviser',i:'📞'},{n:'Ali',r:'Service Adviser',i:'📞'},
+  {n:'Sesugh',r:'Estimator (8am–5pm)',i:'📋'},{n:'Joel',r:'Estimator (12pm–5pm)',i:'📋'},
+  {n:'Giles',r:'Workshop Manager',i:'🔧'},{n:'Harith',r:'Parts',i:'🔩'},
+  {n:'Sudha',r:'Accounts',i:'💷'},{n:'Logan',r:'Director',i:'👑'}
+];
+
+// =============================================================================
+// LEVEL 1 — JOB TYPE
+// =============================================================================
+var JOB_TYPES=[
+  {k:'new',      i:'🆕', n:'New job',              s:'A customer wants work doing. The normal route.',            area:true,  cust:true },
+  {k:'comeback', i:'↩️', n:'Coming back',           s:'We did this work before and it is back. Warranty check.',   area:true,  cust:true },
+  {k:'sale',     i:'🏷️', n:'Vehicle for sale',      s:'Our own stock being prepared. No customer, no price.',      area:true,  cust:false},
+  {k:'recovery', i:'🚛', n:'Recovery or collection',s:'Bringing a vehicle in, or taking one out.',                 area:false, cust:true }
+];
+
+// LEVEL 2 — AREA
+var AREAS=[
+  {k:'mechanical',i:'🔧',n:'Mechanical',s:'Anything under the bonnet or under the car'},
+  {k:'bodywork',  i:'🚙',n:'Bodywork & paint',s:'Panels, dents, paint, alloys'}
+];
+
+// =============================================================================
+// LEVEL 3 — MECHANICAL CATEGORIES
+// =============================================================================
+var MECH={
+  service:{label:'🔧 Servicing & MOT',sub:'Service, oil change, MOT',safety:true,guided:function(){
+    return card('Servicing — ask the customer',
+      script(['What kind of service — interim, full, major, or just an oil change?',
+        'When was the last service, and roughly what mileage?',
+        'Any warning lights on the dashboard?',
+        'Anything else they have noticed — noises, smells, vibrations?',
+        'Do they want an MOT at the same time?'])+
+      fld('Service type','f-svc-type','select',['Interim service (25-point)','Full service (40-point)','Major service (60-point)','Oil & filter change only','MOT only','MOT + interim service','MOT + full service','MOT + major service','Standalone inspection'])+
+      fld('Last service (date / mileage)','f-last-service','text','e.g. Jan 2025 / 60,000 miles')+
+      fld('Other issues reported','f-other-issues','textarea','Noises, smells, vibrations...')+ motRef());}},
+
+  brakes:{label:'🛑 Brakes',sub:'Pads, discs, calipers',safety:true,guided:function(){
+    return card('Brakes — ask the customer',
+      script(['Which brakes — the front ones, the back ones, or all four?',
+        'Is there a noise when they brake? What does it sound like?',
+        'Does the car pull to one side when they brake?',
+        'Is there a brake warning light showing?',
+        'Has anyone done brake work on it recently?'])+
+      chipGroup('Which wheels?','axle',['Front only','Rear only','All four','Not sure'])+
+      chipGroup('What is being asked for','brakework',['Pads','Discs','Pads and discs','Calipers','Handbrake','Brake hose','Brake fluid','Noise or warning light — investigate'])+
+      fld('What the customer described','f-brake-symptoms','textarea','In their words...'));}},
+
+  tyres:{label:'🔄 Tyres & Wheels',sub:'Supply, fit, tracking',safety:true,guided:function(){
+    return card('Tyres — ask the customer',
+      script(['How many tyres do they need?','Do they know the size? It is on the side of the tyre.',
+        'Budget, mid-range or premium?','Puncture repair or full replacement?',
+        'Do they want the tracking done afterwards?'])+
+      fld('How many','f-tyre-qty','select',['1 tyre','2 tyres','3 tyres','4 tyres','Puncture repair only','Balance only','Tracking / alignment only'])+
+      fld('Tyre size (if known)','f-tyre-size','text','e.g. 205/55 R16')+
+      chipGroup('Brand preference','tyre-brand',['Budget','Mid-range','Premium','No preference'])+
+      fld('Tracking / alignment?','f-tracking','select',['Yes','No','Customer declined']));}},
+
+  diagnostic:{label:'🔍 Diagnostic',sub:'Warning lights, faults',safety:false,guided:function(){
+    return card('Diagnostic — ask the customer',
+      script(['Which warning lights are showing? Write down exactly what they say.',
+        'What is the car actually doing — noise, smoke, shaking, no power?',
+        'When did it start? Sudden or gradual?','Has anyone else worked on it recently?',
+        'Can they drive it here safely, or does it need collecting?'])+
+      fld('Diagnostic tier','f-diag-type','select',Object.keys(PRICES.diagnostic).concat(['Not sure — estimator to decide']))+
+      fld('Warning lights showing','f-diag-lights','text','Exactly what the customer says...')+
+      fld('What the car is doing','f-diag-symptoms','textarea','Symptoms, and when they happen...')+
+      fld('Can they drive it here?','f-driveable','select',['Yes — drives fine','Yes — but not confident','No — needs recovery'])+
+      diagRef());}},
+
+  suspension:{label:'🚗 Suspension & Steering',sub:'Shocks, springs, steering',safety:true,guided:function(){
+    return card('Suspension & steering — ask the customer',
+      script(['Where is the noise — the front of the car or the back?',
+        'One side only, or does it feel like both?','What does it sound like — knocking, clunking, squeaking?',
+        'Over bumps, when turning, or when braking?','Does it pull to one side driving straight?'])+
+      chipGroup('Where','susp-loc',['Front left','Front right','Rear left','Rear right','Front both','Rear both','Not sure'])+
+      chipGroup('What the customer thinks it is','susp-work',['Shock absorbers','Springs','Anti-roll bar links','Wishbone / arm','Track rod end','Steering rack','CV joint / driveshaft','Wheel bearing','Not sure — investigate'])+
+      fld('What the customer described','f-susp-symptoms','textarea','In their words...'));}},
+
+  exhaust:{label:'💨 Exhaust & DPF',sub:'Exhaust, DPF, remap',safety:true,guided:function(){
+    return card('Exhaust & DPF — ask the customer',
+      script(['Is it a noise from the exhaust, or a warning light?',
+        'If a noise — front, middle or back of the car?','Is it a diesel? DPF only applies to diesels.',
+        'Has the DPF been cleaned or looked at before?','Smoke from the exhaust? What colour?'])+
+      chipGroup('What is being asked for','exhaust-type',['Exhaust noise or leak','Exhaust welding','Back box','Full exhaust system','DPF warning light','DPF cleaning','DPF remap','Remap — Stage 1','Remap — Stage 2','AdBlue delete','EGR Solution','Not sure — investigate'])+
+      fld('What the customer described','f-exhaust-symptoms','textarea','Noise, smoke colour, warning lights...')+
+      note('n-amber','Every delete is off-road only and the customer signs the disclaimer at intake. Anything you are unsure about goes to Logan.'));}},
+
+  electrical:{label:'⚡ Electrical',sub:'Battery, lights, sensors',safety:true,guided:function(){
+    return card('Electrical — ask the customer',
+      script(['What is not working — battery, a light, a warning light?',
+        'Battery: does it struggle to start, or is it completely dead?',
+        'Light: which one — headlight, brake light, indicator?',
+        'Has anyone read the fault codes?','How old is the battery?'])+
+      chipGroup('What is being asked for','elec-work',['Battery','Alternator','Starter motor','Glow plugs','ABS or speed sensor','Headlight or bulb','Wiper blades','Warning light — investigate'])+
+      fld('What the customer described','f-elec-symptoms','textarea','In their words, plus any fault codes...'));}},
+
+  engine:{label:'🔩 Engine & Cooling',sub:'Cambelt, head gasket, cooling',safety:true,guided:function(){
+    return card('Engine & cooling — ask the customer',
+      script(['What is happening — overheating, an oil leak, something else?',
+        'Any warning lights — temperature, oil, engine?','Losing coolant, or a puddle under the car?',
+        'Any smoke from under the bonnet?','Do they know when the cambelt or chain was last done?'])+
+      chipGroup('What is being asked for','eng-work',['Cambelt / timing belt','Cambelt + water pump','Timing chain','Wet belt','Head gasket','Water pump','Radiator','Thermostat','Turbo','Oil leak','Engine mount','Engine replacement','Not sure — investigate'])+
+      fld('What the customer described','f-eng-symptoms','textarea','In their words...')+
+      note('n-amber','Head gasket, timing chain and wet belt go to <strong>Logan</strong> before any price is given. An engine replacement carries <strong>no KITH labour warranty at all</strong> — say so before they commit.'));}},
+
+  clutch:{label:'⚙️ Clutch & Gearbox',sub:'Clutch, gearbox, transmission',safety:true,guided:function(){
+    return card('Clutch & gearbox — ask the customer',
+      script(['Is it the clutch or the gears? Or both?','Clutch: does it slip, stick, or make a noise?',
+        'Gears: which ones? Any crunching or jumping out of gear?','Manual or automatic?',
+        'Any fluid leaking under the car?'])+
+      chipGroup('What is being asked for','clutch-work',['Clutch','Clutch and flywheel','Clutch cable','Clutch hydraulics','Gearbox oil change','Automatic transmission service','Gearbox removal','Not sure — investigate'])+
+      fld('Manual or automatic?','f-gearbox-type','select',['Manual','Automatic','Semi-auto / DSG','CVT'])+
+      fld('What the customer described','f-clutch-symptoms','textarea','In their words...'));}},
+
+  other:{label:'📝 Other mechanical',sub:'Not on this list',safety:true,guided:function(){
+    return card('What is needed',
+      fld('Describe the work','f-other-work','textarea','As much detail as possible, in the customer\u2019s words...')+
+      fld('Any warning lights?','f-other-lights','text','Exactly what they say...'));}}
+};
+
+// BODYWORK — one flow, no sub-categories
+var BODY_FLOW=function(){
+  return card('Bodywork — ask the customer',
+    script(['Which panels are damaged? Be specific — front bumper, driver door, rear quarter.',
+      'Is it a dent, a scratch, or does the whole panel need repainting?',
+      'How many panels altogether?','Insurance, or are they paying themselves?'])+
+    note('n-blue','<strong>Take photos.</strong> The bodywork estimator quotes from photos and can ask for better ones. Attach them to the job in the CRM.')+
+    chipGroup('Panels affected','panels',['Front bumper','Rear bumper','Bonnet','Boot / tailgate','Roof','Front door (L)','Front door (R)','Rear door (L)','Rear door (R)','Front quarter','Rear quarter','Sliding door','Trim / moulding'])+
+    chipGroup('Type of repair','body-type',['Full panel repaint','Dent repair only','SMART repair','Dent and repaint','Welding / rust','Full respray','Alloy wheel refurb','Caliper respray'])+
+    fld('Damage description','f-body-desc','textarea','Size, depth, where on the panel...')+
+    fld('Insurance or private pay?','f-body-pay','select',['Private pay','Insurance claim','Not confirmed'])+
+    note('n-red','Insurance and accident work goes straight to <strong>Logan</strong> — we have no insurer process or rates.'));
+};
+
+// RECOVERY — its own flow
+var RECOVERY_FLOW=function(){
+  return card('Recovery / collection',
+    script(['Where is the vehicle now? Full address or postcode.',
+      'Where does it need to go?','Does it drive, or does it need a truck?',
+      'Is it in a car park, on a road, or somewhere awkward to get to?',
+      'Are the keys with the vehicle?'])+
+    fld('Collect from','f-rec-from','text','Address or postcode')+
+    fld('Deliver to','f-rec-to','text','Address or postcode — usually KITH')+
+    fld('Does it drive?','f-rec-drives','select',['Yes — drives fine, just needs collecting','No — needs a recovery truck','Not sure'])+
+    fld('Roughly how far?','f-rec-dist','select',['0 – 3 miles','3 – 5 miles','5 – 7 miles','7 – 10 miles','More than 10 miles','Not sure'])+
+    fld('Keys with the vehicle?','f-rec-keys','select',['Yes','No','Customer will meet us there'])+
+    '<div id="rec-price"></div>');
+};
+
+// SALE PREP — internal
+var SALE_FLOW=function(){
+  return card('Vehicle for sale — internal',
+    note('n-gold','<strong>No customer and no quote.</strong> This is our own stock. The cost is tracked against the vehicle, not billed out.')+
+    fld('Stock reference','f-sale-ref','text','How this vehicle is tracked')+
+    fld('What needs doing','f-sale-work','textarea','Prep work, repairs, MOT, valet...')+
+    fld('Target ready date','f-sale-date','text','e.g. end of next week'));
+};
+
+// =============================================================================
+// SAFETY STOP LIST — §02
+// =============================================================================
+var SAFETY=[
+  'Any warning light on the dashboard (brake, engine, ABS, oil, coolant, airbag)',
+  'Grinding, scraping, knocking or clunking',
+  'Smoke from anywhere — exhaust, engine bay or inside the car',
+  "Won't start, cranks but doesn't fire, or cuts out while driving",
+  'Steering feels loose, wobbles, pulls to one side, or vibrates',
+  'A smell inside the car — burning, fuel or coolant',
+  'Overheating, or the temperature gauge going into the red',
+  'Brake pedal going to the floor, or brakes feeling soft',
+  'Tyres worn to the metal or cords showing'
+];
+
+// =============================================================================
+// CUSTOMER TYPES — §00, now seven
+// =============================================================================
+var CUSTOMERS=[
+  {k:'retail',   i:'👤',n:'Member of the public', s:'Normal retail customer. The default.',cls:''},
+  {k:'business', i:'🏢',n:'Business / B2B',       s:'A company. Trade status is decided by the CRM, not by you.',cls:''},
+  {k:'warranty', i:'📄',n:'Warranty company',     s:'A third-party warranty provider paying a claim.',cls:'war'},
+  {k:'aa_smart', i:'🅰️',n:'AA — Smart Repair',    s:'Smart-repair work routed by the AA.',cls:'aa'},
+  {k:'aa_towin', i:'🅰️',n:'AA — Tow-in',          s:'Recovered in by the AA.',cls:'aa'},
+  {k:'aa_pgc',   i:'🅰️',n:'AA — PGC',             s:'An AA warranty claim.',cls:'aa'},
+  {k:'aa_fleet', i:'🅰️',n:'AA — Fleet',           s:'An AA fleet vehicle.',cls:'aa'}
+];
+
+// =============================================================================
+// HELPERS
+// =============================================================================
+function card(t,i){return'<div class="card"><div class="sec">'+t+'</div>'+i+'</div>';}
+function note(c,h){return'<div class="notice '+c+'">'+h+'</div>';}
+function script(qs){return'<div class="script"><div class="script-title">💬 Ask the customer — plain words only</div>'+
+  qs.map(function(q){return'<div class="script-q">'+q+'</div>';}).join('')+'</div>';}
+function fld(l,id,t,o){var e='';
+  if(t==='select'){e='<select class="fi" id="'+id+'"><option value="">— Select —</option>'+
+    o.map(function(x){return'<option>'+x+'</option>';}).join('')+'</select>';}
+  else if(t==='textarea'){e='<textarea class="fi" id="'+id+'" rows="2" placeholder="'+o+'"></textarea>';}
+  else{e='<input class="fi" id="'+id+'" placeholder="'+o+'"/>';}
+  return'<div class="fg"><label class="fl">'+l+'</label>'+e+'</div>';}
+function chipGroup(l,g,items){return'<div class="fg"><label class="fl">'+l+'</label><div class="chips">'+
+  items.map(function(i){return'<div class="chip" data-group="'+g+'" onclick="this.classList.toggle(\'sel\')">'+i+'</div>';}).join('')+
+  '</div></div>';}
+function getChips(g){return Array.from(document.querySelectorAll('.chip[data-group="'+g+'"].sel')).map(function(c){return c.textContent;}).join(', ');}
+function fval(id){var e=document.getElementById(id);return e?String(e.value).trim():'';}
+function fchk(id){var e=document.getElementById(id);return e?e.checked:false;}
+function motRef(){return'<div class="ref"><b>MOT — one of only two prices you quote at the door</b>'+
+  '<div class="ref-row"><span>Class 4 — cars, small vans</span><b>£'+PRICES.mot['4']+'</b></div>'+
+  '<div class="ref-row"><span>Class 5 — 13+ seats</span><b>£'+PRICES.mot['5']+'</b></div>'+
+  '<div class="ref-row"><span>Class 7 — larger vans</span><b>£'+PRICES.mot['7']+'</b></div>'+
+  '<div style="margin-top:6px;color:#666">No VAT on an MOT. The price you say is the price they pay.</div></div>';}
+function diagRef(){return'<div class="ref"><b>Diagnostics — the other price you quote</b>'+
+  Object.keys(PRICES.diagnostic).map(function(k){return'<div class="ref-row"><span>'+k+'</span><b>£'+PRICES.diagnostic[k]+' + VAT</b></div>';}).join('')+
+  '<div style="margin-top:6px;color:#666">If it starts at one tier and has to go deeper, the customer pays for both. Say that up front.</div></div>';}
+
+// =============================================================================
+// STATE
+// =============================================================================
+var staffName=localStorage.getItem('kith_staff')||null;
+var jobType=null,area=null,mechCat=null,custType=null,curStep=0;
+var rampState={exempt:false,reason:'',pending:false};
+var warrantyState=null,safetyHits=[],diagOverride=null;
+
+document.getElementById('staff-list').innerHTML=STAFF.map(function(s){
+  return'<button class="staff-btn" onclick="setStaff(\''+s.n+'\')"><span style="font-size:20px">'+s.i+'</span>'+
+  '<div><div>'+s.n+'</div><div style="font-size:11px;color:#888;font-weight:400">'+s.r+'</div></div></button>';}).join('');
+document.getElementById('jobtype-grid').innerHTML=JOB_TYPES.map(function(j){
+  return'<button class="big-btn" id="jt-'+j.k+'" onclick="pickJobType(\''+j.k+'\')"><span class="ic">'+j.i+'</span>'+
+  '<span>'+j.n+'<span class="svc-sub">'+j.s+'</span></span></button>';}).join('');
+document.getElementById('cust-grid').innerHTML=CUSTOMERS.map(function(c){
+  return'<button class="big-btn '+c.cls+'" id="cu-'+c.k+'" onclick="pickCust(\''+c.k+'\')"><span class="ic">'+c.i+'</span>'+
+  '<span>'+c.n+'<span class="svc-sub">'+c.s+'</span></span></button>';}).join('');
+document.getElementById('safety-list').innerHTML=SAFETY.map(function(s,i){
+  return'<div class="safety-row" onclick="toggleSafety('+i+')"><div class="safety-box" id="sfb'+i+'"></div>'+
+  '<div class="safety-lbl">'+s+'</div></div>';}).join('');
+
+if(staffName){document.getElementById('scr-staff').style.display='none';
+  document.getElementById('scr-form').style.display='block';
+  document.getElementById('hdr-user').textContent=staffName+' ▾';}
+function setStaff(n){staffName=n;localStorage.setItem('kith_staff',n);
+  document.getElementById('scr-staff').style.display='none';
+  document.getElementById('scr-form').style.display='block';
+  document.getElementById('hdr-user').textContent=n+' ▾';}
+function changeStaff(){if(confirm('Change staff member?')){
+  document.getElementById('scr-form').style.display='none';
+  document.getElementById('scr-success').style.display='none';
+  document.getElementById('scr-staff').style.display='block';}}
+
+// =============================================================================
+// LEVEL 1 → 2 → 3 DRILL DOWN
+// =============================================================================
+function pickJobType(k){
+  jobType=k;area=null;mechCat=null;
+  document.querySelectorAll('[id^=jt-]').forEach(function(b){b.classList.remove('sel');});
+  document.getElementById('jt-'+k).classList.add('sel');
+  var jt=JOB_TYPES.filter(function(x){return x.k===k;})[0];
+  var ad=document.getElementById('area-drill'),cd=document.getElementById('cat-drill');
+  cd.innerHTML='';
+  if(k==='comeback'){
+    ad.innerHTML='<div class="drill"><div class="drill-lbl">Which kind of work is coming back?</div>'+
+      AREAS.map(function(a){return'<button class="big-btn" id="ar-'+a.k+'" onclick="pickArea(\''+a.k+'\')">'+
+        '<span class="ic">'+a.i+'</span><span>'+a.n+'<span class="svc-sub">'+a.s+'</span></span></button>';}).join('')+'</div>';
+  } else if(jt.area){
+    ad.innerHTML='<div class="drill"><div class="drill-lbl">Mechanical or bodywork?</div>'+
+      AREAS.map(function(a){return'<button class="big-btn" id="ar-'+a.k+'" onclick="pickArea(\''+a.k+'\')">'+
+        '<span class="ic">'+a.i+'</span><span>'+a.n+'<span class="svc-sub">'+a.s+'</span></span></button>';}).join('')+'</div>';
+  } else {
+    ad.innerHTML='';
+    setTimeout(function(){go(1);},250);
+  }
+}
+function pickArea(k){
+  area=k;mechCat=null;
+  document.querySelectorAll('[id^=ar-]').forEach(function(b){b.classList.remove('sel');});
+  document.getElementById('ar-'+k).classList.add('sel');
+  var cd=document.getElementById('cat-drill');
+  if(k==='mechanical'){
+    cd.innerHTML='<div class="drill"><div class="drill-lbl">What part of the car?</div><div class="svc-grid">'+
+      Object.keys(MECH).map(function(m){return'<button class="svc-btn" id="mc-'+m+'" onclick="pickMech(\''+m+'\')">'+
+        MECH[m].label+'<span class="svc-sub">'+MECH[m].sub+'</span></button>';}).join('')+'</div></div>';
+  } else {
+    cd.innerHTML='';
+    setTimeout(function(){go(1);},250);
+  }
+}
+function pickMech(k){
+  mechCat=k;
+  document.querySelectorAll('[id^=mc-]').forEach(function(b){b.classList.remove('sel');});
+  document.getElementById('mc-'+k).classList.add('sel');
+  setTimeout(function(){go(1);},250);
+}
+
+// =============================================================================
+// CUSTOMER TYPE
+// =============================================================================
+function pickCust(k){
+  custType=k;
+  document.querySelectorAll('[id^=cu-]').forEach(function(b){b.classList.remove('sel');});
+  document.getElementById('cu-'+k).classList.add('sel');
+  var fu=document.getElementById('cust-followup');
+  if(k==='business'){
+    fu.innerHTML=note('n-gold','<strong>Trade is not the same as B2B.</strong> A company only becomes trade after 4 different vehicles in 30 days. The CRM works that out — you just record the company.')+
+      fld('Company name','f-company','text','As it should appear on the invoice')+
+      fld('Do we already deal with them?','f-known-biz','select',['Yes — regular','Yes — occasionally','No — first time','Not sure']);
+  } else if(k==='warranty'){
+    fu.innerHTML=note('n-teal','<strong>We have no agreed rate card with warranty companies.</strong> They set the rate when they authorise the claim. Record what they have authorised and the estimator prices to it — every one of these goes to Logan before it is sent.'+
+      '<span class="pend">no rates agreed</span>')+
+      fld('Warranty company','f-war-co','text','e.g. WarrantyWise, RAC, the dealer\u2019s own scheme')+
+      fld('Claim / authorisation number','f-war-ref','text','From the warranty company')+
+      fld('Labour rate they have authorised','f-war-rate','text','£ per hour — ask them, do not assume ours')+
+      fld('Total amount authorised','f-war-total','text','£ — the ceiling on the claim')+
+      fld('Is there an excess the customer pays?','f-war-excess','text','£ — or leave blank')+
+      note('n-amber','If the work comes to more than they have authorised, <strong>stop</strong>. Either the warranty company authorises more or the customer pays the difference — and either way that is agreed in writing before anyone turns a spanner.');
+  } else if(k.indexOf('aa_')===0){
+    fu.innerHTML=note('n-purple','<strong>AA work is priced off the AA rate card, not ours.</strong> Record the reference so the estimator picks the right one.')+
+      fld('AA job / case reference','f-aa-ref','text','From the AA')+
+      fld('Authorised time or value, if given','f-aa-auth','text','e.g. 0.5 hr diagnostic authorised')+
+      (k==='aa_fleet'?note('n-amber','Fleet authorises only <strong>0.3 to 0.5 hours</strong> of diagnostic. If it needs longer, stop and go to Logan.'):'')+
+      (k==='aa_pgc'?note('n-amber','PGC has <strong>no parts markup set</strong>. Any part on this job goes to Logan.'):'')+
+      (k==='aa_smart'?note('n-amber','AA Smart has <strong>no diagnostic rate set</strong>. If this needs a diagnostic, go to Logan.'):'');
+  } else { fu.innerHTML=''; }
+  setTimeout(function(){go(2);},250);
+}
+
+// =============================================================================
+// RAMP + VEHICLE CATEGORY
+// =============================================================================
+function deriveRamp(){
+  var shape=fval('f-shape'),seats=fval('f-seats'),roof=fval('f-roof'),gvw=fval('f-gvw');
+  var el=document.getElementById('ramp-result'),cat=document.getElementById('cat-result');
+  if(!shape||!seats||!roof||!gvw){el.innerHTML='';cat.innerHTML='';return;}
+  var reasons=[],exempt=false,pending=false;
+  if(RAMP_RULES.shapes_always.indexOf(shape)>-1){exempt=true;reasons.push('it is a high-top, minibus or motorhome');}
+  if(RAMP_RULES.gvw_over.indexOf(gvw)>-1){exempt=true;reasons.push('the plate says over 3,500 kg');}
+  if(gvw==='at'&&RAMP_RULES.shapes_check.indexOf(shape)>-1){exempt=true;reasons.push('it is a 3,500 kg van');}
+  if(roof==='yes'&&(RAMP_RULES.shapes_check.indexOf(shape)>-1||exempt)){exempt=true;reasons.push('there is a rack or bars on the roof');}
+  if(gvw==='unknown'&&shape!=='car'){pending=true;reasons.push('the weight plate could not be read');}
+  rampState={exempt:exempt,reason:reasons.join(', '),pending:pending};
+
+  el.innerHTML=exempt
+    ? note('n-amber','<strong>⚠ Ramp-exempt — '+reasons.join(', ')+'.</strong><br>Recorded on the job. The estimator prices it accordingly. Nothing else for you to do.<span class="pend">criteria awaiting Logan</span>')
+    : pending
+    ? note('n-amber','<strong>Cannot tell — '+reasons.join(', ')+'.</strong><br>Logan confirms before it is priced.')
+    : note('n-green','<strong>✓ Fits the ramp.</strong> Nothing extra to record.');
+
+  var bodyCat,motClass;
+  if(seats==='9'||shape==='minibus'||shape==='motorhome'){bodyCat='ESCALATE';motClass='ESCALATE';}
+  else{
+    if(shape==='van_high'){bodyCat='Large van';}
+    else if(shape==='van_std'){bodyCat='9-seater van';}
+    else if(shape==='suv'||shape==='pickup'||seats==='7'){bodyCat='7-seater / SUV';}
+    else{bodyCat='5-seater';}
+    motClass=(shape==='van_high'||shape==='van_std'||gvw==='at'||gvw==='over')?'7':'4';
+  }
+  window._bodyCat=bodyCat;window._motClass=motClass;
+  cat.innerHTML=(bodyCat==='ESCALATE'
+    ? note('n-red','<strong>9 or more seats — Logan prices this one.</strong><br>There are no panel prices above 8 seats, and no MOT class between 8 seats and 13. Take the booking, but do not give a price.<span class="pend">SOP gap</span>')
+    : note('n-blue','Recorded for the estimator: bodywork column <strong>'+bodyCat+'</strong> · MOT <strong>Class '+motClass+' (£'+PRICES.mot[motClass]+')</strong>'));
+}
+
+// =============================================================================
+// COMEBACK — is it in warranty? Derived, not judged. §42
+// =============================================================================
+function comebackCard(){
+  if(jobType!=='comeback')return '';
+  return card('It came back — is it ours to fix free?',
+    note('n-blue','Answer these and the form works out whether it is in warranty. Do not promise the customer either way until you see the answer.')+
+    fld('Original job number','f-cb-job','text','From the CRM or the invoice')+
+    fld('Date of the original work','f-cb-date','text','DD/MM/YYYY')+
+    fld('Mileage when we did the work','f-cb-miles','text','From the invoice or job sheet')+
+    fld('Is it the same fault as before?','f-cb-same','select',['Yes — exactly the same thing','Similar, but not identical','No — a different problem'])+
+    fld('What was the original work?','f-cb-what','select',['Mechanical repair','Servicing','Bodywork or paint','Tuning / remap','Engine replacement','Work using a part the customer supplied'])+
+    '<button class="btn btn-ghost" onclick="deriveWarranty()" style="margin-bottom:12px">Check the warranty</button>'+
+    '<div id="warranty-result"></div>');
+}
+function deriveWarranty(){
+  if(jobType!=='comeback')return;
+  var el=document.getElementById('warranty-result');
+  if(!el)return;
+  var dateStr=fval('f-cb-date'),milesThen=parseInt(fval('f-cb-miles').replace(/\D/g,''),10);
+  var milesNow=parseInt(fval('f-mileage').replace(/\D/g,''),10);
+  var same=fval('f-cb-same'),what=fval('f-cb-what');
+  if(!dateStr||!what){el.innerHTML=note('n-amber','Fill in the date and what the original work was.');warrantyState=null;return;}
+
+  // hard exclusions first
+  if(what==='Work using a part the customer supplied'){
+    warrantyState={verdict:'none',reason:'a customer-supplied part'};
+    el.innerHTML=note('n-red','<strong>No warranty at all.</strong> Customer-supplied parts are never warrantied — not the part, not the labour. This is a chargeable job. Say so kindly but clearly.');return;}
+  if(what==='Engine replacement'){
+    warrantyState={verdict:'escalate',reason:'engine replacement'};
+    el.innerHTML=note('n-red','<strong>Engine replacement — go to Logan.</strong> There is no KITH labour warranty on an engine swap, and the parts supplier cover is 30 days maximum. Do not tell the customer anything yet.');return;}
+  if(same==='No — a different problem'){
+    warrantyState={verdict:'chargeable',reason:'a different fault'};
+    el.innerHTML=note('n-blue','<strong>Different fault — this is a new chargeable job.</strong> Warranty only covers the same fault returning. Carry on and price it normally.');return;}
+
+  var m=dateStr.match(/(\d{1,2})\D(\d{1,2})\D(\d{2,4})/);
+  if(!m){el.innerHTML=note('n-amber','Write the date as DD/MM/YYYY.');warrantyState=null;return;}
+  var yr=m[3].length===2?2000+parseInt(m[3],10):parseInt(m[3],10);
+  var then=new Date(yr,parseInt(m[2],10)-1,parseInt(m[1],10));
+  var months=(new Date()-then)/(1000*60*60*24*30.44);
+  var isBody=(what==='Bodywork or paint');
+  var w=isBody?WARRANTY.bodywork:WARRANTY.mechanical;
+  var overTime=months>w.months;
+  var overMiles=(w.miles!=null&&milesThen&&milesNow)?(milesNow-milesThen)>w.miles:false;
+  var milesKnown=!!(milesThen&&milesNow);
+  var driven=milesKnown?(milesNow-milesThen):null;
+
+  var detail='<div class="ref" style="margin-top:8px">'+
+    '<div class="ref-row"><span>Cover on this work</span><b>'+w.label+'</b></div>'+
+    '<div class="ref-row"><span>Time since the job</span><b>'+months.toFixed(1)+' months</b></div>'+
+    (w.miles!=null?'<div class="ref-row"><span>Miles since the job</span><b>'+(milesKnown?driven.toLocaleString():'not known')+'</b></div>':'')+
+    '</div>';
+
+  if(overTime||overMiles){
+    warrantyState={verdict:'expired',reason:overTime?'past the time limit':'past the mileage limit',months:months,miles:driven};
+    el.innerHTML=note('n-amber','<strong>Outside the warranty — this is chargeable.</strong><br>'+
+      (overTime?'It is '+months.toFixed(1)+' months since the work and the cover is '+w.months+' months.':
+                'It has done '+driven.toLocaleString()+' miles since and the cover is '+w.miles.toLocaleString()+'.')+
+      '<br>Same fault returning outside the window is declined. Be straight with the customer, and if they push back it goes to Logan — not to you.')+detail;
+  } else if(w.miles!=null&&!milesKnown){
+    warrantyState={verdict:'check',reason:'mileage at the original job is unknown',months:months};
+    el.innerHTML=note('n-amber','<strong>Within the time limit, but check the mileage.</strong><br>'+months.toFixed(1)+' months of '+w.months+' used. Find the mileage on the original invoice before promising anything.')+detail;
+  } else {
+    warrantyState={verdict:'covered',reason:'within '+w.label,months:months,miles:driven};
+    el.innerHTML=note('n-green','<strong>✓ Inside the warranty.</strong><br>Same fault, '+months.toFixed(1)+' months in'+
+      (milesKnown?' and '+driven.toLocaleString()+' miles':'')+'. This is ours to put right at no charge. '+
+      'Book it in and tell the workshop it is a warranty return.')+detail;
+  }
+}
+
+// =============================================================================
+// RECOVERY PRICE
+// =============================================================================
+function deriveRecovery(){
+  var el=document.getElementById('rec-price');if(!el)return;
+  var d=fval('f-rec-dist'),drives=fval('f-rec-drives');
+  if(!d||!drives){el.innerHTML='';return;}
+  if(d==='More than 10 miles'){el.innerHTML=note('n-red','<strong>Over 10 miles — Logan prices this.</strong> There is no band above 10 miles. Take the details, do not quote.');return;}
+  if(d==='Not sure'){el.innerHTML=note('n-amber','Get the postcode and work out the distance before quoting.');return;}
+  var band=parseInt(d,10);
+  var isRec=(drives==='No — needs a recovery truck');
+  var table=isRec?PRICES.recovery:PRICES.collection;
+  var row=table.filter(function(r){return band<r.max||d.indexOf(String(r.max))>-1;})[0]||table[table.length-1];
+  var match=table[['0 – 3 miles','3 – 5 miles','5 – 7 miles','7 – 10 miles'].indexOf(d)];
+  el.innerHTML=note('n-blue','<strong>'+(isRec?'Recovery':'Collection / drop-off')+' — £'+(match?match.p:row.p)+' + VAT, one way.</strong><br>'+
+    'Both legs are charged at full price — there is no return discount. If the recovery firm charges us more than this, stop and go to Logan rather than absorbing it.');
+}
+
+// =============================================================================
+// SAFETY
+// =============================================================================
+function toggleSafety(i){
+  var b=document.getElementById('sfb'+i);
+  b.classList.toggle('on');b.textContent=b.classList.contains('on')?'✓':'';
+  safetyHits=SAFETY.filter(function(_,n){var x=document.getElementById('sfb'+n);return x&&x.classList.contains('on');});
+  renderSafety();
+}
+function renderSafety(){
+  var el=document.getElementById('safety-result');if(!el)return;
+  if(!safetyHits.length){el.innerHTML='';diagOverride=null;return;}
+  el.innerHTML=note('n-red','<strong>This job is booked for a diagnostic first.</strong><br>'+safetyHits.length+
+    ' safety item'+(safetyHits.length>1?'s':'')+' ticked. We do not price a repair off a description — the technician finds the fault, then the estimator prices it.')+
+    (diagOverride
+      ? note('n-amber','<strong>Overridden by Logan.</strong> '+diagOverride.reason+
+          '<br><button class="btn btn-ghost" style="margin-top:8px;padding:8px" onclick="clearOverride()">Undo override</button>')
+      : '<button class="btn btn-ghost" onclick="askOverride()" style="font-size:13px;padding:10px">Logan only — override and price without a diagnostic</button>');
+}
+function askOverride(){
+  if(staffName!=='Logan'){alert('Only Logan can override this. Leave it as a diagnostic.');return;}
+  var r=prompt('Logan — why is this being priced without a diagnostic? This is recorded on the job.');
+  if(!r||!r.trim())return;
+  diagOverride={by:staffName,reason:r.trim(),at:new Date().toISOString()};renderSafety();
+}
+function clearOverride(){diagOverride=null;renderSafety();}
+function custPartsWarn(){
+  document.getElementById('custparts-warn').innerHTML=fchk('f-custparts')
+    ? note('n-red','<strong>Default answer is no.</strong> We do not fit customer parts. Only Logan approves it, only on high-value parts, and only with a signed disclaimer. Tell the customer it needs checking — do not agree to it.')
+    : '';
+}
+
+// =============================================================================
+// STEPS
+// =============================================================================
+function go(n){
+  if(n>curStep){
+    if(curStep===0){
+      if(!jobType){alert('Pick what kind of job this is.');return;}
+      var jt=JOB_TYPES.filter(function(x){return x.k===jobType;})[0];
+      if(jt.area&&!area){alert('Mechanical or bodywork?');return;}
+      if(area==='mechanical'&&!mechCat){alert('Pick what part of the car.');return;}
+    }
+    if(curStep===1&&!custType&&needsCustomer()){alert('Pick who is paying.');return;}
+    if(curStep===2){
+      if(!fval('f-reg')){alert('Registration is required.');return;}
+      if(!fval('f-shape')||!fval('f-seats')||!fval('f-roof')||!fval('f-gvw')){
+        alert('All four vehicle shape questions are needed — they set the price.');return;}
+    }
+  }
+  curStep=n;
+  document.querySelectorAll('.step').forEach(function(s){s.classList.remove('on');});
+  document.getElementById('s'+n).classList.add('on');
+  for(var i=0;i<5;i++){document.getElementById('sd'+i).className='sdot'+(i<=n?' on':'');}
+  if(n===1&&!needsCustomer()){go(2);return;}
+  if(n===3)buildStep3();
+  if(n===4)buildStep4();
+  window.scrollTo(0,60);
+}
+function needsCustomer(){var jt=JOB_TYPES.filter(function(x){return x.k===jobType;})[0];return jt?jt.cust:true;}
+function activeFlow(){
+  if(jobType==='recovery')return{safety:false,guided:RECOVERY_FLOW,label:'🚛 Recovery / collection'};
+  if(jobType==='sale')return{safety:area==='mechanical',guided:SALE_FLOW,label:'🏷️ Vehicle for sale'};
+  if(area==='bodywork')return{safety:false,guided:BODY_FLOW,label:'🚙 Bodywork & paint'};
+  return MECH[mechCat]||MECH.other;
+}
+function buildStep3(){
+  var f=activeFlow();
+  document.getElementById('comeback-card').innerHTML=comebackCard();
+  document.getElementById('safety-card').style.display=f.safety?'block':'none';
+  document.getElementById('guided-content').innerHTML=f.guided();
+  ['f-rec-dist','f-rec-drives'].forEach(function(id){
+    var e=document.getElementById(id);if(e)e.onchange=deriveRecovery;});
+}
+function buildStep4(){
+  document.getElementById('contact-card').style.display=needsCustomer()?'block':'none';
+  var jt=JOB_TYPES.filter(function(x){return x.k===jobType;})[0]||{};
+  var c=CUSTOMERS.filter(function(x){return x.k===custType;})[0]||{};
+  var f=activeFlow();
+  var rows=[['Job type',jt.n||'—'],
+    ['Area',area?(area==='mechanical'?('Mechanical — '+(MECH[mechCat]?MECH[mechCat].label:'')):'Bodywork'):'n/a'],
+    ['Customer',needsCustomer()?(c.n||'—'):'Internal — our own stock'],
+    ['Vehicle',(fval('f-reg')+' '+fval('f-make')+' '+fval('f-model')).trim()||'—'],
+    ['Bodywork column',window._bodyCat||'—'],
+    ['MOT class',window._motClass?(window._motClass==='ESCALATE'?'Logan':'Class '+window._motClass):'—'],
+    ['Ramp-exempt',rampState.exempt?('Yes — '+rampState.reason):(rampState.pending?'Logan to confirm':'No')],
+    ['Diagnostic first?',safetyHits.length?(diagOverride?'Overridden by Logan':'Yes'):'No']];
+  if(warrantyState)rows.push(['Warranty',warrantyState.verdict+' — '+warrantyState.reason]);
+  document.getElementById('summary-card').innerHTML='<div class="card"><div class="sec">What the estimator will see</div>'+
+    rows.map(function(r){return'<div class="ref-row" style="padding:5px 0;border-bottom:1px solid #f4f4f4"><span style="color:#888">'+r[0]+'</span><b>'+r[1]+'</b></div>';}).join('')+'</div>';
+}
+
+// =============================================================================
+// DUP CHECK
+// =============================================================================
+var _dt=null;
+function dupCheck(v){
+  clearTimeout(_dt);if(v.length<4)return;
+  _dt=setTimeout(async function(){
+    try{
+      // Let the database find the reg (spaces anywhere), so this still works
+      // with thousands of jobs; the exact match is checked below.
+      var pat=v.replace(/[^A-Z0-9]/g,'').split('').join('*');
+      var r=await fetch(SB_URL+'/rest/v1/'+JOBS_TABLE+
+        '?select=id,reg:data->>reg,name:data->>name,stage:data->>stage,merged:data->>mergedInto'+
+        '&data->>reg=ilike.'+encodeURIComponent(pat)+'&order=updated_at.desc&limit=200',
+        {headers:sbHdr()});
+      if(!r.ok)return;
+      var rows=await r.json();
+      var act=(rows||[]).filter(function(j){
+        return j&&String(j.id).indexOf('__')!==0&&!j.merged&&
+          String(j.reg||'').replace(/\s/g,'').toUpperCase()===v&&CLOSED_STAGES.indexOf(j.stage)===-1;});
+      var el=document.getElementById('dup-msg');
+      if(act.length){el.style.display='block';
+        el.innerHTML='⚠ Active job already exists for '+v+':<br>'+
+          act.map(function(j){return j.id+' · '+(j.name||'')+' · '+j.stage;}).join('<br>')+
+          '<br><br>If this is work coming back, go to the start and pick <b>Coming back</b>.';}
+      else el.style.display='none';
+    }catch(e){}
+  },800);
+}
+
+// =============================================================================
+// SUBMIT
+// =============================================================================
+function collectAnswers(){
+  var a={};
+  document.querySelectorAll('#guided-content input, #guided-content select, #guided-content textarea, #comeback-card input, #comeback-card select')
+    .forEach(function(el){if(el.id&&el.value)a[el.id]=el.value;});
+  ['axle','brakework','tyre-brand','susp-loc','susp-work','exhaust-type','elec-work','eng-work','clutch-work','panels','body-type']
+    .forEach(function(g){var v=getChips(g);if(v)a['chips-'+g]=v;});
+  return a;
+}
+async function submitJob(){
+  var btn=document.getElementById('sub-btn');
+  if(needsCustomer()){
+    if(!fval('f-name')){alert('Customer name required.');return;}
+    if(!fval('f-phone')){alert('Phone number required.');return;}
+  }
+  btn.textContent='Submitting…';btn.disabled=true;
+
+  var jt=JOB_TYPES.filter(function(x){return x.k===jobType;})[0]||{};
+  var f=activeFlow();
+  var ts=new Date().toLocaleString('en-GB');
+  var id=newJobId();
+  var reg=fval('f-reg').toUpperCase();
+  var answers=collectAnswers();
+  var needsDiag=safetyHits.length>0&&!diagOverride;
+
+  var escalations=[];
+  if(custType==='warranty')escalations.push('Warranty company — no agreed rate card');
+  if(window._bodyCat==='ESCALATE')escalations.push('Vehicle above 8 seats — no panel prices, no MOT class');
+  if(warrantyState&&warrantyState.verdict==='escalate')escalations.push('Comeback on an engine replacement');
+  if(fchk('f-custparts'))escalations.push('Customer wants to supply parts');
+  if(fval('f-rec-dist')==='More than 10 miles')escalations.push('Recovery beyond 10 miles');
+  if(fval('f-body-pay')==='Insurance claim')escalations.push('Insurance work — no process or rates');
+
+  var judgement={
+    sop_version:SOP_VERSION,
+    job_type:jobType, area:area, mechanical_category:mechCat,
+    customer_type:needsCustomer()?custType:'internal',
+    company_name:fval('f-company')||null,
+    trade_status:custType==='business'?'resolve_in_crm':null,
+    warranty_company:fval('f-war-co')||null,
+    warranty_claim_ref:fval('f-war-ref')||null,
+    warranty_authorised_rate:fval('f-war-rate')||null,
+    warranty_authorised_total:fval('f-war-total')||null,
+    warranty_excess:fval('f-war-excess')||null,
+    warranty_rates_agreed:false,
+    aa_reference:fval('f-aa-ref')||null,
+    aa_authorised:fval('f-aa-auth')||null,
+    comeback:jobType==='comeback'?{
+      original_job:fval('f-cb-job')||null, original_date:fval('f-cb-date')||null,
+      mileage_then:fval('f-cb-miles')||null, mileage_now:fval('f-mileage')||null,
+      same_fault:fval('f-cb-same')||null, original_work:fval('f-cb-what')||null,
+      verdict:warrantyState?warrantyState.verdict:'not_checked',
+      reason:warrantyState?warrantyState.reason:null
+    }:null,
+    ramp_exempt:rampState.exempt, ramp_exempt_reason:rampState.reason||null,
+    ramp_exempt_pending:rampState.pending, ramp_criteria_signed_off:false,
+    vehicle_shape:fval('f-shape'), seats:fval('f-seats'),
+    roof_load:fval('f-roof'), gross_weight:fval('f-gvw'),
+    bodywork_category:window._bodyCat||null, mot_class:window._motClass||null,
+    customer_supplied_parts:fchk('f-custparts'),
+    safety_flags:safetyHits, needs_diagnostic_first:needsDiag,
+    diagnostic_override:diagOverride,
+    escalations:escalations,
+    customer_words:fval('f-words')||null,
+    ai_triage:triageResult||null,
+    captured_by:staffName, captured_at:new Date().toISOString()
+  };
+
+  var parts=[];
+  if(fval('f-svc-type'))parts.push(fval('f-svc-type'));
+  ['axle','brakework','exhaust-type','elec-work','eng-work','clutch-work','susp-work','panels','body-type']
+    .forEach(function(g){if(answers['chips-'+g])parts.push(answers['chips-'+g]);});
+  ['f-other-work','f-sale-work','f-body-desc'].forEach(function(k){if(fval(k))parts.push(fval(k));});
+  if(jobType==='recovery')parts.push('Recovery: '+fval('f-rec-from')+' → '+fval('f-rec-to'));
+  var work=parts.join(' · ')||f.label||jt.n;
+  if(jobType==='comeback')work='COMEBACK — '+work;
+  if(needsDiag)work='DIAGNOSTIC FIRST — '+work;
+
+  var job={
+    id:id,reg:reg,
+    name:needsCustomer()?fval('f-name'):'INTERNAL — stock',
+    phone:needsCustomer()?fval('f-phone'):'',
+    make:fval('f-make'),model:fval('f-model'),year:fval('f-year'),
+    mileage:fval('f-mileage'),fuel:fval('f-fuel'),engineSize:fval('f-engine'),
+    work:work,jobType:jobType,area:area,serviceType:mechCat||area||jobType,
+    serviceLabel:f.label||jt.n,
+    guidedAnswers:answers,judgement:judgement,
+    isB2B:custType==='business',isAA:(custType||'').indexOf('aa_')===0,
+    isWarrantyCo:custType==='warranty',isInternal:!needsCustomer(),
+    isComeback:jobType==='comeback',
+    customerSuppliedParts:fchk('f-custparts'),
+    source:fval('f-source'),notes:fval('f-notes'),by:staffName,
+    asap:fchk('f-asap'),priority:fchk('f-asap'),
+    stage:'labour',stageAt:Date.now(),
+    custType:needsCustomer()?(CRM_CUST[custType]||''):'Internal (stock)',
+    fleetAccount:false,fromIntakeApp:true,intakeKey:newIntakeKey(),
+    tmJob:'',tmPart:'',est:null,finalEst:null,parts:[],finalNotes:'',fromForm:false,
+    log:[{t:ts,s:'Intake v'+INTAKE_BUILD+' by '+staffName+' — '+jt.n+(area?' / '+area:'')+
+      ' · customer '+(needsCustomer()?custType:'internal')+
+      (rampState.exempt?' · RAMP-EXEMPT':'')+(needsDiag?' · DIAGNOSTIC FIRST':'')+
+      (warrantyState?' · warranty '+warrantyState.verdict:'')+
+      (escalations.length?' · ESCALATE ('+escalations.length+')':'')+
+      (custType==='business'?' · BUSINESS — set Retail or Trade in the CRM':'')}],
+    createdAt:ts,pathway:2
+  };
+
+  var saved=false;
+  try{saved=await pushJob(job);}catch(e){}
+  if(!saved){var q=readQueue();q.push(job);writeQueue(q);}
+  id=job.id;   // may have moved if the first number was taken
+
+  btn.disabled=false;btn.textContent='✓ Submit Job';
+  document.getElementById('scr-form').style.display='none';
+  document.getElementById('scr-success').style.display='block';
+  document.getElementById('suc-msg').innerHTML=
+    '<strong style="font-family:monospace;font-size:18px">'+id+'</strong><br>'+
+    '<strong style="font-family:monospace">'+reg+'</strong> · '+job.name+'<br><br>'+
+    '<strong>'+(f.label||jt.n)+'</strong><br>'+work+'<br><br>'+
+    (needsDiag?'<span style="color:var(--red)">🔍 Booked for a diagnostic first</span><br>':'')+
+    (warrantyState&&warrantyState.verdict==='covered'?'<span style="color:var(--green)">✓ In warranty — no charge</span><br>':'')+
+    (warrantyState&&(warrantyState.verdict==='expired'||warrantyState.verdict==='chargeable')?'<span style="color:var(--amber)">Chargeable — outside warranty</span><br>':'')+
+    (rampState.exempt?'<span style="color:var(--amber)">⚠ Ramp-exempt</span><br>':'')+
+    (escalations.length?'<span style="color:var(--red)">⚠ '+escalations.length+' item(s) for Logan:<br>'+escalations.join('<br>')+'</span><br>':'')+
+    '<br>'+(saved?'<span style="color:var(--green)">✓ Saved to CRM</span>':'<span style="color:var(--amber)">⚠ Saved offline — will sync</span>');
+  syncQueue();
+}
+function readQueue(){try{return JSON.parse(localStorage.getItem('kith_queue')||'[]');}catch(e){return[];}}
+function writeQueue(q){try{localStorage.setItem('kith_queue',JSON.stringify(q));}catch(e){}}
+// Insert a new job. A plain insert, so it can never overwrite a job that
+// already has this number. If the number is taken: either it is this same
+// job (an earlier try reached the server before the signal dropped) — done —
+// or it belongs to someone else, so take a fresh number and try again.
+async function pushJob(job){
+  for(var attempt=0;attempt<5;attempt++){
+    job.updatedAt=new Date().toISOString();
+    var r=await fetch(SB_URL+'/rest/v1/'+JOBS_TABLE,{method:'POST',
+      headers:sbHdr({'Content-Type':'application/json','Prefer':'return=minimal'}),
+      body:JSON.stringify({id:job.id,data:job,updated_at:job.updatedAt})});
+    if(r.ok)return true;
+    if(r.status!==409)return false;
+    var g=await fetch(SB_URL+'/rest/v1/'+JOBS_TABLE+'?id=eq.'+encodeURIComponent(job.id)+'&select=data',{headers:sbHdr()});
+    if(!g.ok)return false;
+    var rows=await g.json();var there=rows[0]&&rows[0].data;
+    if(there&&there.intakeKey&&there.intakeKey===job.intakeKey)return true;
+    var was=job.id;
+    job.id='J'+String((parseInt(was.slice(1),10)+1+Math.floor(Math.random()*997))%1000000).padStart(6,'0');
+    (job.log=job.log||[]).push({t:new Date().toLocaleString('en-GB'),s:'Job number '+was+' was already taken — filed as '+job.id});
+  }
+  return false;
+}
+var _syncing=false;
+async function syncQueue(){
+  if(_syncing)return;_syncing=true;
+  try{
+    var q=readQueue();if(!q.length)return;
+    var rem=[];
+    for(var i=0;i<q.length;i++){
+      // jobs queued by older builds: bring them up to date first
+      if(q[i].stage==='estimating')q[i].stage='labour';
+      if(!q[i].intakeKey)q[i].intakeKey=newIntakeKey();
+      var ok=false;try{ok=await pushJob(q[i]);}catch(e){}
+      if(!ok)rem.push(q[i]);
+    }
+    writeQueue(rem.concat(readQueue().slice(q.length)));
+  }finally{_syncing=false;}
+}
+window.addEventListener('online',function(){syncQueue();});
+setInterval(function(){syncQueue();},60000);
+function resetForm(){
+  jobType=null;area=null;mechCat=null;custType=null;curStep=0;
+  safetyHits=[];diagOverride=null;warrantyState=null;triageResult=null;
+  rampState={exempt:false,reason:'',pending:false};
+  window._bodyCat=null;window._motClass=null;
+  document.querySelectorAll('.big-btn,.svc-btn').forEach(function(b){b.classList.remove('sel');});
+  ['f-reg','f-make','f-model','f-year','f-mileage','f-engine','f-name','f-phone','f-notes','f-words']
+    .forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['f-shape','f-seats','f-roof','f-gvw','f-fuel'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  ['f-asap','f-custparts'].forEach(function(id){var e=document.getElementById(id);if(e)e.checked=false;});
+  document.querySelectorAll('.safety-box').forEach(function(b){b.classList.remove('on');b.textContent='';});
+  document.getElementById('dup-msg').style.display='none';
+  ['area-drill','cat-drill','cust-followup','ramp-result','cat-result','safety-result','custparts-warn','summary-card','comeback-card','guided-content','brain-out','check-out']
+    .forEach(function(id){var e=document.getElementById(id);if(e)e.innerHTML='';});
+  document.getElementById('scr-success').style.display='none';
+  document.getElementById('scr-form').style.display='block';
+  document.querySelectorAll('.step').forEach(function(s){s.classList.remove('on');});
+  document.getElementById('s0').classList.add('on');
+  for(var i=0;i<5;i++){document.getElementById('sd'+i).className='sdot';}
+  window.scrollTo(0,0);syncQueue();
+}
+// =============================================================================
+// THE SERVICE ADVISER BRAIN
+// Everything here is optional. With the AI switched off the form works exactly
+// as it did — the brain adds suggestions, it is never load-bearing.
+// The brain may ADD a safety flag. It may never clear one.
+// =============================================================================
+function aiSettings(){
+  var u=prompt('AI endpoint (the Supabase function URL). Leave blank to work without it:',AI.url);
+  if(u===null)return;
+  var k=prompt('Shared secret:',AI.secret)||'';
+  AI.url=u.trim();AI.secret=k.trim();
+  localStorage.setItem('kith_ai_url',AI.url);localStorage.setItem('kith_ai_secret',AI.secret);
+  paintAIPill();
+}
+function paintAIPill(){
+  var el=document.getElementById('ai-pill');if(!el)return;
+  el.textContent=AI.url?'AI on':'AI off';
+  el.style.borderColor=AI.url?'var(--gold)':'#555';
+  el.style.color=AI.url?'var(--gold)':'#888';
+}
+async function callAI(action,payload){
+  if(!AI.url)throw new Error('No AI endpoint set. Tap "AI off" at the top to add one, or just fill the form in yourself.');
+  var r=await fetch(AI.url,{method:'POST',
+    headers:{'Content-Type':'application/json','x-kith-secret':AI.secret},
+    body:JSON.stringify({action:action,payload:payload})});
+  var d=await r.json();
+  if(!r.ok||d.error)throw new Error(d.error||('The AI returned '+r.status));
+  return d.result;
+}
+function vehicleCtx(){
+  return [fval('f-year'),fval('f-make'),fval('f-model'),fval('f-engine'),fval('f-fuel'),fval('f-reg')]
+    .filter(Boolean).join(' ')||'not stated yet';
+}
+function esc(x){return String(x==null?'':x).replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+var JT_NAMES={new:'New job',comeback:'Coming back',sale:'Vehicle for sale',recovery:'Recovery or collection'};
+
+// ---- TRIAGE: what did the customer actually say? ----
+async function runTriage(){
+  var words=fval('f-words');
+  var out=document.getElementById('brain-out');
+  if(!words){alert('Type what the customer said first.');return;}
+  var btn=document.getElementById('brain-btn');
+  btn.disabled=true;btn.innerHTML='<span class="spin"></span> Thinking\u2026';
+  out.innerHTML='';
+  try{
+    var r=await callAI('triage_intake',{customerWords:words,vehicleContext:vehicleCtx(),
+      customerType:custType||null});
+    triageResult=r;
+    renderTriage(r);
+  }catch(e){
+    out.innerHTML=note('n-amber','<strong>The brain is not available.</strong> '+esc(e.message)+
+      '<br>Carry on and fill the form in yourself \u2014 nothing below depends on it.');
+  }
+  btn.disabled=false;btn.textContent='Work out where this goes';
+}
+
+function renderTriage(r){
+  var out=document.getElementById('brain-out');
+  var h='';
+
+  h+='<div class="sugg"><div class="sugg-lbl">What it thinks this is</div>'+
+     '<div class="sugg-val">'+esc(r.understood||'Not sure')+
+     ' <span class="conf '+esc(r.confidence||'low')+'">'+esc(r.confidence||'low')+' confidence</span></div>'+
+     (r.routing_reason?'<div class="sugg-why">'+esc(r.routing_reason)+'</div>':'')+'</div>';
+
+  if(r.confidence==='low')
+    h+=note('n-amber','<strong>It is not confident.</strong> Treat everything below as a starting point, ask the questions, and if it still does not fit, route it to a diagnostic.');
+
+  if(r.not_offered)
+    h+=note('n-red','<strong>We do not do this.</strong> '+esc(r.not_offered));
+
+  // safety - the brain can only ADD
+  if(r.safety_items&&r.safety_items.length){
+    h+=note('n-red','<strong>\u26a0 '+r.safety_items.length+' safety thing'+(r.safety_items.length>1?'s':'')+
+      ' heard in that.</strong><br>'+
+      r.safety_items.map(function(x){return '\u2022 '+esc(x.item)+'<br><span style="opacity:.8">they said: \u201c'+esc(x.heard)+'\u201d</span>';}).join('<br>')+
+      '<br><br>These will be ticked on the safety list for you. Read the full list anyway \u2014 it can miss things, it cannot untick them.');
+  }
+  if(r.needs_diagnostic_first)
+    h+=note('n-red','<strong>Diagnostic first.</strong> '+esc(r.diagnostic_reason||'')+
+      '<br>Do not promise a price for the repair. We find the fault, then we price it.');
+
+  if(r.is_possible_comeback)
+    h+=note('n-amber','<strong>This sounds like work coming back.</strong> '+esc(r.comeback_reason||'')+
+      '<br>Pick <b>Coming back</b> below \u2014 the form will work out whether it is in warranty.');
+
+  // routing suggestion, tap to apply
+  if(r.job_type){
+    var label=JT_NAMES[r.job_type]||r.job_type;
+    if(r.area)label+=' \u2192 '+(r.area==='mechanical'?'Mechanical':'Bodywork');
+    if(r.area==='mechanical'&&r.mechanical_category&&MECH[r.mechanical_category])
+      label+=' \u2192 '+MECH[r.mechanical_category].label;
+    h+='<div class="sugg"><div class="sugg-lbl">Suggested routing</div>'+
+       '<div class="sugg-val">'+esc(label)+'</div>'+
+       '<button class="btn btn-dark" style="margin-top:10px;padding:11px" onclick="applyTriage()">Use this routing</button>'+
+       '<button class="btn btn-ghost" style="margin-top:6px;padding:9px;font-size:13px" onclick="document.getElementById(\'brain-out\').scrollIntoView()">No \u2014 I\u2019ll pick myself</button>'+
+       '</div>';
+  }
+
+  if(r.questions_to_ask&&r.questions_to_ask.length)
+    h+='<div class="sugg"><div class="sugg-lbl">Ask them this, while they are still on the phone</div>'+
+       '<ol class="qlist">'+r.questions_to_ask.map(function(q){return '<li>'+esc(q)+'</li>';}).join('')+'</ol></div>';
+
+  if(r.what_to_say)
+    h+='<div class="say"><div class="say-lbl">You can say this now</div>'+esc(r.what_to_say)+'</div>';
+
+  if(r.missing_info&&r.missing_info.length)
+    h+=note('n-blue','<strong>You will also need:</strong><br>'+
+      r.missing_info.map(function(x){return '\u2022 '+esc(x);}).join('<br>'));
+
+  if(r.escalations&&r.escalations.length)
+    h+=note('n-red','<strong>For Logan:</strong><br>'+
+      r.escalations.map(function(x){return '\u2022 '+esc(x);}).join('<br>'));
+
+  if(r.adviser_note)
+    h+=note('n-gold',esc(r.adviser_note));
+
+  out.innerHTML=h;
+}
+
+// ---- apply the suggested routing, and pre-tick safety ----
+function applyTriage(){
+  var r=triageResult;if(!r)return;
+  if(r.job_type&&JT_NAMES[r.job_type]){
+    pickJobType(r.job_type);
+    var jt=JOB_TYPES.filter(function(x){return x.k===r.job_type;})[0];
+    if(jt&&jt.area&&r.area){
+      pickArea(r.area);
+      if(r.area==='mechanical'&&r.mechanical_category&&MECH[r.mechanical_category])
+        pickMech(r.mechanical_category);
+    }
+  }
+  // brain may only ADD safety flags
+  if(r.safety_items&&r.safety_items.length){
+    r.safety_items.forEach(function(si){
+      var idx=bestSafetyMatch(si.item);
+      if(idx>-1){
+        var b=document.getElementById('sfb'+idx);
+        if(b&&!b.classList.contains('on')){b.classList.add('on');b.textContent='\u2713';}
+      }
+    });
+    safetyHits=SAFETY.filter(function(_,n){
+      var x=document.getElementById('sfb'+n);return x&&x.classList.contains('on');});
+  }
+}
+// loose word-overlap match from the brain's phrasing to our fixed list
+function bestSafetyMatch(text){
+  var t=String(text||'').toLowerCase();
+  var best=-1,bestScore=0;
+  SAFETY.forEach(function(item,i){
+    var words=item.toLowerCase().replace(/[^a-z ]/g,' ').split(/\s+/).filter(function(w){return w.length>4;});
+    var score=words.filter(function(w){return t.indexOf(w)>-1;}).length;
+    if(score>bestScore){bestScore=score;best=i;}
+  });
+  return bestScore>0?best:-1;
+}
+
+// ---- LAST CHECK before submit ----
+async function runIntakeCheck(){
+  var out=document.getElementById('check-out');
+  var btn=document.getElementById('check-btn');
+  btn.disabled=true;btn.innerHTML='<span class="spin"></span> Checking\u2026';
+  out.innerHTML='';
+  var jt=JOB_TYPES.filter(function(x){return x.k===jobType;})[0]||{};
+  var intake={
+    job_type:jobType,area:area,mechanical_category:mechCat,
+    customer_type:needsCustomer()?custType:'internal',
+    vehicle:{reg:fval('f-reg'),make:fval('f-make'),model:fval('f-model'),
+      year:fval('f-year'),mileage:fval('f-mileage'),fuel:fval('f-fuel')},
+    shape:fval('f-shape'),seats:fval('f-seats'),roof:fval('f-roof'),gross_weight:fval('f-gvw'),
+    ramp_exempt:rampState.exempt,bodywork_category:window._bodyCat,mot_class:window._motClass,
+    safety_ticked:safetyHits,needs_diagnostic_first:safetyHits.length>0&&!diagOverride,
+    comeback_verdict:warrantyState?warrantyState.verdict:null,
+    customer_supplied_parts:fchk('f-custparts'),
+    answers:collectAnswers(),notes:fval('f-notes'),
+    customer_name_given:!!fval('f-name'),phone_given:!!fval('f-phone')
+  };
+  try{
+    var r=await callAI('intake_check',{intake:intake,customerWords:fval('f-words'),
+      vehicleContext:vehicleCtx(),customerType:custType||null});
+    var cls=r.verdict==='do_not_submit'?'n-red':r.verdict==='fix_before_submitting'?'n-amber':'n-green';
+    var h=note(cls,'<strong>'+esc(String(r.verdict||'').replace(/_/g,' '))+'</strong><br>'+esc(r.summary||''));
+    (r.issues||[]).forEach(function(i){
+      h+=note(i.severity==='critical'?'n-red':i.severity==='warn'?'n-amber':'n-blue',
+        '<strong>'+esc(i.issue)+'</strong><br>'+esc(i.fix||''));
+    });
+    if(r.still_to_ask&&r.still_to_ask.length)
+      h+='<div class="sugg"><div class="sugg-lbl">Worth asking before they go</div><ol class="qlist">'+
+        r.still_to_ask.map(function(q){return '<li>'+esc(q)+'</li>';}).join('')+'</ol></div>';
+    out.innerHTML=h;
+  }catch(e){
+    out.innerHTML=note('n-amber','<strong>Could not check it.</strong> '+esc(e.message)+
+      '<br>You can still submit \u2014 this check is a bonus, not a gate.');
+  }
+  btn.disabled=false;btn.innerHTML='&#129504; Check this before I submit';
+}
+paintAIPill();
+
+syncQueue();
+</script>
+</body>
+</html>

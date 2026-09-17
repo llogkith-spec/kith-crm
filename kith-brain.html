@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KITH Brain</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14161A;--bg-2:#1B1E24;--card:#20242B;--card-2:#262B33;
+  --line:#333A44;--line-soft:#2A2F37;
+  --ink:#EDEFF2;--ink-2:#A8B1BD;--ink-3:#6E7885;
+  --gold:#D8A32B;--gold-dim:#8A6A1C;--gold-bg:rgba(216,163,43,.10);
+  --go:#3FB07A;--go-bg:rgba(63,176,122,.12);
+  --warn:#E0A030;--warn-bg:rgba(224,160,48,.12);
+  --stop:#E05A4C;--stop-bg:rgba(224,90,76,.12);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:14px;line-height:1.55}
+h1,h2,h3{font-family:"Barlow Condensed",Impact,sans-serif;font-weight:700;
+  text-transform:uppercase;letter-spacing:.02em;margin:0}
+.mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+.top{position:sticky;top:0;z-index:40;background:var(--bg-2);border-bottom:1px solid var(--line);
+  padding:.6rem 1rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:.5rem}
+.brand h1{font-size:1.25rem;letter-spacing:.06em}
+.brand .v{font-family:"IBM Plex Mono",monospace;font-size:.66rem;color:var(--bg);
+  background:var(--gold);padding:.1rem .35rem;border-radius:2px;font-weight:600}
+.spacer{flex:1}
+.pill{font-family:"IBM Plex Mono",monospace;font-size:.68rem;text-transform:uppercase;
+  letter-spacing:.08em;padding:.25rem .5rem;border:1px solid var(--line);border-radius:99px;
+  color:var(--ink-2);cursor:pointer}
+.pill.on{border-color:var(--gold);color:var(--gold);background:var(--gold-bg)}
+.pill.alert{border-color:var(--stop);color:var(--stop);background:var(--stop-bg)}
+
+.wrap{max-width:900px;margin:0 auto;padding:1.1rem 1rem 5rem}
+.tabs{display:flex;gap:.4rem;margin-bottom:1.2rem;flex-wrap:wrap}
+.tab{background:var(--card);border:1px solid var(--line);border-radius:99px;
+  padding:.4rem .9rem;cursor:pointer;font-size:.85rem;color:var(--ink-2)}
+.tab.on{border-color:var(--gold);color:var(--gold);background:var(--gold-bg)}
+.tab.locked{opacity:.4;cursor:not-allowed}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;margin-bottom:1rem;overflow:hidden}
+.card>header{padding:.6rem .85rem;background:var(--card-2);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:.6rem}
+.card>header h2{font-size:1rem;letter-spacing:.05em}
+.card .body{padding:.9rem}
+label.f{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--ink-3);margin-bottom:.22rem;font-family:"IBM Plex Mono",monospace}
+input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);
+  border-radius:5px;padding:.45rem .55rem}
+textarea{min-height:70px;resize:vertical}
+input:focus,select:focus,textarea:focus{border-color:var(--gold);outline:none}
+.row{display:grid;gap:.6rem;margin-bottom:.65rem}
+.r2{grid-template-columns:1fr 1fr}.r3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:640px){.r2,.r3{grid-template-columns:1fr}}
+.btn{background:var(--card-2);border:1px solid var(--line);border-radius:5px;
+  padding:.45rem .8rem;cursor:pointer;font-size:.85rem}
+.btn:hover{border-color:var(--gold);color:var(--gold)}
+.btn.primary{background:var(--gold);border-color:var(--gold);color:var(--bg);font-weight:600}
+.btn.go{background:var(--go);border-color:var(--go);color:#06210f;font-weight:600}
+.btn.stop{border-color:var(--stop);color:var(--stop)}
+.btn.sm{padding:.25rem .55rem;font-size:.78rem}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btns{display:flex;gap:.45rem;flex-wrap:wrap}
+
+.note{border-left:3px solid var(--gold);background:var(--gold-bg);padding:.55rem .75rem;
+  border-radius:0 4px 4px 0;font-size:.85rem;margin:.7rem 0}
+.note.stop{border-color:var(--stop);background:var(--stop-bg)}
+.note.go{border-color:var(--go);background:var(--go-bg)}
+.note b{font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;
+  letter-spacing:.05em;font-size:.9rem;display:block;margin-bottom:.1rem}
+.empty{color:var(--ink-3);text-align:center;padding:1.4rem;
+  border:1px dashed var(--line);border-radius:6px;font-size:.85rem}
+
+.lesson{background:var(--bg);border:1px solid var(--line-soft);border-radius:6px;
+  padding:.7rem .8rem;margin-bottom:.6rem}
+.lesson .lh{display:flex;align-items:baseline;gap:.5rem;margin-bottom:.4rem;flex-wrap:wrap}
+.lesson .lt{font-weight:600;flex:1;min-width:0}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:.62rem;text-transform:uppercase;
+  letter-spacing:.07em;padding:.1rem .35rem;border-radius:2px;border:1px solid var(--line);color:var(--ink-3)}
+.tag.hours{color:var(--gold);border-color:var(--gold)}
+.tag.correction{color:#9A86D6;border-color:#9A86D6}
+.tag.rejection{color:var(--stop);border-color:var(--stop)}
+.tag.comeback{color:var(--warn);border-color:var(--warn)}
+.tag.parts{color:#5FB0C9;border-color:#5FB0C9}
+.tag.go{color:var(--go);border-color:var(--go)}
+.detail{font-family:"IBM Plex Mono",monospace;font-size:.78rem;color:var(--ink-2);
+  line-height:1.6;white-space:pre-wrap;margin:.3rem 0}
+.who{font-size:.75rem;color:var(--ink-3)}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.6rem;margin-bottom:1rem}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.7rem .85rem}
+.kpi .n{font-family:"Barlow Condensed",sans-serif;font-size:1.9rem;font-weight:700;line-height:1;color:var(--gold)}
+.kpi .l{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);margin-top:.2rem}
+.kpi.alert .n{color:var(--stop)}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{text-align:left;font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;
+  font-size:.8rem;letter-spacing:.05em;color:var(--ink-3);border-bottom:1px solid var(--line);padding:.35rem .4rem}
+td{padding:.38rem .4rem;border-bottom:1px solid var(--line-soft)}
+td.n,th.n{text-align:right;font-family:"IBM Plex Mono",monospace}
+.toast{position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);background:var(--card-2);
+  border:1px solid var(--gold);padding:.55rem .9rem;border-radius:6px;font-size:.85rem;z-index:99}
+.spin{display:inline-block;width:11px;height:11px;border:2px solid var(--gold-dim);
+  border-top-color:var(--gold);border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="brand"><h1 id="brandTitle">KITH Brain</h1><span class="v" id="verChip">v1.0</span></div>
+  <select id="domPick" style="width:auto;background:var(--card-2);border:1px solid var(--gold);color:var(--gold);border-radius:99px;padding:.25rem .6rem;font-size:.78rem"></select>
+  <span class="pill" id="whoPill">not signed in</span>
+  <span class="pill alert" id="pendPill" hidden></span>
+  <div class="spacer"></div>
+  <button class="btn sm" id="btnRefresh">Refresh</button>
+  <button class="btn sm" id="btnSettings">Settings</button>
+</div>
+
+<div class="wrap">
+  <div id="domNote"></div>
+  <div class="tabs" id="tabs"></div>
+
+  <!-- ===================== TEACH ===================== -->
+  <div id="v-teach" hidden>
+    <div class="note"><b>How this works</b>
+      Anyone can put something in. Nothing changes how the brain answers until Logan approves it.
+      Only things that actually happened count — never a guess, and never anything the AI itself came up with.</div>
+
+    <section class="card">
+      <header><h2>Teach the brain something</h2></header>
+      <div class="body">
+        <div class="row r2">
+          <div><label class="f">What kind of lesson</label>
+            <select id="t-type">
+              <option value="hours">How long a job really took</option>
+              <option value="correction">The AI got something wrong</option>
+              <option value="rejection">A quote I sent back, and why</option>
+              <option value="parts">A supplier's price or delivery</option>
+              <option value="comeback">Work that came back</option>
+            </select></div>
+          <div><label class="f">Job number (if there is one)</label><input id="t-job" placeholder="J123456"></div>
+        </div>
+
+        <div class="row r3">
+          <div><label class="f">Make</label><input id="t-make" placeholder="Ford"></div>
+          <div><label class="f">Model</label><input id="t-model" placeholder="Focus"></div>
+          <div><label class="f">Engine</label><input id="t-engine" placeholder="1.0 EcoBoost"></div>
+        </div>
+        <div class="row r2">
+          <div><label class="f">What was the job</label><input id="t-name" placeholder="Cambelt and water pump"></div>
+          <div><label class="f">Category</label>
+            <select id="t-cat">
+              <option>mechanical</option><option>servicing</option><option>brakes</option>
+              <option>suspension</option><option>bearings</option><option>dpf</option>
+              <option>trackrod</option><option>exhaust</option><option>engine</option><option>bodywork</option>
+            </select></div>
+        </div>
+
+        <div id="t-fields"></div>
+
+        <div><label class="f">Why is this worth remembering?</label>
+          <textarea id="t-why" placeholder="In your own words. This is what Logan reads before deciding."></textarea></div>
+
+        <div class="btns" style="margin-top:.8rem">
+          <button class="btn primary" id="btnPropose">Send it to Logan</button>
+          <button class="btn" id="btnClear">Clear</button>
+        </div>
+        <div id="t-out"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <header><h2>What you've sent in</h2></header>
+      <div class="body"><div id="mine"><div class="empty">Nothing yet.</div></div></div>
+    </section>
+  </div>
+
+  <!-- ===================== APPROVE (Logan only) ===================== -->
+  <div id="v-approve" hidden>
+    <div class="note stop"><b>Only you can do this</b>
+      Everything below is waiting. Until you approve it, it has no effect on any answer the AI gives.
+      Approve what you know is true. Turn down what isn't — with a reason, so people learn what counts.</div>
+    <div id="queue"><div class="empty">Nothing waiting.</div></div>
+  </div>
+
+  <!-- ===================== SOP AMENDMENTS ===================== -->
+  <div id="v-sop" hidden>
+    <div class="note"><b>SOP amendments</b>
+      Labour changes Logan made at sign-off, and the reasons behind disapproved quotes.
+      Approving a rule changes the SOP for every future job of that kind and re-prices jobs still waiting
+      &mdash; except any job where Logan set the figures by hand. Parts are never touched.</div>
+    <section class="card">
+      <header><h2>Waiting on Logan</h2></header>
+      <div class="body"><div id="sopPending"><div class="empty">Nothing waiting.</div></div></div>
+    </section>
+    <section class="card">
+      <header><h2>In force now</h2></header>
+      <div class="body">
+        <div id="sopLive"><div class="empty">No amendments yet &mdash; the base SOP v8.0 applies.</div></div>
+        <div class="btns" style="margin-top:.6rem" id="sopTools"></div>
+        <div id="sopSweep"></div>
+      </div>
+    </section>
+    <section class="card">
+      <header><h2>What the AI reads</h2></header>
+      <div class="body"><pre id="sopPrompt" style="white-space:pre-wrap;font-size:.78rem;margin:0;color:var(--ink-2)"></pre></div>
+    </section>
+    <section class="card">
+      <header><h2>Turned down or taken back</h2></header>
+      <div class="body"><div id="sopHistory"><div class="empty">Nothing yet.</div></div></div>
+    </section>
+  </div>
+
+  <!-- ===================== WHAT IT KNOWS ===================== -->
+  <div id="v-knows" hidden>
+    <div class="kpis" id="kpis"></div>
+    <section class="card">
+      <header><h2>Where book time is wrong</h2></header>
+      <div class="body">
+        <p style="color:var(--ink-3);font-size:.85rem;margin:0 0 .6rem">
+          Job types where what we actually take is consistently different from what the book says.
+          This is the list that tells you where your own rate card is off.</p>
+        <div id="drift"><div class="empty">Not enough finished jobs yet.</div></div>
+      </div>
+    </section>
+    <section class="card">
+      <header><h2>How suppliers actually behave</h2></header>
+      <div class="body">
+        <p style="color:var(--ink-3);font-size:.85rem;margin:0 0 .6rem">
+          What they quoted against what they charged, and what they promised against what they delivered.</p>
+        <div id="suppliers"><div class="empty">No supplier lessons yet.</div></div>
+      </div>
+    </section>
+    <section class="card">
+      <header><h2>Reasons you keep sending quotes back</h2></header>
+      <div class="body"><div id="rejrepeat"><div class="empty">Nothing repeating yet.</div></div></div>
+    </section>
+    <section class="card">
+      <header><h2>Everything it currently believes</h2></header>
+      <div class="body"><div id="live"><div class="empty">Nothing approved yet.</div></div></div>
+    </section>
+  </div>
+</div>
+
+<script src="learning.js"></script>
+<script src="engine.js"></script>
+<script src="kith-rules.js"></script>
+<script>
+/* ===========================================================================
+   CONFIG
+   =========================================================================== */
+const CFG={
+  url:localStorage.getItem('kith_crm_url')||'https://mxyrxyhvjndgjqupgstu.supabase.co',
+  // Same public key the CRM page uses, so nobody has to paste it in.
+  key:localStorage.getItem('kith_crm_key')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog',
+  table:'kith_learning'
+};
+const STAFF=['Logkith','Sesugh','Joel','Ian','Muhammad Talha','Harith','Giles','Fardeen','Ali','Sudha'];
+let ME=localStorage.getItem('kith_brain_user')||null;
+if(ME==='Logan')ME='Logkith';
+let SOP=[], SOP_SEQ=0;   // SOP_SEQ: a slow load must never overwrite a newer write
+// Approving needs a PIN checked against kith_staff, once per browser session.
+const bossVerified=()=>KITHRules.canDecide(ME)&&sessionStorage.getItem('kith_brain_boss')===ME;
+const learnName=()=>ME==='Logkith'?'Logan':ME;   // the learning store's approver name
+let DOMAIN=localStorage.getItem('kith_brain_domain')||KITHLearn.DEFAULT_DOMAIN;
+let RECORDS=[], TAB='teach';
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const toast=(m,ms=2600)=>{const t=document.createElement('div');t.className='toast';t.textContent=m;
+  document.body.appendChild(t);setTimeout(()=>t.remove(),ms);};
+const isBoss=()=>bossVerified()&&KITHLearn.canApprove(learnName());
+
+/* ===========================================================================
+   STORE  — kith_learning, one row per lesson
+   =========================================================================== */
+async function load(){
+  if(!CFG.key){RECORDS=[];return;}
+  const r=await fetch(CFG.url.replace(/\/$/,'')+'/rest/v1/'+CFG.table+
+    '?select=id,data&order=created_at.desc&limit=1000',
+    {headers:{apikey:CFG.key,Authorization:'Bearer '+CFG.key}});
+  if(!r.ok)throw new Error('Store returned '+r.status);
+  RECORDS=((await r.json())||[]).map(x=>({_row:x.id,...(x.data||{})}));
+}
+async function save(rec){
+  const body={data:rec}; if(rec._row)body.id=rec._row;
+  const r=await fetch(CFG.url.replace(/\/$/,'')+'/rest/v1/'+CFG.table,{method:'POST',
+    headers:{apikey:CFG.key,Authorization:'Bearer '+CFG.key,'Content-Type':'application/json',
+      Prefer:'resolution=merge-duplicates,return=minimal'},
+    body:JSON.stringify(body)});
+  if(!r.ok)throw new Error('Store returned '+r.status+' — '+(await r.text()).slice(0,120));
+}
+
+/* ===========================================================================
+   TEACH
+   =========================================================================== */
+const FIELDS={
+  hours:()=>`<div class="row r3">
+      <div><label class="f">Book time (SRT) we quoted</label><input type="number" step="0.01" id="t-srt" placeholder="3.5"></div>
+      <div><label class="f">Hours it ACTUALLY took</label><input type="number" step="0.01" id="t-actual" placeholder="4.3"></div>
+      <div><label class="f">Hours we charged</label><input type="number" step="0.01" id="t-charged" placeholder="5.25"></div>
+    </div>
+    <div><label class="f">Anything extra the book didn't mention (one per line)</label>
+      <textarea id="t-prereq" placeholder="subframe had to come down&#10;crank bolt was seized"></textarea></div>`,
+  correction:()=>`<div class="row r3">
+      <div><label class="f">What was wrong</label>
+        <select id="t-field"><option>tier</option><option>category</option><option>routing</option>
+          <option>prerequisite</option><option>SRT reading</option></select></div>
+      <div><label class="f">The AI said</label><input id="t-ai" placeholder="MED"></div>
+      <div><label class="f">It should have been</label><input id="t-human" placeholder="TOP"></div>
+    </div>`,
+  rejection:()=>`<div class="row r2">
+      <div><label class="f">What the quote came to</label><input type="number" step="0.01" id="t-amount" placeholder="812.00"></div>
+      <div><label class="f">Why you sent it back</label><input id="t-reason" placeholder="no allowance for dropping the subframe"></div>
+    </div>`,
+  parts:()=>`<div class="row r2">
+      <div><label class="f">Supplier</label><input id="t-supplier" placeholder="GSF, NAPA, Euro, TPS..."></div>
+      <div><label class="f">Which part</label><input id="t-part" placeholder="Cambelt kit"></div>
+    </div>
+    <div class="row r2">
+      <div><label class="f">Net price they quoted on the phone</label><input type="number" step="0.01" id="t-netq" placeholder="120.00"></div>
+      <div><label class="f">What they actually charged</label><input type="number" step="0.01" id="t-netc" placeholder="132.00"></div>
+    </div>
+    <div class="row r3">
+      <div><label class="f">Days they promised</label><input type="number" step="1" id="t-etap" placeholder="1"></div>
+      <div><label class="f">Days it actually took</label><input type="number" step="1" id="t-etaa" placeholder="3"></div>
+      <div><label class="f">Did it fit?</label>
+        <select id="t-fitted"><option value="yes">Yes</option><option value="no">No — wrong part</option></select></div>
+    </div>
+    <div><label class="f">If it went wrong, what happened</label>
+      <textarea id="t-partwrong" placeholder="wrong tensioner in the kit"></textarea></div>`,
+  comeback:()=>`<div class="row r2">
+      <div><label class="f">The original job number</label><input id="t-orig" placeholder="J123400"></div>
+      <div><label class="f">Warranty verdict</label>
+        <select id="t-verdict"><option>covered</option><option>expired</option>
+          <option>chargeable</option><option>escalate</option></select></div>
+    </div>
+    <div><label class="f">What actually went wrong</label>
+      <textarea id="t-wrong" placeholder="belt tension wasn't set right"></textarea></div>`
+};
+function paintFields(){$('t-fields').innerHTML=FIELDS[$('t-type').value]();}
+
+function buildRecord(){
+  const vehicle={make:$('t-make').value.trim(),model:$('t-model').value.trim(),engine:$('t-engine').value.trim()};
+  const job={category:$('t-cat').value,name:$('t-name').value.trim()};
+  if(!vehicle.make||!job.name)throw new Error('At least the make and what the job was.');
+  const jobId=$('t-job').value.trim()||null;
+  const t=$('t-type').value;
+  const num=id=>parseFloat(($(id)||{}).value)||0;
+  const lines=id=>(($(id)||{}).value||'').split('\n').map(x=>x.trim()).filter(Boolean);
+
+  const domain=DOMAIN;
+  if(t==='hours')
+    return KITHLearn.hoursRecord({jobId,vehicle,job,domain,srtQuoted:num('t-srt'),
+      chargedHours:num('t-charged'),actualHours:num('t-actual'),
+      prerequisitesFound:lines('t-prereq')});
+  if(t==='correction')
+    return KITHLearn.correctionRecord({jobId,vehicle,job,domain,field:$('t-field').value,
+      aiSaid:$('t-ai').value.trim(),humanSaid:$('t-human').value.trim(),by:learnName()});
+  if(t==='rejection')
+    return KITHLearn.rejectionRecord({jobId,vehicle,job,domain,amount:num('t-amount'),
+      reason:$('t-reason').value.trim(),by:learnName()});
+  if(t==='parts')
+    return KITHLearn.partsRecord({jobId,vehicle,job,domain,
+      supplier:$('t-supplier').value.trim(),part:$('t-part').value.trim(),
+      netQuoted:num('t-netq'),netCharged:num('t-netc'),
+      etaPromisedDays:num('t-etap'),etaActualDays:num('t-etaa'),
+      fittedOk:$('t-fitted').value==='yes',whatWentWrong:$('t-partwrong').value.trim()});
+  return KITHLearn.comebackRecord({jobId,originalJobId:$('t-orig').value.trim(),vehicle,job,domain,
+    verdict:$('t-verdict').value,whatWentWrong:$('t-wrong').value.trim()});
+}
+
+$('btnPropose').onclick=async()=>{
+  if(!ME)return toast('Say who you are first.');
+  const out=$('t-out');
+  try{
+    const rec=KITHLearn.propose(buildRecord(),{by:learnName(),why:$('t-why').value.trim()});
+    if(!CFG.key)throw new Error('No store key set. Open Settings.');
+    await save(rec);
+    out.innerHTML=`<div class="note go"><b>Sent to Logan</b>
+      It's waiting for approval. Until he says yes it changes nothing.</div>`;
+    await refresh();
+  }catch(e){
+    out.innerHTML=`<div class="note stop"><b>Not sent</b>${esc(e.message)}</div>`;
+  }
+};
+$('btnClear').onclick=()=>{['t-job','t-make','t-model','t-engine','t-name','t-why']
+  .forEach(i=>$(i).value='');paintFields();$('t-out').innerHTML='';};
+
+/* ===========================================================================
+   RENDER
+   =========================================================================== */
+function describe(r){
+  if(r.type==='hours')
+    return `book ${r.srtQuoted} hr  ->  actually ${r.actualHours} hr`+
+      (r.prerequisitesFound&&r.prerequisitesFound.length
+        ? `\nextra: ${r.prerequisitesFound.join(', ')}`:'');
+  if(r.type==='correction')return `${r.field}:  AI said ${r.aiSaid}  ->  should be ${r.humanSaid}`;
+  if(r.type==='rejection')return `sent back at £${r.amount}\nreason: ${r.reason}`;
+  if(r.type==='parts'){
+    const bits=[`${r.supplier} — ${r.part}`];
+    if(r.netQuoted&&r.netCharged)bits.push(`quoted £${r.netQuoted}  ->  charged £${r.netCharged}`);
+    if(r.etaPromisedDays!=null&&r.etaActualDays!=null)bits.push(`promised ${r.etaPromisedDays}d  ->  took ${r.etaActualDays}d`);
+    if(r.fittedOk===false)bits.push('DID NOT FIT');
+    if(r.whatWentWrong)bits.push(r.whatWentWrong);
+    return bits.join('\n');
+  }
+  if(r.type==='comeback')return `came back (${r.verdict})\n${r.whatWentWrong||''}`;
+  return '';
+}
+function lessonCard(r,actions){
+  const v=r.vehicle||{};
+  return `<div class="lesson">
+    <div class="lh"><span class="tag">${esc((KITHLearn.DOMAINS[r.domain||KITHLearn.DEFAULT_DOMAIN]||{}).label||r.domain||'')}</span>
+      <span class="tag ${esc(r.type)}">${esc(r.type)}</span>
+      <span class="lt">${esc([v.make,v.model,v.engine].filter(Boolean).join(' '))} — ${esc((r.job||{}).name||'')}</span>
+      ${r.status!=='pending'?`<span class="tag ${r.status==='approved'?'go':''}">${esc(r.status)}</span>`:''}</div>
+    <div class="detail">${esc(describe(r))}</div>
+    ${r.why?`<div class="who">“${esc(r.why)}”</div>`:''}
+    <div class="who">from ${esc(r.proposedBy||'?')}${r.jobId?' · '+esc(r.jobId):''}</div>
+    ${r.rejectionReason?`<div class="note stop" style="margin:.5rem 0 0"><b>turned down</b>${esc(r.rejectionReason)}</div>`:''}
+    ${actions||''}
+  </div>`;
+}
+function renderMine(){
+  const mine=RECORDS.filter(r=>r.proposedBy===learnName()&&(r.domain||KITHLearn.DEFAULT_DOMAIN)===DOMAIN);
+  $('mine').innerHTML=mine.length?mine.map(r=>lessonCard(r)).join(''):'<div class="empty">Nothing yet.</div>';
+}
+function renderQueue(){
+  // Logan approves in ONE place. His queue spans every brain, with each item
+  // labelled, so he is never hunting through six separate pages.
+  const q=KITHLearn.pending(RECORDS);
+  $('queue').innerHTML=q.length?q.map((r,i)=>lessonCard(r,
+    `<div class="btns" style="margin-top:.6rem">
+       <button class="btn go sm" data-ok="${i}">Approve — this is true</button>
+       <button class="btn stop sm" data-no="${i}">Turn it down</button>
+     </div>`)).join(''):'<div class="empty">Nothing waiting.</div>';
+  $('queue').querySelectorAll('[data-ok]').forEach(b=>b.onclick=()=>decide(q[+b.dataset.ok],true));
+  $('queue').querySelectorAll('[data-no]').forEach(b=>b.onclick=()=>decide(q[+b.dataset.no],false));
+}
+async function decide(rec,yes){
+  try{
+    let next;
+    if(yes){
+      const note=prompt('Anything to add? (optional)')||'';
+      next=KITHLearn.approve(rec,{by:learnName(),note:note});
+    }else{
+      const reason=prompt('Why are you turning this down? They will see it.');
+      if(!reason)return;
+      next=KITHLearn.reject(rec,{by:learnName(),reason:reason});
+    }
+    next._row=rec._row;
+    await save(next);
+    toast(yes?'Approved — the brain knows it now.':'Turned down.');
+    await refresh();
+  }catch(e){toast(e.message,4000);}
+}
+function renderKnows(){
+  const h=KITHLearn.houseView(RECORDS,DOMAIN);
+  $('kpis').innerHTML=`
+    <div class="kpi"><div class="n">${h.liveRecords}</div><div class="l">Lessons it believes</div></div>
+    <div class="kpi ${h.awaitingApproval?'alert':''}"><div class="n">${h.awaitingApproval}</div><div class="l">Waiting on you</div></div>
+    <div class="kpi"><div class="n">${h.completedJobsWithHours}</div><div class="l">Jobs with real hours</div></div>
+    <div class="kpi"><div class="n">${h.comebacks}</div><div class="l">Comebacks</div></div>`;
+  $('drift').innerHTML=h.categoriesDrifting.length
+    ? `<table><thead><tr><th>Job type</th><th class="n">Jobs</th><th class="n">Actual vs book</th><th>What it means</th></tr></thead><tbody>`+
+      h.categoriesDrifting.map(c=>`<tr><td>${esc(c.category)}</td><td class="n">${c.sample}</td>
+        <td class="n">${c.ratio}x</td>
+        <td>${c.ratio>1?'takes '+Math.round((c.ratio-1)*100)+'% longer than the book':'comes in '+Math.round((1-c.ratio)*100)+'% under'}</td></tr>`).join('')+
+      `</tbody></table>`
+    : '<div class="empty">Not enough finished jobs yet. Needs at least 3 in a category.</div>';
+  $('rejrepeat').innerHTML=h.repeatedRejections.length
+    ? h.repeatedRejections.map(r=>`<div class="lesson"><div class="lh">
+        <span class="tag rejection">${r.times}x</span><span class="lt">${esc(r.reason)}</span></div></div>`).join('')
+    : '<div class="empty">Nothing repeating yet.</div>';
+  // supplier behaviour across every job in this brain
+  const pr=KITHLearn.live(RECORDS,DOMAIN).filter(r=>r.type==='parts');
+  if(pr.length){
+    const by={};
+    pr.forEach(r=>{const k=r.supplier.toLowerCase();
+      (by[k]=by[k]||{s:r.supplier,n:0,pq:0,pc:0,slip:[],wrong:0});
+      const b=by[k];b.n++;
+      if(r.netQuoted>0&&r.netCharged>0){b.pq+=r.netQuoted;b.pc+=r.netCharged;}
+      if(r.etaPromisedDays!=null&&r.etaActualDays!=null)b.slip.push(r.etaActualDays-r.etaPromisedDays);
+      if(r.fittedOk===false)b.wrong++;});
+    const rows=Object.keys(by).map(k=>by[k]).sort((a,b)=>b.n-a.n);
+    $('suppliers').innerHTML='<table><thead><tr><th>Supplier</th><th class="n">Jobs</th>'+
+      '<th class="n">Price vs quote</th><th class="n">Days late</th><th class="n">Wrong part</th></tr></thead><tbody>'+
+      rows.map(b=>{
+        const ratio=b.pq?Math.round((b.pc/b.pq)*100)/100:null;
+        const slip=b.slip.length?Math.round((b.slip.reduce((x,y)=>x+y,0)/b.slip.length)*10)/10:null;
+        return `<tr><td>${esc(b.s)}</td><td class="n">${b.n}</td>`+
+          `<td class="n">${ratio?(ratio>1?'+'+Math.round((ratio-1)*100)+'%':ratio<1?Math.round((ratio-1)*100)+'%':'on quote'):'—'}</td>`+
+          `<td class="n">${slip==null?'—':(slip>0?'+'+slip:slip)}</td>`+
+          `<td class="n">${b.wrong||'—'}</td></tr>`;}).join('')+'</tbody></table>';
+  } else $('suppliers').innerHTML='<div class="empty">No supplier lessons yet.</div>';
+
+  const l=KITHLearn.live(RECORDS,DOMAIN);
+  $('live').innerHTML=l.length?l.map(r=>lessonCard(r,
+    isBoss()?`<div class="btns" style="margin-top:.5rem">
+      <button class="btn stop sm" data-retire="${esc(r._row||'')}">Take this back</button></div>`:''
+  )).join(''):'<div class="empty">Nothing approved yet.</div>';
+  $('live').querySelectorAll('[data-retire]').forEach(b=>b.onclick=async()=>{
+    const rec=l.filter(x=>String(x._row)===b.dataset.retire)[0];if(!rec)return;
+    const reason=prompt('Why is this coming out?');if(!reason)return;
+    try{const next=KITHLearn.retire(rec,{by:learnName(),reason});next._row=rec._row;
+      await save(next);toast('Taken back out.');await refresh();}
+    catch(e){toast(e.message,4000);}
+  });
+}
+
+/* ===========================================================================
+   SOP AMENDMENTS — approve here, and the SOP, the AI and the pipeline follow
+   =========================================================================== */
+function sopCard(r,actions){
+  const kind=r.kind==='rule'?'labour rule':'reason';
+  const src=r.source==='disapproved'?'from a disapproved quote':'from sign-off';
+  const when=r.proposedAt?new Date(r.proposedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+  return `<div class="lesson">
+    <div class="lh"><span class="tag ${r.kind==='rule'?'correction':'rejection'}">${esc(kind)}</span>
+      <span class="lt">${esc(KITHRules.describe(r))}</span>
+      ${r.status!=='pending'?`<span class="tag ${r.status==='approved'?'go':''}">${esc(r.status)}</span>`:''}</div>
+    ${r.kind==='rule'&&r.reason?`<div class="who">“${esc(r.reason)}”</div>`:''}
+    <div class="who">${esc(src)} · ${esc(r.proposedBy||'?')}${r.reg?' · '+esc(r.reg):''}${r.jobId?' · '+esc(r.jobId):''}${when?' · '+esc(when):''}</div>
+    ${r.decisionNote&&r.status==='rejected'?`<div class="note stop" style="margin:.5rem 0 0"><b>turned down</b>${esc(r.decisionNote)}</div>`:''}
+    ${r.retiredWhy?`<div class="note stop" style="margin:.5rem 0 0"><b>taken back</b>${esc(r.retiredWhy)}</div>`:''}
+    ${actions||''}
+  </div>`;
+}
+function renderSop(){
+  const pend=KITHRules.pending(SOP);
+  $('sopPending').innerHTML=pend.length?pend.map(r=>sopCard(r,isBoss()?
+    `<div class="btns" style="margin-top:.6rem">
+       <button class="btn go sm" data-sop-ok="${esc(r.id)}">${r.kind==='rule'?'Approve — change the SOP':'Approve — the AI should know this'}</button>
+       <button class="btn stop sm" data-sop-no="${esc(r.id)}">Turn it down</button></div>`:
+    (KITHRules.canDecide(ME)?'<div class="who">Tap your name at the top and enter your PIN to decide.</div>':''))).join('')
+    :'<div class="empty">Nothing waiting.</div>';
+  const live=KITHRules.live(SOP);
+  $('sopLive').innerHTML=live.length?live.map(r=>sopCard(r,isBoss()?
+    `<div class="btns" style="margin-top:.5rem"><button class="btn stop sm" data-sop-retire="${esc(r.id)}">Take this back out</button></div>`:'')).join('')
+    :'<div class="empty">No amendments yet — the base SOP v8.0 applies.</div>';
+  $('sopTools').innerHTML=isBoss()?'<button class="btn sm" id="btnReprice">Re-price waiting jobs now</button>':'';
+  if($('btnReprice'))$('btnReprice').onclick=()=>repricePipeline(true);
+  $('sopPrompt').textContent=KITHRules.toPromptBlock(SOP)||'Nothing yet. The AI prices on the base SOP v8.0.';
+  const past=SOP.filter(r=>r.status==='rejected'||r.status==='retired').slice(-20).reverse();
+  $('sopHistory').innerHTML=past.length?past.map(r=>sopCard(r)).join(''):'<div class="empty">Nothing yet.</div>';
+  document.querySelectorAll('[data-sop-ok]').forEach(b=>b.onclick=()=>decideSop(b.dataset.sopOk,true));
+  document.querySelectorAll('[data-sop-no]').forEach(b=>b.onclick=()=>decideSop(b.dataset.sopNo,false));
+  document.querySelectorAll('[data-sop-retire]').forEach(b=>b.onclick=()=>retireSop(b.dataset.sopRetire));
+}
+async function decideSop(id,yes){
+  if(!isBoss())return toast('Only Logan, signed in with his PIN, can decide.');
+  const rec=SOP.find(r=>r.id===id);if(!rec)return;
+  try{
+    let d;
+    if(yes){
+      const note=prompt('Anything to add? (optional)')||'';
+      d=await KITHRules.update(CFG.url,CFG.key,l=>KITHRules.approve(l,id,{by:ME,note}));
+    }else{
+      const reason=prompt('Why are you turning this down?');
+      if(!reason)return;
+      d=await KITHRules.update(CFG.url,CFG.key,l=>KITHRules.reject(l,id,{by:ME,reason}));
+    }
+    SOP_SEQ++;SOP=d.rules;
+    toast(yes?(rec.kind==='rule'?'Approved — the SOP has changed.':'Approved — the AI will read it.'):'Turned down.');
+    paint();
+    if(yes&&rec.kind==='rule')await repricePipeline(false);
+  }catch(e){toast(e.message,4500);}
+}
+async function retireSop(id){
+  if(!isBoss())return toast('Only Logan, signed in with his PIN, can do this.');
+  const reason=prompt('Why is this coming out?');if(!reason)return;
+  try{
+    const rec=SOP.find(r=>r.id===id);
+    const d=await KITHRules.update(CFG.url,CFG.key,l=>KITHRules.retire(l,id,{by:ME,reason}));
+    SOP_SEQ++;SOP=d.rules;toast('Taken back out — the base SOP applies again.');paint();
+    if(rec&&rec.kind==='rule')await repricePipeline(false);
+  }catch(e){toast(e.message,4500);}
+}
+// Jobs still waiting (Labour → Sign-off, and Disapproved) follow the new SOP now.
+async function repricePipeline(manual){
+  const out=$('sopSweep');
+  if(out)out.innerHTML='<div class="note"><span class="spin"></span> Re-pricing waiting jobs…</div>';
+  try{
+    const base=CFG.url.replace(/\/$/,''),H={apikey:CFG.key,Authorization:'Bearer '+CFG.key};
+    const r=await fetch(base+'/rest/v1/jobs?select=id,data&order=updated_at.desc',
+      {headers:Object.assign({Range:'0-4999','Range-Unit':'items'},H)});
+    if(!r.ok)throw new Error('jobs '+r.status);
+    const jobs=((await r.json())||[]).filter(x=>x.id&&String(x.id).indexOf('__')!==0&&x.data)
+      .map(x=>Object.assign({},x.data,{id:x.data.id||x.id}));
+    // price against what is live in the store right now, not this screen's copy
+    const doc=await KITHRules.load(CFG.url,CFG.key),fresh=doc.rules;
+    SOP_SEQ++;SOP=fresh;
+    const res=KITHRules.sweep(KITH,jobs,fresh,{by:ME+' (brain)',asOf:doc.updatedAt});
+    for(const c of res.changed){
+      const w=await fetch(base+'/rest/v1/jobs',{method:'POST',
+        headers:Object.assign({'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'},H),
+        body:JSON.stringify([{id:c.job.id,data:c.job,updated_at:c.job.updatedAt}])});
+      if(!w.ok)throw new Error('saving '+c.job.id+' failed ('+w.status+')');
+    }
+    const line=c=>`<tr><td>${esc(c.job.reg||c.job.id)}</td><td>${esc(c.job.stage)}</td><td class="n">£${c.before.toFixed(2)}</td><td class="n">£${c.after.toFixed(2)}</td></tr>`;
+    if(out)out.innerHTML=(res.changed.length
+        ?`<div class="note go"><b>${res.changed.length} waiting job(s) re-priced</b></div><table><thead><tr><th>Job</th><th>Stage</th><th class="n">Was</th><th class="n">Now</th></tr></thead><tbody>${res.changed.map(line).join('')}</tbody></table>`
+        :`<div class="note"><b>No waiting jobs needed to change.</b></div>`)+
+      (res.skipped.length?`<div class="note" style="margin-top:.5rem"><b>Left alone (${res.skipped.length})</b>${res.skipped.map(s=>esc((s.job.reg||s.job.id)+' — '+s.why)).join('<br>')}</div>`:'');
+    return res;
+  }catch(e){
+    if(out)out.innerHTML=`<div class="note stop"><b>Re-price did not finish</b>${esc(e.message)} — the CRM will catch up within a minute of being opened.</div>`;
+    if(manual)toast(e.message,4500);
+  }
+}
+
+/* ===========================================================================
+   TABS + BOOT
+   =========================================================================== */
+function renderTabs(){
+  const q=KITHLearn.pending(RECORDS).length;          // all brains
+  const qHere=KITHLearn.pending(RECORDS,DOMAIN).length; // this one
+  const sq=KITHRules.pending(SOP).length;
+  const tabs=[['teach','Teach it',true],
+    ['approve','Approve — all brains'+(q?' ('+q+')':''),isBoss()],
+    ['sop','SOP amendments'+(sq?' ('+sq+')':''),true],
+    ['knows','What it knows',true]];
+  $('tabs').innerHTML=tabs.map(([k,l,allowed])=>
+    `<button class="tab ${TAB===k?'on':''} ${allowed?'':'locked'}" data-t="${k}" ${allowed?'':'disabled'}>${esc(l)}</button>`).join('');
+  $('tabs').querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{
+    if(b.disabled)return;TAB=b.dataset.t;paint();});
+  $('pendPill').hidden=!(isBoss()&&(q+sq));
+  if(isBoss()&&(q+sq))$('pendPill').textContent=(q+sq)+' waiting on you';
+}
+function paintDomain(){
+  const d=KITHLearn.DOMAINS[DOMAIN]||{};
+  $('domPick').innerHTML=Object.keys(KITHLearn.DOMAINS).map(k=>
+    `<option value="${k}" ${k===DOMAIN?'selected':''}>${esc(KITHLearn.DOMAINS[k].label)}</option>`).join('');
+  $('brandTitle').textContent='KITH '+(d.label||'Brain');
+  const here=KITHLearn.pending(RECORDS,DOMAIN).length;
+  const liveN=KITHLearn.live(RECORDS,DOMAIN).length;
+  $('domNote').innerHTML=`<div class="note"><b>${esc(d.label||DOMAIN)} brain</b>
+    ${esc(d.what||'')}<br>
+    <span class="mono" style="font-size:.8rem;color:var(--ink-3)">
+    ${liveN} lesson(s) it believes \u00b7 ${here} waiting \u00b7 this brain never sees the others' lessons</span></div>`;
+}
+function paint(){
+  paintDomain();
+  renderTabs();
+  ['teach','approve','sop','knows'].forEach(v=>$('v-'+v).hidden=(TAB!==v));
+  if(TAB==='sop')renderSop();
+  if(TAB==='teach'){paintFields();renderMine();}
+  if(TAB==='approve'){if(!isBoss()){TAB='teach';return paint();}renderQueue();}
+  if(TAB==='knows')renderKnows();
+}
+async function refresh(){
+  try{await load();}catch(e){toast('Could not reach the store: '+e.message,4000);}
+  const seq=++SOP_SEQ;
+  try{const got=CFG.key?(await KITHRules.load(CFG.url,CFG.key)).rules:[];if(seq===SOP_SEQ)SOP=got;}catch(e){toast('Could not load SOP amendments: '+e.message,4000);}
+  paint();
+}
+async function staffList(){
+  const r=await fetch(CFG.url.replace(/\/$/,'')+'/rest/v1/kith_staff?select=id,data&limit=100',
+    {headers:{apikey:CFG.key,Authorization:'Bearer '+CFG.key}});
+  if(!r.ok)throw new Error('staff list '+r.status);
+  return ((await r.json())||[]).map(x=>x.data||{}).filter(x=>x.name&&x.active!==false);
+}
+async function signIn(){
+  const n=prompt('Who are you? ('+STAFF.join(' / ')+')',ME||'');
+  if(!n)return;
+  let name=n.trim();
+  if(/^logan$/i.test(name))name='Logkith';
+  let staff=null;
+  try{staff=CFG.key?await staffList():null;}catch(e){staff=null;}
+  const rec=staff&&staff.find(x=>String(x.name).toLowerCase()===name.toLowerCase());
+  if(rec)name=rec.name;
+  sessionStorage.removeItem('kith_brain_boss');
+  if(KITHRules.canDecide(name)){
+    if(!staff){toast('Cannot check PINs \u2014 the kith_staff table is not readable yet (run staff.sql).',5000);return;}
+    const pin=prompt('PIN for '+name);
+    if(!rec||String(rec.pin||'')!==String(pin||'')){toast('Wrong PIN.');return;}
+    sessionStorage.setItem('kith_brain_boss',name);
+  } else if(rec&&rec.pin){
+    const pin=prompt('PIN for '+name);
+    if(String(rec.pin)!==String(pin||'')){toast('Wrong PIN.');return;}
+  }
+  ME=name;localStorage.setItem('kith_brain_user',ME);
+  paintWho();
+  if(!isBoss()&&TAB==='approve')TAB='teach';
+  refresh();
+}
+function paintWho(){
+  if(!ME)return;
+  $('whoPill').textContent=ME+(isBoss()?' \u2014 can approve':(KITHRules.canDecide(ME)?' \u2014 tap to enter PIN':''));
+  $('whoPill').className='pill on';
+}
+$('whoPill').onclick=signIn;
+$('btnRefresh').onclick=refresh;
+$('btnSettings').onclick=()=>{
+  const u=prompt('Supabase URL:',CFG.url);if(u===null)return;
+  const k=prompt('Supabase anon key:',CFG.key)||'';
+  CFG.url=u.trim();CFG.key=k.trim();
+  localStorage.setItem('kith_crm_url',CFG.url);localStorage.setItem('kith_crm_key',CFG.key);
+  toast('Saved.');refresh();
+};
+$('t-type').onchange=paintFields;
+$('domPick').onchange=e=>{DOMAIN=e.target.value;
+  localStorage.setItem('kith_brain_domain',DOMAIN);paint();};
+$('verChip').textContent='v'+KITHLearn.VERSION;
+paintWho();
+paintFields();refresh();
+</script>
+</body>
+</html>

@@ -1,0 +1,1834 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KITH Estimator</title>
+<link rel="manifest" href="manifest-estimator.json">
+<meta name="theme-color" content="#14161A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="KITH Estimator">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="apple-touch-icon" href="icon-est-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14161A; --bg-2:#1B1E24; --card:#20242B; --card-2:#262B33;
+  --line:#333A44; --line-soft:#2A2F37;
+  --ink:#EDEFF2; --ink-2:#A8B1BD; --ink-3:#6E7885;
+  --gold:#D8A32B; --gold-dim:#8A6A1C; --gold-bg:rgba(216,163,43,.10);
+  --go:#3FB07A; --go-bg:rgba(63,176,122,.12);
+  --warn:#E0A030; --warn-bg:rgba(224,160,48,.12);
+  --stop:#E05A4C; --stop-bg:rgba(224,90,76,.12);
+  --tape:#15181C;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:14px;line-height:1.55}
+h1,h2,h3,.disp{font-family:"Barlow Condensed",Impact,sans-serif;font-weight:700;
+  text-transform:uppercase;letter-spacing:.02em;margin:0}
+.mono,code{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+/* ---------- shell ---------- */
+.top{position:sticky;top:0;z-index:40;background:var(--bg-2);
+  border-bottom:1px solid var(--line);padding:.6rem 1rem;
+  display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:.5rem}
+.brand h1{font-size:1.25rem;letter-spacing:.06em}
+.brand .v{font-family:"IBM Plex Mono",monospace;font-size:.66rem;color:var(--bg);
+  background:var(--gold);padding:.1rem .35rem;border-radius:2px;font-weight:600}
+.top .spacer{flex:1}
+.pill{font-family:"IBM Plex Mono",monospace;font-size:.68rem;text-transform:uppercase;
+  letter-spacing:.08em;padding:.25rem .5rem;border:1px solid var(--line);border-radius:99px;color:var(--ink-2)}
+.pill.on{border-color:var(--gold);color:var(--gold);background:var(--gold-bg)}
+
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:1.1rem;
+  max-width:1500px;margin:0 auto;padding:1.1rem 1rem 5rem;align-items:start}
+@media(max-width:1080px){.wrap{grid-template-columns:1fr}}
+
+/* ---------- cards ---------- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;margin-bottom:1.1rem;overflow:hidden}
+.card>header{display:flex;align-items:center;gap:.6rem;padding:.6rem .85rem;
+  background:var(--card-2);border-bottom:1px solid var(--line)}
+.card>header h2{font-size:1rem;letter-spacing:.05em}
+.step{font-family:"IBM Plex Mono",monospace;font-size:.66rem;font-weight:600;
+  background:var(--gold);color:var(--bg);padding:.12rem .4rem;border-radius:2px}
+.card .body{padding:.85rem}
+.hint{color:var(--ink-3);font-size:.82rem;margin:.15rem 0 .7rem}
+
+/* ---------- fields ---------- */
+label.f{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--ink-3);margin-bottom:.22rem;font-family:"IBM Plex Mono",monospace}
+input[type=text],input[type=number],select,textarea{width:100%;background:var(--bg);
+  border:1px solid var(--line);border-radius:5px;padding:.45rem .55rem;color:var(--ink)}
+textarea{min-height:96px;resize:vertical;font-family:"IBM Plex Mono",monospace;font-size:.84rem}
+input:focus,select:focus,textarea:focus{border-color:var(--gold);outline:none}
+.row{display:grid;gap:.6rem;margin-bottom:.65rem}
+.r2{grid-template-columns:1fr 1fr}.r3{grid-template-columns:1fr 1fr 1fr}
+.r4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:640px){.r2,.r3,.r4{grid-template-columns:1fr}}
+
+/* ---------- buttons ---------- */
+.btn{background:var(--card-2);border:1px solid var(--line);border-radius:5px;
+  padding:.42rem .75rem;cursor:pointer;font-size:.85rem;transition:.12s}
+.btn:hover{border-color:var(--gold);color:var(--gold)}
+.btn.primary{background:var(--gold);border-color:var(--gold);color:var(--bg);font-weight:600}
+.btn.primary:hover{background:#E8B23A;color:var(--bg)}
+.btn.ghost{background:transparent;color:var(--ink-3)}
+.btn.sm{padding:.22rem .5rem;font-size:.76rem}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.danger:hover{border-color:var(--stop);color:var(--stop)}
+.btns{display:flex;gap:.45rem;flex-wrap:wrap}
+
+/* ---------- customer selector ---------- */
+.cust{display:grid;grid-template-columns:repeat(3,1fr);gap:.45rem}
+@media(max-width:640px){.cust{grid-template-columns:1fr 1fr}}
+.cust button{text-align:left;padding:.5rem .6rem;background:var(--bg);border:1px solid var(--line);
+  border-radius:6px;cursor:pointer;transition:.12s}
+.cust button:hover{border-color:var(--gold-dim)}
+.cust button.on{border-color:var(--gold);background:var(--gold-bg)}
+.cust .nm{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;
+  font-size:.95rem;letter-spacing:.03em;display:block}
+.cust .sub{font-size:.68rem;color:var(--ink-3);display:block;line-height:1.35;margin-top:.1rem}
+.cust button.on .sub{color:var(--ink-2)}
+
+/* ---------- line list ---------- */
+.lines{display:flex;flex-direction:column;gap:.5rem}
+.ln{background:var(--bg);border:1px solid var(--line-soft);border-radius:6px;padding:.55rem .65rem}
+.ln .hd{display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem}
+.ln .hd .t{font-weight:600;flex:1;min-width:0}
+.ln .amt{font-family:"IBM Plex Mono",monospace;font-weight:600;white-space:nowrap}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:.62rem;text-transform:uppercase;
+  letter-spacing:.07em;padding:.1rem .32rem;border-radius:2px;border:1px solid var(--line);color:var(--ink-3)}
+.tag.low{color:var(--go);border-color:var(--go)}
+.tag.med{color:var(--warn);border-color:var(--warn)}
+.tag.top{color:var(--stop);border-color:var(--stop)}
+.tag.body{color:#9A86D6;border-color:#9A86D6}
+.tag.gold{color:var(--gold);border-color:var(--gold)}
+.empty{color:var(--ink-3);text-align:center;padding:1.1rem;border:1px dashed var(--line);border-radius:6px;font-size:.85rem}
+
+/* ---------- notes ---------- */
+.note{border-left:3px solid var(--gold);background:var(--gold-bg);padding:.5rem .7rem;
+  border-radius:0 4px 4px 0;font-size:.82rem;margin:.6rem 0}
+.note.stop{border-color:var(--stop);background:var(--stop-bg)}
+.note.go{border-color:var(--go);background:var(--go-bg)}
+.note.warn{border-color:var(--warn);background:var(--warn-bg)}
+.note b{font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;
+  letter-spacing:.05em;font-size:.9rem;display:block;margin-bottom:.1rem}
+
+/* ---------- the receipt tape (signature) ---------- */
+.tape{position:sticky;top:64px}
+.tape .roll{background:var(--tape);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.tape .roll>header{padding:.55rem .8rem;border-bottom:1px dashed var(--line);
+  display:flex;justify-content:space-between;align-items:baseline}
+.tape .roll>header h2{font-size:.95rem;letter-spacing:.06em}
+.tape .roll>header .who{font-family:"IBM Plex Mono",monospace;font-size:.66rem;color:var(--gold)}
+.tapebody{padding:.7rem .8rem;font-family:"IBM Plex Mono",monospace;font-size:.76rem;
+  max-height:46vh;overflow:auto}
+.trow{margin-bottom:.55rem;padding-bottom:.5rem;border-bottom:1px dotted var(--line-soft)}
+.trow:last-child{border-bottom:0;margin-bottom:0}
+.trow .tt{display:flex;justify-content:space-between;gap:.6rem;color:var(--ink)}
+.trow .tt b{font-weight:600}
+.trow .work{color:var(--ink-3);font-size:.72rem;white-space:pre-wrap;margin-top:.15rem;line-height:1.5}
+.trow .work em{color:var(--gold);font-style:normal}
+.totals{border-top:1px solid var(--line);padding:.6rem .8rem;font-family:"IBM Plex Mono",monospace;font-size:.8rem}
+.totals div{display:flex;justify-content:space-between;padding:.14rem 0}
+.totals .big{font-size:1.15rem;font-weight:600;color:var(--gold);
+  border-top:1px solid var(--line);margin-top:.35rem;padding-top:.4rem}
+.totals .sub{color:var(--ink-3);font-size:.72rem}
+
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th{text-align:left;font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;
+  font-size:.8rem;letter-spacing:.05em;color:var(--ink-3);border-bottom:1px solid var(--line);padding:.3rem .4rem}
+td{padding:.32rem .4rem;border-bottom:1px solid var(--line-soft);vertical-align:top}
+td.n,th.n{text-align:right;font-family:"IBM Plex Mono",monospace;white-space:nowrap}
+
+details{border:1px solid var(--line-soft);border-radius:6px;margin-bottom:.5rem;background:var(--bg)}
+summary{cursor:pointer;padding:.45rem .6rem;font-weight:600;font-size:.87rem;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary:before{content:"+";color:var(--gold);font-family:"IBM Plex Mono",monospace;margin-right:.45rem}
+details[open] summary:before{content:"−"}
+details .dbody{padding:0 .6rem .6rem}
+
+.ck{display:flex;gap:.5rem;align-items:flex-start;padding:.3rem 0;font-size:.84rem;cursor:pointer}
+.ck input{margin-top:.25rem;accent-color:var(--gold);flex:none}
+.toast{position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);background:var(--card-2);
+  border:1px solid var(--gold);color:var(--ink);padding:.55rem .9rem;border-radius:6px;
+  font-size:.85rem;z-index:99;box-shadow:0 6px 24px rgba(0,0,0,.5)}
+.spin{display:inline-block;width:11px;height:11px;border:2px solid var(--gold-dim);
+  border-top-color:var(--gold);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="brand"><h1>KITH Estimator</h1><span class="v" id="verChip">v8.0</span></div>
+  <span class="pill" id="pillCust">Retail</span>
+  <span class="pill" id="pillRamp" hidden>Ramp-exempt</span>
+  <span class="pill" id="pillAI">AI off</span>
+  <div class="spacer"></div>
+  <span class="pill" id="pillJob" hidden></span>
+  <button class="btn sm ghost" id="btnQueue" hidden>← Queue</button>
+  <button class="btn sm ghost" id="btnAlerts" title="Phone alerts">🔔</button>
+  <button class="btn sm ghost" id="btnSettings">Settings</button>
+  <button class="btn sm ghost" id="btnReset">New quote</button>
+</div>
+
+
+<!-- ================= JOB QUEUE ================= -->
+<div id="scr-login">
+  <h2>Who's estimating?</h2>
+  <p class="hint">Your name goes on every quote you price.</p>
+  <div class="who-grid" id="whoGrid"></div>
+  <div id="pinBox" hidden>
+    <label class="f">PIN</label>
+    <input type="password" inputmode="numeric" maxlength="6" class="pin" id="pinIn" placeholder="····">
+    <button class="btn primary" id="btnLogin" style="width:100%;margin-top:.6rem">Sign in</button>
+    <div id="loginErr"></div>
+  </div>
+  <p class="hint" style="margin-top:1.4rem;font-size:.75rem">
+    This says who you are so the CRM can record it. It is not a security lock —
+    anything on this page can be read by someone determined. Proper accounts need
+    Supabase Auth.</p>
+</div>
+
+<div id="scr-queue" hidden>
+  <div style="display:flex;align-items:baseline;gap:.7rem;margin-bottom:.3rem;flex-wrap:wrap">
+    <h2 style="font-size:1.5rem">Your queue</h2>
+    <span class="pill" id="whoPill">not signed in</span>
+    <div style="flex:1"></div>
+    <button class="btn sm" id="btnRefresh">Refresh</button>
+    <button class="btn sm ghost" id="btnBlank">Price something without a job</button>
+  </div>
+  <p class="hint" id="queueHint">Everything the adviser has taken in that still needs a price.</p>
+  <div class="qtabs" id="qtabs"></div>
+  <div id="queueList"><div class="empty">Loading…</div></div>
+</div>
+
+<div class="wrap" id="scr-quote" hidden>
+<div>
+  <div class="jobstrip" id="jobStrip"></div>
+  <div class="sectabs" id="secTabs"></div>
+<!-- ================= LEFT: build the quote ================= -->
+<div>
+
+  <div class="sec on" id="sec-labour">
+  <!-- 1. Customer + vehicle -->
+  <section class="card" id="card-customer" hidden>
+    <header><span class="step">01</span><h2>Change the customer or vehicle</h2>
+      <div style="flex:1"></div>
+      <button class="btn sm ghost" id="btnHideCust">Close</button></header>
+    <div class="body">
+      <p class="hint" id="custHint">Answer this before anything else. It decides the rate card, the multiplier and the parts markup. Get it wrong and the whole quote is wrong.</p>
+      <div class="cust" id="custPick"></div>
+      <div class="note" id="custNote" style="margin-bottom:0"></div>
+
+      <div class="row r4" style="margin-top:.8rem">
+        <div><label class="f">Registration</label><input type="text" id="vReg" placeholder="AB12 CDE"></div>
+        <div><label class="f">Make &amp; model</label><input type="text" id="vModel" placeholder="Ford Focus"></div>
+        <div><label class="f">Engine / fuel</label><input type="text" id="vEngine" placeholder="1.0 petrol"></div>
+        <div><label class="f">Year</label><input type="text" id="vYear" placeholder="2018"></div>
+      </div>
+      <label class="ck"><input type="checkbox" id="ckRamp">
+        <span><b>Ramp-exempt</b> — the vehicle is too tall or heavy for the ramp. Only tick this if Logan has tagged the job in the CRM. Multipliers become ×2.5 / ×1.75, <em>replacing</em> ×2 / ×1.5.</span></label>
+    </div>
+  </section>
+
+  <div id="inheritBox"></div>
+  <div id="intakeDetail"></div>
+
+  <!-- 2. What's needed -->
+  <section class="card">
+    <header><span class="step">02</span><h2 id="workHead">What work is needed?</h2>
+      <div style="flex:1"></div>
+      <button class="btn sm" id="btnIdentify">Break into jobs</button>
+    </header>
+    <div class="body">
+      <p class="hint" id="workHint">Paste the diagnostic findings from the CRM. Not the customer's raw words — if there's a symptom and no diagnostic, send it back to the Service Adviser.</p>
+      <details id="workWrap"><summary id="workSummary">Edit the description</summary>
+        <div style="padding-top:.5rem">
+          <textarea id="workDesc" placeholder="e.g. Diagnostic found front pads at 2mm and both front discs lipped."></textarea>
+        </div>
+      </details>
+      <div id="identifyOut"></div>
+    </div>
+  </section>
+
+  <!-- 3. Labour -->
+  <section class="card">
+    <header><span class="step">03</span><h2>Labour</h2>
+      <div style="flex:1"></div>
+      <button class="btn sm" id="btnAddLabour">Add a labour line</button>
+    </header>
+    <div class="body">
+      <p class="hint">One SRT is one line. Each line picks its own multiplier from its own hours — nothing pools except inside a single service.</p>
+      <div id="sopLive"></div>
+      <div class="lines" id="labourList"></div>
+      <details style="margin-top:.7rem"><summary>Read the SRT out of TechMan</summary><div class="dbody">
+        <ol style="padding-left:1.1rem;font-size:.85rem;color:var(--ink-2);margin:.3rem 0">
+          <li>Check the registration at the top of the screen matches the car.</li>
+          <li>Click <b>Technical Data</b> in the sidebar.</li>
+          <li>Click <b>HaynesPro</b> (or Autodata — HaynesPro first if both are there).</li>
+          <li>Click <b>Repair Times</b>.</li>
+          <li>Drill in: system → area → job. Rear brakes is Body &amp; Chassis → Brakes → Rear → Pads &amp; Discs.</li>
+          <li>Type the hours in exactly as shown. Never round an SRT to tidy it — rounding 1.9 up to 2.0 takes about £70 off the quote.</li>
+        </ol>
+      </div></details>
+    </div>
+  </section>
+
+    <div class="card"><div class="body" style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:180px"><b>Finished the labour side?</b>
+        <div class="hint" style="margin:0">This moves the job on to Parts.</div></div>
+      <button class="btn primary" id="btnDoneLabour">Labour done</button>
+    </div></div>
+  </div>
+
+  <div class="sec" id="sec-parts">
+  <!-- 4. Parts -->
+  <section class="card">
+    <header><span class="step">04</span><h2>Parts, fluids &amp; tyres</h2>
+      <div style="flex:1"></div>
+      <div class="btns">
+        <button class="btn sm" id="btnAddPart">Part</button>
+        <button class="btn sm" id="btnAddFluid">Fluid</button>
+        <button class="btn sm" id="btnAddTyre">Tyre</button>
+      </div>
+    </header>
+    <div class="body">
+      <p class="hint">Phone the supplier for the net price — never a public website. Parts band <b>per part</b> on the unit cost; quantity never bands a part up. Fluids and tyres skip the ladder entirely.</p>
+      <div class="lines" id="partList"></div>
+    </div>
+  </section>
+
+    <div class="card"><div class="body" style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:180px"><b>Finished the parts side?</b>
+        <div class="hint" style="margin:0">Phone price and ETA for every line before you tick this.</div></div>
+      <button class="btn primary" id="btnDoneParts">Parts done</button>
+    </div></div>
+  </div>
+
+  <div class="sec" id="sec-extras">
+  <!-- 5. Fixed prices -->
+  <section class="card">
+    <header><span class="step">05</span><h2>Fixed prices &amp; bodywork</h2></header>
+    <div class="body">
+      <p class="hint">These never go through any ladder. The number is the number.</p>
+      <div class="row r2">
+        <div><label class="f">Add a fixed-price item</label>
+          <select id="fixedPick"><option value="">Choose…</option></select></div>
+        <div><label class="f">&nbsp;</label><button class="btn" id="btnAddFixed" style="width:100%">Add to quote</button></div>
+      </div>
+      <details><summary>Panel painting</summary><div class="dbody">
+        <div class="row r2" style="margin-top:.5rem">
+          <div><label class="f">Vehicle category</label><select id="panelCat"></select></div>
+          <div><label class="f">Panel</label><select id="panelPick"></select></div>
+        </div>
+        <button class="btn sm" id="btnAddPanel">Add panel</button>
+        <p class="hint" style="margin-top:.5rem">Add every panel, then the dearest is charged in full and the rest come off 20% each. SUVs and pickups use the 7-seater column whatever the seat count.</p>
+      </div></details>
+      <div class="lines" id="fixedList" style="margin-top:.6rem"></div>
+    </div>
+  </section>
+
+  </div>
+
+  <div class="sec" id="sec-review">
+  <!-- 6. Before it goes -->
+  <section class="card">
+    <header><span class="step">06</span><h2>Before it goes out</h2>
+      <div style="flex:1"></div>
+      <button class="btn sm" id="btnSanity">AI sanity check</button>
+    </header>
+    <div class="body">
+      <div id="stopOut"></div>
+      <p class="hint" style="margin-top:.6rem">TechMan generates the estimate but does not apply this SOP. Correct all of it before sending.</p>
+      <div id="checklist"></div>
+      <div id="sanityOut"></div>
+    </div>
+  </section>
+  </div>
+</div>
+</div>
+
+<!-- ================= RIGHT: the tape ================= -->
+<div class="tape">
+  <div class="roll">
+    <header><h2>The working</h2><span class="who" id="tapeWho">RETAIL</span></header>
+    <div class="tapebody" id="tapeBody"><div class="empty">Nothing priced yet.</div></div>
+    <div class="totals" id="tapeTotals"></div>
+  </div>
+  <div class="btns" style="margin-top:.7rem">
+    <button class="btn primary" id="btnCrm" style="flex:1">Push to CRM</button>
+    <button class="btn" id="btnCopy">Copy</button>
+    <button class="btn" id="btnPrint">Print</button>
+  </div>
+  <p class="hint" style="margin-top:.5rem;font-size:.75rem">Every figure above is calculated by the SOP v8.0 engine in this page. No AI touches the arithmetic.</p>
+</div>
+</div>
+
+<script src="kith-rules.js"></script>
+<script>
+/* ===========================================================================
+   ENGINE v8.0 — inlined. Identical rules to engine.js; the app must never
+   drift from the SOP. Arithmetic runs offline; the AI layer is optional.
+   =========================================================================== */
+const KITH=(function(){
+const VERSION='8.0';
+const RATES={LOW:50,MED:60,TOP:70,BODY:70};
+const CUSTOMERS={
+ retail:{label:'Retail / B2C',short:'RETAIL',kind:'kith',threshold:2.0,collapseMed:true,
+   note:'Two tiers only. Servicing and brakes are LOW (£50/hr). Everything else is TOP (£70/hr). There is no retail MED tier.'},
+ trade:{label:'Trade / B2B',short:'TRADE',kind:'kith',threshold:1.5,collapseMed:false,
+   note:'Trade buys two things and they stack: access to the MED tier (£60/hr), plus the multiplier steps down at 1.5 hr instead of 2.0.'},
+ aa_smart:{label:'AA Smart',short:'AA SMART',kind:'aa',labourRate:55,partsPct:0.15,
+   note:'AA network retail customer. £55/hr at raw SRT, no multiplier. Parts 15%. No diagnostic rate is set — escalate.'},
+ aa_towin:{label:'AA Tow-in',short:'AA TOW-IN',kind:'aa',labourRate:90,partsPct:0.20,
+   note:'£90/hr at raw SRT, no multiplier. Parts 20%. Diagnostic £33/hr, extendable on AA authorisation.'},
+ aa_pgc:{label:'AA PGC',short:'AA PGC',kind:'aa',labourRate:90,partsPct:null,
+   note:'Warranty work. £90/hr at raw SRT. Diagnostic £29.77. Parts markup is NOT SET — every part escalates to Logan.'},
+ aa_fleet:{label:'AA Fleet',short:'AA FLEET',kind:'aa',labourRate:44,partsPct:0.15,
+   note:'£44/hr at raw SRT, no multiplier. Parts 15%. Only 0.3–0.5 hr of diagnostic is authorised by the AA.'}};
+const MULT={lower:2.0,upper:1.5}, MULT_RAMP={lower:2.5,upper:1.75};
+const ALWAYS_X2=['suspension','bearings','dpf','trackrod'];
+const MIN_LABOUR_HOURS=0.5, MIN_EXEMPT=['bulb','tyre','wiper'], BODY_MIN_CHARGE=70;
+const INSPECTION_MINUTES={interim:12.5,full:20,major:30};
+const LADDER=[{to:10,mult:2.0,minSell:0,markup:'100%'},{to:20,mult:1.8,minSell:20,markup:'80%'},
+  {to:30,mult:1.6,minSell:36,markup:'60%'},{to:40,mult:1.4,minSell:48,markup:'40%'},
+  {to:2000,mult:1.3,minSell:56,markup:'30%'}];
+const PARTS_ESCALATE_ABOVE=2000, TYRE_FIT_EACH=20, VAT_RATE=0.20;
+const MOT={4:50,5:58,7:58};
+const FLUIDS={'Budget oil (1L)':5.50,'Castrol 5W-30 (1L)':7.50,'Castrol 5W-30 C3 (1L)':12.50,
+ 'Castrol 0W-30 C2 (1L)':8.00,'Castrol 0W-20 LL (1L)':10.50,'Transmission / PAS fluid (1L)':10.40,
+ 'Brake & clutch fluid':8.00,'Brake cleaner':4.50,'WD-40':9.00,'Cataclean DPF cleaner':15.00,
+ "Wynn's exhaust DPF cleaner":9.90,'Coolant (1L)':5.00,'Screenwash':2.00,'AdBlue (1L)':2.50,
+ 'Bulb':8.00,'Wiper blade - front':7.00,'Wiper blade - rear':5.00};
+const PANEL_BASE={'Roof':300,'Boot / tailgate':250,'Front bumper':220,'Bonnet':200,
+ 'Door (each)':200,'Rear bumper':175,'Front quarter panel':175,'Rear quarter panel':175,'Trim / moulding':100};
+const PANEL_UPLIFT={'5-seater':0,'7-seater / SUV':40,'9-seater van':80,'Large van':100};
+const SLIDING_DOOR={'5-seater':null,'7-seater / SUV':270,'9-seater van':320,'Large van':350};
+const FIXED={
+ 'MOT — Class 4 (cars, small vans)':{price:50,vatable:false},
+ 'MOT — Class 5 (13+ seat)':{price:58,vatable:false},
+ 'MOT — Class 7 (larger vans)':{price:58,vatable:false},
+ 'Mechanical diagnostic':{price:60},'Oil and coolant leak diagnostic':{price:90},
+ 'Deep diagnostic':{price:120},'Electrical diagnostic':{price:150},
+ '25-point interim health check':{price:25,incVat:true},
+ '40-point full inspection':{price:45},'60-point / pre-purchase inspection':{price:60},
+ 'Engine replacement — up to 1.4L petrol':{price:900},'Engine replacement — up to 1.4L diesel':{price:1050},
+ 'Engine replacement — 1.5-2.0L petrol':{price:1200},'Engine replacement — 1.5-2.0L diesel':{price:1450},
+ 'Engine replacement — 2.1-3.0L petrol':{price:1550},'Engine replacement — 2.1-3.0L diesel':{price:1850},
+ 'Engine replacement — 3.0L+ petrol':{price:1950},'Engine replacement — 3.0L+ diesel':{price:2350},
+ 'Stage 1 remap':{price:250},'Stage 2 remap':{price:320},'Economy remap':{price:200},
+ 'Pop & bang (standalone)':{price:150},'Pop & bang + Stage 1':{price:350},'Map restore to stock':{price:75},
+ 'EGR Solution':{price:200},'AdBlue delete':{price:250},'DPF remap (removal labour is extra)':{price:330},
+ 'Recovery 0-3 miles':{price:90},'Recovery 3-5 miles':{price:110},'Recovery 5-7 miles':{price:150},
+ 'Recovery 7-10 miles':{price:180},
+ 'Pick-up / drop-off 0-3 miles':{price:30},'Pick-up / drop-off 3-5 miles':{price:45},
+ 'Pick-up / drop-off 5-7 miles':{price:60},'Pick-up / drop-off 7-10 miles':{price:75},
+ 'Wheel alignment (HS Tyres)':{price:80},'DPF coding':{price:250},'DPF drilling (Grace Autos)':{price:100},
+ 'Head skimming w/ pressure test':{price:150},'Deep diagnostic (Jason, subcontract)':{price:120},
+ 'Certified plates (per plate)':{price:30},
+ 'Whole car repaint — small Budget':{price:1650},'Whole car repaint — small Standard':{price:2050},
+ 'Whole car repaint — small Premium':{price:2460},'Whole car repaint — medium Budget':{price:2250},
+ 'Whole car repaint — medium Standard':{price:2750},'Whole car repaint — medium Premium':{price:3300},
+ 'Whole car repaint — large Budget':{price:3100},'Whole car repaint — large Standard':{price:3750},
+ 'Whole car repaint — large Premium':{price:4500},
+ 'Rust / weld repair (per panel)':{price:300,incVat:true},'Plastic welding (per crack)':{price:80,incVat:true},
+ 'Exhaust circular welding':{price:150},'SMART repair (from)':{price:180},
+ 'Stage 1 polish — whole body':{price:250},'Stage 2 polish — whole body':{price:420},
+ 'Stage 1 polish — per panel':{price:50},'Stage 2 polish — per panel':{price:100},
+ 'Stone chip (per area)':{price:70,incVat:true},'Headlight restoration (pair)':{price:80,incVat:true},
+ 'Plastic trim repair & paint (per piece)':{price:90,incVat:true},
+ 'Alloy wheel respray (each)':{price:150},'Caliper respray — on hub (each)':{price:50},
+ 'Caliper respray — off hub (each)':{price:100},
+ 'Courtesy car (per day)':{price:30},'Storage (per day)':{price:5}};
+const HARD_STOPS=['Any customer-supplied part','Any part costing over £2,000 net',
+ 'A pairing that is not on the closed list of three','Any SRT not found in HaynesPro after also calling the main dealer',
+ 'Any vehicle above 8 seats (minibus, 12-seater)','Any split rim alloy',
+ 'Any expensive-make paint (rare code, unusual manufacturer)','Any recovery beyond 10 miles',
+ 'Any accident or insurance work','Any sill rot welding'];
+const PAIR_RULE=[{p:'Brake pads — same axle',s:'Brake discs — same axle'},
+ {p:'Clutch',s:'Dual mass flywheel'},{p:'Inner CV boot — same driveshaft',s:'Outer CV boot — same driveshaft'}];
+
+const money=n=>Math.round(n*100)/100, vat=n=>money(n*VAT_RATE);
+const isAA=c=>(CUSTOMERS[c]||{}).kind==='aa';
+function resolveTier(tier,customer){const c=CUSTOMERS[customer];
+ if(c.kind==='aa')return{tier:'AA',rate:c.labourRate,collapsed:false};
+ let t=tier,collapsed=false; if(t==='MED'&&c.collapseMed){t='TOP';collapsed=true;}
+ return{tier:t,rate:RATES[t],collapsed};}
+function multiplierFor(h,{customer='retail',category='mechanical',rampExempt=false,isBodywork=false}={}){
+ if(isAA(customer))return 1; if(isBodywork)return 1;
+ const set=rampExempt?MULT_RAMP:MULT;
+ if(ALWAYS_X2.includes(category))return set.lower;
+ return h>=CUSTOMERS[customer].threshold?set.upper:set.lower;}
+function labourLine(o){
+ const{srt=0,tier='TOP',category='mechanical',customer='retail',rampExempt=false,
+   pairSecondarySrt=0,inspection=null,extraSrt=0,label=''}=o;
+ const isBodywork=tier==='BODY'||category==='bodywork';
+ const exemptMin=MIN_EXEMPT.includes(category);
+ let hours=srt+extraSrt; if(inspection)hours+=INSPECTION_MINUTES[inspection]/60;
+ const rawHours=hours; let minApplied=false;
+ if(!isBodywork&&!exemptMin&&hours<MIN_LABOUR_HOURS){hours=MIN_LABOUR_HOURS;minApplied=true;}
+ const t=resolveTier(tier,customer);
+ const mult=multiplierFor(hours,{customer,category,rampExempt,isBodywork});
+ const chargedHours=hours*mult+pairSecondarySrt;
+ let total=chargedHours*t.rate; let bodyMinApplied=false;
+ if(isBodywork&&total<BODY_MIN_CHARGE){total=BODY_MIN_CHARGE;bodyMinApplied=true;}
+ return{kind:'labour',label,srt,rawHours,hours,chargedHours,tier:t.tier,requestedTier:tier,
+  tierCollapsed:t.collapsed,rate:t.rate,multiplier:mult,category,rampExempt,pairSecondarySrt,
+  inspection,minApplied,bodyMinApplied,isBodywork,total:money(total),vatable:true};}
+function bandFor(u){return LADDER.find(b=>u<=b.to)||null;}
+function partLine({label='',unitNet=0,qty=1,customer='retail'}){
+ if(unitNet>PARTS_ESCALATE_ABOVE)return{kind:'part',label,unitNet,qty,escalate:true,total:null,
+   reason:'Part over £2,000 net — there is no band above it. Escalate to Logan.',vatable:true};
+ const c=CUSTOMERS[customer];
+ if(c.kind==='aa'){
+  if(c.partsPct==null)return{kind:'part',label,unitNet,qty,escalate:true,total:null,
+    reason:'No parts markup is set for '+c.label+'. Escalate to Logan.',vatable:true};
+  const us=unitNet*(1+c.partsPct);
+  return{kind:'part',label,unitNet,qty,unitSell:money(us),band:(c.partsPct*100)+'%',
+    aaPct:true,minSellApplied:false,total:money(us*qty),vatable:true};}
+ const b=bandFor(unitNet); let us=unitNet*b.mult; let minSellApplied=false;
+ if(us<b.minSell){us=b.minSell;minSellApplied=true;}
+ return{kind:'part',label,unitNet,qty,unitSell:money(us),band:b.markup,mult:b.mult,
+   minSell:b.minSell,minSellApplied,total:money(us*qty),vatable:true};}
+function fluidLine({label='',unitSell=0,qty=1}){
+ return{kind:'fluid',label,unitSell,qty,total:money(unitSell*qty),vatable:true};}
+function tyreLine({label='',netEach=0,qty=1}){
+ return{kind:'tyre',label,netEach,qty,fitEach:TYRE_FIT_EACH,
+   total:money(netEach*qty+TYRE_FIT_EACH*qty),vatable:true};}
+function fixedLine({label='',price=0,vatable=true,incVat=false}){
+ const ex=incVat?price/1.2:price;
+ return{kind:'fixed',label,listPrice:price,total:money(ex),vatable,quotedIncVat:incVat};}
+function panelPrice(name,cat){
+ if(name==='Sliding door')return SLIDING_DOOR[cat];
+ return PANEL_BASE[name]!=null?PANEL_BASE[name]+(PANEL_UPLIFT[cat]||0):null;}
+function applyPanelDiscount(lines){
+ const panels=lines.filter(l=>l.kind==='panel'&&!l.escalate);
+ if(!panels.length)return lines;
+ const sorted=[...panels].sort((a,b)=>b.listPrice-a.listPrice);
+ sorted.forEach((p,i)=>{p.discounted=i>0;p.total=money(i===0?p.listPrice:p.listPrice*0.8);});
+ return lines;}
+function quote(lines,{customer='retail'}={}){
+ applyPanelDiscount(lines);
+ const escalations=[]; let net=0,outsideVat=0;
+ lines.forEach(l=>{ if(l.escalate){escalations.push(l.reason||l.label);return;}
+  if(l.vatable===false)outsideVat+=l.total; else net+=l.total;});
+ net=money(net); const vatAmount=vat(net); const incVat=money(net+vatAmount);
+ const customerPays=money(incVat+outsideVat);
+ const depositRequired=customerPays>=200;
+ return{version:VERSION,customer,lines,net,vat:vatAmount,incVat,outsideVat,customerPays,
+  depositRequired,deposit:depositRequired?money(customerPays/2):0,
+  escalations,readyToSend:escalations.length===0};}
+return{VERSION,RATES,CUSTOMERS,MULT,MULT_RAMP,ALWAYS_X2,LADDER,FLUIDS,MOT,FIXED,
+ PANEL_BASE,PANEL_UPLIFT,SLIDING_DOOR,TYRE_FIT_EACH,MIN_LABOUR_HOURS,BODY_MIN_CHARGE,
+ INSPECTION_MINUTES,HARD_STOPS,PAIR_RULE,VAT_RATE,money,vat,isAA,resolveTier,multiplierFor,
+ labourLine,partLine,fluidLine,tyreLine,fixedLine,panelPrice,quote};
+})();
+
+/* ===========================================================================
+   APP STATE
+   =========================================================================== */
+const CFG={
+  aiEndpoint:localStorage.getItem('kith_ai_url')||'',
+  aiSecret:localStorage.getItem('kith_ai_secret')||'',
+  crmUrl:localStorage.getItem('kith_crm_url')||'',
+  crmKey:localStorage.getItem('kith_crm_key')||''
+};
+const S={
+  customer:'retail', rampExempt:false,
+  vehicle:{reg:'',model:'',engine:'',year:''},
+  labour:[], parts:[], fixed:[],
+  checks:{}
+};
+const $=id=>document.getElementById(id);
+const gbp=n=>'£'+Number(n).toFixed(2);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(msg,ms=2600){const t=document.createElement('div');t.className='toast';t.textContent=msg;
+  document.body.appendChild(t);setTimeout(()=>t.remove(),ms);}
+
+const CATEGORIES=[
+ ['mechanical','Mechanical — the default'],['servicing','Servicing / oil'],['brakes','Brakes — friction'],
+ ['suspension','Suspension — ALWAYS ×2'],['bearings','Bearings / CV / driveshaft — ALWAYS ×2'],
+ ['dpf','DPF remove & refit — ALWAYS ×2'],['trackrod','Track rod ends — ALWAYS ×2'],
+ ['exhaust','Exhaust'],['bodywork','Bodywork'],['bulb','Bulb — no minimum'],['wiper','Wiper — no minimum']];
+const TIERS=[['LOW','LOW £50/hr — servicing & brakes'],['MED','MED £60/hr — trade only'],
+ ['TOP','TOP £70/hr — everything else'],['BODY','BODY £70/hr — no multiplier']];
+
+/* ===========================================================================
+   RENDER — customer
+   =========================================================================== */
+function renderCustomers(){
+  $('custPick').innerHTML=Object.entries(KITH.CUSTOMERS).map(([k,c])=>
+    `<button data-c="${k}" class="${S.customer===k?'on':''}">
+       <span class="nm">${esc(c.label)}</span>
+       <span class="sub">${c.kind==='aa'?'£'+c.labourRate+'/hr at raw SRT':'Ladder · '+c.threshold+' hr threshold'}</span>
+     </button>`).join('');
+  $('custPick').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    S.customer=b.dataset.c; renderCustomers(); renderAll();});
+  const c=KITH.CUSTOMERS[S.customer];
+  $('custNote').innerHTML='<b>'+esc(c.label)+'</b>'+esc(c.note);
+  $('pillCust').textContent=c.short;
+  $('tapeWho').textContent=c.short;
+}
+
+/* ===========================================================================
+   RENDER — labour
+   =========================================================================== */
+function labourRow(l,i){
+  const isAA=KITH.isAA(S.customer);
+  return `<div class="ln" data-i="${i}">
+    <div class="hd">
+      <input type="text" value="${esc(l.label)}" data-f="label" placeholder="Job name" style="flex:1" ${l.override?'disabled':''}>
+      <button class="btn sm danger" data-del="1">Remove</button>
+    </div>
+    <div class="row r4" style="margin-bottom:.35rem">
+      <div><label class="f">SRT hours</label>
+        <input type="number" step="0.01" min="0" value="${l.srt}" data-f="srt" ${l.override?'disabled':''}></div>
+      <div><label class="f">Tier</label><select data-f="tier">
+        ${TIERS.map(([v,t])=>`<option value="${v}" ${l.tier===v?'selected':''}>${t}</option>`).join('')}
+      </select></div>
+      <div><label class="f">Category</label><select data-f="category">
+        ${CATEGORIES.map(([v,t])=>`<option value="${v}" ${l.category===v?'selected':''}>${t}</option>`).join('')}
+      </select></div>
+      <div><label class="f">Service inspection</label><select data-f="inspection">
+        <option value="">None</option>
+        <option value="interim" ${l.inspection==='interim'?'selected':''}>25-point (12.5 min)</option>
+        <option value="full" ${l.inspection==='full'?'selected':''}>40-point (20 min)</option>
+        <option value="major" ${l.inspection==='major'?'selected':''}>60-point (30 min)</option>
+      </select></div>
+    </div>
+    <div class="row r2" style="margin-bottom:0">
+      <div><label class="f">Paired second item — raw SRT</label>
+        <input type="number" step="0.01" min="0" value="${l.pairSecondarySrt||0}" data-f="pairSecondarySrt"></div>
+      <div><label class="f">Extra SRT pooled into this service only</label>
+        <input type="number" step="0.01" min="0" value="${l.extraSrt||0}" data-f="extraSrt"></div>
+    </div>
+    ${l.pairSecondarySrt>0?`<div class="note" style="margin:.5rem 0 0">Only three pairings are allowed: ${KITH.PAIR_RULE.map(p=>esc(p.p)+' + '+esc(p.s)).join(' · ')}. Anything else is two primaries — ask Logan.</div>`:''}
+    ${l.override?`<div class="note warn" style="margin:.5rem 0 0"><b>\ud83d\udd12 Logan set this line</b>${[l.override.srt!=null?'SRT '+l.override.srt:'',l.override.multiplier!=null?'\u00d7'+l.override.multiplier:'',l.override.rate!=null?'\u00a3'+l.override.rate+'/hr':''].filter(Boolean).join(' \u00b7 ')} \u2014 his figures stand. Talk to him before changing this job.</div>`:
+      (HAS_RULES&&!isAA&&KITHRules.ruleFor(l.label,l.category,S.customer,SOP_RULES)?`<div class="note" style="margin:.5rem 0 0">\ud83e\udde0 SOP amendment applies: ${esc(KITHRules.describe(KITHRules.ruleFor(l.label,l.category,S.customer,SOP_RULES)))}</div>`:'')}
+    ${isAA?'<div class="note warn" style="margin:.5rem 0 0">AA work takes no multiplier. The tier you pick is ignored — the rate is the AA rate card.</div>':''}
+  </div>`;
+}
+// re-draw a line's amendment note once the name stops changing (keeps typing focus)
+const _lblT={};
+function e_changeTimer(i){clearTimeout(_lblT[i]);_lblT[i]=setTimeout(()=>{
+  const a=document.activeElement;const keep=a&&a.dataset&&a.dataset.f==='label';
+  const pos=keep?a.selectionStart:0;const idx=keep?+a.closest('.ln').dataset.i:-1;
+  renderLabour();
+  if(keep){const n=document.querySelector('#labourList .ln[data-i="'+idx+'"] [data-f="label"]');if(n){n.focus();try{n.setSelectionRange(pos,pos);}catch(e){}}}
+},700);return false;}
+function renderLabour(){
+  paintSopLive();
+  const el=$('labourList');
+  if(!S.labour.length){el.innerHTML='<div class="empty">No labour lines yet.</div>';return;}
+  el.innerHTML=S.labour.map(labourRow).join('');
+  el.querySelectorAll('.ln').forEach(node=>{
+    const i=+node.dataset.i;
+    node.querySelector('[data-del]').onclick=()=>{S.labour.splice(i,1);renderLabour();renderAll();};
+    node.querySelectorAll('[data-f]').forEach(inp=>{
+      inp.oninput=inp.onchange=()=>{
+        const f=inp.dataset.f;
+        S.labour[i][f]=(inp.type==='number')?(parseFloat(inp.value)||0):inp.value;
+        if(f==='tier'||f==='category'||f==='pairSecondarySrt')renderLabour();
+        else if(f==='label'&&e_changeTimer(i))renderLabour();
+        renderAll();};});});
+}
+
+/* ===========================================================================
+   RENDER — parts / fluids / tyres
+   =========================================================================== */
+function partRow(p,i){
+  if(p.type==='fluid'){
+    return `<div class="ln" data-i="${i}"><div class="hd">
+      <span class="tag gold">Fluid</span><span class="t">${esc(p.label)}</span>
+      <button class="btn sm danger" data-del="1">Remove</button></div>
+      <div class="row r2" style="margin-bottom:0">
+        <div><label class="f">Item</label><select data-f="label">
+          ${Object.keys(KITH.FLUIDS).map(k=>`<option ${p.label===k?'selected':''}>${esc(k)}</option>`).join('')}
+        </select></div>
+        <div><label class="f">Quantity</label><input type="number" step="0.5" min="0" value="${p.qty}" data-f="qty"></div>
+      </div></div>`;}
+  if(p.type==='tyre'){
+    return `<div class="ln" data-i="${i}"><div class="hd">
+      <span class="tag gold">Tyre</span>
+      <input type="text" value="${esc(p.label)}" data-f="label" placeholder="Tyre size / brand" style="flex:1">
+      <button class="btn sm danger" data-del="1">Remove</button></div>
+      <div class="row r2" style="margin-bottom:0">
+        <div><label class="f">Net cost each</label><input type="number" step="0.01" min="0" value="${p.netEach}" data-f="netEach"></div>
+        <div><label class="f">Quantity</label><input type="number" step="1" min="1" value="${p.qty}" data-f="qty"></div>
+      </div>
+      <div class="note" style="margin:.5rem 0 0">No markup on the tyre, ever. Fitting is a flat £20 + VAT each.</div></div>`;}
+  return `<div class="ln" data-i="${i}"><div class="hd">
+    <span class="tag">Part</span>
+    <input type="text" value="${esc(p.label)}" data-f="label" placeholder="Part name" style="flex:1">
+    <button class="btn sm danger" data-del="1">Remove</button></div>
+    <div class="row r2" style="margin-bottom:0">
+      <div><label class="f">Net cost per part</label><input type="number" step="0.01" min="0" value="${p.unitNet}" data-f="unitNet"></div>
+      <div><label class="f">Quantity</label><input type="number" step="1" min="1" value="${p.qty}" data-f="qty"></div>
+    </div></div>`;
+}
+function renderParts(){
+  const el=$('partList');
+  if(!S.parts.length){el.innerHTML='<div class="empty">No parts, fluids or tyres yet.</div>';return;}
+  el.innerHTML=S.parts.map(partRow).join('');
+  el.querySelectorAll('.ln').forEach(node=>{
+    const i=+node.dataset.i;
+    node.querySelector('[data-del]').onclick=()=>{S.parts.splice(i,1);renderParts();renderAll();};
+    node.querySelectorAll('[data-f]').forEach(inp=>{
+      inp.oninput=inp.onchange=()=>{
+        const f=inp.dataset.f;
+        S.parts[i][f]=(inp.type==='number')?(parseFloat(inp.value)||0):inp.value;
+        renderAll();};});});
+}
+
+/* ===========================================================================
+   RENDER — fixed
+   =========================================================================== */
+function renderFixed(){
+  const el=$('fixedList');
+  if(!S.fixed.length){el.innerHTML='<div class="empty">No fixed-price items yet.</div>';return;}
+  el.innerHTML=S.fixed.map((f,i)=>`<div class="ln" data-i="${i}"><div class="hd">
+     <span class="tag ${f.type==='panel'?'body':'gold'}">${f.type==='panel'?'Panel':'Fixed'}</span>
+     <span class="t">${esc(f.label)}</span>
+     <button class="btn sm danger" data-del="1">Remove</button></div></div>`).join('');
+  el.querySelectorAll('[data-del]').forEach((b,i)=>b.onclick=()=>{S.fixed.splice(i,1);renderFixed();renderAll();});
+}
+
+/* ===========================================================================
+   BUILD THE QUOTE
+   =========================================================================== */
+function buildLines(){
+  const cust=S.customer, ramp=S.rampExempt, out=[];
+  S.labour.forEach(l=>out.push(pricedLabour(l)));
+  S.parts.forEach(p=>{
+    if(p.type==='fluid')out.push(KITH.fluidLine({label:p.label,unitSell:KITH.FLUIDS[p.label]||0,qty:p.qty}));
+    else if(p.type==='tyre')out.push(KITH.tyreLine({label:p.label||'Tyre',netEach:p.netEach,qty:p.qty}));
+    else out.push(KITH.partLine({label:p.label||'Part',unitNet:p.unitNet,qty:p.qty,customer:cust}));});
+  S.fixed.forEach(f=>{
+    if(f.type==='panel'){
+      const price=KITH.panelPrice(f.panel,f.cat);
+      if(price==null)out.push({kind:'panel',label:f.label,escalate:true,total:null,
+        reason:'"'+f.panel+'" is not priced for '+f.cat+'. Escalate to Logan.',vatable:true});
+      else out.push({kind:'panel',label:f.label,listPrice:price,total:price,vatable:true});
+    } else {
+      const def=KITH.FIXED[f.label]||{price:0};
+      out.push(KITH.fixedLine({label:f.label,price:def.price,
+        vatable:def.vatable!==false,incVat:!!def.incVat}));}});
+  return out;
+}
+
+/* ---- the working, written out line by line ---- */
+function workingFor(l){
+  const h=n=>Number(n).toFixed(4).replace(/0+$/,'').replace(/\.$/,'');
+  if(l.kind==='labour'){
+    const p=[];
+    if(l.inspection)p.push(`SRT ${h(l.srt)} + inspection ${KITH.INSPECTION_MINUTES[l.inspection]} min ÷ 60 = ${h(l.rawHours)} hr`);
+    else if(l.rawHours!==l.srt)p.push(`SRT ${h(l.srt)} + pooled ${h(l.rawHours-l.srt)} = ${h(l.rawHours)} hr`);
+    if(l.minApplied)p.push(`<em>lifted to the 0.5 hr minimum</em>`);
+    if(l.isBodywork)p.push(`bodywork takes no multiplier`);
+    else if(KITH.isAA(S.customer))p.push(`AA work is charged at raw SRT`);
+    else{
+      const why=KITH.ALWAYS_X2.includes(l.category)?'always-×2 category':
+        (l.hours>=KITH.CUSTOMERS[S.customer].threshold?'at or above the threshold':'under the threshold');
+      const src=l.override&&l.multiplier!==l.baseMultiplier?'Logan\u2019s figure for this car':
+        (l.sopRule&&l.sopRule.multiplier!=null?'SOP amendment: '+l.sopRule.appliesTo:why);
+      p.push(`${h(l.hours)} hr × ${l.multiplier} (${src}${l.rampExempt?', ramp-exempt':''})`);}
+    if(l.pairSecondarySrt>0)p.push(`+ paired item ${h(l.pairSecondarySrt)} hr at <em>raw SRT</em>`);
+    p.push(`= ${h(l.chargedHours)} charged hr × £${l.rate} ${l.tier}`+
+      (l.baseRate!=null&&l.rate!==l.baseRate?` <em>(${l.override?'Logan\u2019s rate':'SOP amendment'} \u2014 base £${l.baseRate})</em>`:''));
+    if(l.override&&l.override.srt!=null&&l.bookSrt!=null&&l.override.srt!==l.bookSrt)
+      p.push(`<em>Logan set the SRT to ${h(l.override.srt)} (book ${h(l.bookSrt)})</em>`);
+    if(l.tierCollapsed)p.push(`<em>retail has no MED tier — charged at TOP</em>`);
+    if(l.bodyMinApplied)p.push(`<em>lifted to the £70 bodywork minimum</em>`);
+    return p.join('\n');}
+  if(l.kind==='part'){
+    if(l.escalate)return l.reason;
+    const a=[`${gbp(l.unitNet)} net per part → ${l.band}${l.aaPct?' (AA flat rate)':' band'} → ${gbp(l.unitSell)} each`];
+    if(l.minSellApplied)a.push(`<em>lifted to the ${gbp(l.minSell)} minimum sell</em>`);
+    if(l.qty>1)a.push(`× ${l.qty} = ${gbp(l.total)}   <em>banded per part, not on the line total</em>`);
+    return a.join('\n');}
+  if(l.kind==='fluid')return `${gbp(l.unitSell)} × ${l.qty} — selling price, never through the ladder`;
+  if(l.kind==='tyre')return `tyre ${gbp(l.netEach)} × ${l.qty} at net, no markup\n+ fitting £20 × ${l.qty} flat`;
+  if(l.kind==='mot'||l.vatable===false)return `VAT not applicable — outside the scope of VAT`;
+  if(l.kind==='panel')return l.escalate?l.reason:
+    (l.discounted?`${gbp(l.listPrice)} − 20% (not the dearest panel)`:`${gbp(l.listPrice)} — dearest panel, full price`);
+  if(l.kind==='fixed'&&l.quotedIncVat)return `${gbp(l.listPrice)} inc VAT → ${gbp(l.total)} ex`;
+  return 'fixed price';
+}
+
+function renderTape(q){
+  const b=$('tapeBody');
+  if(!q.lines.length){b.innerHTML='<div class="empty">Nothing priced yet.</div>';
+    $('tapeTotals').innerHTML='';return;}
+  b.innerHTML=q.lines.map(l=>`<div class="trow">
+     <div class="tt"><span>${esc(l.label||l.kind)}</span>
+       <b>${l.escalate?'—':gbp(l.total)}</b></div>
+     <div class="work">${workingFor(l)}</div></div>`).join('');
+  $('tapeTotals').innerHTML=`
+    <div><span>Net ex VAT</span><span>${gbp(q.net)}</span></div>
+    <div><span>VAT 20%</span><span>${gbp(q.vat)}</span></div>
+    ${q.outsideVat?`<div class="sub"><span>Outside the scope of VAT</span><span>${gbp(q.outsideVat)}</span></div>`:''}
+    <div class="big"><span>Customer pays</span><span>${gbp(q.customerPays)}</span></div>
+    ${q.depositRequired?`<div class="sub"><span>50% deposit before work starts</span><span>${gbp(q.deposit)}</span></div>`
+      :`<div class="sub"><span>Under £200 inc VAT — no deposit</span><span></span></div>`}`;
+}
+
+/* ---- hard stops + checklist ---- */
+const CHECKS=[
+ 'Charged hours entered in TechMan, not the raw SRT',
+ 'Ramp-exempt flag checked against the CRM tag',
+ 'Pair rule used only for the closed list of three',
+ 'Parts on the retail ladder, banded per part',
+ 'MOT on its own line reading "VAT not applicable"',
+ 'Inspection time carried as minutes, not 0.208 / 0.333',
+ 'Fluids and tyres kept out of the ladder',
+ 'Customer type checked — retail has no MED tier'];
+function renderChecks(q){
+  const stop=$('stopOut');
+  if(q.escalations.length){
+    stop.innerHTML=`<div class="note stop"><b>Do not send — ${q.escalations.length} hard stop${q.escalations.length>1?'s':''}</b>
+      ${q.escalations.map(e=>'• '+esc(e)).join('<br>')}</div>`;
+  } else if(q.lines.length){
+    stop.innerHTML='<div class="note go"><b>No hard stops</b>Nothing on this quote has to go to Logan before it is sent.</div>';
+  } else stop.innerHTML='';
+  $('checklist').innerHTML=CHECKS.map((c,i)=>
+    `<label class="ck"><input type="checkbox" data-ck="${i}" ${S.checks[i]?'checked':''}><span>${esc(c)}</span></label>`).join('');
+  $('checklist').querySelectorAll('[data-ck]').forEach(cb=>
+    cb.onchange=()=>{S.checks[cb.dataset.ck]=cb.checked;});
+}
+
+let LAST=null;
+function renderAll(){
+  const q=KITH.quote(buildLines(),{customer:S.customer});
+  LAST=q; renderTape(q); renderChecks(q);
+  if(typeof renderSecTabs==='function'&&$('secTabs'))renderSecTabs();
+  $('pillRamp').hidden=!S.rampExempt;
+  $('btnCrm').disabled=!q.readyToSend||!q.lines.length;
+}
+
+/* ===========================================================================
+   AI LAYER — optional. The app is fully usable with this switched off.
+   =========================================================================== */
+async function callAI(action,payload){
+  if(!CFG.aiEndpoint)throw new Error('No AI endpoint set. Open Settings to add one, or price the job by hand.');
+  const r=await fetch(CFG.aiEndpoint,{method:'POST',
+    headers:{'Content-Type':'application/json','x-kith-secret':CFG.aiSecret},
+    body:JSON.stringify({action,payload})});
+  const d=await r.json();
+  if(!r.ok||d.error)throw new Error(d.error||('AI returned '+r.status));
+  return d.result;
+}
+const vehicleCtx=()=>[S.vehicle.year,S.vehicle.make,S.vehicle.model,S.vehicle.engine,S.vehicle.reg]
+  .filter(Boolean).join(' ')||[$('vYear').value,$('vModel').value,$('vEngine').value,$('vReg').value].filter(Boolean).join(' ');
+
+$('btnIdentify').onclick=async()=>{
+  const desc=$('workDesc').value.trim();
+  if(!desc)return toast('Type what the diagnostic found first.');
+  const out=$('identifyOut');
+  out.innerHTML='<div class="note"><span class="spin"></span> Breaking the job down…</div>';
+  try{
+    const r=await callAI('identify_jobs',{description:desc,vehicleContext:vehicleCtx(),
+      customerType:S.customer,rampExempt:S.rampExempt});
+    let html='';
+    if(r.needs_diagnostic_first)html+=`<div class="note stop"><b>Send this back to the Service Adviser</b>${esc(r.needs_diagnostic_first)}</div>`;
+    if(r.safety_note)html+=`<div class="note warn"><b>Safety note</b>${esc(r.safety_note)}</div>`;
+    (r.follow_up_questions||[]).length&&(html+=`<div class="note"><b>Ask the customer, word for word</b>${r.follow_up_questions.map(q=>'• '+esc(q)).join('<br>')}</div>`);
+    (r.jobs||[]).forEach((j,i)=>{
+      html+=`<details ${i===0?'open':''}><summary>${esc(j.name)} — ${esc(j.labour_tier)} / ${esc(j.category)}${j.confidence==='low'?' ⚠ low confidence':''}</summary>
+        <div class="dbody">
+        ${j.techman_steps?`<div style="font-size:.82rem;color:var(--ink-2)"><b>In TechMan:</b><br>${j.techman_steps.map(esc).join('<br>')}</div>`:''}
+        ${j.what_to_look_for?`<p class="hint" style="margin:.4rem 0"><b>Look for:</b> ${esc(j.what_to_look_for)}</p>`:''}
+        ${j.typical_srt_range?`<p class="hint" style="margin:.2rem 0">Expect roughly ${esc(j.typical_srt_range)}.</p>`:''}
+        ${j.notes?`<p class="hint">${esc(j.notes)}</p>`:''}
+        <button class="btn sm" data-add='${esc(JSON.stringify({label:j.name,tier:j.labour_tier,category:j.category}))}'>Add as a labour line</button>
+        </div></details>`;});
+    if(r.requires_escalation)html+=`<div class="note stop"><b>Escalate to Logan</b>${esc(r.escalation_reason||'')}</div>`;
+    (r.suggested_addons||[]).length&&(html+=`<div class="note"><b>Worth offering the customer</b>${r.suggested_addons.map(a=>'• '+esc(a.name)+' — '+esc(a.why)).join('<br>')}</div>`);
+    out.innerHTML=html||'<div class="note">Nothing came back. Price it by hand.</div>';
+    out.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{
+      const j=JSON.parse(b.dataset.add.replace(/&quot;/g,'"').replace(/&amp;/g,'&'));
+      S.labour.push({label:j.label,srt:0,tier:j.tier||'TOP',category:j.category||'mechanical',
+        pairSecondarySrt:0,extraSrt:0,inspection:''});
+      renderLabour();renderAll();toast('Added — now put the SRT in.');});
+  }catch(e){out.innerHTML=`<div class="note stop"><b>Could not break it down</b>${esc(e.message)}</div>`;}
+};
+
+$('btnSanity').onclick=async()=>{
+  if(!LAST||!LAST.lines.length)return toast('Price something first.');
+  const out=$('sanityOut');
+  out.innerHTML='<div class="note"><span class="spin"></span> Checking the quote…</div>';
+  const summary=LAST.lines.map(l=>`${l.label||l.kind}: ${l.escalate?'ESCALATE':gbp(l.total)}`).join('\n')
+    +`\nNet ${gbp(LAST.net)} / customer pays ${gbp(LAST.customerPays)}`;
+  try{
+    const r=await callAI('sanity_check',{quoteSummary:summary,vehicleContext:vehicleCtx(),customerType:S.customer});
+    const cls=r.verdict==='do_not_send'?'stop':r.verdict==='review_before_sending'?'warn':'go';
+    out.innerHTML=`<div class="note ${cls}"><b>${esc((r.verdict||'').replace(/_/g,' '))}</b>${esc(r.summary||'')}</div>`
+      +(r.concerns||[]).map(c=>`<div class="note ${c.severity==='critical'?'stop':c.severity==='warn'?'warn':''}">
+         <b>${esc(c.severity)}</b>${esc(c.concern)}<br><span style="color:var(--ink-3)">${esc(c.suggestion||'')}</span></div>`).join('')
+      +((r.missing_addons||[]).length?`<div class="note"><b>Might be missing</b>${r.missing_addons.map(a=>'• '+esc(a.name)+' — '+esc(a.why)).join('<br>')}</div>`:'');
+  }catch(e){out.innerHTML=`<div class="note stop"><b>Sanity check unavailable</b>${esc(e.message)}</div>`;}
+};
+
+/* ===========================================================================
+   OUTPUT — copy, print, push to CRM
+   =========================================================================== */
+function quoteText(){
+  const v=[$('vReg').value,$('vModel').value,$('vEngine').value,$('vYear').value].filter(Boolean).join(' · ');
+  const L=['KITH Cars — Estimate','Vehicle: '+(v||'not stated'),
+    'Customer type: '+KITH.CUSTOMERS[S.customer].label,
+    S.rampExempt?'Ramp-exempt: yes (×2.5 / ×1.75)':'', ''];
+  LAST.lines.forEach(l=>L.push((l.label||l.kind).padEnd(44)+(l.escalate?'ESCALATE':gbp(l.total))));
+  L.push('', 'Net ex VAT'.padEnd(44)+gbp(LAST.net), 'VAT 20%'.padEnd(44)+gbp(LAST.vat));
+  if(LAST.outsideVat)L.push('Outside the scope of VAT'.padEnd(44)+gbp(LAST.outsideVat));
+  L.push('CUSTOMER PAYS'.padEnd(44)+gbp(LAST.customerPays));
+  if(LAST.depositRequired)L.push('50% deposit before work starts'.padEnd(44)+gbp(LAST.deposit));
+  L.push('','Priced to KITH Estimator SOP v'+KITH.VERSION+'. Quotes are free and without obligation.');
+  return L.join('\n');
+}
+$('btnCopy').onclick=()=>{if(!LAST||!LAST.lines.length)return toast('Nothing to copy.');
+  navigator.clipboard.writeText(quoteText()).then(()=>toast('Quote copied.'),()=>toast('Copy failed.'));};
+$('btnPrint').onclick=()=>window.print();
+
+
+/* ===========================================================================
+   WIRING
+   =========================================================================== */
+$('btnAddLabour').onclick=()=>{S.labour.push({label:'',srt:0,tier:'TOP',category:'mechanical',
+  pairSecondarySrt:0,extraSrt:0,inspection:''});renderLabour();renderAll();};
+$('btnAddPart').onclick=()=>{S.parts.push({type:'part',label:'',unitNet:0,qty:1});renderParts();renderAll();};
+$('btnAddFluid').onclick=()=>{S.parts.push({type:'fluid',label:Object.keys(KITH.FLUIDS)[1],qty:1});renderParts();renderAll();};
+$('btnAddTyre').onclick=()=>{S.parts.push({type:'tyre',label:'',netEach:0,qty:1});renderParts();renderAll();};
+$('ckRamp').onchange=e=>{S.rampExempt=e.target.checked;renderAll();};
+['vReg','vModel','vEngine','vYear'].forEach(id=>$(id).oninput=()=>{});
+
+$('fixedPick').innerHTML='<option value="">Choose…</option>'+
+  Object.keys(KITH.FIXED).map(k=>`<option>${esc(k)}</option>`).join('');
+$('btnAddFixed').onclick=()=>{const v=$('fixedPick').value;if(!v)return;
+  S.fixed.push({type:'fixed',label:v});renderFixed();renderAll();$('fixedPick').value='';};
+
+$('panelCat').innerHTML=Object.keys(KITH.PANEL_UPLIFT).map(k=>`<option>${esc(k)}</option>`).join('');
+$('panelPick').innerHTML=[...Object.keys(KITH.PANEL_BASE),'Sliding door']
+  .map(k=>`<option>${esc(k)}</option>`).join('');
+$('btnAddPanel').onclick=()=>{const cat=$('panelCat').value,panel=$('panelPick').value;
+  S.fixed.push({type:'panel',cat,panel,label:panel+' — '+cat});renderFixed();renderAll();};
+
+$('btnReset').onclick=()=>{if(!confirm('Clear this quote and start again?'))return;
+  S.labour=[];S.parts=[];S.fixed=[];S.checks={};S.rampExempt=false;
+  ['vReg','vModel','vEngine','vYear','workDesc'].forEach(i=>$(i).value='');
+  $('ckRamp').checked=false;$('identifyOut').innerHTML='';$('sanityOut').innerHTML='';
+  renderLabour();renderParts();renderFixed();renderAll();toast('New quote.');};
+
+$('btnSettings').onclick=()=>{
+  const url=prompt('AI endpoint (Supabase Edge Function URL). Leave blank to work without AI:',CFG.aiEndpoint);
+  if(url===null)return;
+  const sec=prompt('AI shared secret (x-kith-secret):',CFG.aiSecret)||'';
+  const crm=prompt('Supabase project URL for the CRM:',CFG.crmUrl)||'';
+  const key=prompt('Supabase anon key:',CFG.crmKey)||'';
+  CFG.aiEndpoint=url.trim();CFG.aiSecret=sec.trim();CFG.crmUrl=crm.trim();CFG.crmKey=key.trim();
+  localStorage.setItem('kith_ai_url',CFG.aiEndpoint);localStorage.setItem('kith_ai_secret',CFG.aiSecret);
+  localStorage.setItem('kith_crm_url',CFG.crmUrl);localStorage.setItem('kith_crm_key',CFG.crmKey);
+  $('pillAI').textContent=CFG.aiEndpoint?'AI on':'AI off';
+  $('pillAI').className='pill'+(CFG.aiEndpoint?' on':'');
+  toast('Settings saved to this browser.');};
+
+$('pillAI').textContent=CFG.aiEndpoint?'AI on':'AI off';
+if(CFG.aiEndpoint)$('pillAI').className='pill on';
+$('verChip').textContent='v'+KITH.VERSION;
+
+// First draw waits until the whole script has run. Drawing here directly
+// touched JOB / MY_ROLE / SECTION before they exist, which stopped the page
+// dead on load (the sign-in list never appeared).
+setTimeout(()=>{renderCustomers();renderLabour();renderParts();renderFixed();renderAll();},0);
+
+/* ===========================================================================
+   CRM INTEGRATION
+   The CRM keeps ONE row per job in jobs: {id, data:{...}, updated_at}.
+   That row is the single source of truth, so the quote is written back into
+   data.quote on the same row rather than into a table of its own.
+   =========================================================================== */
+const CRM={
+  url:  localStorage.getItem('kith_crm_url') ||'https://mxyrxyhvjndgjqupgstu.supabase.co',
+  // Same public key the CRM page uses, so nobody has to paste it in.
+  key:  localStorage.getItem('kith_crm_key') ||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog',
+  // The CRM keeps every job in "jobs" (kith_jobs was never read by the board).
+  table:'jobs'
+};
+
+/* ---------------------------------------------------------------------------
+   STAGE KEYS — checked against the live CRM (index.html STAGES), 16 Sep 2026.
+--------------------------------------------------------------------------- */
+const STAGE={
+  intake:   'intake',     // 1 Intake
+  labour:   'labour',     // 2 Labour Estimate   (the CRM migrates old 'estimating' to this)
+  parts:    'parts',      // 3 Parts Estimate
+  final:    'financial',  // 4 Final Estimate
+  signoff:  'signoff',    // 5 Logan Sign-Off — only Logan clears it
+  adviser:  'contact'     // 6 Service Adviser
+};
+const STAGE_LABEL={intake:'1 Intake',labour:'2 Labour',estimating:'2 Labour',parts:'3 Parts',
+  financial:'4 Final',signoff:'5 Sign-off'};
+// Everything past pricing. Listing FINISHED stages means an unknown stage
+// still shows up rather than silently disappearing.
+const DONE_STAGES=['signoff','disapproved','contact','contacted','waiting','waiting2','ready','booked','po','raised',
+  'checkin','authwait','inprog','done','accounts','receivable','review','followup','lost',
+  'adviser','awaiting','pos','complete','work complete','invoiced','follow-up','archived','closed','cancelled'];
+function needsPricing(j){
+  const st=String(j.stage||'').toLowerCase().trim();
+  if(DONE_STAGES.indexOf(st)>-1)return false;
+  if(j.mergedInto)return false;
+  if(j.quote&&j.approval&&j.approval.status==='approved')return false;
+  return true;
+}
+
+const ESTIMATORS=['Sesugh','Joel','Ian','Muhammad Talha','Harith'];
+let ME=localStorage.getItem('kith_estimator')||null;
+let JOBS=[], JOB=null, QTAB='mine';
+
+const CTYPE_MAP={retail:'retail',business:'retail',trade:'trade',warranty:'retail',
+  aa_smart:'aa_smart',aa_towin:'aa_towin',aa_pgc:'aa_pgc',aa_fleet:'aa_fleet',internal:'retail'};
+
+async function crmGet(){
+  if(!CRM.key)throw new Error('No CRM key set. Open Settings and paste the Supabase anon key.');
+  const r=await fetch(CRM.url.replace(/\/$/,'')+'/rest/v1/'+CRM.table+'?select=id,data&order=updated_at.desc',
+    {headers:{apikey:CRM.key,Authorization:'Bearer '+CRM.key,Range:'0-4999','Range-Unit':'items'}});
+  if(!r.ok)throw new Error('CRM returned '+r.status);
+  const rows=await r.json();
+  return (rows||[]).map(r=>({id:r.id,...(r.data||{})}))
+    .filter(j=>j.id&&String(j.id).indexOf('__')!==0);
+}
+
+// The CRM and other people edit the same job while it is open here. So a
+// save re-reads the job, lays only the fields this app owns on top, merges
+// the activity log, and stamps updatedAt so every CRM screen picks it up.
+const APP_FIELDS=['stage','stageAt','stageHistory','sectionDone','estimateDraft','estimate','quote',
+  'finalEst','approval','estimateApproved','signedOff','signOffNote','labourCost','labourDesc','labourFixed',
+  'srt','srtCharged','srtLines','srtSource','parts','partsBy','assignedEstimator','assignedAt','tmJob',
+  'startedAt','custType','sopRulesSig','sopRulesAt'];
+async function crmFetchOne(id){
+  const r=await fetch(CRM.url.replace(/\/$/,'')+'/rest/v1/'+CRM.table+'?id=eq.'+encodeURIComponent(id)+'&select=data',
+    {headers:{apikey:CRM.key,Authorization:'Bearer '+CRM.key}});
+  if(!r.ok)throw new Error('CRM returned '+r.status);
+  const rows=await r.json();
+  return rows[0]?rows[0].data:null;
+}
+function mergeLog(base,mine){
+  const seen=new Set((base||[]).map(e=>(e.t||'')+'|'+(e.s||'')));
+  return (base||[]).concat((mine||[]).filter(e=>!seen.has((e.t||'')+'|'+(e.s||''))));
+}
+// Keep what the CRM added to a part (PO number, stock status, supplier) when
+// the estimate rewrites the list.
+function mergeParts(base,mine){
+  const pool=(base||[]).slice();
+  return (mine||[]).map(p=>{
+    const i=pool.findIndex(b=>String(b.name||'').toLowerCase()===String(p.name||'').toLowerCase());
+    if(i<0)return p;
+    const b=pool.splice(i,1)[0];
+    return Object.assign({},b,p);
+  });
+}
+async function crmSave(job,opts){
+  opts=opts||{};
+  let base=null;
+  try{base=await crmFetchOne(job.id);}catch(e){if(!opts.isNew)throw e;}
+  if(base&&(base.mergedInto||(base.stage==='lost'&&job.stage!=='lost')))
+    throw new Error(job.id+' was closed in the CRM ('+(base.mergedInto?'duplicate':'lost')+') \u2014 nothing saved.');
+  const out=Object.assign({},base||job);
+  (base?APP_FIELDS:Object.keys(job)).forEach(k=>{if(k in job)out[k]=job[k];});
+  if(base&&job.parts)out.parts=mergeParts(base.parts,job.parts);
+  out.log=mergeLog(base&&base.log,job.log);
+  out.id=job.id;
+  out.updatedAt=new Date().toISOString();
+  const r=await fetch(CRM.url.replace(/\/$/,'')+'/rest/v1/'+CRM.table,{method:'POST',
+    headers:{apikey:CRM.key,Authorization:'Bearer '+CRM.key,'Content-Type':'application/json',
+      Prefer:'resolution=merge-duplicates,return=minimal'},
+    body:JSON.stringify({id:job.id,data:out,updated_at:out.updatedAt})});
+  if(!r.ok)throw new Error('CRM returned '+r.status+' \u2014 '+(await r.text()).slice(0,140));
+  Object.keys(job).forEach(k=>delete job[k]);
+  Object.assign(job,out);
+  return job;
+}
+// Stage moves stamped the way the CRM stamps them, so Timings still work.
+function setStage(job,to){
+  if(!job||job.stage===to)return;
+  const now=Date.now();
+  job.stageHistory=job.stageHistory||[];
+  const last=job.stageHistory[job.stageHistory.length-1];
+  if(last&&!last.left)last.left=now;
+  job.stageHistory.push({stage:to,at:now,by:ME||''});
+  job.stage=to;job.stageAt=now;
+}
+const nowLog=s=>({t:new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}),s:s+(ME?' ['+ME+']':'')});
+
+/* ---------------- queue ---------------- */
+function renderTabs(){
+  const counts={mine:0,unassigned:0,all:JOBS.length};
+  JOBS.filter(needsPricing).forEach(j=>{
+    if(isMine(j))counts.mine++;
+    else if(!ownerOf(j))counts.unassigned++;
+  });
+  counts.all=JOBS.filter(needsPricing).length;
+  $('qtabs').innerHTML=[['mine','Mine'],['unassigned','Unclaimed'],['all','Everything']]
+    .map(([k,l])=>`<button class="qtab ${QTAB===k?'on':''}" data-t="${k}">${l} (${counts[k]})</button>`).join('');
+  $('qtabs').querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{QTAB=b.dataset.t;renderQueue();});
+}
+function renderQueue(){
+  renderTabs();
+  let list=JOBS.filter(needsPricing);
+  if(QTAB==='mine')list=list.filter(isMine);
+  if(QTAB==='unassigned')list=list.filter(j=>!ownerOf(j));
+  list.sort((a,b)=>((b.asap?1:0)-(a.asap?1:0))||((a.stageAt||0)-(b.stageAt||0)));
+  if(!list.length){$('queueList').innerHTML='<div class="empty">Nothing here.</div>';return;}
+  $('queueList').innerHTML=list.map(j=>{
+    const g=j.judgement||{};
+    const flags=[];
+    if(j.asap)flags.push(['top','ASAP']);
+    if(g.needs_diagnostic_first)flags.push(['top','Diagnostic first']);
+    if(g.ramp_exempt)flags.push(['med','Ramp-exempt']);
+    if(g.customer_type&&g.customer_type.indexOf('aa_')===0)flags.push(['gold',g.customer_type.replace('aa_','AA ').toUpperCase()]);
+    if(g.customer_type==='warranty')flags.push(['top','Warranty co']);
+    if(j.isComeback)flags.push(['med','Comeback']);
+    if((g.escalations||[]).length)flags.push(['top',g.escalations.length+' for Logan']);
+    if(j.estimate&&j.estimate.customer_pays)flags.push(['low','Priced '+gbp(j.estimate.customer_pays)]);
+    else if(typeof j.quote==='number'&&j.quote)flags.push(['low','Quoted '+gbp(j.quote)]);
+    if(!Object.keys(g).length&&j.custType)flags.push([/aa|rac|warrant|insur/i.test(j.custType)?'gold':'med',j.custType]);
+    if(j.additionalWork)flags.push(['med','Additional work']);
+    if(j.privatePlate)flags.push(['top','Private plate']);
+    if(j.wrongReg)flags.push(['top','Wrong reg']);
+    if(j.tmJob)flags.push(['low','TM '+j.tmJob]);
+    if(ownerOf(j)&&QTAB!=='mine')flags.push(['low',ownerOf(j)]);
+    if(j.estimateDraft)flags.push(['low','Work saved']);
+    return `<div class="jcard" data-id="${esc(j.id)}">
+      <div class="top"><span class="reg">${esc(j.reg||'no reg')}</span>
+        <span class="who">${esc(j.name||'')} \u00b7 ${esc(j.make||'')} ${esc(j.model||'')}</span>
+        <span class="tag">${esc(STAGE_LABEL[j.stage]||j.stage||'')}</span></div>
+      <div class="work">${esc((j.work||'').slice(0,180))}</div>
+      ${j.sectionDone?`<div class="work" style="color:var(--ink-3);margin-top:.25rem">`+
+        Object.keys(j.sectionDone).map(k=>esc(k)+' done by '+esc(j.sectionDone[k].by)).join(' \u00b7 ')+
+        `</div>`:''}
+      <div class="flags">${flags.map(([c,t])=>`<span class="tag ${c}">${esc(t)}</span>`).join('')}</div>
+    </div>`;}).join('');
+  $('queueList').querySelectorAll('.jcard').forEach(c=>c.onclick=()=>openJob(c.dataset.id));
+}
+function ownerOf(j){return j.assignedEstimator||j.assignedTo||'';}
+function isMine(j){
+  if(MY_ROLE==='parts')return j.stage===STAGE.parts;
+  return ownerOf(j)===ME;
+}
+/* ---------------- SOP amendments (approved by Logan in the brain) ---------------- */
+let SOP_RULES=[], SOP_RULES_AT=null;
+const HAS_RULES=typeof KITHRules!=='undefined';
+async function loadRules(){
+  if(!HAS_RULES||!CRM.key)return;
+  try{const d=await KITHRules.load(CRM.url,CRM.key);SOP_RULES=d.rules;SOP_RULES_AT=d.updatedAt;}catch(e){console.warn('amendments',e.message);}
+  paintSopLive();
+}
+function paintSopLive(){
+  const el=$('sopLive');if(!el)return;
+  const live=HAS_RULES?KITHRules.liveRules(SOP_RULES):[];
+  el.innerHTML=live.length?`<div class="note" style="margin-bottom:.6rem"><b>SOP amendments in force (${live.length})</b>`+
+    live.map(r=>esc(KITHRules.describe(r))).join('<br>')+`<br><span style="font-size:.78rem">Applied automatically \u2014 approved by Logan.</span></div>`:'';
+}
+function pricedLabour(l){
+  const o={...l,customer:S.customer,rampExempt:S.rampExempt,inspection:l.inspection||null};
+  return HAS_RULES?KITHRules.labour(KITH,o,SOP_RULES):KITH.labourLine(o);
+}
+async function loadQueue(silent){
+  if(!silent)$('queueList').innerHTML='<div class="empty"><span class="spin"></span> Loading from the CRM\u2026</div>';
+  try{JOBS=await crmGet();loadRules().then(()=>{if(JOB)renderAll();});renderQueue();openFromLink();}
+  catch(e){$('queueList').innerHTML=`<div class="note stop"><b>Could not reach the CRM</b>${esc(e.message)}
+    <br><br>You can still price a job by hand \u2014 use "Price something without a job".</div>`;
+    renderTabs();}
+}
+
+/* ---------------- open a job ---------------- */
+function openJob(id){
+  JOB=JOBS.filter(j=>String(j.id)===String(id))[0];
+  if(!JOB)return;
+  const g=JOB.judgement||{};
+
+  S.labour=[];S.parts=[];S.fixed=[];S.checks={};
+  // Intake leaves retail-or-trade for a business to the CRM, so follow the CRM there.
+  S.customer=(g.customer_type==='business'?crmCustToSop(JOB.custType):CTYPE_MAP[g.customer_type])||crmCustToSop(JOB.custType)||'retail';
+  S.rampExempt=!!g.ramp_exempt;
+  restoreWork();
+  $('vReg').value=JOB.reg||'';   $('vModel').value=((JOB.make||'')+' '+(JOB.model||'')).trim();
+  $('vEngine').value=JOB.engineSize||JOB.fuel||''; $('vYear').value=JOB.year||'';
+  $('workDesc').value=intakeAsText();
+  $('ckRamp').checked=S.rampExempt;
+
+  renderInherit(g);
+  renderIntakeDetail();
+  applyJobMode();
+  renderCustomers();renderLabour();renderParts();renderFixed();renderAll();
+  SECTION=canSee('labour')?'labour':mySections()[0];
+  renderJobStrip(); paintSection();
+  $('scr-queue').hidden=true; $('scr-quote').hidden=false;
+  $('btnQueue').hidden=false; $('pillJob').hidden=false;
+  $('pillJob').textContent=JOB.id+' \u00b7 '+(JOB.reg||'');
+  window.scrollTo(0,0);
+}
+// CRM customer types onto the SOP ones. Plain "AA" is left for the
+// estimator to choose — the AA schemes price differently.
+function crmCustToSop(ct){
+  const t=String(ct||'');
+  if(!t)return '';
+  if(/aa\s*fleet/i.test(t))return 'aa_fleet';
+  if(/b2b|trade|fleet|garage|dealer|account/i.test(t))return 'trade';
+  return 'retail';
+}
+const clone=o=>JSON.parse(JSON.stringify(o||null));
+// Pick up where the last person left off: the saved draft first, otherwise
+// whatever the CRM already holds for labour and parts.
+function restoreWork(){
+  const d=JOB.estimateDraft;
+  if(d){
+    S.labour=clone(d.labour)||[];S.parts=clone(d.parts)||[];S.fixed=clone(d.fixed)||[];
+    S.checks=clone(d.checks)||{};
+    if(d.customer)S.customer=d.customer;
+    if('rampExempt' in d)S.rampExempt=!!d.rampExempt;
+    return;
+  }
+  (JOB.srtLines||[]).forEach(l=>S.labour.push({label:l.op||'',srt:parseFloat(l.book)||0,tier:'TOP',category:'mechanical'}));
+  if(!S.labour.length&&parseFloat(JOB.srt)>0)
+    S.labour.push({label:JOB.labourDesc||'Labour',srt:parseFloat(JOB.srt)||0,tier:'TOP',category:'mechanical'});
+  (JOB.parts||[]).forEach(p=>{
+    const c=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
+    S.parts.push({type:'part',label:p.name||'',unitNet:c,qty:parseInt(p.qty)||1});
+  });
+}
+function snapshotWork(){
+  return {labour:clone(S.labour),parts:clone(S.parts),fixed:clone(S.fixed),checks:clone(S.checks),
+    customer:S.customer,rampExempt:S.rampExempt,by:ME,at:new Date().toISOString(),sop:KITH.VERSION};
+}
+// What the CRM board and the sign-off screen read.
+function writeCrmFigures(){
+  renderAll();
+  const q=LAST||{lines:[]};
+  const lab=q.lines.filter(l=>l.kind==='labour'&&!l.escalate);
+  const other=q.lines.filter(l=>['fixed','mot','panel'].indexOf(l.kind)>-1&&!l.escalate);
+  const parts=q.lines.filter(l=>['part','fluid','tyre'].indexOf(l.kind)>-1&&!l.escalate);
+  if(lab.length||other.length){
+    JOB.labourCost=KITH.money(lab.concat(other).reduce((a,l)=>a+l.total,0));
+    JOB.labourDesc=lab.map(l=>(l.label||'Labour')+': '+Number(l.chargedHours).toFixed(2)+'h @ \u00a3'+l.rate+'/hr = \u00a3'+Number(l.total).toFixed(2))
+      .concat(other.map(l=>(l.label||l.kind)+' = \u00a3'+Number(l.total).toFixed(2))).join('\n');
+    JOB.labourFixed=false;
+    JOB.srt=KITH.money(lab.reduce((a,l)=>a+(parseFloat(l.srt)||0),0));
+    JOB.srtCharged=KITH.money(lab.reduce((a,l)=>a+(parseFloat(l.chargedHours)||0),0));
+    JOB.srtLines=lab.map(l=>({op:l.label||'Labour',book:l.srt,charged:l.chargedHours,by:ME,at:new Date().toLocaleString('en-GB')}));
+    JOB.srtSource='Estimator app \u00b7 SOP v'+KITH.VERSION;
+  }
+  JOB.parts=parts.map(l=>{
+    const qty=parseInt(l.qty)||1;
+    const unit=(l.unitNet!=null&&!isNaN(l.unitNet))?Number(l.unitNet):KITH.money((l.total||0)/qty);
+    return {name:l.label||l.kind,qty:qty,price:unit,sop_sell:l.total,
+      noMarkup:l.kind!=='part'};     // fluids and tyres are sold at the SOP price already
+  });
+}
+
+function blankQuote(){
+  JOB=null;S.labour=[];S.parts=[];S.fixed=[];S.checks={};
+  S.customer='retail';S.rampExempt=false;
+  ['vReg','vModel','vEngine','vYear','workDesc'].forEach(i=>$(i).value='');
+  $('ckRamp').checked=false;$('inheritBox').innerHTML='';
+  const idBox=$('intakeDetail'); if(idBox)idBox.innerHTML='';
+  applyJobMode();
+  renderCustomers();renderLabour();renderParts();renderFixed();renderAll();
+  SECTION=canSee('labour')?'labour':mySections()[0];
+  renderJobStrip(); paintSection();
+  $('scr-queue').hidden=true;$('scr-quote').hidden=false;
+  $('btnQueue').hidden=false;$('pillJob').hidden=true;
+}
+
+
+/* ===========================================================================
+   WHAT THE ADVISER ALREADY WROTE DOWN
+   The intake form captures far more than the one-line summary. All of it goes
+   on screen here so nothing gets asked twice or typed twice.
+   =========================================================================== */
+const ANSWER_LABELS={
+  'f-svc-type':'Service wanted','f-last-service':'Last service','f-other-issues':'Other issues',
+  'f-mot-class':'MOT class','f-warnings':'Warning lights',
+  'chips-axle':'Which wheels','chips-brakework':'Brake work','f-brake-symptoms':'Customer described',
+  'f-tyre-qty':'How many tyres','f-tyre-size':'Tyre size','chips-tyre-brand':'Brand preference',
+  'f-tracking':'Tracking',
+  'f-diag-type':'Diagnostic tier','f-diag-lights':'Warning lights','f-diag-symptoms':'Symptoms',
+  'f-driveable':'Can they drive it',
+  'chips-susp-loc':'Where','chips-susp-work':'Suspected','f-susp-symptoms':'Customer described',
+  'chips-exhaust-type':'Exhaust work','f-exhaust-symptoms':'Customer described',
+  'chips-elec-work':'Electrical work','f-elec-symptoms':'Customer described',
+  'chips-eng-work':'Engine work','f-eng-symptoms':'Customer described',
+  'chips-clutch-work':'Clutch work','f-gearbox-type':'Gearbox','f-clutch-symptoms':'Customer described',
+  'chips-panels':'Panels affected','chips-body-type':'Repair type','f-body-desc':'Damage',
+  'f-body-pay':'Paying',
+  'f-rec-from':'Collect from','f-rec-to':'Deliver to','f-rec-drives':'Does it drive',
+  'f-rec-dist':'Distance','f-rec-keys':'Keys',
+  'f-cb-job':'Original job','f-cb-date':'Original date','f-cb-miles':'Mileage then',
+  'f-cb-same':'Same fault','f-cb-what':'Original work',
+  'f-sale-ref':'Stock ref','f-sale-work':'Prep needed','f-sale-date':'Ready by',
+  'f-other-work':'Work needed','f-other-lights':'Warning lights'
+};
+function renderIntakeDetail(){
+  const box=$('intakeDetail'); if(!box)return;
+  if(!JOB){box.innerHTML='';return;}
+  const a=JOB.guidedAnswers||{}, g=JOB.judgement||{}, t=JOB.ai_triage||null;
+  let h='';
+
+  // the customer's own words carry information a summary loses
+  if(JOB.customer_words||g.customer_words){
+    h+=`<div class="card"><header><h2>What the customer actually said</h2></header>
+      <div class="body"><div style="font-size:.95rem;line-height:1.6;font-style:italic;color:var(--ink)">
+      &ldquo;${esc(JOB.customer_words||g.customer_words)}&rdquo;</div></div></div>`;
+  }
+
+  // everything the adviser filled in
+  const rows=Object.keys(a).filter(k=>a[k]&&String(a[k]).trim())
+    .map(k=>[ANSWER_LABELS[k]||k.replace(/^f-|^chips-/,'').replace(/-/g,' '),a[k]]);
+  if(rows.length){
+    h+=`<div class="card"><header><h2>What the adviser wrote down</h2>
+      <div style="flex:1"></div><button class="btn sm" id="btnCopyIntake">Copy into the description</button></header>
+      <div class="body"><table>`+
+      rows.map(r=>`<tr><td style="color:var(--ink-3);width:38%">${esc(r[0])}</td>
+        <td>${esc(r[1])}</td></tr>`).join('')+
+      `</table></div></div>`;
+  }
+
+  // safety, in the adviser's ticks and the brain's reading
+  if((g.safety_flags||[]).length){
+    h+=`<div class="note stop"><b>Safety items ticked at intake</b>
+      ${g.safety_flags.map(esc).join('<br>')}
+      ${g.needs_diagnostic_first?'<br><br>This was booked as a <b>diagnostic first</b>. Price the diagnostic, not the repair.':''}
+      ${g.diagnostic_override?'<br><br>Overridden by '+esc(g.diagnostic_override.by)+': '+esc(g.diagnostic_override.reason):''}
+      </div>`;
+  }
+
+  // what the adviser brain made of it, clearly labelled as a suggestion
+  if(t){
+    h+=`<div class="card"><header><h2>What the adviser's brain made of it</h2></header><div class="body">
+      <p style="margin:0 0 .5rem"><b>${esc(t.understood||'')}</b>
+        <span class="tag ${t.confidence==='low'?'top':t.confidence==='medium'?'med':'low'}">${esc(t.confidence||'')} confidence</span></p>
+      ${(t.questions_to_ask||[]).length?'<p class="hint" style="margin:.3rem 0"><b>It suggested asking:</b><br>'+
+        t.questions_to_ask.map(esc).join('<br>')+'</p>':''}
+      ${(t.missing_info||[]).length?'<div class="note warn"><b>Still missing at intake</b>'+
+        t.missing_info.map(esc).join('<br>')+'</div>':''}
+      <p class="hint" style="margin:.4rem 0 0">This was a suggestion to the adviser, not a finding. Price off the diagnostic.</p>
+      </div></div>`;
+  }
+
+  if(JOB.notes)
+    h+=`<div class="note"><b>Adviser's note</b>${esc(JOB.notes)}</div>`;
+
+  const contact=[JOB.name,JOB.phone,JOB.source].filter(Boolean).join(' · ');
+  if(contact)h+=`<p class="hint">${esc(contact)}${JOB.createdAt?' · taken in '+esc(JOB.createdAt):''}${JOB.by?' by '+esc(JOB.by):''}</p>`;
+
+  box.innerHTML=h;
+  const cp=$('btnCopyIntake');
+  if(cp)cp.onclick=()=>{
+    $('workDesc').value=intakeAsText();
+    toast('Pulled into the description.');
+  };
+}
+function intakeAsText(){
+  if(!JOB)return '';
+  const a=JOB.guidedAnswers||{};
+  const lines=[JOB.work||''];
+  Object.keys(a).filter(k=>a[k]&&String(a[k]).trim())
+    .forEach(k=>lines.push((ANSWER_LABELS[k]||k)+': '+a[k]));
+  if(JOB.customer_words)lines.push('Customer said: "'+JOB.customer_words+'"');
+  if(JOB.notes)lines.push('Note: '+JOB.notes);
+  return lines.filter(Boolean).join('\n');
+}
+
+
+/* ---------------------------------------------------------------------------
+   When a job comes from the CRM, the customer, the vehicle and the work are
+   already known. Showing them as empty-looking form fields invites somebody to
+   fill them in again. They show as facts, with one button to change them if
+   the adviser genuinely got something wrong.
+--------------------------------------------------------------------------- */
+function applyJobMode(){
+  const hasJob=!!JOB;
+  const cc=$('card-customer');
+  if(cc)cc.hidden=hasJob;                       // blank quotes still need it
+  const w=$('workWrap');
+  if(w){
+    w.open=!hasJob;                             // collapsed when it came from intake
+    $('workSummary').textContent=hasJob
+      ? 'Edit the description (already filled in from the intake)'
+      : 'Type what is needed';
+  }
+  $('workHint').textContent=hasJob
+    ? 'This came from the intake. Everything the adviser recorded is above — you should not need to type it again.'
+    : 'Paste the diagnostic findings. If there is a symptom and no diagnostic, it goes back to the Service Adviser.';
+  $('workHead').textContent=hasJob?'The work, as taken in':'What work is needed?';
+}
+
+/* ---------------- what the adviser already decided ---------------- */
+function renderInherit(g){
+  if(!g||!Object.keys(g).length){
+    if(JOB&&(JOB.custType||JOB.source||JOB.by)){
+      const ct=JOB.custType||'not set';
+      const aa=/^aa$/i.test(String(JOB.custType||'').trim());
+      $('inheritBox').innerHTML='<div class="note'+(aa||!JOB.custType?' warn':'')+'"><b>From the CRM</b>'+
+        'Customer type: '+esc(ct)+(JOB.source?' \u00b7 came from '+esc(JOB.source):'')+(JOB.by?' \u00b7 taken in by '+esc(JOB.by):'')+
+        (aa?'<br>AA \u2014 pick the right AA scheme below before pricing.':'')+
+        (!JOB.custType?'<br>Customer type is not set \u2014 check it before pricing.':'')+
+        (JOB.additionalWork?'<br>Additional work'+(JOB.linkedRef?' on top of '+esc(JOB.linkedRef):'')+'.':'')+
+        (JOB.privatePlate?'<br>Private plate \u2014 vehicle details came from the customer.':'')+'</div>';
+      return;
+    }
+    $('inheritBox').innerHTML='<div class="note warn"><b>No intake record</b>This job has no adviser judgement on it, so nothing is inherited. Check every field yourself.</div>';
+    return;}
+  const rows=[];
+  const ct=(KITH.CUSTOMERS[CTYPE_MAP[g.customer_type]]||{}).label||g.customer_type;
+  rows.push(['Customer type',ct+(g.customer_type==='business'?' (trade unlock via CRM)':'')]);
+  if(g.company_name)rows.push(['Company',g.company_name]);
+  if(g.warranty_company)rows.push(['Warranty co',g.warranty_company+(g.warranty_authorised_rate?' @ '+g.warranty_authorised_rate+'/hr':'')]);
+  if(g.aa_reference)rows.push(['AA ref',g.aa_reference]);
+  rows.push(['Ramp-exempt',g.ramp_exempt?('Yes \u2014 '+(g.ramp_exempt_reason||'')):'No']);
+  if(g.bodywork_category)rows.push(['Bodywork column',g.bodywork_category]);
+  if(g.mot_class)rows.push(['MOT class',g.mot_class==='ESCALATE'?'Logan':'Class '+g.mot_class]);
+  if(g.comeback)rows.push(['Comeback',g.comeback.verdict+' \u2014 '+(g.comeback.reason||'')]);
+
+  let warn='';
+  if(g.needs_diagnostic_first)
+    warn+='<div class="note stop"><b>Diagnostic first</b>The adviser flagged a safety item. Price the diagnostic, not the repair \u2014 the repair gets priced off the findings.</div>';
+  if(g.customer_type==='warranty')
+    warn+='<div class="note stop"><b>Warranty company</b>No agreed rate card exists. Price to the rate they authorised, then send it to Logan before it goes anywhere.</div>';
+  if(g.ramp_criteria_signed_off===false&&g.ramp_exempt)
+    warn+='<div class="note warn"><b>Ramp criteria not signed off</b>The flag is a proposal, not policy. If it looks wrong, check with Logan before pricing on it.</div>';
+  if((g.escalations||[]).length)
+    warn+='<div class="note stop"><b>'+g.escalations.length+' item(s) for Logan</b>'+g.escalations.map(esc).join('<br>')+'</div>';
+
+  $('inheritBox').innerHTML=
+    '<div class="inherit"><div class="ih">Set at intake by '+esc(g.captured_by||'the adviser')+'</div>'+
+    rows.map(r=>`<div class="irow"><span>${esc(r[0])}</span><b>${esc(r[1])}</b></div>`).join('')+
+    '</div>'+warn+
+    '<div class="btns" style="margin-bottom:.6rem">'+
+      '<button class="btn sm ghost" id="btnShowCust">The adviser got something wrong \u2014 change it</button></div>'+
+    '<p class="hint">Any change you make here is recorded against the job with your name on it.</p>';
+  const b=$('btnShowCust');
+  if(b)b.onclick=()=>{const cc=$('card-customer');cc.hidden=false;cc.scrollIntoView({block:'start'});};
+}
+
+/* ---------------- push the quote back ---------------- */
+async function pushToCrm(){
+  if(!LAST||!LAST.readyToSend)return toast('Clear the hard stops first.');
+  if(!CRM.key)return toast('Add the Supabase key in Settings first.');
+  const btn=$('btnCrm');btn.disabled=true;btn.textContent='Saving\u2026';
+  try{
+    const g=(JOB&&JOB.judgement)||{};
+    const overrides=[];
+    if(g.customer_type&&CTYPE_MAP[g.customer_type]!==S.customer)
+      overrides.push('customer type '+g.customer_type+' \u2192 '+S.customer);
+    if(!!g.ramp_exempt!==S.rampExempt)
+      overrides.push('ramp-exempt '+(g.ramp_exempt?'yes':'no')+' \u2192 '+(S.rampExempt?'yes':'no'));
+
+    const quote={
+      sop_version:KITH.VERSION, priced_by:ME, priced_at:new Date().toISOString(),
+      customer_type:S.customer, ramp_exempt:S.rampExempt,
+      intake_overrides:overrides,
+      lines:LAST.lines.map(l=>({kind:l.kind,label:l.label,total:l.total,tier:l.tier,
+        srt:l.srt,charged_hours:l.chargedHours,multiplier:l.multiplier,rate:l.rate,
+        sop_rule:l.sopRule?l.sopRule.id:null,override:!!l.override,
+        unit_net:l.unitNet,qty:l.qty,vatable:l.vatable!==false,
+        working:workingFor(l).replace(/<\/?em>/g,'')})),
+      net:LAST.net,vat:LAST.vat,outside_vat:LAST.outsideVat,
+      customer_pays:LAST.customerPays,
+      deposit:LAST.deposit,deposit_required:LAST.depositRequired,
+      checklist_complete:CHECKS.every((_,i)=>S.checks[i]),
+      sop_rules:HAS_RULES?KITHRules.signature(SOP_RULES):null
+    };
+
+    if(JOB){
+      if(!JOB.tmJob&&!JOB.privatePlate)throw new Error('enter the Techman job number at the top first');
+      // The full SOP breakdown lives in estimate; the CRM reads quote as a number.
+      JOB.estimate=quote;
+      JOB.quote=LAST.customerPays;
+      JOB.finalEst=LAST.customerPays;
+      JOB.estimateDraft=snapshotWork();
+      if(HAS_RULES){JOB.sopRulesSig=KITHRules.signature(SOP_RULES);JOB.sopRulesAt=SOP_RULES_AT;}
+      writeCrmFigures();
+      // The quote does NOT go to the adviser. It goes to Logan first.
+      JOB.approval={status:'pending',requested_by:ME,requested_at:new Date().toISOString(),
+        amount:LAST.customerPays};
+      JOB.estimateApproved=false;
+      JOB.signedOff=false;JOB.signOffNote='';
+      setStage(JOB,STAGE.signoff);
+      JOB.log=(JOB.log||[]).concat([nowLog('Quoted '+gbp(LAST.customerPays)+' in the estimator app (SOP v'+KITH.VERSION+')'+
+          (overrides.length?' \u00b7 OVERRODE INTAKE: '+overrides.join('; '):'')+
+          ' \u2192 5 \u00b7 Logan Sign-Off')]);
+      await crmSave(JOB);
+      pushPing('all','\u270d Sign off '+gbp(LAST.customerPays)+' \u2014 '+(JOB.reg||JOB.id),
+        'Priced by '+ME+'. '+(JOB.name||'')+' \u00b7 '+(JOB.work||'').slice(0,60),{jobId:JOB.id,to:'Logkith'});
+      toast('Saved to '+JOB.id+' \u2014 waiting on Logan\u2019s sign-off.');
+      const i=JOBS.findIndex(j=>j.id===JOB.id); if(i>-1)JOBS[i]=JOB;
+    } else {
+      const id='Q'+Date.now().toString().slice(-6);
+      const job={id:id,reg:$('vReg').value.toUpperCase().replace(/\s/g,''),
+        name:'(priced without an intake record)',phone:'',
+        make:$('vModel').value,model:'',work:$('workDesc').value,
+        estimate:quote,quote:LAST.customerPays,finalEst:LAST.customerPays,estimateApproved:false,
+        approval:{status:'pending',requested_by:ME,requested_at:new Date().toISOString(),
+          amount:LAST.customerPays},
+        assignedEstimator:ME,parts:[],fromEstimatorApp:true,
+        stage:STAGE.signoff,stageAt:Date.now(),stageHistory:[{stage:STAGE.signoff,at:Date.now(),by:ME}],
+        by:ME,createdAt:new Date().toLocaleString('en-GB'),
+        log:[nowLog('Priced without an intake record in the estimator app')]};
+      const keep=JOB;JOB=job;writeCrmFigures();job.estimateDraft=snapshotWork();JOB=keep;
+      await crmSave(job,{isNew:true});
+      pushPing('all','\u270d Sign off '+gbp(LAST.customerPays)+' \u2014 '+(job.reg||id),'Priced by '+ME+' with no intake record.',{jobId:id,to:'Logkith'});
+      toast('Created '+id+' \u2014 waiting on Logan\u2019s sign-off.');
+    }
+  }catch(e){toast('Save failed: '+e.message,5000);}
+  finally{btn.disabled=false;btn.textContent='Send for sign-off';}
+}
+
+/* ---------------- wiring ---------------- */
+function signIn(){
+  const n=prompt('Which estimator are you? ('+ESTIMATORS.join(' / ')+')',ME||'');
+  if(!n)return;
+  ME=n.trim();localStorage.setItem('kith_estimator',ME);
+  $('whoPill').textContent=ME;$('whoPill').className='pill on';
+  loadQueue();
+}
+$('whoPill').onclick=signIn;
+$('btnRefresh').onclick=loadQueue;
+$('btnBlank').onclick=blankQuote;
+$('btnQueue').onclick=()=>{$('scr-quote').hidden=true;$('scr-queue').hidden=false;
+  $('btnQueue').hidden=true;$('pillJob').hidden=true;renderQueue();};
+$('btnCrm').textContent='Send for sign-off';
+$('btnCrm').onclick=pushToCrm;
+
+
+/* ===========================================================================
+   WHO IS USING IT
+   PINs are checked against a kith_staff row, not written into this page.
+   That is an identification gate, not a security boundary — a determined
+   person can read anything a browser can. Real accounts mean Supabase Auth.
+   =========================================================================== */
+const ROLES={
+  estimator:{label:'Estimator',    sections:['labour','parts','extras','review']},
+  parts:    {label:'Parts',        sections:['parts']},
+  bodyshop: {label:'Bodywork',     sections:['labour','extras','review']},
+  director: {label:'Director',     sections:['labour','parts','extras','review']}
+};
+// Only used if the kith_staff table can't be read. Names match the CRM,
+// so assignments and pings line up.
+const FALLBACK_STAFF=[
+  {name:'Sesugh',role:'estimator'},{name:'Joel',role:'estimator'},{name:'Ian',role:'estimator'},
+  {name:'Muhammad Talha',role:'estimator'},{name:'Harith',role:'estimator'},
+  {name:'Logkith',role:'director'}
+];
+let STAFF=[], PICKED=null, SECTION='labour';
+
+async function loadStaff(){
+  try{
+    if(!CRM.key)throw new Error('no key');
+    const r=await fetch(CRM.url.replace(/\/$/,'')+'/rest/v1/kith_staff?select=id,data&limit=100',
+      {headers:{apikey:CRM.key,Authorization:'Bearer '+CRM.key}});
+    if(!r.ok)throw new Error('staff '+r.status);
+    const rows=await r.json();
+    STAFF=(rows||[]).map(x=>({id:x.id,...(x.data||{})}))
+      .filter(x=>x.name&&x.active!==false&&ROLES[x.role||'estimator']);   // advisers etc. use their own apps
+    if(!STAFF.length)throw new Error('empty');
+  }catch(e){ STAFF=FALLBACK_STAFF.slice(); }
+  renderWho();
+}
+function renderWho(){
+  $('whoGrid').innerHTML=STAFF.map((p,i)=>
+    `<button class="who-btn ${PICKED&&PICKED.name===p.name?'on':''}" data-i="${i}">
+       <span class="n">${esc(p.name)}</span>
+       <span class="r">${esc((ROLES[p.role]||{}).label||p.role||'Estimator')}</span>
+     </button>`).join('');
+  $('whoGrid').querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{
+    PICKED=STAFF[+b.dataset.i]; renderWho();
+    $('pinBox').hidden=false; $('pinIn').value=''; $('pinIn').focus();
+    if(!PICKED.pin){$('loginErr').innerHTML='<div class="note warn" style="margin-top:.6rem">'+
+      '<b>No PIN set for '+esc(PICKED.name)+'</b>Anyone can sign in as them. Set one on the staff record.</div>';}
+    else $('loginErr').innerHTML='';
+  });
+}
+function doLogin(){
+  if(!PICKED)return;
+  if(PICKED.pin && String($('pinIn').value)!==String(PICKED.pin)){
+    $('loginErr').innerHTML='<div class="note stop" style="margin-top:.6rem"><b>Wrong PIN</b>Try again.</div>';
+    $('pinIn').value='';return;
+  }
+  ME=PICKED.name; MY_ROLE=PICKED.role||'estimator';
+  localStorage.setItem('kith_estimator',ME);
+  localStorage.setItem('kith_estimator_role',MY_ROLE);
+  $('scr-login').hidden=true; $('scr-queue').hidden=false;
+  $('whoPill').textContent=ME+' · '+((ROLES[MY_ROLE]||{}).label||MY_ROLE);
+  $('whoPill').className='pill on';
+  loadQueue();
+  refreshAlertOwner();
+}
+let MY_ROLE=localStorage.getItem('kith_estimator_role')||'estimator';
+const mySections=()=>(ROLES[MY_ROLE]||ROLES.estimator).sections;
+const canSee=k=>mySections().indexOf(k)>-1;
+
+/* ===========================================================================
+   THE TWO SECTIONS
+   Labour and Parts mirror CRM stages 2 and 3. Each is finished separately and
+   handed on, so the parts person and the estimator are not fighting over one
+   screen — and the job moves stage when the work is actually done.
+   =========================================================================== */
+const SECTIONS=[
+  {k:'labour', t:'Labour',  d:'hours, tiers, what we do'},
+  {k:'parts',  t:'Parts',   d:'what we buy in'},
+  {k:'extras', t:'Extras',  d:'MOT, diagnostics, panels'},
+  {k:'review', t:'Review',  d:'check and send'}
+];
+function sectionTotals(){
+  const q=LAST||{lines:[]};
+  const sum=ks=>KITH.money(q.lines.filter(l=>!l.escalate&&ks.indexOf(l.kind)>-1)
+    .reduce((a,l)=>a+l.total,0));
+  return {
+    labour:sum(['labour']),
+    parts:sum(['part','fluid','tyre']),
+    extras:sum(['fixed','mot','panel']),
+    review:q.customerPays||0
+  };
+}
+function renderSecTabs(){
+  const t=sectionTotals();
+  const done=(JOB&&JOB.sectionDone)||{};
+  $('secTabs').innerHTML=SECTIONS.map(sec=>{
+    const allowed=canSee(sec.k);
+    return `<button class="sectab ${SECTION===sec.k?'on':''} ${allowed?'':'locked'} ${done[sec.k]?'done':''}"
+      data-s="${sec.k}" ${allowed?'':'disabled'}>
+      <span class="t">${esc(sec.t)}</span>
+      <span class="s">${gbp(t[sec.k]||0)}</span>
+      <span class="d">${esc(sec.d)}</span></button>`;}).join('');
+  $('secTabs').querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{
+    if(b.disabled)return; SECTION=b.dataset.s; paintSection();});
+}
+function paintSection(){
+  SECTIONS.forEach(s=>{
+    const el=$('sec-'+s.k); if(el)el.className='sec'+(SECTION===s.k?' on':'');
+  });
+  renderSecTabs();
+  window.scrollTo(0,0);
+}
+function renderJobStrip(){
+  if(!JOB){$('jobStrip').innerHTML='<span class="m">Priced without a job record</span>';return;}
+  const g=JOB.judgement||{};
+  $('jobStrip').innerHTML=`<span class="reg">${esc(JOB.reg||'')}</span>
+    <span class="m">${esc(JOB.name||'')} · ${esc(JOB.make||'')} ${esc(JOB.model||'')}</span>
+    <span class="tag">${esc((KITH.CUSTOMERS[S.customer]||{}).label||'')}</span>
+    ${g.needs_diagnostic_first?'<span class="tag top">Diagnostic first</span>':''}
+    ${S.rampExempt?'<span class="tag med">Ramp-exempt</span>':''}
+    <span class="m" style="margin-left:auto">Techman #
+      <input id="tmIn" value="${esc(JOB.tmJob||'')}" placeholder="MWQ\u2026" style="width:8.5rem;font-family:'IBM Plex Mono',monospace;padding:.2rem .4rem">
+      <button class="btn sm ${JOB.tmJob?'ghost':'primary'}" id="btnTm">${JOB.tmJob?'Update':'Start'}</button></span>`;
+  const b=$('btnTm'); if(b)b.onclick=saveTechman;
+}
+// Entering the Techman number is how the CRM knows an estimator has started
+// (one job at a time). It also claims an unclaimed job and moves it out of Intake.
+async function saveTechman(){
+  if(!JOB)return;
+  const v=($('tmIn').value||'').trim();
+  if(!v)return toast('Enter the Techman job number.');
+  JOB.log=JOB.log||[];
+  const was=JOB.tmJob||'';
+  JOB.tmJob=v;
+  if(!ownerOf(JOB)&&MY_ROLE!=='parts'){JOB.assignedEstimator=ME;JOB.assignedAt=new Date().toISOString();
+    JOB.log.push(nowLog('\u2192 Picked up in the estimator app'));}
+  if(!JOB.startedAt&&JOB.assignedEstimator){JOB.startedAt=new Date().toISOString();
+    JOB.log.push(nowLog('\u25b6 '+JOB.assignedEstimator+' started (job number '+v+' entered)'));}
+  else if(was&&was!==v)JOB.log.push(nowLog('Techman number changed '+was+' \u2192 '+v));
+  if(JOB.stage===STAGE.intake||JOB.stage==='estimating')setStage(JOB,STAGE.labour);
+  try{await crmSave(JOB);toast('Techman '+v+' saved \u2014 you are on this job.');renderJobStrip();}
+  catch(e){toast('Could not save: '+e.message,4000);}
+}
+
+/* ---- finishing a section hands the job on ---- */
+// Labour done: saved, figures written to the CRM, and the job moves to
+// Parts — or straight to Final if there is nothing to buy. Parts done: back
+// to Final, and the estimator on the job is pinged to finish it.
+async function finishSection(k){
+  if(!JOB)return toast('This is not attached to a job.');
+  if(!CRM.key)return toast('Add the Supabase key in Settings.');
+  renderAll();
+  const hasLabour=!!(LAST&&LAST.lines.some(l=>l.kind==='labour'));
+  if(k==='labour'){
+    if(!JOB.tmJob&&!JOB.privatePlate)return toast('Enter the Techman job number at the top first \u2014 that is how the CRM knows you started.',4500);
+    if(!hasLabour)return toast('Add at least one labour line first.');
+  }
+  const sub=sectionTotals()[k];
+  JOB.log=JOB.log||[];
+  JOB.sectionDone=JOB.sectionDone||{};
+  JOB.sectionDone[k]={by:ME,at:new Date().toISOString(),subtotal:sub};
+  JOB.estimateDraft=snapshotWork();
+  writeCrmFigures();
+  const reg=JOB.reg||JOB.id;
+  const nParts=S.parts.length;
+  let moved='';
+  if(k==='labour'&&[STAGE.intake,STAGE.labour,'estimating'].indexOf(JOB.stage)>-1){
+    if(nParts){setStage(JOB,STAGE.parts);moved='Parts';}
+    else{setStage(JOB,STAGE.final);moved='Final';
+      JOB.log.push(nowLog('\u26a1 No parts on this job \u2014 skipped Parts Estimate'));}
+  }
+  if(k==='parts'&&JOB.stage===STAGE.parts){setStage(JOB,STAGE.final);moved='Final';JOB.partsBy=ME;}
+  JOB.log.push(nowLog(k.charAt(0).toUpperCase()+k.slice(1)+' estimate finished in the estimator app \u2014 '+gbp(sub)+
+    (moved?' \u2192 '+moved:'')));
+  try{
+    await crmSave(JOB);
+    if(k==='labour'&&moved==='Parts')
+      pushPing('parts','\ud83d\udd29 Price the parts \u2014 '+reg,nParts+' part'+(nParts===1?'':'s')+' listed by '+ME+'. '+(JOB.work||'').slice(0,60),{jobId:JOB.id});
+    if(k==='parts'&&moved==='Final'&&ownerOf(JOB)&&ownerOf(JOB)!==ME)
+      pushPing('estimator','\u2713 Parts priced \u2014 '+reg,'Priced by '+ME+'. Finish the estimate and send it for sign-off.',{jobId:JOB.id,to:ownerOf(JOB)});
+    toast(k+' done'+(moved?' \u2014 moved to '+moved:'')+'.');
+    const i=JOBS.findIndex(j=>j.id===JOB.id); if(i>-1)JOBS[i]=JOB;
+    renderSecTabs();renderJobStrip();
+  }catch(e){toast('Could not save: '+e.message,4500);}
+}
+
+/* ===========================================================================
+   PINGS AND PHONE ALERTS
+   A ping goes two places: the CRM's bell (shared list) and kith_pings, which
+   Supabase turns into a phone notification (and WhatsApp once connected).
+   =========================================================================== */
+const VAPID_PUBLIC='BJo3ZdHwoTxIeQkJBB2Vw6o7ELkgiWPEDKytOGFjZsp5B1tIMh9U3MiFazsC3Y5Ac9MRbBno93OmkO2qZ0ldMaU';
+const APP_ID='estimator';
+const EST_NAMES=['Sesugh','Joel','Ian','Muhammad Talha','Harith'];
+function sbHeaders(extra){return Object.assign({apikey:CRM.key,Authorization:'Bearer '+CRM.key,'Content-Type':'application/json'},extra||{});}
+const SBU=()=>CRM.url.replace(/\/$/,'');
+function pingUrl(role,to){
+  return (role==='estimator'||EST_NAMES.indexOf(to)>-1)?'kith-estimator.html':'./';
+}
+async function pushPing(role,title,body,opts){
+  opts=opts||{};
+  const n={id:'N'+Date.now()+Math.floor(Math.random()*9999),key:opts.key||(role+'|'+title+'|'+(opts.jobId||'')),
+    role:role,to:opts.to||'',title:title,body:body||'',jobId:opts.jobId||null,poId:null,
+    at:nowLog('').t,ts:Date.now(),by:ME||'estimator app',seen:false};
+  try{
+    await fetch(SBU()+'/rest/v1/kith_pings',{method:'POST',headers:sbHeaders(),body:JSON.stringify([{
+      id:n.id,to_name:n.to||null,role:role,title:title.slice(0,200),body:String(body||'').slice(0,600),
+      url:pingUrl(role,n.to)+(n.jobId?'?job='+encodeURIComponent(n.jobId):''),
+      job_id:n.jobId,raised_by:n.by,app:APP_ID}])});
+  }catch(e){}
+  try{
+    const r=await fetch(SBU()+'/rest/v1/jobs?id=eq.__notifs__&select=data',{headers:sbHeaders()});
+    const rows=r.ok?await r.json():[];
+    const list=(rows[0]&&rows[0].data&&rows[0].data.list)||[];
+    if(list.some(x=>!x.seen&&x.key===n.key))return;
+    list.unshift(n);
+    await fetch(SBU()+'/rest/v1/jobs',{method:'POST',headers:sbHeaders({Prefer:'resolution=merge-duplicates,return=minimal'}),
+      body:JSON.stringify([{id:'__notifs__',data:{list:list.slice(0,300)},updated_at:new Date().toISOString()}])});
+  }catch(e){}
+}
+function pushOK(){return 'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;}
+const onIOS=()=>/iphone|ipad|ipod/i.test(navigator.userAgent||'');
+const standalone=()=>(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;
+let SWREG=null;
+async function swReady(){
+  if(SWREG||!('serviceWorker' in navigator))return SWREG;
+  try{SWREG=await navigator.serviceWorker.register('sw.js');}catch(e){}
+  return SWREG;
+}
+function b64Bytes(b){const pad='='.repeat((4-b.length%4)%4);
+  return Uint8Array.from(atob((b+pad).replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));}
+async function saveSub(sub){
+  if(!sub||!ME)return false;
+  const j=sub.toJSON();
+  const r=await fetch(SBU()+'/rest/v1/push_subs',{method:'POST',headers:sbHeaders({Prefer:'resolution=merge-duplicates'}),
+    body:JSON.stringify([{endpoint:j.endpoint,staff:ME,app:APP_ID,sub:j,ua:String(navigator.userAgent||'').slice(0,160),updated_at:new Date().toISOString()}])});
+  return r.ok;
+}
+async function alertsState(){
+  if(!pushOK())return onIOS()&&!standalone()?'ios-install':'unsupported';
+  if(Notification.permission==='denied')return 'blocked';
+  const reg=await swReady();const sub=reg&&await reg.pushManager.getSubscription();
+  return sub?'on':'off';
+}
+async function turnAlertsOn(){
+  const out=$('alMsg');const say=(t,c)=>{if(out){out.innerHTML=t;out.className='note '+(c||'');}};
+  try{
+    if(!pushOK())return say(onIOS()?'On iPhone: Share \u2192 <b>Add to Home Screen</b>, open KITH Estimator from the home screen, then turn alerts on there.':'This browser cannot receive alerts.','warn');
+    if(await Notification.requestPermission()!=='granted')return say('Alerts were not allowed \u2014 allow them in the phone settings and try again.','stop');
+    const reg=await swReady();if(!reg)return say('Alert service did not start \u2014 is sw.js uploaded beside this page?','stop');
+    const sub=(await reg.pushManager.getSubscription())||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64Bytes(VAPID_PUBLIC)});
+    const ok=await saveSub(sub);
+    say(ok?'\u2713 Alerts on for '+esc(ME)+' on this device.':'Alerts on here, but saving failed \u2014 run the phone-pings setup SQL.',ok?'':'warn');
+    try{reg.showNotification('\u2713 KITH Estimator alerts are on',{body:'New jobs and handovers will come here.',icon:'icon-est-192.png',tag:'kith-est-hello'});}catch(e){}
+  }catch(e){say('Could not turn alerts on \u2014 '+esc(e.message||e),'stop');}
+}
+async function turnAlertsOff(){
+  try{const reg=await swReady();const sub=reg&&await reg.pushManager.getSubscription();
+    if(sub){await fetch(SBU()+'/rest/v1/push_subs?endpoint=eq.'+encodeURIComponent(sub.endpoint),{method:'DELETE',headers:sbHeaders()}).catch(()=>{});await sub.unsubscribe();}}catch(e){}
+  openAlerts();
+}
+async function openAlerts(){
+  const old=$('alModal');if(old)old.remove();
+  const st=await alertsState();
+  const w=document.createElement('div');w.id='alModal';
+  w.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99;display:flex;align-items:flex-start;justify-content:center;padding:60px 16px';
+  const body={
+    on:'<p>\u2713 Alerts are on for this device.</p><div class="btns"><button class="btn sm" id="alTest">Send me a test</button><button class="btn sm ghost" id="alOff">Turn off</button></div>',
+    off:'<p>Get new jobs and handovers on this phone.</p><div class="btns"><button class="btn primary" id="alOn">Turn on phone alerts</button></div>',
+    blocked:'<p>Alerts are blocked \u2014 allow notifications for KITH Estimator in the phone settings.</p>',
+    'ios-install':'<p>iPhone: tap Share \u2192 <b>Add to Home Screen</b>, open KITH Estimator from the home screen, sign in, then turn alerts on.</p>',
+    unsupported:'<p>This browser cannot receive phone alerts. Use Chrome on Android, or the iPhone home-screen app.</p>'
+  }[st];
+  w.innerHTML='<div class="card" style="max-width:420px;width:100%;padding:1rem 1.1rem;background:var(--card);border-radius:10px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">\ud83d\udd14 Phone alerts</h2>'+
+    '<button class="btn sm ghost" id="alX">\u00d7</button></div>'+body+'<div id="alMsg" style="margin-top:.6rem"></div></div>';
+  w.onclick=e=>{if(e.target===w)w.remove();};
+  document.body.appendChild(w);
+  $('alX').onclick=()=>w.remove();
+  if($('alOn'))$('alOn').onclick=turnAlertsOn;
+  if($('alOff'))$('alOff').onclick=turnAlertsOff;
+  if($('alTest'))$('alTest').onclick=()=>{pushPing('estimator','\ud83d\udd14 Test ping for '+ME,'If this reached your lock screen, alerts work.',{to:ME,key:'test|'+Date.now()});
+    $('alMsg').innerHTML='Sent \u2014 give it a few seconds.';$('alMsg').className='note';};
+}
+async function refreshAlertOwner(){
+  try{if(!pushOK()||Notification.permission!=='granted')return;
+    const reg=await swReady();const sub=reg&&await reg.pushManager.getSubscription();if(sub)await saveSub(sub);}catch(e){}
+}
+// Tapping an alert opens that job
+let PENDING_JOB=new URLSearchParams(location.search).get('job');
+function openFromLink(){
+  if(!PENDING_JOB||!ME)return;
+  const id=PENDING_JOB;
+  if(JOBS.some(j=>String(j.id)===String(id))){PENDING_JOB=null;history.replaceState(null,'',location.pathname);openJob(id);}
+}
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.addEventListener('message',e=>{
+    if(e.data&&e.data.type==='kith-open'){try{PENDING_JOB=new URL(e.data.url).searchParams.get('job');}catch(x){}
+      if(ME)loadQueue(true);}
+  });
+  window.addEventListener('load',()=>swReady());
+}
+$('btnAlerts').onclick=openAlerts;
+// New work turns up without anyone pressing Refresh
+setInterval(()=>{if(ME&&!$('scr-queue').hidden)loadQueue(true);},30000);
+
+$('btnHideCust').onclick=()=>{$('card-customer').hidden=true;};
+$('btnDoneLabour').onclick=()=>finishSection('labour');
+$('btnDoneParts').onclick=()=>finishSection('parts');
+$('btnLogin').onclick=doLogin;
+$('pinIn').onkeydown=e=>{if(e.key==='Enter')doLogin();};
+$('whoPill').onclick=()=>{localStorage.removeItem('kith_estimator');
+  $('scr-quote').hidden=true;$('scr-queue').hidden=true;$('scr-login').hidden=false;
+  $('btnQueue').hidden=true;$('pillJob').hidden=true;};
+loadStaff();
+if(ME){
+  $('scr-login').hidden=true;$('scr-queue').hidden=false;
+  $('whoPill').textContent=ME+' · '+((ROLES[MY_ROLE]||{}).label||MY_ROLE);
+  $('whoPill').className='pill on';loadQueue();
+}
+
+</script>
+</body>
+</html>

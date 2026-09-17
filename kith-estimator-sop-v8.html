@@ -1,0 +1,1348 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KITH Cars — Estimator SOP v8.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#14181C; --ink-2:#41505E; --ink-3:#77848F;
+  --paper:#F7F7F4; --card:#FFF; --rule:#D8D9D2; --rule-hard:#14181C;
+  --signal:#F2B705; --steel:#33475B;
+  --stop:#A82015; --stop-bg:#FBEDEB;
+  --go:#256B4B;  --go-bg:#E9F2ED;
+  --warn:#8A5A00; --warn-bg:#FBF1DC;
+  --body-blue:#2A5A87; --body-blue-bg:#E8F0F7;
+  --aa:#5B3A8C; --aa-bg:#F0EAF7;
+  --measure:46rem;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:15px;line-height:1.62}
+.wrap{max-width:var(--measure);margin:0 auto;padding:0 22px 120px}
+h1,h2,h3,h4{font-family:"Barlow Condensed",Impact,sans-serif;font-weight:700;
+  letter-spacing:.01em;text-transform:uppercase;margin:0}
+h2{font-size:2.05rem;line-height:1.05}
+h3{font-size:1.32rem;line-height:1.15;margin:0 0 .1rem}
+h4{font-size:1.02rem;letter-spacing:.06em;margin:1.6rem 0 .45rem;color:var(--steel)}
+p{margin:0 0 .85rem}
+strong{font-weight:600}
+code,.num,.mono{font-family:"IBM Plex Mono",monospace;font-size:.92em;font-variant-numeric:tabular-nums}
+a{color:var(--steel)}
+.lede{font-size:1.06rem;color:var(--ink-2)}
+small{font-size:.83rem}
+
+.cover{padding:64px 0 40px;border-bottom:3px solid var(--rule-hard)}
+.cover .mark{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:.95rem;
+  letter-spacing:.34em;color:var(--ink-3)}
+.cover h1{font-size:clamp(3rem,11vw,4.6rem);line-height:.9;margin:.5rem 0 0}
+.cover h1 em{font-style:normal;display:block;color:var(--ink-3)}
+.cover .sub{margin-top:1.1rem;font-size:1.05rem;color:var(--ink-2);max-width:34rem}
+.stamp{display:inline-flex;margin-top:1.6rem;border:2px solid var(--rule-hard);
+  font-family:"IBM Plex Mono",monospace;font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;flex-wrap:wrap}
+.stamp span{padding:.42rem .7rem;border-right:1px solid var(--rule-hard)}
+.stamp span:last-child{border-right:0}
+.stamp .on{background:var(--rule-hard);color:var(--paper);font-weight:600}
+
+.part{margin:64px 0 0;padding-top:14px;border-top:3px solid var(--rule-hard)}
+.part-tag{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--ink-3);margin-bottom:.3rem}
+.part h2{margin-bottom:.35rem}
+.part-note{color:var(--ink-2);font-size:.95rem;margin:0}
+section.s{margin:38px 0 0;padding-top:16px;border-top:1px solid var(--rule)}
+.s-head{display:flex;gap:.75rem;align-items:baseline;margin-bottom:.7rem}
+.s-num{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:.78rem;
+  color:var(--ink-3);padding-top:.18rem;min-width:2.4rem}
+
+.chip{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:.68rem;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;padding:.14rem .42rem;border-radius:2px;
+  white-space:nowrap;vertical-align:.08em}
+.c-low{background:var(--go-bg);color:var(--go);border:1px solid #B9D5C7}
+.c-med{background:var(--warn-bg);color:var(--warn);border:1px solid #E3CE9B}
+.c-top{background:var(--stop-bg);color:var(--stop);border:1px solid #E8BDB8}
+.c-body{background:var(--body-blue-bg);color:var(--body-blue);border:1px solid #B9CEE2}
+.c-aa{background:var(--aa-bg);color:var(--aa);border:1px solid #C9B7E0}
+.c-fix{background:#ECEDE9;color:var(--ink-2);border:1px solid var(--rule)}
+.c-open{background:var(--stop);color:#fff;border:1px solid var(--stop)}
+
+table{width:100%;border-collapse:collapse;margin:.9rem 0 1.1rem;font-size:.9rem}
+th{font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;font-size:.9rem;
+  letter-spacing:.05em;text-align:left;padding:.35rem .5rem;border-bottom:2px solid var(--rule-hard);vertical-align:bottom}
+td{padding:.42rem .5rem;border-bottom:1px solid var(--rule);vertical-align:top}
+td.n,th.n{text-align:right;font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+tbody tr:last-child td{border-bottom:1px solid var(--rule-hard)}
+.t-tight td,.t-tight th{padding:.3rem .45rem}
+
+.box{border:1px solid var(--rule);background:var(--card);padding:.85rem 1rem;margin:1rem 0;border-radius:3px}
+.box p:last-child{margin-bottom:0}
+.box-t{font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;font-size:.95rem;
+  letter-spacing:.06em;font-weight:700;margin-bottom:.2rem;display:block}
+.stop{border-left:4px solid var(--stop);background:var(--stop-bg);border-color:#EBC9C5}
+.stop .box-t{color:var(--stop)}
+.note{border-left:4px solid var(--steel)} .note .box-t{color:var(--steel)}
+.good{border-left:4px solid var(--go);background:var(--go-bg);border-color:#B9D5C7}
+.good .box-t{color:var(--go)}
+.open{border-left:4px solid var(--stop);background:#fff} .open .box-t{color:var(--stop)}
+.aabox{border-left:4px solid var(--aa);background:var(--aa-bg);border-color:#C9B7E0}
+.aabox .box-t{color:var(--aa)}
+
+.ladder{margin:1.4rem 0 1.2rem;border:2px solid var(--rule-hard);background:var(--card)}
+.ladder-hd{background:var(--rule-hard);color:var(--paper);padding:.4rem .8rem;
+  font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.16em;
+  text-transform:uppercase;display:flex;justify-content:space-between}
+.rung{display:grid;grid-template-columns:5.6rem 1fr 5.2rem;align-items:center;
+  border-bottom:1px solid var(--rule);padding:.62rem .8rem;gap:.6rem}
+.rung:last-child{border-bottom:0}
+.rung .band{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:.86rem}
+.rung .what{font-size:.9rem;color:var(--ink-2)}
+.rung .mult{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:1.5rem;text-align:right;line-height:1}
+.rung.hi{background:linear-gradient(90deg,rgba(242,183,5,.22),rgba(242,183,5,.05))}
+
+ol,ul{margin:0 0 .95rem;padding-left:1.15rem}
+li{margin-bottom:.32rem}
+ol.steps{counter-reset:st;list-style:none;padding-left:0}
+ol.steps>li{counter-increment:st;position:relative;padding-left:2.1rem;margin-bottom:.7rem}
+ol.steps>li::before{content:counter(st,decimal-leading-zero);position:absolute;left:0;top:.08rem;
+  font-family:"IBM Plex Mono",monospace;font-size:.74rem;font-weight:600;color:var(--paper);
+  background:var(--rule-hard);padding:.1rem .34rem;border-radius:2px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:.2rem 1rem;font-size:.9rem;margin:.6rem 0 1rem}
+.kv dt{font-family:"IBM Plex Mono",monospace;font-size:.8rem;color:var(--ink-3);white-space:nowrap}
+.kv dd{margin:0}
+.calc{font-family:"IBM Plex Mono",monospace;font-size:.86rem;background:#F1F2EE;
+  border:1px solid var(--rule);padding:.7rem .85rem;margin:.7rem 0;white-space:pre-wrap;
+  line-height:1.75;border-radius:3px;overflow-x:auto}
+.calc b{font-weight:600;background:var(--signal);padding:0 .18rem}
+.toc{columns:2;column-gap:2.2rem;font-size:.88rem;margin:1.6rem 0 0}
+.toc a{display:block;text-decoration:none;color:var(--ink-2);padding:.16rem 0;break-inside:avoid}
+.toc a:hover{color:var(--ink)}
+.toc .g{font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;font-weight:700;
+  color:var(--ink);font-size:.95rem;letter-spacing:.05em;margin-top:.7rem;break-after:avoid}
+.toc .g:first-child{margin-top:0}
+:focus-visible{outline:2px solid var(--steel);outline-offset:2px}
+
+@media (max-width:600px){
+  .toc{columns:1}
+  .rung{grid-template-columns:4.6rem 1fr 3.6rem}
+  table{font-size:.82rem}
+}
+@media print{
+  @page{size:A4;margin:15mm 14mm}
+  body{background:#fff;font-size:10pt;line-height:1.48}
+  .wrap{max-width:none;padding:0}
+  .part{break-before:page;margin-top:0}
+  .cover{padding-top:0}
+  section.s,.box,.ladder,table,.calc{break-inside:avoid}
+  .toc{columns:2}
+  a{color:inherit;text-decoration:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="cover">
+  <div class="mark">KITH CARS GROUP — HACKBRIDGE</div>
+  <h1>Estimator<em>SOP</em></h1>
+  <p class="sub lede">How we turn a job into a number. Every rule the estimator's desk needs, in the order you need it. There is no second document and no separate AA rate sheet. If it isn't in here, it isn't priced — ask Logan.</p>
+  <div class="stamp">
+    <span class="on">v8.0</span>
+    <span>20 Aug 2026</span>
+    <span>Supersedes v7.6 and every earlier version</span>
+    <span>141 checks / 0 fails</span>
+  </div>
+</header>
+
+<nav class="toc" aria-label="Contents">
+  <span class="g">A — Before you price</span>
+  <a href="#s00">00 Who is the customer?</a>
+  <a href="#s01">01 Who is allowed to price</a>
+  <a href="#s02">02 Safety triage belongs to the adviser</a>
+  <a href="#s03">03 The five never-break rules</a>
+  <a href="#s04">04 The eight steps</a>
+  <span class="g">B — Labour</span>
+  <a href="#s05">05 The rate card</a>
+  <a href="#s06">06 The multiplier ladder</a>
+  <a href="#s07">07 Ramp exemption</a>
+  <a href="#s08">08 Jobs that never step down</a>
+  <a href="#s09">09 The pair rule</a>
+  <a href="#s10">10 Minimum labour</a>
+  <a href="#s11">11 Inspection times</a>
+  <a href="#s12">12 What counts as a line</a>
+  <span class="g">C — Parts</span>
+  <a href="#s13">13 The parts ladder</a>
+  <a href="#s14">14 Oils, fluids &amp; consumables</a>
+  <a href="#s15">15 Tyres</a>
+  <a href="#s16">16 Sourcing &amp; grade</a>
+  <a href="#s17">17 Customer-supplied parts</a>
+  <span class="g">D — Fixed prices</span>
+  <a href="#s18">18 Diagnostics</a>
+  <a href="#s19">19 MOT</a>
+  <a href="#s20">20 Standalone inspections</a>
+  <a href="#s21">21 Engine replacement</a>
+  <a href="#s22">22 Tuning &amp; deletes</a>
+  <a href="#s23">23 Exhaust work</a>
+  <a href="#s24">24 Recovery &amp; collection</a>
+  <a href="#s25">25 Subcontract</a>
+  <span class="g">E — Bodywork</span>
+  <a href="#s26">26 How bodywork prices</a>
+  <a href="#s27">27 Panel painting</a>
+  <a href="#s28">28 Multi-panel discount</a>
+  <a href="#s29">29 Whole car repaint</a>
+  <a href="#s30">30 Dents, SMART, welding, polish</a>
+  <a href="#s31">31 Alloys, calipers, headlights</a>
+  <span class="g">F — AA customers</span>
+  <a href="#s32">32 Which AA customer is this?</a>
+  <a href="#s33">33 AA Smart</a>
+  <a href="#s34">34 AA Tow-in</a>
+  <a href="#s35">35 AA PGC</a>
+  <a href="#s36">36 AA Fleet</a>
+  <a href="#s37">37 Every customer at a glance</a>
+  <span class="g">G — Trade, VAT, commercials</span>
+  <a href="#s38">38 Trade unlock</a>
+  <a href="#s39">39 What trade actually buys</a>
+  <a href="#s40">40 VAT</a>
+  <a href="#s41">41 Money handling</a>
+  <a href="#s42">42 Warranty</a>
+  <span class="g">H — Out the door</span>
+  <a href="#s43">43 TechMan checklist</a>
+  <a href="#s44">44 Escalate to Logan</a>
+  <a href="#s45">45 Extra work mid-job</a>
+  <a href="#s46">46 The estimator app</a>
+  <span class="g">I — Proof</span>
+  <a href="#s47">47 Nineteen worked examples</a>
+  <span class="g">J — Reference</span>
+  <a href="#s48">48 Traps</a>
+  <a href="#s49">49 Glossary</a>
+  <a href="#s50">50 Who does what</a>
+  <a href="#s51">51 Open items</a>
+  <a href="#s52">52 What changed at v8.0</a>
+</nav>
+
+<!-- =================== PART A =================== -->
+<div class="part"><div class="part-tag">Part A</div><h2>Before you price</h2>
+<p class="part-note">Read this part once, properly. The rest of the document you look things up in.</p></div>
+
+<section class="s" id="s00">
+  <div class="s-head"><div class="s-num">00</div><div><h3>Who is the customer?</h3></div></div>
+  <p>Answer this before you touch anything else. There are <strong>six</strong> customer types and they do not share a rate card. The same 1.5-hour job is £210 to one of them and £66 to another. Getting this wrong is the single most expensive mistake on the desk, in both directions.</p>
+  <table class="t-tight">
+    <thead><tr><th>Customer</th><th>How you recognise it</th><th>What prices it</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Retail / B2C</strong></td><td>A member of the public. The default.</td><td>Ladder, 2.0 hr threshold, two tiers</td></tr>
+      <tr><td><strong>Trade / B2B</strong></td><td>A company flagged trade in the CRM.</td><td>Ladder, 1.5 hr threshold, three tiers</td></tr>
+      <tr><td><span class="chip c-aa">AA SMART</span></td><td>Smart-repair work routed by the AA.</td><td>£55/hr flat, parts 15% — <a href="#s33">§33</a></td></tr>
+      <tr><td><span class="chip c-aa">AA TOW-IN</span></td><td>Recovered in by the AA.</td><td>£90/hr flat, parts 20% — <a href="#s34">§34</a></td></tr>
+      <tr><td><span class="chip c-aa">AA PGC</span></td><td>An AA warranty claim.</td><td>£90/hr flat, parts NOT SET — <a href="#s35">§35</a></td></tr>
+      <tr><td><span class="chip c-aa">AA FLEET</span></td><td>An AA fleet vehicle.</td><td>£44/hr flat, parts 15% — <a href="#s36">§36</a></td></tr>
+    </tbody>
+  </table>
+  <div class="box stop"><span class="box-t">The two ways this goes wrong</span>
+    <p>Pricing an <strong>AA job at retail</strong> means an invoice the AA will not pay. Pricing a <strong>retail customer off an AA card</strong> earns roughly a third of what the job is worth, and nobody notices until the month is counted. The intake form records the customer type — read it.</p></div>
+</section>
+
+<section class="s" id="s01">
+  <div class="s-head"><div class="s-num">01</div><div><h3>Who is allowed to price</h3></div></div>
+  <p>Only estimators price jobs. Service Advisers take the customer in and open the CRM record; they do not quote. If you do not hold the estimator role, the job goes to Logan.</p>
+  <p>You do not need to know anything about cars to do this job. That is deliberate. The estimator's seat follows a process accurately; it does not make mechanical judgement calls. Everywhere a judgement call is needed, this document tells you to stop and ask.</p>
+</section>
+
+<section class="s" id="s02">
+  <div class="s-head"><div class="s-num">02</div><div><h3>Safety triage belongs to the adviser</h3></div></div>
+  <p>Safety-keyword detection happens at intake, not at your desk. If a customer mentions a warning light, grinding, smoke, a no-start, loose steering, a burning smell or overheating, the Service Adviser books a <strong>diagnostic first</strong>. Only after the diagnostic does the job reach an estimator.</p>
+  <div class="box stop"><span class="box-t">Never quote off a description</span>
+    <p>Quote off the diagnostic findings in the CRM. If the record shows a symptom and no diagnostic, kick it back to the Service Adviser — do not price around it, and never tell a customer a car is safe to drive.</p></div>
+</section>
+
+<section class="s" id="s03">
+  <div class="s-head"><div class="s-num">03</div><div><h3>The five never-break rules</h3></div></div>
+  <ol class="steps">
+    <li><strong>Establish the customer type first.</strong> <a href="#s00">§00</a>. Everything downstream depends on it.</li>
+    <li><strong>Never quote raw SRT to a KITH customer.</strong> Hours go through the ladder in <a href="#s06">§06</a>. AA customers are the exception — they are charged at raw SRT and never take a multiplier.</li>
+    <li><strong>Never round hours. Only round money.</strong> A 20-minute inspection is <span class="mono">20 ÷ 60</span>, not <span class="mono">0.333</span>. And never round an SRT to tidy it — nudging 1.9 up to 2.0 takes about £70 off the quote.</li>
+    <li><strong>Never price a part off a supplier's website.</strong> Our account price is different. Phone them (<a href="#s16">§16</a>).</li>
+    <li><strong>Never guess.</strong> If a price is not in this document, it does not exist yet. Escalate (<a href="#s44">§44</a>). A late quote is recoverable; a wrong one is not.</li>
+  </ol>
+</section>
+
+<section class="s" id="s04">
+  <div class="s-head"><div class="s-num">04</div><div><h3>The eight steps</h3></div></div>
+  <ol class="steps">
+    <li><strong>Establish the customer type.</strong> <a href="#s00">§00</a>.</li>
+    <li><strong>Check there is a diagnostic.</strong> <a href="#s02">§02</a>. No diagnostic on a symptom job means it goes back.</li>
+    <li><strong>Identify the vehicle.</strong> Registration, make, model, engine, fuel, year. Check the reg on the TechMan screen matches the car.</li>
+    <li><strong>Check the ramp-exempt tag.</strong> <a href="#s07">§07</a>. Set by Logan in the CRM, never by you.</li>
+    <li><strong>Break the request into jobs.</strong> "Service and brakes" is two jobs. Brakes may be two more.</li>
+    <li><strong>Get the SRT for each job and classify it.</strong> Tier (<a href="#s05">§05</a>) and category (<a href="#s08">§08</a>). Category matters as much as tier — it decides whether the ladder applies at all.</li>
+    <li><strong>Price labour, then parts.</strong> Ladder (<a href="#s06">§06</a>), pair rule (<a href="#s09">§09</a>), minimums (<a href="#s10">§10</a>). Then phone the supplier, raise a PO, and apply <a href="#s13">§13</a> — remembering fluids and tyres skip it.</li>
+    <li><strong>Check before it goes.</strong> Run <a href="#s43">§43</a>. Anything on the list in <a href="#s44">§44</a> goes to Logan, not the customer.</li>
+  </ol>
+</section>
+
+<!-- =================== PART B =================== -->
+<div class="part"><div class="part-tag">Part B</div><h2>Labour</h2>
+<p class="part-note">Rate × charged hours. The whole of Part B is about working out charged hours.</p></div>
+
+<section class="s" id="s05">
+  <div class="s-head"><div class="s-num">05</div><div><h3>The rate card</h3></div></div>
+  <p>The owner sets these <strong>inc VAT</strong>. Both columns are given because quotes are built ex VAT and spoken inc VAT.</p>
+  <table>
+    <thead><tr><th>Tier</th><th class="n">Ex VAT</th><th class="n">Inc VAT</th><th class="n">Retail?</th><th class="n">Trade?</th></tr></thead>
+    <tbody>
+      <tr><td><span class="chip c-low">LOW</span></td><td class="n">£50.00</td><td class="n">£60.00</td><td class="n">Yes</td><td class="n">Yes</td></tr>
+      <tr><td><span class="chip c-med">MED</span></td><td class="n">£60.00</td><td class="n">£72.00</td><td class="n"><strong>No</strong></td><td class="n">Yes</td></tr>
+      <tr><td><span class="chip c-top">TOP</span></td><td class="n">£70.00</td><td class="n">£84.00</td><td class="n">Yes</td><td class="n">Yes</td></tr>
+      <tr><td><span class="chip c-body">BODY</span></td><td class="n">£70.00</td><td class="n">£84.00</td><td class="n">Yes</td><td class="n">Yes</td></tr>
+    </tbody>
+  </table>
+  <div class="box stop"><span class="box-t">Retail has two tiers, not three</span>
+    <p>For a retail customer there is <strong>no MED tier</strong>. Servicing and brakes are <span class="chip c-low">LOW</span>. <strong>Everything else is <span class="chip c-top">TOP</span></strong> — suspension, exhaust, steering, cooling, electrical, clutch, gearbox, all of it. The MED rate exists only for trade.</p></div>
+  <table class="t-tight">
+    <thead><tr><th>Tier</th><th>What sits here</th></tr></thead>
+    <tbody>
+      <tr><td><span class="chip c-low">LOW</span></td><td>Servicing, oil &amp; filter, brakes (pads, discs, drums, shoes, calipers, brake fluid), spark plugs, fuel filter, air filter.</td></tr>
+      <tr><td><span class="chip c-med">MED</span></td><td><em>Trade only.</em> Suspension, steering, exhaust R&amp;R, A/C component replacement, gearbox flush, driveshafts, CV joints, wheel bearings, battery, electrical fault work, aux belt, engine mounts, glow plugs, injectors, physical EGR valve, fuel pump.</td></tr>
+      <tr><td><span class="chip c-top">TOP</span></td><td>Clutch, DMF, gearbox R&amp;R, cambelt, timing chain, wet belt, head gasket, turbo, engine work, DPF remove &amp; refit, exhaust deletes — <strong>plus everything in the MED row when the customer is retail</strong>.</td></tr>
+      <tr><td><span class="chip c-body">BODY</span></td><td>All bodywork labour — panel R&amp;R, bumper fitting, welding, cosmetic. Takes no multiplier (<a href="#s26">§26</a>).</td></tr>
+    </tbody>
+  </table>
+  <p><small>A job type that is not listed anywhere here does not get a guessed tier. Ask Logan.</small></p>
+</section>
+
+<section class="s" id="s06">
+  <div class="s-head"><div class="s-num">06</div><div><h3>The multiplier ladder</h3></div></div>
+  <p>TechMan gives you <strong>book time</strong>. We do not charge book time. Take the SRT for <strong>one line</strong>, find the band, multiply. That gives charged hours.</p>
+  <p><strong>The multiplier is per line, not per quote.</strong> Two jobs on one invoice never add their hours together. The only hours that ever combine sit inside a single service (<a href="#s12">§12</a>).</p>
+
+  <div class="ladder">
+    <div class="ladder-hd"><span>Retail / B2C</span><span>Read down → charged hours</span></div>
+    <div class="rung hi"><div class="band">0.01 – 1.99</div><div class="what">Under two hours on the line</div><div class="mult">×2</div></div>
+    <div class="rung"><div class="band">2.00 +</div><div class="what">Two hours or more on the line</div><div class="mult">×1.5</div></div>
+  </div>
+  <div class="ladder">
+    <div class="ladder-hd"><span>Trade / B2B</span><span>Same ladder, earlier step</span></div>
+    <div class="rung hi"><div class="band">0.01 – 1.49</div><div class="what">Under an hour and a half</div><div class="mult">×2</div></div>
+    <div class="rung"><div class="band">1.50 +</div><div class="what">An hour and a half or more</div><div class="mult">×1.5</div></div>
+  </div>
+  <p>A line landing <strong>exactly</strong> on the threshold takes ×1.5.</p>
+
+  <div class="box note"><span class="box-t">The quirk we accept</span>
+    <p>There is no floor. So a 1.99 hr line bills 3.98 charged hours and a 2.00 hr line bills 3.00 — the bigger job is cheaper. At <span class="chip c-top">TOP</span> that is a £68.60 step down.</p>
+    <p>This is the owner's decision and it stays. What it means for you is in rule 3 of <a href="#s03">§03</a>: <strong>never round an SRT up to tidy it.</strong> HaynesPro saying 1.9 and you typing 2.0 is a £68.60 gift.</p></div>
+  <div class="calc">Retail, TOP £70/hr
+
+1.90 hr  → ×2   = 3.80 hr  → £266.00
+1.99 hr  → ×2   = 3.98 hr  → <b>£278.60</b>
+2.00 hr  → ×1.5 = 3.00 hr  → <b>£210.00</b>   the step down
+3.00 hr  → ×1.5 = 4.50 hr  → £315.00</div>
+  <div class="box stop"><span class="box-t">AA customers never touch this section</span>
+    <p>All four AA rate cards charge <strong>raw SRT</strong>. No multiplier, no threshold, no quirk. See Part F.</p></div>
+</section>
+
+<section class="s" id="s07">
+  <div class="s-head"><div class="s-num">07</div><div><h3>Ramp exemption</h3></div></div>
+  <p>When a vehicle cannot go on the ramp because of its height or weight, the multipliers lift:</p>
+  <table class="t-tight">
+    <thead><tr><th>Band</th><th class="n">Normal</th><th class="n">Ramp-exempt</th></tr></thead>
+    <tbody>
+      <tr><td>Lower</td><td class="n">×2</td><td class="n">×2.5</td></tr>
+      <tr><td>Upper</td><td class="n">×1.5</td><td class="n">×1.75</td></tr>
+    </tbody>
+  </table>
+  <div class="box stop"><span class="box-t">They replace, they do not stack</span>
+    <p>×2.5 is used <strong>instead of</strong> ×2, not on top of it. A 1.2 hr ramp-exempt job is 1.2 × 2.5 = 3.0 charged hours. It is never 1.2 × 2 × 2.5.</p></div>
+  <p>The estimator does not decide ramp exemption. Logan tags the job in the CRM and you apply the uplift. It applies to mechanical <em>and</em> bodywork labour, and to the always-×2 categories (which go to ×2.5). Trade and retail get the same uplift. It does not apply to AA work.</p>
+</section>
+
+<section class="s" id="s08">
+  <div class="s-head"><div class="s-num">08</div><div><h3>Jobs that never step down</h3></div></div>
+  <p>Four categories stay at <strong>×2 on their own hours</strong> whatever the SRT and whoever the customer is. No ×1.5 step, ever. Classify accurately — it changes the price by a lot.</p>
+  <table>
+    <thead><tr><th>Category</th><th>Covers</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Suspension</strong></td><td>Shocks, springs, arms, bushes, wishbones, ARB links. Not steering.</td></tr>
+      <tr><td><strong>Bearings &amp; driveshafts</strong></td><td>Wheel bearings, driveshafts, CV joints.</td></tr>
+      <tr><td><strong>DPF</strong></td><td>DPF physically removed, refitted or replaced.</td></tr>
+      <tr><td><strong>Track rod ends</strong></td><td>Track rod ends only. Other steering is normal.</td></tr>
+    </tbody>
+  </table>
+  <div class="calc">Front pair shocks, SRT 2.40 hr, retail (so TOP £70/hr)
+
+On the ladder it would be:  2.40 → ×1.5 → 3.60 hr → £252.00
+Always-×2 says:             2.40 → ×2   → 4.80 hr → <b>£336.00</b>
+
+Misclassifying this one job costs £84.00.</div>
+</section>
+
+<section class="s" id="s09">
+  <div class="s-head"><div class="s-num">09</div><div><h3>The pair rule</h3></div></div>
+  <p>When two related items share a strip-down, we pay for the strip-down once, so the second goes on at <strong>raw SRT with no multiplier</strong>. <strong>Exactly three pairings qualify. This is a closed list.</strong></p>
+  <table>
+    <thead><tr><th>Primary — takes the multiplier</th><th>Secondary — raw SRT</th></tr></thead>
+    <tbody>
+      <tr><td>Brake pads — same axle</td><td>Brake discs — same axle</td></tr>
+      <tr><td>Clutch</td><td>Dual mass flywheel</td></tr>
+      <tr><td>Inner CV boot — same driveshaft</td><td>Outer CV boot — same driveshaft</td></tr>
+    </tbody>
+  </table>
+  <div class="calc">Front pads and discs, retail, LOW £50/hr
+Pads SRT 1.00 · Discs SRT 0.30
+
+Pads  (primary)   1.00 → ×2 → 2.00 hr
+Discs (secondary) 0.30 →      0.30 hr   <b>raw</b>
+                             ────────
+                              2.30 hr × £50 = £115.00</div>
+  <div class="box stop"><span class="box-t">Anything else is two primaries</span>
+    <p>Front pads and rear pads are two primaries — we moved to the other axle. Front discs and rear discs are two primaries. If a pairing feels like it belongs on the list but isn't on it, you have found a question for Logan, not a fourth pairing. Do not extend this at the desk.</p></div>
+</section>
+
+<section class="s" id="s10">
+  <div class="s-head"><div class="s-num">10</div><div><h3>Minimum labour</h3></div></div>
+  <p><strong>0.5 hours minimum on every mechanical line</strong>, applied before the multiplier. Exempt: bulbs, tyres, wiper blades.</p>
+  <table class="t-tight">
+    <thead><tr><th>Tier</th><th class="n">Smallest possible retail line</th></tr></thead>
+    <tbody>
+      <tr><td><span class="chip c-low">LOW</span></td><td class="n">£50.00</td></tr>
+      <tr><td><span class="chip c-top">TOP</span></td><td class="n">£70.00</td></tr>
+      <tr><td><span class="chip c-body">BODY</span></td><td class="n">£70.00</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Bodywork carries a £70 + VAT minimum per line</strong> instead — used for bumper fitting and small refits. Because bodywork takes no multiplier, this one is live and does bite: a 0.5 hr bodywork line is £35 on the raw rate and gets lifted to £70.</p>
+</section>
+
+<section class="s" id="s11">
+  <div class="s-head"><div class="s-num">11</div><div><h3>Inspection times</h3></div></div>
+  <p>A service is one line: <strong>oil SRT + filter SRTs + inspection time</strong>, added together, then through the ladder once.</p>
+  <table class="t-tight">
+    <thead><tr><th>Inspection</th><th class="n">Minutes</th><th class="n">Carry as</th></tr></thead>
+    <tbody>
+      <tr><td>25-point interim health check</td><td class="n">12.5</td><td class="n">12.5 ÷ 60</td></tr>
+      <tr><td>40-point check</td><td class="n">20</td><td class="n">20 ÷ 60</td></tr>
+      <tr><td>60-point / pre-purchase</td><td class="n">30</td><td class="n">30 ÷ 60</td></tr>
+    </tbody>
+  </table>
+  <div class="box stop"><span class="box-t">Do not write 0.208 or 0.333</span>
+    <p>Those are rounded and they move the money. Carry the division. Earlier versions of this document printed the decimals in this very table and the worked examples were pennies out because of it.</p></div>
+</section>
+
+<section class="s" id="s12">
+  <div class="s-head"><div class="s-num">12</div><div><h3>What counts as a line</h3></div></div>
+  <p>One SRT is one line, and each line picks its own multiplier from its own hours.</p>
+  <p><strong>The single exception:</strong> a service pools its SRTs — oil SRT plus filter changes plus inspection time — into one combined line with one multiplier taken from the combined total. Nothing else pools. Brakes, clutch and suspension are each their own line.</p>
+</section>
+
+<!-- =================== PART C =================== -->
+<div class="part"><div class="part-tag">Part C</div><h2>Parts</h2>
+<p class="part-note">One ladder, three things that skip it, and a sourcing process you follow every time.</p></div>
+
+<section class="s" id="s13">
+  <div class="s-head"><div class="s-num">13</div><div><h3>The parts ladder</h3></div></div>
+  <p>Applied <strong>per part</strong>, on that part's own net unit cost. Quantity never bands a part up. Same ladder for retail and trade.</p>
+  <table>
+    <thead><tr><th>Net cost per part</th><th class="n">Multiplier</th><th class="n">Minimum sell</th></tr></thead>
+    <tbody>
+      <tr><td>£0.01 – £10.00</td><td class="n">×2.0</td><td class="n">—</td></tr>
+      <tr><td>£10.01 – £20.00</td><td class="n">×1.8</td><td class="n">£20.00</td></tr>
+      <tr><td>£20.01 – £30.00</td><td class="n">×1.6</td><td class="n">£36.00</td></tr>
+      <tr><td>£30.01 – £40.00</td><td class="n">×1.4</td><td class="n">£48.00</td></tr>
+      <tr><td>£40.01 – £2,000.00</td><td class="n">×1.3</td><td class="n">£56.00</td></tr>
+      <tr><td>Over £2,000.00</td><td class="n" colspan="2"><span class="chip c-open">ESCALATE TO LOGAN</span></td></tr>
+    </tbody>
+  </table>
+  <p>The number itself stays in the lower band: £10.00 takes ×2.0, and you must reach £10.01 to drop to ×1.8.</p>
+  <div class="box note"><span class="box-t">What the minimum sell is for</span>
+    <p>Without it the bands invert — a £30.01 part would sell for £42.01 while a £30.00 part sells for £48.00. The minimum sell holds the price flat across the band edge until the multiplier catches up. It applies <strong>per part</strong>, like the multiplier.</p>
+    <p>One consequence worth knowing: in the top band, everything netting between £40.01 and £43.07 sells at exactly £56.00.</p></div>
+  <div class="calc">Four spark plugs at £9.00 net each
+
+Each plug  £9.00 → £0.01–10 band → ×2.0 → £18.00
+Four of them                            = <b>£72.00</b>
+
+NOT £36.00 as a line total → ×1.4 → £50.40. Quantity does not band up.</div>
+</section>
+
+<section class="s" id="s14">
+  <div class="s-head"><div class="s-num">14</div><div><h3>Oils, fluids &amp; consumables</h3></div></div>
+  <div class="box stop"><span class="box-t">These are selling prices already</span>
+    <p>Every figure below is what the customer pays, ex VAT, per litre or per unit. <strong>Never put them through the parts ladder.</strong> One price for everyone — retail, trade and AA alike.</p></div>
+  <table class="t-tight">
+    <thead><tr><th>Oil (per litre)</th><th class="n">Sell ex VAT</th><th>Consumable (per unit)</th><th class="n">Sell ex VAT</th></tr></thead>
+    <tbody>
+      <tr><td>Budget oil</td><td class="n">£5.50</td><td>Brake &amp; clutch fluid</td><td class="n">£8.00</td></tr>
+      <tr><td>Castrol 5W-30</td><td class="n">£7.50</td><td>Brake cleaner</td><td class="n">£4.50</td></tr>
+      <tr><td>Castrol 5W-30 C3</td><td class="n">£12.50</td><td>WD-40</td><td class="n">£9.00</td></tr>
+      <tr><td>Castrol 0W-30 C2</td><td class="n">£8.00</td><td>Cataclean DPF cleaner</td><td class="n">£15.00</td></tr>
+      <tr><td>Castrol 0W-20 LL</td><td class="n">£10.50</td><td>Wynn's exhaust DPF cleaner</td><td class="n">£9.90</td></tr>
+      <tr><td>Transmission / PAS</td><td class="n">£10.40</td><td>Coolant</td><td class="n">£5.00</td></tr>
+      <tr><td></td><td class="n"></td><td>Screenwash</td><td class="n">£2.00</td></tr>
+      <tr><td></td><td class="n"></td><td>AdBlue</td><td class="n">£2.50</td></tr>
+      <tr><td></td><td class="n"></td><td>Bulb</td><td class="n">£8.00</td></tr>
+      <tr><td></td><td class="n"></td><td>Wiper blade — front</td><td class="n">£7.00</td></tr>
+      <tr><td></td><td class="n"></td><td>Wiper blade — rear</td><td class="n">£5.00</td></tr>
+    </tbody>
+  </table>
+  <p><small>Check stock before quoting a specific oil. If we are out and have to buy a 5L bottle at a higher cost, the price adjusts on that job.</small></p>
+</section>
+
+<section class="s" id="s15">
+  <div class="s-head"><div class="s-num">15</div><div><h3>Tyres</h3></div></div>
+  <p>Tyres go on at <strong>net cost, no markup, ever</strong>. Fitting is <strong>£20 + VAT per tyre, flat</strong> — no multiplier, no minimum, no balance surcharge, no disposal charge.</p>
+  <div class="calc">Two tyres at £68.00 net
+
+Tyres    2 × £68.00 = £136.00
+Fitting  2 × £20.00 = £40.00
+                      ───────
+         ex VAT       £176.00
+         inc VAT      <b>£211.20</b></div>
+  <p>Suppliers: Yellow Tyres, EG Wholesale, HS Tyres.</p>
+</section>
+
+<section class="s" id="s16">
+  <div class="s-head"><div class="s-num">16</div><div><h3>Sourcing &amp; grade</h3></div></div>
+  <ol class="steps">
+    <li><strong>Phone the supplier.</strong> Not the website. Account prices differ from public prices, and quoting off a website is how a job loses money before it starts.</li>
+    <li>Say "KITH Cars", give the registration, state the part.</li>
+    <li>Ask for <strong>price and ETA</strong>. Both.</li>
+    <li>Fill out a PO.</li>
+    <li>If nobody has the part, tell Logan. Do not substitute on your own judgement.</li>
+  </ol>
+  <p>Choose on <strong>cheapest + best quality + ETA together</strong>. No supplier is the default first call.</p>
+  <dl class="kv">
+    <dt>Mechanical</dt><dd>GSF Car Parts · NAPA · Euro Car Parts · Jeya Car Parts · TPS · Main dealers</dd>
+    <dt>Bodywork</dt><dd>SVA</dd>
+    <dt>Paint</dt><dd>Croydon Autocolours</dd>
+    <dt>Tyres</dt><dd>Yellow Tyres · EG Wholesale · HS Tyres</dd>
+  </dl>
+  <p><strong>Grade:</strong> mid-range and OEM. Stay away from cheap. Brake pads: Brembo or Drivetec. Engine parts: OEM or Reliance. Main-dealer-only parts use the same ladder — no special treatment.</p>
+</section>
+
+<section class="s" id="s17">
+  <div class="s-head"><div class="s-num">17</div><div><h3>Customer-supplied parts</h3></div></div>
+  <p><strong>Default answer: no.</strong> KITH does not fit customer-supplied parts, and never accepts a customer-supplied engine.</p>
+  <p><strong>Exception:</strong> on high-value parts (around £1,000+), ask Logan every time. If approved, the customer signs a disclaimer at intake — no warranty on the part, no warranty on the labour if the part fails, no liability.</p>
+  <p>If mid-job we find the customer's part is wrong or unfit, we <strong>refuse mid-way and charge half the labour</strong> for what has been done.</p>
+</section>
+
+<!-- =================== PART D =================== -->
+<div class="part"><div class="part-tag">Part D</div><h2>Fixed prices</h2>
+<p class="part-note">These do not go through any ladder. The number is the number.</p></div>
+
+<section class="s" id="s18">
+  <div class="s-head"><div class="s-num">18</div><div><h3>Diagnostics</h3></div></div>
+  <table>
+    <thead><tr><th>Tier</th><th class="n">Price</th><th>What it covers</th></tr></thead>
+    <tbody>
+      <tr><td>Mechanical diagnostic</td><td class="n">£60 + VAT</td><td>Physical inspection — noise, vibration, feel</td></tr>
+      <tr><td>Oil and coolant leak diagnostic</td><td class="n">£90 + VAT</td><td>Trace the source, pressure test if needed</td></tr>
+      <tr><td>Deep diagnostic</td><td class="n">£120 + VAT</td><td>Drivability, limp mode, CAN, gearbox, ECU-level</td></tr>
+      <tr><td>Electrical diagnostic</td><td class="n">£150 + VAT</td><td>Wiring, sensors, battery drain, immobiliser</td></tr>
+    </tbody>
+  </table>
+  <div class="box note"><span class="box-t">Escalation charges both</span>
+    <p>If a diagnostic starts at one tier and has to escalate, the customer pays for <strong>both</strong>. Booked as Mechanical £60 and escalated to Deep £120 is £180 + VAT. No refund or credit if the repair is authorised afterwards.</p></div>
+</section>
+
+<section class="s" id="s19">
+  <div class="s-head"><div class="s-num">19</div><div><h3>MOT</h3></div></div>
+  <table class="t-tight">
+    <thead><tr><th>Class</th><th class="n">Price</th><th>Covers</th></tr></thead>
+    <tbody>
+      <tr><td>Class 4</td><td class="n">£50</td><td>Cars, small vans</td></tr>
+      <tr><td>Class 5</td><td class="n">£58</td><td>13+ seat passenger vehicles</td></tr>
+      <tr><td>Class 7</td><td class="n">£58</td><td>Larger vans</td></tr>
+    </tbody>
+  </table>
+  <div class="box stop"><span class="box-t">MOT is outside the scope of VAT</span>
+    <p>Not zero-rated — outside it. £50 in, £50 out. On the invoice, write <strong>"VAT not applicable"</strong> against the line. Never show an ex-VAT conversion and never add 20%. TechMan will try to tax it; you correct it every time.</p></div>
+  <p><strong>Retest:</strong> free within 7 days if KITH did the repairs. Beyond 7 days, a full new MOT at full price. There is no partial.</p>
+</section>
+
+<section class="s" id="s20">
+  <div class="s-head"><div class="s-num">20</div><div><h3>Standalone inspections</h3></div></div>
+  <p>An inspection with no service attached is a flat price. No labour line, no multiplier.</p>
+  <table>
+    <thead><tr><th>Inspection</th><th class="n">Price</th><th></th></tr></thead>
+    <tbody>
+      <tr><td>25-point interim health check</td><td class="n">£25.00</td><td><span class="chip c-fix">INC VAT</span> (= £20.83 ex)</td></tr>
+      <tr><td>40-point full inspection</td><td class="n">£45.00</td><td><span class="chip c-fix">EX VAT</span></td></tr>
+      <tr><td>60-point / pre-purchase</td><td class="n">£60.00</td><td><span class="chip c-fix">EX VAT</span></td></tr>
+    </tbody>
+  </table>
+  <p><small>Watch the VAT column — the 25-point is the only one quoted inclusive.</small></p>
+</section>
+
+<section class="s" id="s21">
+  <div class="s-head"><div class="s-num">21</div><div><h3>Engine replacement</h3></div></div>
+  <p>The only mechanical job priced as a fixed labour figure instead of hours × rate.</p>
+  <table>
+    <thead><tr><th>Engine size</th><th class="n">Petrol</th><th class="n">Diesel</th></tr></thead>
+    <tbody>
+      <tr><td>Up to 1.4L</td><td class="n">£900</td><td class="n">£1,050</td></tr>
+      <tr><td>1.5 – 2.0L</td><td class="n">£1,200</td><td class="n">£1,450</td></tr>
+      <tr><td>2.1 – 3.0L</td><td class="n">£1,550</td><td class="n">£1,850</td></tr>
+      <tr><td>3.0L +</td><td class="n">£1,950</td><td class="n">£2,350</td></tr>
+    </tbody>
+  </table>
+  <p>All ex VAT, all <strong>labour only</strong>. Engine, gaskets and fluids bill separately as normal parts lines — and an engine over £2,000 net escalates like any other part. Commercial vehicles use the same bands, no van surcharge.</p>
+  <p><strong>Always extra:</strong> clutch, dual mass flywheel, cambelt or chain, rear main seal, motor mounts.</p>
+  <p><strong>Warranty:</strong> the parts supplier's warranty only, 30 days maximum. No KITH labour warranty at all. Say this out loud before the customer commits.</p>
+</section>
+
+<section class="s" id="s22">
+  <div class="s-head"><div class="s-num">22</div><div><h3>Tuning &amp; deletes</h3></div></div>
+  <table>
+    <thead><tr><th>Service</th><th class="n">Sell ex VAT</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Stage 1 remap</td><td class="n">£250</td><td>Subcontracted; costs us £200</td></tr>
+      <tr><td>Stage 2 remap</td><td class="n">£320</td><td>Subcontracted; costs us £200</td></tr>
+      <tr><td>Economy remap</td><td class="n">£200</td><td></td></tr>
+      <tr><td>Pop &amp; bang (standalone)</td><td class="n">£150</td><td></td></tr>
+      <tr><td>Pop &amp; bang + Stage 1</td><td class="n">£350</td><td></td></tr>
+      <tr><td>Map restore to stock</td><td class="n">£75</td><td></td></tr>
+      <tr><td>EGR Solution</td><td class="n">£200</td><td>The only EGR service. Replaced "EGR Delete" at £150.</td></tr>
+      <tr><td>AdBlue delete</td><td class="n">£250</td><td></td></tr>
+      <tr><td>DPF remap</td><td class="n">£330</td><td><strong>+ labour</strong> for the physical removal — see <a href="#s23">§23</a></td></tr>
+      <tr><td>Flame kit / anti-lag hardware</td><td class="n">—</td><td><span class="chip c-open">NOT OFFERED</span></td></tr>
+    </tbody>
+  </table>
+  <p><strong>Diesel combo</strong> (remap + DPF + EGR Solution + AdBlue): the prices stack. No bundle discount.</p>
+  <div class="box stop"><span class="box-t">Off-road only</span>
+    <p>Every delete is off-road only and the customer signs the disclaimer in the T&amp;Cs at intake.</p></div>
+</section>
+
+<section class="s" id="s23">
+  <div class="s-head"><div class="s-num">23</div><div><h3>Exhaust work</h3></div></div>
+  <p>There are <strong>no fixed prices</strong> for back box delete, resonator delete, the combo, or decat / straight pipe. All four were withdrawn. Sports cat fitting and downpipes follow the same route.</p>
+  <div class="box note"><span class="box-t">Price it as a normal line</span>
+    <p>HaynesPro exhaust or cat SRT → the <a href="#s06">§06</a> ladder → <a href="#s07">§07</a> uplift if ramp-exempt → × the tier rate. Exhaust deletes are <span class="chip c-top">TOP</span>. Then parts through <a href="#s13">§13</a>. It is not "SRT × rate" — the multiplier applies exactly as it does everywhere else.</p></div>
+  <p><strong>The physical DPF removal</strong> behind a DPF remap is also a normal line, and DPF is an always-×2 category (<a href="#s08">§08</a>). A 1.2 hr DPF removal is 1.2 × 2 × £70 = £168.00, not £84.00.</p>
+  <p>Parts must be sourced by KITH — we do not fabricate custom exhausts. A customer supplying their own exhaust falls under <a href="#s17">§17</a>.</p>
+</section>
+
+<section class="s" id="s24">
+  <div class="s-head"><div class="s-num">24</div><div><h3>Recovery &amp; collection</h3></div></div>
+  <table>
+    <thead><tr><th>Distance</th><th class="n">Recovery</th><th class="n">Pick-up / drop-off</th></tr></thead>
+    <tbody>
+      <tr><td>0 – 3 miles</td><td class="n">£90</td><td class="n">£30</td></tr>
+      <tr><td>3 – 5 miles</td><td class="n">£110</td><td class="n">£45</td></tr>
+      <tr><td>5 – 7 miles</td><td class="n">£150</td><td class="n">£60</td></tr>
+      <tr><td>7 – 10 miles</td><td class="n">£180</td><td class="n">£75</td></tr>
+      <tr><td>Beyond 10 miles</td><td class="n" colspan="2"><span class="chip c-open">ESCALATE TO LOGAN</span></td></tr>
+    </tbody>
+  </table>
+  <p>All ex VAT and <strong>one-way</strong>. Both legs are charged at the full band price — there is no return-leg discount. If the recovery subcontractor's cost puts a band underwater, escalate rather than absorbing it. Refuse unprofitable jobs.</p>
+</section>
+
+<section class="s" id="s25">
+  <div class="s-head"><div class="s-num">25</div><div><h3>Subcontract</h3></div></div>
+  <table>
+    <thead><tr><th>Service</th><th class="n">Our cost</th><th class="n">Customer sell</th></tr></thead>
+    <tbody>
+      <tr><td>Wheel alignment (HS Tyres)</td><td class="n">£60</td><td class="n">£80 + VAT</td></tr>
+      <tr><td>DPF coding</td><td class="n">£150 no VAT</td><td class="n">£250 + VAT</td></tr>
+      <tr><td>DPF drilling (Grace Autos)</td><td class="n">£50 + VAT</td><td class="n">£100 + VAT</td></tr>
+      <tr><td>Head skimming w/ pressure test</td><td class="n">£110 + VAT</td><td class="n">£150 + VAT</td></tr>
+      <tr><td>Deep diagnostic (Jason)</td><td class="n">£110 + VAT</td><td class="n">£120 + VAT</td></tr>
+      <tr><td>Certified plates (per plate)</td><td class="n">£20 + VAT</td><td class="n">£30 + VAT</td></tr>
+      <tr><td>UMA Bodyworks · Key coding · Deep coding</td><td class="n" colspan="2">Quote per job — ask the subcontractor</td></tr>
+    </tbody>
+  </table>
+  <p>Alignment is outsourced entirely — 2-wheel only, we do not offer 4-wheel. <strong>Keys:</strong> we cut them (price varies per make, ask Logan); coding is subcontracted. <strong>A/C regas</strong> and <strong>glass</strong> are not offered — the customer goes elsewhere. When we do A/C condenser work, tell the customer up front they will need a regas elsewhere afterwards.</p>
+</section>
+
+<!-- =================== PART E =================== -->
+<div class="part"><div class="part-tag">Part E</div><h2>Bodywork</h2>
+<p class="part-note">Panel prices, not hours. Labour only appears when something has to come off the car.</p></div>
+
+<section class="s" id="s26">
+  <div class="s-head"><div class="s-num">26</div><div><h3>How bodywork prices</h3></div></div>
+  <ul>
+    <li><span class="chip c-body">BODY £70/hr</span> ex VAT flat for all bodywork labour.</li>
+    <li><strong>No multiplier applies to bodywork.</strong> Raw SRT × £70/hr. Always.</li>
+    <li><strong>£70 + VAT minimum per bodywork line.</strong></li>
+    <li>Panels are painted <strong>on the car</strong> in normal practice — the panel price in <a href="#s27">§27</a> is the whole price and there is no separate labour line. Removal and refit is the rare exception.</li>
+    <li>New replacement panels come from SVA and price as a normal parts line through <a href="#s13">§13</a>.</li>
+  </ul>
+  <dl class="kv">
+    <dt>Included</dt><dd>Paint and materials. Blends into adjacent panels — free, always.</dd>
+    <dt>No surcharge</dt><dd>Aluminium. Metallic. Tri-coat and pearl. Colour change.</dd>
+    <dt>Quotes</dt><dd>Free and without obligation, bodywork included.</dd>
+  </dl>
+</section>
+
+<section class="s" id="s27">
+  <div class="s-head"><div class="s-num">27</div><div><h3>Panel painting</h3></div></div>
+  <div class="box note"><span class="box-t">Vehicle category rules</span>
+    <p><strong>SUVs go in the 7-seater column</strong> whatever the actual seat count. So does a pickup (Hilux, Ranger, L200) and a Range Rover, Discovery or Defender. A 9-seater van groups with 8-seaters. Split rear van doors are one price, half if only one is done. Two sliding doors on a van is £270 × 2.</p></div>
+  <table>
+    <thead><tr><th>Panel</th><th class="n">5-seater</th><th class="n">7-seat / SUV</th><th class="n">9-seat van</th><th class="n">Large van</th></tr></thead>
+    <tbody>
+      <tr><td>Roof</td><td class="n">£300</td><td class="n">£340</td><td class="n">£380</td><td class="n">£400</td></tr>
+      <tr><td>Boot / tailgate</td><td class="n">£250</td><td class="n">£290</td><td class="n">£330</td><td class="n">£350</td></tr>
+      <tr><td>Front bumper</td><td class="n">£220</td><td class="n">£260</td><td class="n">£300</td><td class="n">£320</td></tr>
+      <tr><td>Bonnet</td><td class="n">£200</td><td class="n">£240</td><td class="n">£280</td><td class="n">£300</td></tr>
+      <tr><td>Door (each)</td><td class="n">£200</td><td class="n">£240</td><td class="n">£280</td><td class="n">£300</td></tr>
+      <tr><td>Rear bumper</td><td class="n">£175</td><td class="n">£215</td><td class="n">£255</td><td class="n">£275</td></tr>
+      <tr><td>Front quarter panel</td><td class="n">£175</td><td class="n">£215</td><td class="n">£255</td><td class="n">£275</td></tr>
+      <tr><td>Rear quarter panel</td><td class="n">£175</td><td class="n">£215</td><td class="n">£255</td><td class="n">£275</td></tr>
+      <tr><td>Trim / moulding</td><td class="n">£100</td><td class="n">£140</td><td class="n">£180</td><td class="n">£200</td></tr>
+      <tr><td>Sliding door (each side)</td><td class="n">—</td><td class="n">£270</td><td class="n">£320</td><td class="n">£350</td></tr>
+    </tbody>
+  </table>
+  <p><small>All ex VAT. The tier columns are the 5-seater base plus £40 / £80 / £100. Sliding door is a standalone price, not a surcharge.</small></p>
+  <div class="box stop"><span class="box-t">Nine seats and up</span>
+    <p>Minibuses, 12-seaters, anything above 8 seats — not in these tables. Escalate to Logan.</p></div>
+</section>
+
+<section class="s" id="s28">
+  <div class="s-head"><div class="s-num">28</div><div><h3>Multi-panel discount</h3></div></div>
+  <p><strong>The dearest panel is charged in full and every other panel gets 20% off.</strong> Full panel painting only — it does not reach dents, SMART, welding or bodywork labour. A dent then paint on the same panel is two separate jobs, not one.</p>
+  <div class="calc">Bonnet + boot + one door, 7-seater SUV
+
+Boot    £290.00   dearest — full price
+Bonnet  £240.00 → £192.00   −20%
+Door    £240.00 → £192.00   −20%
+                  ─────────
+        ex VAT     <b>£674.00</b>
+        inc VAT    £808.80</div>
+</section>
+
+<section class="s" id="s29">
+  <div class="s-head"><div class="s-num">29</div><div><h3>Whole car repaint</h3></div></div>
+  <table>
+    <thead><tr><th>Size</th><th class="n">Budget</th><th class="n">Standard</th><th class="n">Premium</th></tr></thead>
+    <tbody>
+      <tr><td>Small — 5-seater</td><td class="n">£1,650</td><td class="n">£2,050</td><td class="n">£2,460</td></tr>
+      <tr><td>Medium — 7-seater / SUV</td><td class="n">£2,250</td><td class="n">£2,750</td><td class="n">£3,300</td></tr>
+      <tr><td>Large — 9-seater and above</td><td class="n">£3,100</td><td class="n">£3,750</td><td class="n">£4,500</td></tr>
+    </tbody>
+  </table>
+  <dl class="kv">
+    <dt>Budget</dt><dd>No door handle or hinge removal</dd>
+    <dt>Standard</dt><dd>Full door, handle and hinge removal</dd>
+    <dt>Premium</dt><dd>Standard +20% — classic, antique or prestige (classic is 30+ years old)</dd>
+  </dl>
+  <p><small>All ex VAT. The customer chooses the tier. Colour change is included in all three.</small></p>
+</section>
+
+<section class="s" id="s30">
+  <div class="s-head"><div class="s-num">30</div><div><h3>Dents, SMART, welding, polish</h3></div></div>
+  <table>
+    <thead><tr><th>Job</th><th class="n">Price</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Dent repair (any size)</td><td class="n">£50 – £250 + VAT</td><td>Estimator's judgement on size and complexity</td></tr>
+      <tr><td>SMART repair (from)</td><td class="n">£180 + VAT</td><td>A <strong>starting</strong> price. Goes up by scuffs, location, colour.</td></tr>
+      <tr><td>Rust / weld repair, per panel</td><td class="n">£300 inc VAT</td><td>Sill rot escalates</td></tr>
+      <tr><td>Plastic welding, per crack</td><td class="n">£80 inc VAT</td><td>Per crack, not per bumper</td></tr>
+      <tr><td>Exhaust circular welding</td><td class="n">£150 + VAT</td><td>Flat</td></tr>
+      <tr><td>Stage 1 polish — whole body</td><td class="n">£250 + VAT</td><td>Suggest whole body at 5+ panels</td></tr>
+      <tr><td>Stage 2 polish — whole body</td><td class="n">£420 + VAT</td><td></td></tr>
+      <tr><td>Stage 1 polish — per panel</td><td class="n">£50 + VAT</td><td></td></tr>
+      <tr><td>Stage 2 polish — per panel</td><td class="n">£100 + VAT</td><td></td></tr>
+      <tr><td>Stone chip, per area</td><td class="n">£60 – £80 inc VAT</td><td></td></tr>
+      <tr><td>Plastic trim repair + paint, per piece</td><td class="n">£90 inc VAT</td><td></td></tr>
+      <tr><td>Headlight restoration</td><td class="n">£80 inc VAT a pair</td><td>£40 inc VAT per unit</td></tr>
+      <tr><td>Accident repair / PPF</td><td class="n">ON INSPECTION</td><td>Escalate — no insurance process</td></tr>
+    </tbody>
+  </table>
+  <p><small>Check the VAT column on every line — this table mixes inclusive and exclusive.</small></p>
+</section>
+
+<section class="s" id="s31">
+  <div class="s-head"><div class="s-num">31</div><div><h3>Alloys, calipers, headlights</h3></div></div>
+  <table>
+    <thead><tr><th>Job</th><th class="n">Per unit, ex VAT</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Alloy wheel respray / refurbishment</td><td class="n">£150</td><td>Clear coat + standard colour match. Non-original colours cost more.</td></tr>
+      <tr><td>Caliper respray — off hub</td><td class="n">£100</td><td>Customer brings the caliper; no strip-down bundled</td></tr>
+      <tr><td>Caliper respray — on hub</td><td class="n">£50</td><td>One colour only</td></tr>
+    </tbody>
+  </table>
+  <p>Multiply for a set. <strong>No set discount</strong> — four alloys is four times £150. <strong>Not offered:</strong> diamond cut. <strong>Split rim:</strong> priced from pictures, escalate.</p>
+</section>
+
+<!-- =================== PART F =================== -->
+<div class="part"><div class="part-tag">Part F</div><h2>AA customers</h2>
+<p class="part-note">Four rate cards. None of them use the multiplier ladder. All charge raw SRT.</p></div>
+
+<section class="s" id="s32">
+  <div class="s-head"><div class="s-num">32</div><div><h3>Which AA customer is this?</h3></div></div>
+  <p>Work arriving through the AA is not one thing. Four separate rate cards, and the CRM record tells you which. What they all share:</p>
+  <ul>
+    <li><strong>Charged hours = the HaynesPro SRT.</strong> No multiplier, no threshold, no ramp uplift.</li>
+    <li><strong>A flat parts percentage</strong> instead of the <a href="#s13">§13</a> ladder.</li>
+    <li>Because there is no multiplier, the 1.99/2.00 quirk in <a href="#s06">§06</a> does not exist on AA work.</li>
+  </ul>
+  <div class="box aabox"><span class="box-t">What is not settled</span>
+    <p>Whether the £55 and £44 rates are ex VAT (Tow-in and PGC were stated "plus VAT"; Smart and Fleet were bare). AA Smart has no diagnostic rate. AA PGC has no parts markup. Whether the KITH 0.5 hr and £70 minimums apply to AA work. Whether the pair rule applies at all — it discounts a multiplier AA work does not have. All of these go to Logan; see <a href="#s51">§51</a>.</p></div>
+</section>
+
+<section class="s" id="s33">
+  <div class="s-head"><div class="s-num">33</div><div><h3>AA Smart customers</h3></div></div>
+  <p>Smart-repair work. The customer is a retail customer <strong>of the AA network</strong>, not of KITH — do not price them off <a href="#s05">§05</a>.</p>
+  <dl class="kv">
+    <dt>Labour</dt><dd>£55/hr flat, at raw SRT</dd>
+    <dt>Parts</dt><dd>Euro Car Parts at 15% markup</dd>
+    <dt>Diagnostic</dt><dd><span class="chip c-open">NOT SET</span> — escalate</dd>
+  </dl>
+</section>
+
+<section class="s" id="s34">
+  <div class="s-head"><div class="s-num">34</div><div><h3>AA Tow-in customers</h3></div></div>
+  <dl class="kv">
+    <dt>Diagnostic</dt><dd>£33/hr, extendable on AA authorisation</dd>
+    <dt>Repair labour</dt><dd>£90 + VAT/hr, at raw SRT</dd>
+    <dt>Parts</dt><dd>20% markup</dd>
+  </dl>
+  <p>The best-earning AA card. On a 1 hr job it returns about 63% of the retail equivalent.</p>
+</section>
+
+<section class="s" id="s35">
+  <div class="s-head"><div class="s-num">35</div><div><h3>AA PGC customers</h3></div></div>
+  <dl class="kv">
+    <dt>Diagnostic</dt><dd>£29.77</dd>
+    <dt>Repair labour</dt><dd>£90 + VAT/hr, at raw SRT</dd>
+    <dt>Parts</dt><dd><span class="chip c-open">NOT SET</span> — every part escalates</dd>
+  </dl>
+  <p>Warranty jobs from the AA. Whether the £29.77 is a fixed fee or an hourly rate is unresolved.</p>
+</section>
+
+<section class="s" id="s36">
+  <div class="s-head"><div class="s-num">36</div><div><h3>AA Fleet customers</h3></div></div>
+  <dl class="kv">
+    <dt>Diagnostic</dt><dd>£44/hr — but only <strong>0.3 to 0.5 hr is authorised</strong>, so £13.20 to £22.00</dd>
+    <dt>Repair labour</dt><dd>£44/hr, at raw SRT</dd>
+    <dt>Parts</dt><dd>15% markup</dd>
+  </dl>
+  <div class="box stop"><span class="box-t">The thinnest card we hold</span>
+    <p>On a 1 hr job AA Fleet returns about 31% of the retail equivalent. The authorised 0.3 hr diagnostic is £13.20 — 22% of our cheapest in-house diagnostic tier. If a Fleet fault needs more than the authorised time, stop and escalate rather than working unpaid.</p></div>
+</section>
+
+<section class="s" id="s37">
+  <div class="s-head"><div class="s-num">37</div><div><h3>Every customer at a glance</h3></div></div>
+  <table class="t-tight">
+    <thead><tr><th>Customer</th><th class="n">Labour</th><th class="n">Multiplier</th><th class="n">Parts</th></tr></thead>
+    <tbody>
+      <tr><td>Retail</td><td class="n">£50 / £70</td><td class="n">×2 → ×1.5 at 2.0 hr</td><td class="n">Ladder</td></tr>
+      <tr><td>Trade</td><td class="n">£50 / £60 / £70</td><td class="n">×2 → ×1.5 at 1.5 hr</td><td class="n">Ladder</td></tr>
+      <tr><td><span class="chip c-aa">SMART</span></td><td class="n">£55</td><td class="n">None</td><td class="n">15%</td></tr>
+      <tr><td><span class="chip c-aa">TOW-IN</span></td><td class="n">£90</td><td class="n">None</td><td class="n">20%</td></tr>
+      <tr><td><span class="chip c-aa">PGC</span></td><td class="n">£90</td><td class="n">None</td><td class="n">NOT SET</td></tr>
+      <tr><td><span class="chip c-aa">FLEET</span></td><td class="n">£44</td><td class="n">None</td><td class="n">15%</td></tr>
+    </tbody>
+  </table>
+  <div class="calc">The same 1 hr job, same £45 pad set, four ways
+
+Retail  1.0 → ×2 → 2.0 hr × £50 = £100.00  + parts £58.50 = <b>£158.50</b>
+Trade   1.0 → ×2 → 2.0 hr × £50 = £100.00  + parts £58.50 = <b>£158.50</b>
+Tow-in  1.0 hr × £90            = £90.00   + parts £54.00 = <b>£144.00</b>
+Smart   1.0 hr × £55            = £55.00   + parts £51.75 = <b>£106.75</b>
+Fleet   1.0 hr × £44            = £44.00   + parts £51.75 = <b>£95.75</b></div>
+</section>
+
+<!-- =================== PART G =================== -->
+<div class="part"><div class="part-tag">Part G</div><h2>Trade, VAT &amp; commercials</h2>
+<p class="part-note">The customer-type and money-handling rules that sit around every quote.</p></div>
+
+<section class="s" id="s38">
+  <div class="s-head"><div class="s-num">38</div><div><h3>Trade unlock</h3></div></div>
+  <p>Trade status unlocks when a company brings <strong>4 different cars</strong> to KITH within a 30-day window. Tracked in the CRM by company name and registration numbers.</p>
+  <ul>
+    <li>The first four cars are always retail. No retrospective refund.</li>
+    <li>Trade pricing starts at <strong>vehicle five</strong>.</li>
+    <li><strong>Once unlocked it is permanent.</strong> No rolling monthly requirement — they stay trade even after a quiet spell.</li>
+    <li>Related businesses run by the same person can share trade status.</li>
+  </ul>
+</section>
+
+<section class="s" id="s39">
+  <div class="s-head"><div class="s-num">39</div><div><h3>What trade actually buys</h3></div></div>
+  <div class="box good"><span class="box-t">Two benefits, and they stack</span>
+    <p><strong>1. The MED tier.</strong> £60/hr on work a retail customer pays £70/hr for. Retail cannot have it at any volume.<br>
+    <strong>2. The earlier threshold.</strong> The multiplier steps down at 1.5 hr instead of 2.0.</p></div>
+  <table class="t-tight">
+    <thead><tr><th>Rule</th><th>Retail</th><th>Trade</th></tr></thead>
+    <tbody>
+      <tr><td>Tiers available</td><td>LOW, TOP</td><td><strong>LOW, MED, TOP</strong></td></tr>
+      <tr><td>Multiplier threshold</td><td>2.0 hr</td><td><strong>1.5 hr</strong></td></tr>
+      <tr><td>Rates themselves</td><td colspan="2">Identical</td></tr>
+      <tr><td>Parts ladder</td><td colspan="2">Identical</td></tr>
+      <tr><td>Fluids, tyres, fixed prices, bodywork</td><td colspan="2">Identical</td></tr>
+    </tbody>
+  </table>
+  <div class="calc">1.7 hr gearbox flush — a MED job
+
+Retail  no MED tier → TOP · 1.7 × 2   = 3.40 hr × £70 = £238.00
+Trade   MED tier    →       1.7 × 1.5 = 2.55 hr × £60 = <b>£153.00</b>
+                                          trade benefit  £85.00
+
+1.7 hr suspension — always-×2, so nobody steps down
+
+Retail  1.7 × 2 = 3.40 hr × £70 = £238.00
+Trade   1.7 × 2 = 3.40 hr × £60 = <b>£204.00</b>
+                    tier benefit only  £34.00</div>
+  <p>Swept across the whole curve from 0.1 to 6.0 hours on all three tiers: <strong>trade is never dearer than retail.</strong></p>
+</section>
+
+<section class="s" id="s40">
+  <div class="s-head"><div class="s-num">40</div><div><h3>VAT</h3></div></div>
+  <p>Standard rate 20%. Everything in this document is <strong>ex VAT unless the line says otherwise</strong> — and a few tables deliberately mix the two, so read the column.</p>
+  <table class="t-tight">
+    <thead><tr><th>Quoted inclusive of VAT</th><th>Outside VAT entirely</th></tr></thead>
+    <tbody>
+      <tr><td>25-point health check £25 · rust/weld repair · plastic welding · stone chip · plastic trim repair · headlight restoration</td><td>MOT test fee — "VAT not applicable"</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Rounding: none.</strong> Never round hours. Never round money up. Quote the exact calculated figure to the penny.</p>
+</section>
+
+<section class="s" id="s41">
+  <div class="s-head"><div class="s-num">41</div><div><h3>Money handling</h3></div></div>
+  <dl class="kv">
+    <dt>Deposit</dt><dd><strong>50% of the inc-VAT total</strong>, required on any job at £200 inc VAT or above. Under £200, no deposit. If the customer refuses the deposit, refuse the work.</dd>
+    <dt>Payment assist</dt><dd>Up to £3,000 inc VAT. 3-month plan 5% admin fee, 6-month 10%. Credit check over £1,500. Early payoff keeps the fee — no refund.</dd>
+    <dt>Courtesy car</dt><dd>£30 + VAT per day. Minimum driver age 21, insurance included, licence checked every rental. 100 miles/day as a rolling total, then £1 per mile. Returned with full fuel; damage is the customer's. If none is available we apologise — no compensation.</dd>
+    <dt>Storage</dt><dd>£5/day after the agreed collection date, added to the final invoice.</dd>
+    <dt>Cards</dt><dd>Accepted. No minimum invoice. No disposal charges. No charge for waiting.</dd>
+  </dl>
+  <p>A quote becomes a job the moment the customer says yes <strong>in writing</strong> — a WhatsApp message on the CRM thread. Verbal approval is never enough.</p>
+</section>
+
+<section class="s" id="s42">
+  <div class="s-head"><div class="s-num">42</div><div><h3>Warranty</h3></div></div>
+  <table class="t-tight">
+    <thead><tr><th>Work type</th><th>Warranty</th></tr></thead>
+    <tbody>
+      <tr><td>Mechanical labour</td><td>3 months or 12,000 miles, whichever first</td></tr>
+      <tr><td>Bodywork</td><td><strong>12 months from invoice, no mileage cap</strong></td></tr>
+      <tr><td>Tuning</td><td>3 months or 12,000 miles</td></tr>
+      <tr><td>Engine replacement</td><td>Parts supplier only, 30 days max. No KITH labour warranty.</td></tr>
+      <tr><td>Parts, general</td><td>Via the supplier. Supplier out of business means no warranty.</td></tr>
+      <tr><td>Customer-supplied parts</td><td>None, ever</td></tr>
+    </tbody>
+  </table>
+  <p><small>Bodywork warranty covers paint adhesion, weld integrity and panel fit — not later stone chips or a fresh collision. When a supplier honours a parts warranty they usually cover our labour to fit the replacement.</small></p>
+</section>
+
+<!-- =================== PART H =================== -->
+<div class="part"><div class="part-tag">Part H</div><h2>Getting it out the door</h2>
+<p class="part-note">What to check, when to stop, and what happens when the job changes.</p></div>
+
+<section class="s" id="s43">
+  <div class="s-head"><div class="s-num">43</div><div><h3>TechMan checklist</h3></div></div>
+  <p>TechMan generates the estimate from SRTs. It does <strong>not</strong> apply this SOP. Correct all of this before anything is sent:</p>
+  <ol class="steps">
+    <li><strong>Customer type checked.</strong> Retail has no MED tier. AA work has no multiplier at all.</li>
+    <li><strong>Charged hours entered, not raw SRT.</strong> TechMan hands you book time.</li>
+    <li><strong>SRT not rounded.</strong> 1.9 typed as 2.0 costs about £70.</li>
+    <li><strong>Ramp-exempt flag</strong> checked against the CRM tag. ×2.5 / ×1.75 replace, never stack.</li>
+    <li><strong>Always-×2 categories</strong> classified correctly — suspension, bearings, DPF, track rods.</li>
+    <li><strong>Pair rule</strong> used only for the closed three.</li>
+    <li><strong>Parts on the ladder, banded per part.</strong> Quantity does not band up.</li>
+    <li><strong>Minimum sell applied</strong> per part.</li>
+    <li><strong>Fluids, consumables and tyres kept out of the ladder.</strong></li>
+    <li><strong>MOT off the VAT</strong> — its own line, "VAT not applicable".</li>
+    <li><strong>Inspection time as minutes</strong>, not 0.208 / 0.333.</li>
+    <li><strong>No rounding of hours</strong> anywhere; money rounded only at the end.</li>
+  </ol>
+</section>
+
+<section class="s" id="s44">
+  <div class="s-head"><div class="s-num">44</div><div><h3>Escalate to Logan</h3></div></div>
+  <p>No pound threshold triggers escalation — Logan checks every quote anyway. But you must <strong>hard-stop</strong> on all of these:</p>
+  <ul>
+    <li>Any customer-supplied part</li>
+    <li>Any part costing over £2,000 net</li>
+    <li>Any pairing not on the closed list of three</li>
+    <li>Any SRT not found in HaynesPro after also calling the main dealer</li>
+    <li>Any vehicle above 8 seats</li>
+    <li>Any split rim alloy</li>
+    <li>Any expensive-make paint</li>
+    <li>Any recovery beyond 10 miles</li>
+    <li>Any accident or insurance work</li>
+    <li>Any sill rot welding</li>
+    <li>Anything in the open items register (<a href="#s51">§51</a>)</li>
+    <li>Anything you are not confident about — that is a sufficient reason on its own</li>
+  </ul>
+  <div class="box note"><span class="box-t">The cost of asking versus the cost of guessing</span>
+    <p>An escalation costs a few hours of delay. A wrong quote costs the margin on the job, and it is very hard to raise a price once a customer has seen a number. Escalating is never the wrong call.</p></div>
+</section>
+
+<section class="s" id="s45">
+  <div class="s-head"><div class="s-num">45</div><div><h3>Extra work mid-job</h3></div></div>
+  <p>Work found after the car is in goes back through the <strong>CRM as a revised quote</strong>, and the customer approves it in writing before the work happens. It is not added to the invoice at the end and it is not agreed verbally in the workshop.</p>
+  <p>Price the extra work exactly as if it were a fresh quote — its own line, its own band on the ladder. It inherits nothing from the original job, because the multiplier is per line (<a href="#s12">§12</a>).</p>
+</section>
+
+<section class="s" id="s46">
+  <div class="s-head"><div class="s-num">46</div><div><h3>The estimator app</h3></div></div>
+  <p>The app applies every rule in Parts B to F automatically and shows its working line by line, so you can check the arithmetic against this document. It also blocks the send when a <a href="#s44">§44</a> hard stop is present.</p>
+  <p>What the app will <strong>not</strong> do: decide the customer type, decide the ramp-exempt flag, read an SRT out of TechMan for you, or judge whether a pairing qualifies. Those stay with you and with Logan.</p>
+  <div class="box stop"><span class="box-t">The AI never touches the arithmetic</span>
+    <p>The AI layer helps break a description into jobs, tells you where to click in TechMan, and sanity-checks a finished quote. Every number is produced by the deterministic engine, which is verified against this document by 141 automated checks. If the app and this SOP ever disagree, that is a bug — flag it to Logan the same day.</p></div>
+</section>
+
+<!-- =================== PART I =================== -->
+<div class="part"><div class="part-tag">Part I</div><h2>Nineteen worked examples</h2>
+<p class="part-note">Every one checked against an independent implementation of the rules above — 141 assertions, 0 failures. If your figure disagrees with one of these, your figure is wrong.</p></div>
+
+<section class="s" id="s47">
+  <div class="s-head"><div class="s-num">47</div><div><h3>The examples</h3></div></div>
+
+  <h4>1 — Interim service, retail</h4>
+  <div class="calc">Oil SRT 0.30 + 25-point 12.5 min · LOW £50/hr
+
+Labour  0.30 + (12.5÷60) = 0.508333… hr → ×2 → 1.016666… hr × £50 = £50.83
+Oil     4 × £7.50 (selling price, no ladder)                       = £30.00
+Filter  £8.00 → ×2.0                                               = £16.00
+Washer  £1.50 → ×2.0                                               = £3.00
+                                                                    ───────
+        ex VAT                                                      £99.83
+        inc VAT                                                     <b>£119.80</b></div>
+
+  <h4>2 — Front pads and discs, retail — the pair rule</h4>
+  <div class="calc">Pads SRT 1.00 · Discs SRT 0.30 · LOW £50/hr
+
+Pads  (primary)   1.00 → ×2 → 2.00 hr
+Discs (secondary) 0.30 →      0.30 hr   <b>raw SRT</b>
+                             ────────
+                              2.30 hr × £50            = £115.00
+Pad set  £45.00 → ×1.3                                 = £58.50
+Discs    £60.00 each → ×1.3 → £78.00 each × 2          = £156.00
+                                                        ───────
+         ex VAT                                         £329.50
+         inc VAT                                        <b>£395.40</b></div>
+
+  <h4>3 — Front pair shocks, retail — always ×2</h4>
+  <div class="calc">SRT 2.40 hr · suspension · retail so TOP £70/hr · shocks £80 net each
+
+Labour  2.40 → <b>×2</b> (always-×2) → 4.80 hr × £70   = £336.00
+Parts   £80.00 → ×1.3 → £104.00 each × 2               = £208.00
+                                                        ───────
+        ex VAT                                          £544.00
+        inc VAT                                         <b>£652.80</b>
+
+On the normal ladder the labour would have been £252.00.</div>
+
+  <h4>4 — The 2.00 hour quirk</h4>
+  <div class="calc">Timing chain · TOP £70/hr · retail
+
+1.99 hr → ×2   = 3.98 hr = <b>£278.60</b>
+2.00 hr → ×1.5 = 3.00 hr = <b>£210.00</b>
+
+The bigger job is £68.60 cheaper. Expected. Do not "fix" it —
+and never round an SRT up into it.</div>
+
+  <h4>5 — Trade versus retail, same job</h4>
+  <div class="calc">1.50 hr gearbox flush — a MED job
+
+Retail  no MED tier → TOP · 1.50 under 2.0 → ×2   → 3.00 hr × £70 = £210.00
+Trade   MED tier    ·       1.50 at 1.5     → ×1.5 → 2.25 hr × £60 = <b>£135.00</b></div>
+
+  <h4>6 — Full service + MOT Class 4, retail</h4>
+  <div class="calc">Oil 0.50 + air filter 0.15 + 40-point 20 min · LOW £50/hr
+
+Labour  0.50 + 0.15 + (20÷60) = 0.983333… hr → ×2 → 1.966666… × £50 = £98.33
+Oil     5 × £7.50                                                    = £37.50
+Oil filter  £8.00 → ×2.0                                             = £16.00
+Air filter  £12.00 → ×1.8 = £21.60 (above the £20 minimum)            = £21.60
+Washer      £1.50 → ×2.0                                             = £3.00
+                                                                      ───────
+        ex VAT                                                        £176.43
+        inc VAT                                                       £211.72
+MOT Class 4                                    <b>VAT not applicable</b>  £50.00
+                                                                      ───────
+        Customer pays                                                 <b>£261.72</b></div>
+
+  <h4>7 — Four spark plugs — banded per part</h4>
+  <div class="calc">4 × £9.00 net
+
+Right  each plug £9.00 → ×2.0 → £18.00 → × 4 = <b>£72.00</b>
+Wrong  line total £36.00 → ×1.4              = £50.40
+
+Quantity never bands a part up.</div>
+
+  <h4>8 — One front door, 5-seater</h4>
+  <div class="calc">Panel price £200.00 — no multiplier on bodywork
+inc VAT <b>£240.00</b></div>
+
+  <h4>9 — Three panels, 7-seater SUV</h4>
+  <div class="calc">Boot £290.00 dearest, full price
+Bonnet £240.00 → −20% → £192.00
+Door   £240.00 → −20% → £192.00
+                        ─────────
+       ex VAT            £674.00
+       inc VAT           <b>£808.80</b></div>
+
+  <h4>10 — Ramp-exempt Sprinter, 1.2 hr suspension</h4>
+  <div class="calc">Suspension is always-×2, uplifted to ×2.5 under ramp exemption
+
+1.20 × <b>2.5</b> = 3.00 hr × £70 = <b>£210.00</b>
+Not ramp-exempt: 1.20 × 2 = 2.40 hr × £70 = £168.00
+The uplift adds £42.00 — and it replaces ×2, it does not stack on it.</div>
+
+  <h4>11 — Escalated diagnostic</h4>
+  <div class="calc">Mechanical £60 + VAT   = £72.00
+Deep (escalated) £120 + VAT = £144.00
+Both charged, no absorbing  = <b>£216.00 inc VAT</b></div>
+
+  <h4>12 — Engine replacement, 1.8L petrol</h4>
+  <div class="calc">Labour (fixed tier)                        = £1,200.00
+Recon engine £1,400 net → ×1.3             = £1,820.00
+Gaskets, seals, fluids £120 net → ×1.3     = £156.00
+                                             ─────────
+        ex VAT                               £3,176.00
+        inc VAT                              <b>£3,811.20</b>
+
+Clutch and DMF are not included. No KITH labour warranty.</div>
+
+  <h4>13 — Cambelt + water pump, 3.5 hr</h4>
+  <div class="calc">TOP £70/hr · retail
+
+Labour  3.50 → ×1.5 → 5.25 hr × £70   = £367.50
+Cambelt kit £120 → ×1.3               = £156.00
+Water pump  £45 → ×1.3                = £58.50
+Coolant 3 × £5.00                     = £15.00
+                                        ───────
+        ex VAT                          £597.00
+        inc VAT                         <b>£716.40</b></div>
+
+  <h4>14 — Stage 1 remap</h4>
+  <div class="calc">Fixed sell £250 + VAT = <b>£300.00</b>
+Costs KITH £200 to the tuning subcontractor — £50 margin.</div>
+
+  <h4>15 — Back box delete, 1.2 hr SRT</h4>
+  <div class="calc">No fixed price any more. Priced as a normal TOP line.
+
+Labour  1.20 → ×2 → 2.40 hr × £70                     = £168.00
+Back box £40.92 net → ×1.3 = £53.20, <b>below the £56.00 minimum sell</b>
+                                                       = £56.00
+                                                        ───────
+        ex VAT                                          £224.00
+        inc VAT                                         <b>£268.80</b></div>
+  <div class="box stop"><span class="box-t">Corrected at v8.0</span>
+    <p>Every version from v7.2.2 onwards printed the parts figure here as £53.20, which is below the minimum sell restored in that same release. £56.00 is correct. Any part netting £40.01 to £43.07 sells at £56.00.</p></div>
+
+  <h4>16 — AA Smart, front pads</h4>
+  <div class="calc">1.0 hr SRT · £55/hr flat · pad set £45 net at 15%
+
+Labour  1.00 hr × £55  (no multiplier)  = £55.00
+Parts   £45.00 × 1.15                   = £51.75
+                                          ───────
+        ex VAT                            £106.75
+        inc VAT                           <b>£128.10</b>
+
+The retail equivalent nets £158.50.</div>
+
+  <h4>17 — AA Tow-in</h4>
+  <div class="calc">1 hr diagnostic + 1.5 hr repair + £80 part at 20%
+
+Diagnostic  1.00 × £33                  = £33.00
+Labour      1.50 × £90  (no multiplier) = £135.00
+Parts       £80.00 × 1.20               = £96.00
+                                          ───────
+        ex VAT                            £264.00
+        inc VAT                           <b>£316.80</b></div>
+
+  <h4>18 — AA PGC</h4>
+  <div class="calc">Diagnostic £29.77 + 2.0 hr repair
+
+Diagnostic                              = £29.77
+Labour  2.00 × £90  (no multiplier)     = £180.00
+                                          ───────
+        ex VAT                            £209.77
+        inc VAT                           <b>£251.72</b>
+
+Any part on this job escalates — PGC has no parts markup set.</div>
+
+  <h4>19 — AA Fleet</h4>
+  <div class="calc">0.5 hr authorised diagnostic + 2.5 hr repair + £120 part at 15%
+
+Diagnostic  0.50 × £44  (at the authorised ceiling) = £22.00
+Labour      2.50 × £44  (no multiplier)             = £110.00
+Parts       £120.00 × 1.15                          = £138.00
+                                                      ───────
+        ex VAT                                        £270.00
+        inc VAT                                       <b>£324.00</b>
+
+The retail equivalent nets £426.00.</div>
+</section>
+
+<!-- =================== PART J =================== -->
+<div class="part"><div class="part-tag">Part J</div><h2>Reference</h2>
+<p class="part-note">Traps, words, people, and what is still missing.</p></div>
+
+<section class="s" id="s48">
+  <div class="s-head"><div class="s-num">48</div><div><h3>Traps</h3></div></div>
+  <table class="t-tight">
+    <thead><tr><th>The trap</th><th>What it costs</th><th>The rule</th></tr></thead>
+    <tbody>
+      <tr><td>Not checking the customer type at all</td><td>Everything downstream</td><td><a href="#s00">§00</a></td></tr>
+      <tr><td>Quoting a retail customer off an AA rate card</td><td>About two thirds of the job</td><td><a href="#s00">§00</a></td></tr>
+      <tr><td>Quoting a retail customer at the MED rate</td><td>£10/hr on every charged hour</td><td>Retail has no MED — <a href="#s05">§05</a></td></tr>
+      <tr><td>Quoting a trade customer at TOP for MED work</td><td>Overcharges; they will notice</td><td><a href="#s05">§05</a></td></tr>
+      <tr><td>Quoting the SRT straight off the TechMan screen</td><td>About half the labour</td><td><a href="#s06">§06</a></td></tr>
+      <tr><td>Rounding an SRT up from 1.9 to 2.0</td><td>About £70</td><td><a href="#s06">§06</a></td></tr>
+      <tr><td>Pooling two jobs' hours into one multiplier</td><td>Undercharges the small line</td><td>Per line — <a href="#s12">§12</a></td></tr>
+      <tr><td>Stacking the ramp uplift on top of ×2</td><td>Wildly overcharges</td><td>It replaces — <a href="#s07">§07</a></td></tr>
+      <tr><td>Classifying shocks or a bearing as plain mechanical</td><td>£84 on a 2.4 hr job</td><td><a href="#s08">§08</a></td></tr>
+      <tr><td>Extending the pair rule to a fourth pairing</td><td>Undercharges badly</td><td>Closed three — <a href="#s09">§09</a></td></tr>
+      <tr><td>Giving bodywork a multiplier</td><td>Doubles the labour</td><td><a href="#s26">§26</a></td></tr>
+      <tr><td>Banding parts on the line total</td><td>4 × £9 becomes £50.40 not £72</td><td>Per part — <a href="#s13">§13</a></td></tr>
+      <tr><td>Forgetting the minimum sell</td><td>Band edges invert</td><td><a href="#s13">§13</a></td></tr>
+      <tr><td>Running oil or a tyre through the parts ladder</td><td>A £22 oil becomes £35.20</td><td><a href="#s14">§14</a>, <a href="#s15">§15</a></td></tr>
+      <tr><td>Writing 0.208 or 0.333 for inspection time</td><td>Pennies, visible on the price list</td><td><a href="#s11">§11</a></td></tr>
+      <tr><td>Adding 20% to the MOT</td><td>The invoice is wrong</td><td><a href="#s19">§19</a></td></tr>
+      <tr><td>Discounting trade parts</td><td>Trade parts are identical to retail</td><td><a href="#s39">§39</a></td></tr>
+      <tr><td>Pricing a parts line over £2,000</td><td>Zero margin</td><td>Escalate — <a href="#s13">§13</a></td></tr>
+      <tr><td>Counting seats on an SUV</td><td>Panels underpriced by £40 each</td><td>SUV = 7-seater — <a href="#s27">§27</a></td></tr>
+      <tr><td>Quoting a minibus off the panel tables</td><td>Unknown, possibly a lot</td><td>Escalate — <a href="#s27">§27</a></td></tr>
+      <tr><td>Absorbing a diagnostic escalation</td><td>The second tier, every time</td><td>Charge both — <a href="#s18">§18</a></td></tr>
+      <tr><td>Quoting a supplier's website price</td><td>Margin gone before the job starts</td><td><a href="#s16">§16</a></td></tr>
+      <tr><td>Working past the authorised AA Fleet diagnostic time</td><td>Unpaid hours</td><td><a href="#s36">§36</a></td></tr>
+      <tr><td>Quoting off a symptom with no diagnostic</td><td>Recall, rework, or worse</td><td><a href="#s02">§02</a></td></tr>
+      <tr><td>Telling a customer the car is safe to drive</td><td>Not recoverable</td><td><a href="#s02">§02</a></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="s" id="s49">
+  <div class="s-head"><div class="s-num">49</div><div><h3>Glossary</h3></div></div>
+  <dl class="kv">
+    <dt>SRT</dt><dd>Standard Repair Time. The book hours HaynesPro or Autodata give. What you look up — not what you charge, unless the customer is AA.</dd>
+    <dt>Charged hours</dt><dd>SRT after the multiplier. What goes on the quote.</dd>
+    <dt>Customer type</dt><dd>One of six. Decided at intake, recorded in the CRM, and the first thing you check.</dd>
+    <dt>The ladder</dt><dd>Two of them. The labour ladder (<a href="#s06">§06</a>) turns SRT into charged hours. The parts ladder (<a href="#s13">§13</a>) turns net cost into a selling price.</dd>
+    <dt>Threshold</dt><dd>Where the multiplier steps from ×2 to ×1.5. Retail 2.0 hr, trade 1.5 hr. Landing exactly on it takes ×1.5.</dd>
+    <dt>Always-×2</dt><dd>The four categories in <a href="#s08">§08</a> that never step down.</dd>
+    <dt>Ramp exemption</dt><dd>A CRM tag set by Logan for vehicles that cannot go on the ramp. Multipliers become ×2.5 / ×1.75, replacing ×2 / ×1.5.</dd>
+    <dt>Pair rule</dt><dd>The closed list of three in <a href="#s09">§09</a>. The second item bills at raw SRT.</dd>
+    <dt>Line</dt><dd>One SRT or one part. Each picks its own multiplier or band. Pooling happens only inside a service.</dd>
+    <dt>Minimum sell</dt><dd>The floor under each parts band that stops the ladder inverting at a band edge. Applied per part.</dd>
+    <dt>Net cost</dt><dd>What KITH pays a supplier. Never what the customer sees.</dd>
+    <dt>PO</dt><dd>Purchase order. Raised for every part, after a phone quote.</dd>
+    <dt>TechMan</dt><dd>The garage management system. Generates estimates and invoices; does not apply this SOP.</dd>
+    <dt>Estimate / quote</dt><dd>The same thing.</dd>
+  </dl>
+</section>
+
+<section class="s" id="s50">
+  <div class="s-head"><div class="s-num">50</div><div><h3>Who does what</h3></div></div>
+  <table class="t-tight">
+    <thead><tr><th>Who</th><th>Role</th><th>Come to them for</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Logan</strong></td><td>Owner / Director</td><td>Every escalation in <a href="#s44">§44</a>. The ramp-exempt tag. Anything not priced in this document.</td></tr>
+      <tr><td>Giles</td><td>Workshop Manager / Parts</td><td>Whether a job is mechanically sensible; parts on the floor</td></tr>
+      <tr><td>Fardeen · Ali</td><td>Service Advisers</td><td>Intake, safety triage, CRM records, customer contact</td></tr>
+      <tr><td>Sesugh · Joel</td><td>Estimators (on the rota)</td><td>This document is theirs</td></tr>
+      <tr><td>Harith</td><td>Parts</td><td>Collection, receiving, PO queries</td></tr>
+      <tr><td>Sudha</td><td>Accounts / Parts</td><td>Invoicing, VAT treatment on the ledger</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="s" id="s51">
+  <div class="s-head"><div class="s-num">51</div><div><h3>Open items</h3></div></div>
+  <p>Things Logan still needs to decide. Until each is closed, the affected job is escalated rather than quoted from this document.</p>
+  <table class="t-tight">
+    <thead><tr><th style="width:1.5rem">#</th><th>What is open</th><th>What to do meanwhile</th></tr></thead>
+    <tbody>
+      <tr><td class="n">1</td><td>Ramp exemption trigger criteria — no height or weight limits set</td><td>Logan tags it case by case</td></tr>
+      <tr><td class="n">2</td><td>Expensive-make paint — no threshold, no uplift</td><td>Treat paint as included; flag oddities</td></tr>
+      <tr><td class="n">3</td><td>Sill rot welding pricing</td><td>Escalate</td></tr>
+      <tr><td class="n">4</td><td>Multiple rust spots on one panel — per spot or per panel</td><td>Escalate</td></tr>
+      <tr><td class="n">5</td><td>Key cutting per make — no table</td><td>Escalate</td></tr>
+      <tr><td class="n">6</td><td>Insurance / accident work — no process, no rates</td><td>Escalate</td></tr>
+      <tr><td class="n">7</td><td>Minibus and 9+ seat panel pricing</td><td>Escalate</td></tr>
+      <tr><td class="n">8</td><td>Split rim alloys</td><td>Priced from pictures — escalate</td></tr>
+      <tr><td class="n">9</td><td>Minimum sell per part or on the line total</td><td>Built per part. 4 × £11 clips is £80.00 either way it is close — £79.20 on the line method.</td></tr>
+      <tr><td class="n">10</td><td>Are the AA £55 and £44 rates ex VAT?</td><td>Treated as ex VAT — confirm</td></tr>
+      <tr><td class="n">11</td><td>AA Smart has no diagnostic rate</td><td>Escalate every one</td></tr>
+      <tr><td class="n">12</td><td>AA PGC has no parts markup</td><td>Escalate every part</td></tr>
+      <tr><td class="n">13</td><td>Is the AA PGC £29.77 fixed or hourly?</td><td>Treated as fixed — confirm</td></tr>
+      <tr><td class="n">14</td><td>Who authorises an AA Tow-in diagnostic extension, and where is it recorded?</td><td>Ask before extending</td></tr>
+      <tr><td class="n">15</td><td>What happens when an AA Fleet fault needs more than 0.5 hr</td><td>Stop and escalate</td></tr>
+      <tr><td class="n">16</td><td>Do the 0.5 hr and £70 minimums apply to AA work? On Fleet a 0.2 hr SRT bills £8.80 without them.</td><td>Escalate small AA jobs</td></tr>
+      <tr><td class="n">17</td><td>Does the pair rule apply to AA work? It discounts a multiplier AA does not have.</td><td>Do not apply it</td></tr>
+      <tr><td class="n">18</td><td>Which time governs when AA authorisation differs from the HaynesPro SRT</td><td>Escalate</td></tr>
+      <tr><td class="n">19</td><td>Economy Remap sells at £200 against a stated £200 subcontract cost</td><td>Escalate — possible zero margin</td></tr>
+      <tr><td class="n">20</td><td>Subcontracted deep diagnostic nets £10 and matches the in-house £120 tier</td><td>Prefer the in-house tier</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="s" id="s52">
+  <div class="s-head"><div class="s-num">52</div><div><h3>What changed at v8.0</h3></div></div>
+  <p>v8.0 is a consolidation, not a repricing. <strong>One figure moves</strong>, and it is a correction rather than a policy change.</p>
+  <table class="t-tight">
+    <thead><tr><th>Change</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Worked Example 15 corrected.</strong> The back box parts line was £53.20, below the £56.00 minimum sell restored at v7.2.2. Now £56.00.</td><td>Ex15 total £265.44 → <strong>£268.80</strong></td></tr>
+      <tr><td>Everything from v7.6 restated once, in final form. The two-tier retail card, the AA customers, the per-part ladder with minimum sell, the closed pair rule, ramp exemption and the accepted 1.99/2.00 quirk are all stated as plain rules rather than as amendments to an earlier version.</td><td>No money moves</td></tr>
+      <tr><td>The open items register merged the retail and AA lists into one run of 20.</td><td>No money moves</td></tr>
+      <tr><td>New <a href="#s46">§46</a> covering what the estimator app does and, more importantly, what it does not do.</td><td>No money moves</td></tr>
+      <tr><td>Traps table extended to 25 rows.</td><td>No money moves</td></tr>
+    </tbody>
+  </table>
+  <div class="box good"><span class="box-t">Verification</span>
+    <p>141 assertions, 0 failures, covering all nineteen worked examples, the full 0.1–6.0 hour labour curve on every tier and customer type, a monotonicity sweep of the parts ladder from £0.01 to £2,000, and a proof that trade is never dearer than retail anywhere on the curve.</p></div>
+</section>
+
+<footer style="margin-top:64px;padding-top:16px;border-top:3px solid var(--rule-hard);
+  font-size:.82rem;color:var(--ink-3);font-family:'IBM Plex Mono',monospace">
+  KITH Cars Group · Unit 1, Soho Mills, London Road, Hackbridge SM6 7HN<br>
+  Estimator SOP v8.0 · 20 August 2026 · Owner: Logan · supersedes v7.6 and every earlier version<br>
+  Arithmetic verified independently: 141 assertions, 0 failures.
+</footer>
+
+</div>
+<!-- ===================== LIVE AMENDMENTS =====================
+     The base rules above are v8.0. Amendments Logan approves in the brain are
+     laid over them here, in the sections they change, the moment this page opens. -->
+<style>
+.amend{border:2px solid var(--signal);background:#FFF8E1;padding:.8rem 1rem;margin:1rem 0;border-radius:3px}
+.amend .box-t{color:var(--warn)}
+.amend ul{margin:.3rem 0 0;padding-left:1.1rem}
+.amend li{margin:.2rem 0}
+.amend .why{color:var(--ink-3);font-size:.85rem}
+@media print{.amend{break-inside:avoid}}
+</style>
+<script src="kith-rules.js"></script>
+<script>
+(function(){
+  if(typeof KITHRules==='undefined')return;
+  var URL_=localStorage.getItem('kith_crm_url')||'https://mxyrxyhvjndgjqupgstu.supabase.co';
+  var KEY=localStorage.getItem('kith_crm_key')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function day(iso){try{return new Date(iso).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});}catch(e){return '';}}
+  function item(r){
+    return '<li><strong>'+esc(KITHRules.describe(r))+'</strong>'+
+      '<div class="why">'+esc(r.reason||'')+' \u2014 approved by '+esc(r.decidedBy||'Logan')+' '+esc(day(r.decidedAt))+'</div></li>';
+  }
+  function after(sel,html){var el=document.querySelector(sel);if(el)el.insertAdjacentHTML('afterend',html);}
+  KITHRules.load(URL_,KEY).then(function(d){
+    var rules=KITHRules.liveRules(d.rules);
+    var stamp=document.querySelector('.cover .stamp');
+    if(stamp)stamp.insertAdjacentHTML('beforeend','<span class="on" id="amendStamp">'+
+      (rules.length?'+ '+rules.length+' amendment'+(rules.length>1?'s':'')+' in force':'no amendments')+'</span>');
+    if(!rules.length)return;
+    var rate=rules.filter(function(r){return r.rate!=null;});
+    var mult=rules.filter(function(r){return r.multiplier!=null;});
+    after('.cover','<section class="s amend" id="amendments"><span class="box-t">Amendments in force \u2014 these override the base rules below</span>'+
+      '<p style="margin:.3rem 0 0">Logan changed these at sign-off and approved them. They apply to any labour line whose job name contains the words shown, for the customer types shown. Never to AA work or bodywork. A figure Logan set by hand on a job beats all of them. Parts are never amended.</p>'+
+      '<ul>'+rules.map(item).join('')+'</ul></section>');
+    if(rate.length)after('#s05 table','<div class="amend"><span class="box-t">Amended rates</span><ul>'+rate.map(item).join('')+'</ul></div>');
+    if(mult.length)after('#s06 .s-head','<div class="amend"><span class="box-t">Amended multipliers \u2014 flat, they replace the ladder for these jobs</span>'+
+      '<ul>'+mult.map(item).join('')+'</ul><p class="why" style="margin:.4rem 0 0">Not applied on ramp-exempt jobs \u2014 the ramp ladder stands there.</p></div>');
+  }).catch(function(e){
+    var stamp=document.querySelector('.cover .stamp');
+    if(stamp)stamp.insertAdjacentHTML('beforeend','<span id="amendStamp">amendments could not be checked \u2014 ask Logan</span>');
+  });
+})();
+</script>
+</body>
+</html>

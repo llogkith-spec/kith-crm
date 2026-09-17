@@ -5,6 +5,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>KITH Cars CRM</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f0f0f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="KITH CRM">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
 :root{
   --black:#0f0f0f;--surface:#1a1a1a;--surface2:#222;--surface3:#2c2c2c;
@@ -273,6 +280,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
     KITH Cars <span class="brand-sub">CRM</span><span class="brand-sub" id="build-tag" style="opacity:.6"></span>
   </div>
   <div class="topbar-right">
+    <button class="btn btn-ghost btn-sm" id="q-btn" onclick="openQueue()" title="Your queue" style="position:relative">🔔<span id="q-count" style="display:none;position:absolute;top:-5px;right:-5px;background:var(--red);color:#fff;border-radius:10px;font-size:10px;font-weight:800;padding:1px 5px;min-width:16px;text-align:center"></span></button>
     <div class="user-chip" id="user-chip" onclick="showLogin()" title="Switch user">
       <span id="user-avatar" style="font-size:14px">👤</span>
       <span id="user-label">—</span>
@@ -380,6 +388,8 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
           <button class="btn btn-ghost btn-sm" onclick="weekNav(-1)">◀</button>
           <button class="btn btn-ghost btn-sm" onclick="weekToday()">Today</button>
           <button class="btn btn-ghost btn-sm" onclick="weekNav(1)">▶</button>
+          <select class="fsel" id="week-side" style="width:auto;font-size:12px;padding:4px 8px" onchange="renderWeek()"><option value="">All work</option><option value="mechanical">Mechanical</option><option value="bodywork">Bodywork</option></select>
+          <button class="btn btn-ghost btn-sm" onclick="editSchedCap()">Capacity</button>
           <button class="btn btn-gold btn-sm" onclick="addMechanic()">+ Mechanic</button>
           <button class="btn btn-ghost btn-sm" onclick="cx('ov-week')">✕</button>
         </div>
@@ -726,6 +736,8 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <div class="overlay" id="ov-detail"><div class="panel" id="dp"></div></div>
 
 
+<script src="engine.js"></script>
+<script src="kith-rules.js"></script>
 <script>
 const BUILD='v5.7 \u00b7 28 Aug';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
@@ -888,6 +900,10 @@ function login(name){
     loadImported();  // and what other machines have already added
     loadCustTypeCol();
     loadDismissed();
+    try{syncNotifs();}catch(e){}
+    try{refreshPushOwner();}catch(e){}
+    try{loadSchedCap();}catch(e){}
+    setTimeout(()=>{try{loadSopRules();}catch(e){}},3000);
     setTimeout(()=>{try{sweepAssign(true);}catch(e){}},4000);
     if(s.name==='Logkith') setTimeout(renderShiftBar,500);
     // Show activity tab only for Logkith
@@ -927,6 +943,7 @@ const STAGES=[
   {id:'parts',     label:'3 · Parts Estimate',     cls:'s-parts',     badge:'b-parts',     owner:'Parts'},
   {id:'financial', label:'4 · Final Estimate', cls:'s-financial', badge:'b-financial', owner:'Estimator'},
   {id:'signoff',   label:'5 · Logan Sign-Off',     cls:'s-financial', badge:'b-financial', owner:'Logkith'},
+  {id:'disapproved',label:'5b · Disapproved',      cls:'s-lost',      badge:'b-lost',      owner:'Logkith'},
   {id:'contact',   label:'6 · Service Adviser',    cls:'s-contact',   badge:'b-contact',   owner:'Service Adviser'},
   {id:'contacted', label:'7 · Contacted',          cls:'s-waiting',   badge:'b-waiting',   owner:'Service Adviser'},
   {id:'waiting',   label:'8 · Awaiting · Day 1',   cls:'s-waiting',   badge:'b-waiting',   owner:'Service Adviser'},
@@ -1029,6 +1046,7 @@ function migrateJob(j){
     if(STAGE_MAP[j.stage]) j.stage=STAGE_MAP[j.stage];
     if(!j.log) j.log=[];
     if(!j.parts) j.parts=[];
+    if(j.work==null) j.work='';   // other apps write jobs too — a missing description must not break the lists
     if(!j.stage) j.stage='intake';
     return j;
   }catch(e){return null;}
@@ -1246,7 +1264,14 @@ async function loadDismissed(){
     if(typeof renderInbox==='function')renderInbox();
   }catch(e){}
 }
-function nid(){return'J'+Date.now().toString().slice(-6);}
+// Job numbers repeat every ~17 minutes (last six digits of the clock), and a
+// save overwrites whatever has that number — so never hand out one in use.
+function nid(){
+  let n=Date.now()%1000000;
+  const taken=new Set((typeof jobs!=='undefined'&&Array.isArray(jobs)?jobs:[]).map(j=>j&&j.id));
+  for(let i=0;i<1000&&taken.has('J'+String(n).padStart(6,'0'));i++)n=(n+1+Math.floor(Math.random()*997))%1000000;
+  return'J'+String(n).padStart(6,'0');
+}
 function ts(){return new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});}
 // Every stage button goes through gj(). Closing the panel clears curId,
 // and on a phone that could happen mid-tap, so the move silently did
@@ -2666,7 +2691,43 @@ var JOB_DAY_RULES = [
   { re:/brake pad|brake disc|brakes?\b|pads? (and|&) discs?/i, days:[1,2,3,4,5,6], label:'brakes (any working day)' }
 ];
 
-function schedSide(j){ return isBodywork(j) ? 'bodywork' : 'mechanical'; }
+// Which calendar a job sits on. A hand-set choice wins; otherwise the
+// strict bodywork test, so "engine blowing smoke" stays mechanical.
+function schedSide(j){
+  if(j&&(j.calSide==='bodywork'||j.calSide==='mechanical'))return j.calSide;
+  return (typeof isClearlyBodywork==='function'?isClearlyBodywork(j):isBodywork(j)) ? 'bodywork' : 'mechanical';
+}
+// Capacity is owner-editable and shared across screens.
+try{const c=JSON.parse(localStorage.getItem('kith_schedcap')||'null');if(c&&c.mechanical)SCHED_CAP=c;}catch(e){}
+async function loadSchedCap(){
+  try{
+    const r=await fetch(SB_URL+'/rest/v1/jobs?id=eq.__schedcap__&select=data',{headers:SB_HDR});
+    if(!r.ok)return;
+    const rows=await r.json();
+    const c=rows[0]&&rows[0].data&&rows[0].data.cap;
+    if(c&&c.mechanical){SCHED_CAP=c;safeSet('kith_schedcap',JSON.stringify(c));}
+  }catch(e){}
+}
+function editSchedCap(){
+  if(!currentUser||currentUser.name!=='Logkith'){alert('Only Logkith can change capacity.');return;}
+  const m=parseInt(prompt('Mechanical: how many cars a day?',SCHED_CAP.mechanical),10);
+  if(isNaN(m)||m<1)return;
+  const b=parseInt(prompt('Bodywork: how many cars a day?',SCHED_CAP.bodywork),10);
+  if(isNaN(b)||b<1)return;
+  SCHED_CAP={mechanical:m,bodywork:b};
+  safeSet('kith_schedcap',JSON.stringify(SCHED_CAP));
+  sbUpsert([{id:'__schedcap__',data:{cap:SCHED_CAP},updated_at:new Date().toISOString()}]).catch(()=>{});
+  if(typeof renderWeek==='function')renderWeek();
+  if(typeof toast==='function')toast('\u2713 Capacity: mechanical '+m+' \u00b7 bodywork '+b+' a day');
+}
+function setCalSide(id,side){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  j.calSide=side;
+  j.log=j.log||[];
+  j.log.push({t:ts(),s:'\ud83d\udcc5 Calendar set to '+side+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);
+  if(window._bkModal&&window._bkModal._draw)window._bkModal._draw();
+}
 
 // Earliest date parts are available for a job. Reads the job's POs first
 // (real ordered ETA), then falls back to part-line etas. Returns a Date at
@@ -2723,14 +2784,12 @@ function allowedDays(j){
 }
 
 // How many cars already booked on a given side for a given date.
-function bookedCountFor(side, ds){
+function bookedCountFor(side, ds, exceptId){
   return jobs.filter(function(j){
-    return j.bookedFor===ds && j.stage!=='lost' && schedSide(j)===side;
+    return j && j.bookedFor===ds && j.id!==exceptId && j.stage!=='lost' && !j.mergedInto && schedSide(j)===side;
   }).length;
 }
 
-// Build the list of bookable slots to OFFER a customer for this job.
-// Returns [{date:'YYYY-MM-DD', label, weekday}] soonest-first, capped.
 function offerSlots(j, opts){
   opts=opts||{};
   var horizon=opts.horizon||21;       // look 3 weeks ahead
@@ -2740,6 +2799,7 @@ function offerSlots(j, opts){
   var cap=SCHED_CAP[side]||99;
   var earliest=partsReadyDate(j);     // null => now
   var from=new Date(); from.setHours(0,0,0,0);
+  if(new Date().getHours()>=15) from.setDate(from.getDate()+1);   // too late to take a car in today
   if(earliest && earliest>from) from=earliest;   // never before parts land
   var out=[];
   for(var i=0;i<horizon && out.length<maxSlots;i++){
@@ -2747,10 +2807,132 @@ function offerSlots(j, opts){
     var wd=d.getDay();
     if(rule.days.indexOf(wd)<0)continue;          // day-type / side rule
     var ds=dstr(d);
-    if(bookedCountFor(side,ds)>=cap)continue;     // full that day
+    if(bookedCountFor(side,ds,j.id)>=cap)continue;     // full that day
     out.push({date:ds, weekday:wd, label:fmtBookDate(ds)});
   }
   return {side:side, ruleLabel:rule.label, earliest:earliest?dstr(earliest):null, slots:out};
+}
+
+function slotProblems(j,ds){
+  const out=[];
+  if(!ds)return out;
+  const d=new Date(ds+'T00:00:00');
+  if(isNaN(d.getTime()))return out;
+  const side=schedSide(j), rule=allowedDays(j);
+  if(rule.days.indexOf(d.getDay())<0)out.push('Wrong day for this job \u2014 '+rule.label);
+  const cap=SCHED_CAP[side]||99, n=bookedCountFor(side,ds,j.id);
+  if(n>=cap)out.push('The '+side+' calendar is full that day ('+n+' of '+cap+')');
+  const pr=partsReadyDate(j);
+  if(pr&&d<pr)out.push('Parts are not due until '+fmtBookDate(dstr(pr)));
+  const today=new Date();today.setHours(0,0,0,0);
+  if(d<today)out.push('That date has passed');
+  return out;
+}
+function slotsMsg(j,slots){
+  return 'Hi '+firstName(j)+', we can get your '+vehDesc(j)+' in on:\n\n'+
+    slots.slice(0,3).map(s=>'\u2022 '+s.label).join('\n')+
+    '\n\nThe earliest is filling up fastest \u2014 reply with the day that suits and we will lock it in for you.\n\n\u2014 KITH Cars';
+}
+function pickSlot(ds){
+  const d=document.getElementById('bk-date');if(d)d.value=ds;
+  document.querySelectorAll('.bk-slot').forEach(b=>{
+    const on=b.getAttribute('data-ds')===ds;
+    b.style.background=on?'var(--gold)':'transparent';
+    b.style.color=on?'#111':'var(--fg)';
+  });
+  const pb=document.getElementById('bk-probs');if(pb)pb.innerHTML='';
+}
+function checkBkDate(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const v=document.getElementById('bk-date')?.value||'';
+  const pr=slotProblems(j,v);
+  const pb=document.getElementById('bk-probs');
+  if(pb)pb.innerHTML=pr.length?'<div style="background:rgba(160,30,30,.16);border-left:3px solid var(--red);border-radius:var(--rs);padding:7px 9px;font-size:11px;color:var(--red);margin-bottom:10px">'+
+    pr.map(x=>'\u26a0 '+escHtml(x)).join('<br>')+'</div>':'';
+}
+function smartSlotsH(j){
+  const o=offerSlots(j);
+  const num=(j.phone||'').replace(/^0/,'44').replace(/\D/g,'');
+  const tog=side=>'<button class="btn btn-xs" style="margin-left:4px;'+(o.side===side?'background:var(--blue);color:#111;font-weight:800':'background:transparent;border:1px solid var(--border);color:var(--dim)')+
+    '" onclick="setCalSide(\''+j.id+'\',\''+side+'\')">'+(side==='mechanical'?'Mechanical':'Bodywork')+'</button>';
+  return '<div style="background:var(--surface2);border:1px solid var(--gold);border-radius:var(--r);padding:10px 12px;margin-bottom:14px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:4px">'+
+      '<div style="font-size:12px;font-weight:800;color:var(--gold)">\u26a1 Best slots for this job</div>'+
+      '<div>'+tog('mechanical')+tog('bodywork')+'</div></div>'+
+    '<div style="font-size:10px;color:var(--dim);margin-bottom:8px">'+escHtml(o.ruleLabel)+
+      (o.earliest?' \u00b7 parts ready '+escHtml(fmtBookDate(o.earliest)):' \u00b7 no parts wait')+
+      ' \u00b7 '+(SCHED_CAP[o.side]||'?')+' a day</div>'+
+    (o.slots.length
+      ? '<div style="display:flex;flex-wrap:wrap;gap:5px">'+o.slots.map((sl,i)=>
+          '<button class="btn btn-sm bk-slot" data-ds="'+sl.date+'" style="background:transparent;border:1px solid '+(i===0?'var(--gold)':'var(--border)')+';color:var(--fg)" onclick="pickSlot(\''+sl.date+'\')">'+
+            (i===0?'\u2605 ':'')+escHtml(sl.label)+
+            '<span style="font-size:9px;color:var(--faint);margin-left:4px">'+(SCHED_CAP[o.side]-bookedCountFor(o.side,sl.date,j.id))+' left</span></button>').join('')+'</div>'+
+        (num?'<a href="'+waLink(num,slotsMsg(j,o.slots))+'" target="_blank" class="btn btn-green btn-xs" style="margin-top:8px">\ud83d\udcac Offer the first 3 to the customer</a>':'')
+      : '<div style="font-size:11px;color:var(--red)">No free slot in the next 3 weeks for this kind of job. Check capacity or the parts date.</div>')+
+  '</div>';
+}
+
+// ── ORDER THE PARTS ONCE IT IS ON THE CALENDAR (16 Sep 2026) ────────
+// Booked = time to buy. Within the order window (or bodywork, which
+// orders any time) the estimator and the parts team get a ping. If a
+// PO then comes back with an ETA after the booking, the adviser is told
+// to rebook, with the earliest slot the parts allow.
+function partsToOrder(j){
+  return (typeof realParts==='function'?realParts(j):(j.parts||[]))
+    .filter(p=>!p.poNum&&p.stockStatus!=='stock');
+}
+function checkOrderNeeded(j){
+  if(!j||!j.bookedFor||j.stage==='lost'||j.mergedInto)return false;
+  let changed=false;
+  // a late-parts warning clears once the booking is on/after the ETA
+  if(j.partsLate&&!j.partsLate.clearedAt){
+    const eta=parseLooseDate(j.partsLate.eta), bd=new Date(j.bookedFor+'T00:00:00');
+    if(eta&&bd>=eta){j.partsLate.clearedAt=Date.now();changed=true;}
+  }
+  const list=partsToOrder(j);
+  const on=j.orderNeeded;
+  if(!list.length){
+    if(on&&on.pingedAt&&!on.doneAt){on.doneAt=Date.now();changed=true;}
+    return changed;
+  }
+  if(on&&on.bookedFor===j.bookedFor&&on.pingedAt&&!on.doneAt)return changed;   // already told
+  if(orderHoldReason(j)){                                   // too far out — wait for the window
+    if(!on||on.state!=='waiting'||on.bookedFor!==j.bookedFor){
+      j.orderNeeded={state:'waiting',bookedFor:j.bookedFor};changed=true;
+    }
+    return changed;
+  }
+  const names=list.map(p=>(p.name||'part')+((parseInt(p.qty)||1)>1?' \u00d7'+p.qty:'')).join(', ');
+  const title='\ud83d\udce6 Order now \u2014 '+(j.reg||'job');
+  const body='Booked '+fmtBookDate(j.bookedFor)+(j.bookedTime?' '+fmt12(j.bookedTime):'')+'. '+list.length+' to order: '+names.slice(0,120);
+  if(j.assignedEstimator)pushNotif('estimator',title,body,{jobId:j.id,to:j.assignedEstimator,key:'order-est|'+j.id+'|'+j.bookedFor});
+  pushNotif('parts',title,body,{jobId:j.id,key:'order-parts|'+j.id+'|'+j.bookedFor});
+  j.orderNeeded={state:'pinged',bookedFor:j.bookedFor,pingedAt:Date.now(),count:list.length};
+  j.log=j.log||[];
+  j.log.push({t:ts(),s:'\ud83d\udce6 On the calendar \u2014 '+list.length+' part'+(list.length===1?'':'s')+' flagged to order now'});
+  return true;
+}
+function orderSweep(){
+  let n=0;
+  jobs.forEach(j=>{try{if(j&&j.bookedFor&&checkOrderNeeded(j)){save(j);n++;}}catch(e){}});
+  if(n){try{renderAll();}catch(e){}}
+  return n;
+}
+setInterval(()=>{try{orderSweep();}catch(e){}},10*60*1000);
+setTimeout(()=>{try{orderSweep();}catch(e){}},15000);
+function checkPartsLate(j,po){
+  if(!j||!j.bookedFor||!po||!po.eta)return;
+  const eta=parseLooseDate(po.eta), bd=new Date(j.bookedFor+'T00:00:00');
+  if(!eta||isNaN(bd.getTime())||eta<=bd)return;
+  let first='';
+  try{const o=offerSlots(j);first=o.slots[0]?o.slots[0].label:'';}catch(e){}
+  j.partsLate={poId:po.id,poNum:po.num,eta:po.eta,at:Date.now()};
+  j.log=j.log||[];
+  j.log.push({t:ts(),s:'\u26a0 '+po.num+' arrives '+fmtBookDate(dstr(eta))+' \u2014 after the booking on '+fmtBookDate(j.bookedFor)+'. Needs rebooking.'});
+  pushNotif('adviser','\u26a0 Rebook '+(j.reg||'job')+' \u2014 parts late',
+    po.num+' ('+po.supplier+') due '+fmtBookDate(dstr(eta))+', booked '+fmtBookDate(j.bookedFor)+'.'+(first?' Earliest slot now: '+first+'.':''),
+    {jobId:j.id,key:'late|'+po.id});
+  if(typeof notify==='function')notify('\u26a0 '+escHtml(po.num)+' arrives after the booking \u2014 the adviser has been told to rebook','warn');
 }
 
 function bookInFromReady(id){
@@ -2833,7 +3015,7 @@ function recordPhoneSignOff(id, result, opts){
   } else {
     j.signedOff=false;j.signOffNote=opts.reason||'Rejected on the phone';
     j.log.push({t:ts(),s:'\u260e\ufe0f REJECTED BY PHONE (Tamil) \u2014 '+j.signOffNote+' \u00b7 '+who});
-    save(j);try{renderDetail();}catch(e){}try{renderAll();}catch(e){}
+    disapproveJob(j.id,{who:who,via:'phone',note:opts.reason||'',phoneTs:j.phoneSignOff.ts,silent:true});
   }
   if(typeof toast==='function')toast(result==='approved'?'\u260e\ufe0f Phone sign-off recorded':'\u260e\ufe0f Phone rejection recorded');
   return true;
@@ -2845,9 +3027,9 @@ function logPhoneSignOff(id){
   recordPhoneSignOff(id, r?'approved':'rejected', {who:who, by:currentUser?currentUser.name:''});
 }
 
-function sendBackToEstimator(id){
+function sendBackToEstimator(id,given){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
-  const why=prompt('What needs changing?\n\ne.g. "Labour too low for that job" / "Missing the gasket set"','');
+  const why=(given!=null)?given:prompt('What needs changing?\n\ne.g. "Labour too low for that job" / "Missing the gasket set"','');
   if(why===null)return;
   j.signedOff=false;
   j.signOffNote=String(why||'').trim();
@@ -2862,6 +3044,274 @@ function sendBackToEstimator(id){
   renderDetail();renderAll();
   if(typeof toast==='function')toast('\u21a9 Back to '+stg(back).label);
 }
+
+// ── SOP AMENDMENTS + LABOUR ADJUST + DISAPPROVED LANE (16 Sep 2026) ─────
+// Logan changes labour at sign-off. "Just this job" fixes this car only.
+// "Make it a rule" sends an amendment to the brain; once he approves it
+// there, every screen prices that job type on the new figure and jobs still
+// waiting are re-priced. A figure Logan sets by hand is never overwritten.
+let SOP_RULES=[], SOP_RULES_OK=false, SOP_RULES_AT=null, SOP_SEQ=0;
+const LF_OPEN={};
+const rulesReady=()=>typeof KITHRules!=='undefined'&&typeof KITH!=='undefined'&&KITH.labourLine;
+function canAdjustLabour(j){
+  return !!(rulesReady()&&currentUser&&currentUser.name==='Logkith'&&j&&j.estimate&&
+    j.estimateDraft&&(j.estimateDraft.labour||[]).length);
+}
+async function loadSopRules(){
+  if(!rulesReady())return;
+  try{
+    const seq=++SOP_SEQ;
+    const d=await KITHRules.load(SB_URL,SB_KEY);
+    if(seq!==SOP_SEQ)return;           // a newer write happened while this was loading
+    SOP_RULES=d.rules;SOP_RULES_AT=d.updatedAt;SOP_RULES_OK=true;
+    runRepriceSweep();
+  }catch(e){console.warn('SOP amendments not loaded:',e.message);}
+}
+setInterval(()=>{try{if(typeof currentUser!=='undefined'&&currentUser)loadSopRules();}catch(e){}},60*1000);
+function sopPendingCount(){return rulesReady()?KITHRules.pending(SOP_RULES).length:0;}
+
+// Jobs still waiting follow the live amendments. Idempotent: a job is only
+// touched when the live set has changed since it was last priced.
+function runRepriceSweep(){
+  if(!rulesReady()||!SOP_RULES_OK)return;
+  const panelOpen=(document.getElementById('ov-detail')||{classList:{contains:()=>false}}).classList.contains('open');
+  // The phone call server writes phoneSignOff straight to the row; pick those up.
+  jobs.forEach(j=>{
+    if(j&&j.stage==='signoff'&&j.phoneSignOff&&j.phoneSignOff.result==='rejected'&&
+       !(j.disapproval&&j.disapproval.phoneTs===j.phoneSignOff.ts))
+      disapproveJob(j.id,{who:j.phoneSignOff.who||'Phone approval',via:'phone',
+        note:j.signOffNote||'',phoneTs:j.phoneSignOff.ts,silent:true});
+  });
+  const pool=jobs.filter(j=>!(panelOpen&&j.id===curId)&&!outbox[j.id]);
+  const res=KITHRules.sweep(KITH,pool,SOP_RULES,{by:'SOP amendments',asOf:SOP_RULES_AT});
+  res.changed.forEach(x=>save(x.job));
+  if(res.changed.length){
+    if(currentUser&&currentUser.name==='Logkith'&&typeof toast==='function')
+      toast('\u267b '+res.changed.length+' waiting job'+(res.changed.length>1?'s':'')+' re-priced on the SOP amendments');
+    try{renderAll();}catch(e){}
+  }
+}
+
+// ---- the Disapproved lane ----
+function disapproveJob(id,opts){
+  opts=opts||{};
+  const j=jobs.find(x=>x.id===id);if(!j)return false;
+  if(!opts.via&&(!currentUser||currentUser.name!=='Logkith')){alert('Only Logkith can mark a quote disapproved.');return false;}
+  let who=opts.who;
+  if(!who){who=prompt('Who said no?','Logan (father)');if(who===null)return false;who=who||'Logan (father)';}
+  const from=j.stage;
+  j.signedOff=false;
+  j.disapproval={at:ts(),atMs:Date.now(),who:who,via:opts.via||'in person',note:opts.note||'',
+    amount:parseFloat(j.quote)||0,phoneTs:opts.phoneTs||null,reasonNeeded:true,
+    by:currentUser?currentUser.name:'call-server'};
+  j.stage='disapproved';j.stageAt=Date.now();
+  try{stampStage(j,'disapproved');}catch(e){}
+  j.log=j.log||[];
+  j.log.push({t:ts(),s:'\u2717 DISAPPROVED at \u00a3'+(parseFloat(j.quote)||0).toFixed(2)+' by '+who+' ('+j.disapproval.via+') \u2014 reason needed'+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);
+  try{pushNotif('all','\u2717 Disapproved \u2014 '+(j.reg||j.id),'Write why and fix the labour. '+(j.name||''),{to:'Logkith',jobId:j.id,key:'disapproved|'+j.id+'|'+j.disapproval.atMs});}catch(e){}
+  try{renderDetail();}catch(e){}try{renderAll();}catch(e){}
+  try{stageMoved(j,from,'disapproved');}catch(e){}
+  if(!opts.silent&&typeof toast==='function')toast('\u2717 In the Disapproved lane \u2014 write why and fix it');
+  return true;
+}
+function disapprovedH(j){
+  const d=j.disapproval||{};
+  return '<div style="background:rgba(180,40,30,.14);border:2px solid var(--red);border-radius:var(--r);padding:11px 13px;margin-bottom:10px">'+
+    '<div style="font-size:13px;font-weight:800;color:var(--red)">\u2717 Disapproved at \u00a3'+(parseFloat(d.amount)||parseFloat(j.quote)||0).toFixed(2)+'</div>'+
+    '<div style="font-size:11px;color:var(--dim);margin-top:2px">'+escHtml(d.who||'')+(d.via?' \u00b7 '+escHtml(d.via):'')+(d.at?' \u00b7 '+escHtml(d.at):'')+'</div>'+
+    (d.note?'<div style="font-size:11px;margin-top:4px">Said: '+escHtml(d.note)+'</div>':'')+
+    '<div style="font-size:11px;color:var(--dim);margin-top:6px">Write why below \u2014 the brain learns from it. Then fix the numbers, or send it back to the estimator.</div>'+
+    (!(currentUser&&currentUser.name==='Logkith')?'<div style="font-size:11px;color:var(--faint);margin-top:4px">Only Logkith can clear this.</div>':'')+
+  '</div>';
+}
+
+// ---- the adjust panel ----
+function lfLines(j){
+  const d=j.estimateDraft||{},cust=KITHRules.customerOf(j);
+  return (d.labour||[]).map(l=>KITHRules.labour(KITH,Object.assign({},l,{customer:cust,rampExempt:!!d.rampExempt,inspection:l.inspection||null}),SOP_RULES));
+}
+function lfTarget(label){
+  // "Clutch kit & DMF" -> "clutch kit"; Logan can edit it
+  return String(label||'').replace(/\(.*?\)/g,'').split(/[&+,\/\-\u2014]/)[0].trim().toLowerCase();
+}
+function labourFixH(j,mode){
+  if(!canAdjustLabour(j)){
+    if(mode==='disapproved'&&currentUser&&currentUser.name==='Logkith')
+      return '<div class="fg" style="margin-bottom:10px"><label class="fl2">Why was it disapproved? (required \u2014 the brain learns this)</label>'+
+        '<textarea class="fta" id="lf-why-'+j.id+'" placeholder="e.g. labour far too low for a clutch on this"></textarea></div>'+
+        '<div style="font-size:11px;color:var(--faint);margin-bottom:6px">This job was not priced in the estimator app, so the labour can\u2019t be adjusted here.</div>'+
+        '<button class="btn btn-ghost btn-sm btn-full" onclick="lfSendBack(\''+j.id+'\')">\u21a9 Send back to the estimator with this reason</button>';
+    return '';
+  }
+  const cust=KITHRules.customerOf(j),aa=!!(KITH.isAA&&KITH.isAA(cust));
+  const lines=lfLines(j);
+  const inp='style="width:100%;padding:6px 7px;font-size:13px" class="fi2"';
+  const rows=lines.map((l,i)=>{
+    const tag=l.override?'<span style="color:var(--gold)">\ud83d\udd12 your figure</span>':(l.sopRule?'<span style="color:var(--blue)">\ud83e\udde0 amendment: '+escHtml(l.sopRule.appliesTo)+'</span>':'<span style="color:var(--faint)">base SOP</span>');
+    const noMult=aa||l.isBodywork;
+    return '<div style="border-bottom:1px solid var(--border);padding:6px 0">'+
+      '<div style="display:flex;justify-content:space-between;gap:6px;font-size:12px;font-weight:700"><span>'+escHtml(l.label||'Labour')+'</span>'+
+        '<span id="lf-tot-'+j.id+'-'+i+'">\u00a3'+l.total.toFixed(2)+'</span></div>'+
+      '<div style="font-size:10px;margin-bottom:4px">'+tag+' \u00b7 book '+(l.bookSrt!=null?l.bookSrt:l.srt)+' hr \u00b7 '+escHtml(KITHRules.working(l))+'</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">'+
+        '<div><div style="font-size:10px;color:var(--faint)">SRT hours</div><input type="number" step="0.01" min="0" '+inp+' id="lf-srt-'+j.id+'-'+i+'" value="'+l.srt+'" data-was="'+l.srt+'" oninput="lfPreview(\''+j.id+'\')"></div>'+
+        '<div><div style="font-size:10px;color:var(--faint)">Multiplier \u00d7</div><input type="number" step="0.05" min="1" '+inp+' id="lf-mult-'+j.id+'-'+i+'" value="'+l.multiplier+'" data-was="'+l.multiplier+'" '+(noMult?'disabled':'')+' oninput="lfPreview(\''+j.id+'\')"></div>'+
+        '<div><div style="font-size:10px;color:var(--faint)">Rate \u00a3/hr ex VAT</div><input type="number" step="1" min="30" '+inp+' id="lf-rate-'+j.id+'-'+i+'" value="'+l.rate+'" data-was="'+l.rate+'" '+(aa?'disabled':'')+' oninput="lfPreview(\''+j.id+'\')"></div>'+
+      '</div>'+
+      '<div class="lf-rule-'+j.id+'" style="display:none;margin-top:5px"><div style="font-size:10px;color:var(--faint)">Rule applies to jobs called\u2026</div>'+
+        '<input '+inp+' id="lf-for-'+j.id+'-'+i+'" value="'+escHtml(lfTarget(l.label))+'" placeholder="e.g. clutches"></div>'+
+    '</div>';
+  }).join('');
+  const custOpts=KITHRules.KITH_CUSTOMERS.indexOf(cust)>-1
+    ? '<option value="'+cust+'">'+KITHRules.CUSTOMER_LABEL[cust]+' only (this job)</option><option value="retail,trade">Retail and Trade</option>'
+    : '';
+  const dis=mode==='disapproved';
+  return '<div style="background:var(--surface2);border:2px solid var(--gold);border-radius:var(--r);padding:10px 12px;margin-bottom:10px" id="lf-'+j.id+'" data-mode="'+mode+'">'+
+    '<div style="font-size:12px;font-weight:800;color:var(--gold);margin-bottom:2px">\u270f\ufe0f Adjust labour</div>'+
+    '<div style="font-size:10px;color:var(--faint);margin-bottom:6px">Parts are never changed here. '+(aa?'AA rate card \u2014 only the SRT can change.':'')+'</div>'+
+    rows+
+    '<div id="lf-new-'+j.id+'" style="font-size:12px;font-weight:800;margin:8px 0">Customer pays \u00a3'+(parseFloat(j.estimate.customer_pays)||0).toFixed(2)+'</div>'+
+    '<div class="fg" style="margin-bottom:8px"><label class="fl2">'+(dis?'Why was it disapproved? (required \u2014 the brain learns this)':'Why? (needed if it becomes a rule)')+'</label>'+
+      '<textarea class="fta" id="lf-why-'+j.id+'" placeholder="'+(dis?'e.g. labour far too low for a clutch':'e.g. clutches always take longer than the book')+'"></textarea></div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'+
+      '<button class="btn btn-ghost btn-sm" onclick="lfApply(\''+j.id+'\',false)">Just this job</button>'+
+      (aa?'<button class="btn btn-ghost btn-sm" disabled title="AA rate cards are never amended">Make it a rule</button>'
+         :'<button class="btn btn-gold btn-sm" id="lf-rulebtn-'+j.id+'" onclick="lfRuleToggle(\''+j.id+'\')">Make it a rule \u25b8</button>')+
+    '</div>'+
+    '<div id="lf-rulebox-'+j.id+'" style="display:none;margin-top:8px;border-top:1px solid var(--border);padding-top:8px">'+
+      '<div style="font-size:11px;color:var(--dim);margin-bottom:5px">Every future job with those words in its name gets the new multiplier / rate, once you approve it in the brain. SRT changes stay on this car only.</div>'+
+      '<div class="fg" style="margin-bottom:6px"><label class="fl2">For which customers?</label><select class="fsel" id="lf-cust-'+j.id+'">'+custOpts+'</select></div>'+
+      '<button class="btn btn-gold btn-sm btn-full" onclick="lfApply(\''+j.id+'\',true)">\ud83e\udde0 Apply here and send the rule to the brain</button>'+
+    '</div>'+
+    (dis?'<button class="btn btn-ghost btn-sm btn-full" style="margin-top:8px" onclick="lfSendBack(\''+j.id+'\')">\u21a9 Send back to the estimator instead</button>':'')+
+  '</div>';
+}
+function toggleLabourFix(id){LF_OPEN[id]=!LF_OPEN[id];try{renderDetail();}catch(e){}}
+function lfRuleToggle(id){
+  const box=document.getElementById('lf-rulebox-'+id);if(!box)return;
+  const on=box.style.display==='none';
+  box.style.display=on?'block':'none';
+  document.querySelectorAll('.lf-rule-'+id).forEach(e=>e.style.display=on?'block':'none');
+}
+function lfRead(j){
+  const lines=lfLines(j);
+  const v=(k,i)=>{const e=document.getElementById('lf-'+k+'-'+j.id+'-'+i);return e?{now:parseFloat(e.value),was:parseFloat(e.dataset.was),off:e.disabled,el:e}:null;};
+  return lines.map((l,i)=>{
+    const out={i,line:l,srt:null,mult:null,rate:null,forText:(document.getElementById('lf-for-'+j.id+'-'+i)||{}).value||''};
+    [['srt','srt'],['mult','mult'],['rate','rate']].forEach(([k,f])=>{
+      const x=v(k,i);if(!x||x.off||isNaN(x.now))return;
+      if(Math.abs(x.now-x.was)>0.00001)out[f]=x.now;
+    });
+    out.changed=out.srt!=null||out.mult!=null||out.rate!=null;
+    return out;
+  });
+}
+function lfOverride(ch,by){
+  const ov=Object.assign({},ch.line.override||{},{by:by,at:new Date().toISOString()});
+  if(ch.srt!=null)ov.srt=ch.srt;
+  if(ch.mult!=null)ov.multiplier=ch.mult;
+  if(ch.rate!=null)ov.rate=ch.rate;
+  // pin whichever of multiplier/rate was NOT typed at what Logan was looking at,
+  // so an amendment changing later does not move a figure he has signed off
+  if((ch.mult!=null||ch.rate!=null)){
+    if(ov.multiplier==null&&!ch.line.isBodywork)ov.multiplier=ch.line.multiplier;
+    if(ov.rate==null)ov.rate=ch.line.rate;
+  }
+  return ov;
+}
+function lfTrial(j,changes){
+  const t=JSON.parse(JSON.stringify(j));
+  changes.forEach(ch=>{if(ch.changed)t.estimateDraft.labour[ch.i].override=lfOverride(ch,'preview');});
+  return KITHRules.reprice(KITH,t,SOP_RULES,{respectOverride:false});
+}
+function lfPreview(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const ch=lfRead(j);
+  const r=lfTrial(j,ch);
+  const out=document.getElementById('lf-new-'+id);
+  if(r.skip){if(out)out.textContent=r.skip;return;}
+  const labs=r.estimate.lines.filter(l=>l.kind==='labour');
+  labs.forEach((l,i)=>{const e=document.getElementById('lf-tot-'+id+'-'+i);if(e)e.textContent='\u00a3'+Number(l.total).toFixed(2);});
+  if(out)out.innerHTML='Customer pays <span style="color:var(--gold)">\u00a3'+r.after.toFixed(2)+'</span>'+
+    (r.changed?' <span style="color:var(--faint);font-weight:400">(was \u00a3'+r.before.toFixed(2)+')</span>':'');
+}
+async function lfApply(id,asRule){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  if(!currentUser||currentUser.name!=='Logkith'){alert('Only Logkith can change labour at sign-off.');return;}
+  const mode=(document.getElementById('lf-'+id)||{dataset:{}}).dataset.mode||'signoff';
+  const why=((document.getElementById('lf-why-'+id)||{}).value||'').trim();
+  const changes=lfRead(j),changed=changes.filter(c=>c.changed);
+  if(mode==='disapproved'&&!why){alert('Write why it was disapproved first \u2014 that is what the brain learns from.');return;}
+  if(!changed.length){alert(mode==='disapproved'?'Change a number, or use \u201cSend back to the estimator\u201d.':'Nothing has been changed.');return;}
+  const by=currentUser.name,cust=KITHRules.customerOf(j);
+  let newRules=[];
+  if(asRule){
+    const learnable=changed.filter(c=>c.mult!=null||c.rate!=null);
+    if(!learnable.length){alert('Only an SRT was changed. SRT changes are for this car only \u2014 use \u201cJust this job\u201d.');return;}
+    if(!why){alert('Say why \u2014 the rule goes to the brain with your reason.');return;}
+    const custSel=((document.getElementById('lf-cust-'+id)||{}).value||cust).split(',');
+    try{
+      newRules=learnable.map(c=>KITHRules.makeRule({appliesTo:c.forText,customers:custSel,
+        multiplier:c.mult,rate:c.rate,was:{multiplier:c.mult!=null?c.line.multiplier:null,rate:c.rate!=null?c.line.rate:null},
+        reason:why,source:mode,jobId:j.id,reg:j.reg||'',by:by}));
+    }catch(e){alert('Rule not sent: '+e.message);return;}
+  }
+  // apply to this car first — Logan's figure, never swept
+  changed.forEach(c=>{j.estimateDraft.labour[c.i].override=lfOverride(c,by);});
+  j.labourOverride={by:by,at:new Date().toISOString(),mode:mode};
+  const r=KITHRules.reprice(KITH,j,SOP_RULES,{respectOverride:false});
+  if(r.skip){alert('Could not re-price: '+r.skip);return;}
+  const what=changed.map(c=>(c.line.label||'Labour')+': '+[
+    c.srt!=null?'SRT '+c.line.srt+'\u2192'+c.srt:'',
+    c.mult!=null?'\u00d7'+c.line.multiplier+'\u2192\u00d7'+c.mult:'',
+    c.rate!=null?'\u00a3'+c.line.rate+'\u2192\u00a3'+c.rate:''].filter(Boolean).join(', ')).join('; ');
+  KITHRules.applyToJob(j,r,{by:by,why:(asRule?'rule sent to the brain':'one-off')+' \u2014 '+what});
+  j.log.push({t:ts(),s:'\u270f\ufe0f Labour adjusted ('+(asRule?'MAKE IT A RULE':'just this job')+'): '+what+(why?' \u2014 '+why:'')+' ['+by+']'});
+  let note=null;
+  if(mode==='disapproved'&&!asRule){
+    try{note=KITHRules.makeNote({text:why,by:by,jobId:j.id,reg:j.reg||'',job:changed.map(c=>c.line.label).join(', '),source:'disapproved'});}catch(e){}
+  }
+  if(mode==='disapproved'){
+    j.disapproval=Object.assign({},j.disapproval||{},{reasonNeeded:false,reason:why,resolvedAt:ts(),resolvedBy:by});
+    j.signOffNote='Disapproved: '+why+' \u2014 re-priced, check again';
+    j.stage='signoff';j.stageAt=Date.now();
+    try{stampStage(j,'signoff');}catch(e){}
+    j.log.push({t:ts(),s:'\u2192 Back to 5 \u00b7 Logan Sign-Off at \u00a3'+r.after.toFixed(2)+' after the fix ['+by+']'});
+  }
+  j.signedOff=false;
+  save(j);
+  LF_OPEN[id]=false;
+  try{renderDetail();}catch(e){}try{renderAll();}catch(e){}
+  const filing=newRules.concat(note?[note]:[]);
+  if(filing.length){
+    try{
+      const d=await KITHRules.update(SB_URL,SB_KEY,l=>l.concat(filing));
+      SOP_SEQ++;SOP_RULES=d.rules;SOP_RULES_AT=d.updatedAt;
+      j.log.push({t:ts(),s:'\ud83e\udde0 Sent to the brain for approval: '+filing.map(KITHRules.describe).join(' | ')});
+      save(j);
+      toast(asRule?'\u2713 Priced at \u00a3'+r.after.toFixed(2)+' \u2014 rule waiting for you in the brain':'\u2713 Priced at \u00a3'+r.after.toFixed(2)+' \u2014 reason sent to the brain');
+    }catch(e){
+      alert('The price on this job changed, but the '+(asRule?'rule':'reason')+' did NOT reach the brain ('+e.message+'). Add it in the brain by hand.');
+    }
+  } else toast('\u2713 Priced at \u00a3'+r.after.toFixed(2)+' \u2014 this job only, nothing learned');
+}
+async function lfSendBack(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  if(!currentUser||currentUser.name!=='Logkith'){alert('Only Logkith can clear a disapproved job.');return;}
+  const why=((document.getElementById('lf-why-'+id)||{}).value||'').trim();
+  if(!why){alert('Write why it was disapproved first.');return;}
+  if(j.disapproval)j.disapproval=Object.assign({},j.disapproval,{reasonNeeded:false,reason:why,resolvedAt:ts(),resolvedBy:currentUser.name,sentBack:true});
+  sendBackToEstimator(id,'Disapproved: '+why);
+  if(rulesReady()){
+    try{
+      const n=KITHRules.makeNote({text:why,by:currentUser.name,jobId:j.id,reg:j.reg||'',job:(j.work||'').slice(0,60),source:'disapproved'});
+      const d=await KITHRules.update(SB_URL,SB_KEY,l=>l.concat([n]));SOP_SEQ++;SOP_RULES=d.rules;SOP_RULES_AT=d.updatedAt;
+      toast('\u21a9 Back to the estimator \u2014 reason sent to the brain');
+    }catch(e){alert('Sent back, but the reason did NOT reach the brain ('+e.message+').');}
+  }
+}
+
 function signOffStale(j){
   if(!j.signedOff)return false;
   const now=parseFloat(j.quote)||0, then=parseFloat(j.signedOffAmount)||0;
@@ -2894,6 +3344,8 @@ function signOffH(j){
     (isBoss
       ? '<button class="btn btn-green btn-sm btn-full" style="margin-bottom:5px" onclick="signOff(\''+j.id+'\')">\u2713 Approve \u2014 send to the adviser</button>'+
         '<button class="btn btn-ghost btn-sm btn-full" style="color:var(--red);border-color:var(--red)" onclick="sendBackToEstimator(\''+j.id+'\')">\u21a9 Send back to the estimator</button>'+
+        (canAdjustLabour(j)?'<button class="btn btn-gold btn-sm btn-full" style="margin-top:5px" onclick="toggleLabourFix(\''+j.id+'\')">\u270f\ufe0f '+(LF_OPEN[j.id]?'Close labour adjust':'Adjust labour')+'</button>':'')+
+        '<button class="btn btn-ghost btn-sm btn-full" style="margin-top:5px;color:var(--red);border-color:var(--red)" onclick="disapproveJob(\''+j.id+'\')">\u2717 Disapproved \u2014 needs a reason</button>'+
         '<button class="btn btn-ghost btn-xs btn-full" style="margin-top:5px" onclick="logPhoneSignOff(\''+j.id+'\')">\u260e\ufe0f Record a phone sign-off</button>'
       : '<div style="font-size:11px;color:var(--faint)">Only Logkith can approve this.</div>')+
   '</div>';
@@ -3001,6 +3453,8 @@ function cardH(j){
     (function(){const c=(typeof posForJob==='function')?posForJob(j.id).length:0;
       return c>1?'<div style="font-size:9px;font-weight:800;color:var(--gold);margin-bottom:4px">\ud83d\udce6 '+c+' POs RAISED</div>':'';})()+
     (j.stage==='signoff'?'<div style="font-size:9px;font-weight:800;color:var(--amber);margin-bottom:4px">\u23f3 AWAITING SIGN-OFF</div>':'')+
+    (j.partsLate&&!j.partsLate.clearedAt?'<div style="font-size:9px;font-weight:800;color:var(--red);margin-bottom:4px">\u26a0 PARTS LATE \u2014 REBOOK</div>':'')+
+    (j.orderNeeded&&j.orderNeeded.pingedAt&&!j.orderNeeded.doneAt?'<div style="font-size:9px;font-weight:800;color:var(--amber);margin-bottom:4px">\ud83d\udce6 ORDER PARTS NOW</div>':'')+
     (j.stage==='ready'?'<div style="font-size:9px;font-weight:800;color:'+(readyToBook(j)?'var(--green)':'var(--amber)')+';margin-bottom:4px">'+
       (readyToBook(j)?'\u2713 DEPOSIT + T&CS DONE':'\u23f3 '+(depositDone(j)?'':'DEPOSIT')+((!depositDone(j)&&!tcDone(j))?' + ':'')+(tcDone(j)?'':'T&CS')+' OUTSTANDING')+'</div>':'')+
     ((['booked','po','raised','checkin','inprog'].includes(j.stage)&&!j.estApproved)
@@ -3104,7 +3558,7 @@ function renderList(){
   }).join('');
 }
 
-function renderAll(){renderBoard();renderList();renderInbox();try{renderMyNextJob();}catch(e){}
+function renderAll(){renderBoard();renderList();renderInbox();try{renderMyNextJob();}catch(e){}try{updateQueueBadge();}catch(e){}
   try{const el=document.getElementById('cnt-chase');if(el){const c=chaseDueCount()+remindersDue().length;el.textContent=c?'('+c+')':'';
     const ae=document.getElementById('cnt-assign');if(ae){const ac=unnotifiedJobs().length;ae.textContent=ac?'('+ac+')':'';ae.style.color=ac?'var(--amber)':'var(--faint)';}
     const ue=document.getElementById('cnt-unap');if(ue){const uc=unapprovedInOrdering().length;ue.textContent=uc?'('+uc+')':'';ue.style.color=uc?'var(--red)':'var(--faint)';}
@@ -3332,33 +3786,300 @@ function pmH(rows){
 // ============================================================
 var NOTIFS=[];
 try{NOTIFS=JSON.parse(localStorage.getItem('kith_notifs')||'[]');}catch(e){NOTIFS=[];}
-function saveNotifs(){
-  try{if(typeof safeSet==='function')safeSet('kith_notifs',JSON.stringify(NOTIFS.slice(0,300)));
-      else localStorage.setItem('kith_notifs',JSON.stringify(NOTIFS.slice(0,300)));}catch(e){}
+// Shared between every screen through one Supabase row, so a ping raised
+// on Harith's laptop reaches Sudha's. Merged by id, newest 300 kept.
+// ── PHONE ALERTS (16 Sep 2026) ───────────────────────────────────────
+// Every ping is also written to kith_pings. Supabase then sends it to the
+// right person's phone: an app notification on each device they switched
+// on, plus WhatsApp once the Business account is connected.
+const VAPID_PUBLIC='BJo3ZdHwoTxIeQkJBB2Vw6o7ELkgiWPEDKytOGFjZsp5B1tIMh9U3MiFazsC3Y5Ac9MRbBno93OmkO2qZ0ldMaU';
+const APP_ID='crm';
+function pushSupported(){return 'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;}
+function isStandalone(){return (window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;}
+function isIOS(){return /iphone|ipad|ipod/i.test(navigator.userAgent||'');}
+let _swReg=null;
+async function swReady(){
+  if(_swReg||!('serviceWorker' in navigator))return _swReg;
+  try{_swReg=await navigator.serviceWorker.register('sw.js');}catch(e){console.warn('sw:',e);}
+  return _swReg;
 }
-// Raise a notification. De-dupes on role+key so the same nudge for the
-// same job doesn't stack up every render.
+function _b64ToBytes(b){
+  const pad='='.repeat((4-b.length%4)%4);
+  const raw=atob((b+pad).replace(/-/g,'+').replace(/_/g,'/'));
+  return Uint8Array.from(raw,c=>c.charCodeAt(0));
+}
+async function savePushSub(sub){
+  if(!sub||!currentUser)return false;
+  const j=sub.toJSON();
+  const r=await fetch(SB_URL+'/rest/v1/push_subs',{method:'POST',
+    headers:{...SB_HDR,'Prefer':'resolution=merge-duplicates'},
+    body:JSON.stringify([{endpoint:j.endpoint,staff:currentUser.name,app:APP_ID,sub:j,
+      ua:String(navigator.userAgent||'').slice(0,160),updated_at:new Date().toISOString()}])});
+  return r.ok;
+}
+async function phoneAlertsState(){
+  if(!pushSupported())return isIOS()&&!isStandalone()?'ios-install':'unsupported';
+  if(Notification.permission==='denied')return 'blocked';
+  const reg=await swReady();
+  const sub=reg&&await reg.pushManager.getSubscription();
+  return sub?'on':'off';
+}
+async function enablePhoneAlerts(){
+  const out=document.getElementById('pa-status');
+  const say=(t,c)=>{if(out){out.innerHTML=t;out.style.color=c||'var(--dim)';}};
+  try{
+    if(!pushSupported()){
+      say(isIOS()?'On iPhone: tap Share \u2192 <strong>Add to Home Screen</strong>, open KITH CRM from the home screen, then turn alerts on there.':'This browser cannot receive alerts. Use Chrome on Android, or Safari from the iPhone home screen.','var(--amber)');
+      return;
+    }
+    const perm=await Notification.requestPermission();
+    if(perm!=='granted'){say('Alerts were not allowed. Turn them on in the phone settings for this app, then try again.','var(--red)');return;}
+    const reg=await swReady();
+    if(!reg){say('Could not start the alert service \u2014 check sw.js is uploaded next to index.html.','var(--red)');return;}
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:_b64ToBytes(VAPID_PUBLIC)});
+    const ok=await savePushSub(sub);
+    say(ok?'\u2713 Phone alerts on for '+escHtml(currentUser.name)+' on this device.':'Alerts are on here, but saving failed \u2014 run the setup SQL in Supabase.',ok?'var(--green)':'var(--amber)');
+    try{reg.showNotification('\u2713 KITH alerts are on',{body:'You will get your own pings on this device.',icon:'icon-192.png',tag:'kith-hello'});}catch(e){}
+  }catch(e){say('Could not turn alerts on \u2014 '+escHtml(String(e.message||e).slice(0,100)),'var(--red)');}
+}
+async function disablePhoneAlerts(){
+  try{
+    const reg=await swReady();const sub=reg&&await reg.pushManager.getSubscription();
+    if(sub){
+      await fetch(SB_URL+'/rest/v1/push_subs?endpoint=eq.'+encodeURIComponent(sub.endpoint),{method:'DELETE',headers:SB_HDR}).catch(()=>{});
+      await sub.unsubscribe();
+    }
+  }catch(e){}
+  const m=document.getElementById('q-modal');if(m){m.remove();openQueue();}
+}
+// A shared phone re-assigns its alerts to whoever logs in on it.
+async function refreshPushOwner(){
+  try{
+    if(!pushSupported()||Notification.permission!=='granted')return;
+    const reg=await swReady();const sub=reg&&await reg.pushManager.getSubscription();
+    if(sub)await savePushSub(sub);
+  }catch(e){}
+}
+function testPhonePing(){
+  if(!currentUser)return;
+  pushNotif('all','\ud83d\udd14 Test ping for '+currentUser.name,'If this reached your lock screen, phone alerts are working.',
+    {to:currentUser.name,key:'test|'+Date.now()});
+  const o=document.getElementById('pa-status');
+  if(o){o.textContent='Sent \u2014 it should arrive within a few seconds. Nothing? Check the setup guide, step 6.';o.style.color='var(--dim)';}
+}
+let _pingWarned=false;
+function queuePhonePing(n){
+  if(!n)return;
+  const toEst=n.role==='estimator'||['Sesugh','Joel','Ian','Muhammad Talha','Harith'].indexOf(n.to)>-1;
+  const url=(toEst&&n.jobId?'kith-estimator.html':'./')+(n.poId&&!n.jobId?'?po='+encodeURIComponent(n.poId):(n.jobId?'?job='+encodeURIComponent(n.jobId):''));
+  fetch(SB_URL+'/rest/v1/kith_pings',{method:'POST',headers:SB_HDR,body:JSON.stringify([{
+    id:n.id,to_name:n.to||null,role:n.role||null,title:String(n.title||'').slice(0,200),
+    body:String(n.body||'').slice(0,600),url,job_id:n.jobId||null,raised_by:n.by||null,app:APP_ID}])})
+  .then(r=>{if(!r.ok&&!_pingWarned){_pingWarned=true;console.warn('Phone pings not set up yet (kith_pings '+r.status+')');}})
+  .catch(()=>{});
+}
+async function phoneAlertsH(){
+  const st=await phoneAlertsState();
+  const box=(col,txt,btn)=>'<div style="background:var(--surface2);border-left:3px solid '+col+';border-radius:var(--rs);padding:9px 11px;margin-bottom:12px">'+
+    '<div style="font-size:12px;font-weight:700;color:'+col+'">\ud83d\udcf1 '+txt+'</div>'+(btn||'')+'<div id="pa-status" style="font-size:11px;margin-top:5px"></div></div>';
+  if(st==='on')return box('var(--green)','Phone alerts are on for this device',
+    '<button class="btn btn-gold btn-xs" style="margin-top:6px;margin-right:5px" onclick="testPhonePing()">Send me a test ping</button>'+
+    '<button class="btn btn-ghost btn-xs" style="margin-top:6px" onclick="disablePhoneAlerts()">Turn off</button>');
+  if(st==='blocked')return box('var(--red)','Alerts are blocked on this device \u2014 allow notifications for KITH in the phone settings');
+  if(st==='ios-install')return box('var(--amber)','iPhone: add KITH to your home screen first',
+    '<div style="font-size:11px;color:var(--dim);margin-top:4px">Tap Share \u2192 <strong>Add to Home Screen</strong>, open it from there, log in, and turn alerts on.</div>');
+  if(st==='unsupported')return box('var(--faint)','This browser cannot receive phone alerts');
+  return box('var(--amber)','Get your pings on this phone',
+    '<button class="btn btn-gold btn-sm" style="margin-top:6px" onclick="enablePhoneAlerts()">Turn on phone alerts</button>');
+}
+// Open a job or PO from a tapped alert
+function openFromUrl(u){
+  try{
+    const q=new URL(u||location.href,location.href).searchParams;
+    const job=q.get('job'),po=q.get('po');
+    if(!job&&!po)return;
+    const go=()=>{
+      if(job&&jobs.some(x=>x.id===job)){openJob(job);return true;}
+      if(po&&typeof pos!=='undefined'&&pos.some(x=>x.id===po)){openPODetail(po);return true;}
+      return false;
+    };
+    let tries=0;const t=setInterval(()=>{if((currentUser&&go())||++tries>30)clearInterval(t);},500);
+    history.replaceState(null,'',location.pathname);
+  }catch(e){}
+}
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.addEventListener('message',e=>{if(e.data&&e.data.type==='kith-open')openFromUrl(e.data.url);});
+  window.addEventListener('load',()=>{swReady();openFromUrl(location.href);});
+}
+
+function mergeNotifs(a,b){
+  const by={};
+  (a||[]).concat(b||[]).forEach(n=>{
+    if(!n||!n.id)return;
+    const x=by[n.id];
+    if(!x){by[n.id]=Object.assign({},n);return;}
+    if(n.seen&&!x.seen){x.seen=true;x.seenAt=n.seenAt;x.seenBy=n.seenBy;}
+  });
+  return Object.values(by).sort((p,q)=>(q.ts||0)-(p.ts||0)).slice(0,300);
+}
+let _notifPushT=null;
+function saveNotifs(){
+  try{if(typeof safeSet==='function')safeSet('kith_notifs',JSON.stringify(NOTIFS));}catch(e){}
+  clearTimeout(_notifPushT);
+  _notifPushT=setTimeout(async()=>{
+    try{
+      const remote=await fetchNotifsRemote();
+      NOTIFS=mergeNotifs(NOTIFS,remote);
+      await sbUpsert([{id:'__notifs__',data:{list:NOTIFS},updated_at:new Date().toISOString()}]);
+    }catch(e){console.warn('notif sync:',e);}
+  },700);
+}
+async function fetchNotifsRemote(){
+  const r=await fetch(SB_URL+'/rest/v1/jobs?id=eq.__notifs__&select=data',{headers:SB_HDR});
+  if(!r.ok)return [];
+  const rows=await r.json();
+  return (rows[0]&&rows[0].data&&rows[0].data.list)||[];
+}
+async function syncNotifs(){
+  try{
+    const before=new Set(myNotifs().map(n=>n.id));
+    NOTIFS=mergeNotifs(NOTIFS,await fetchNotifsRemote());
+    try{if(typeof safeSet==='function')safeSet('kith_notifs',JSON.stringify(NOTIFS));}catch(e){}
+    myNotifs().filter(n=>!before.has(n.id)&&Date.now()-(n.ts||0)<10*60000).slice(0,3)
+      .forEach(n=>{try{showNotif('\ud83d\udd14 '+n.title,n.body||'','notif-'+n.id);}catch(e){}});
+    updateQueueBadge();
+  }catch(e){}
+}
+setInterval(syncNotifs,20000);
+setTimeout(syncNotifs,3000);
+
+// Raise a notification. role = who handles it (estimator/adviser/parts/
+// accounts/workshop/all). opts.to = one named person. De-dupes on key.
 function pushNotif(role,title,body,opts){
   opts=opts||{};
   var key=(opts.key||role+'|'+title+'|'+(opts.jobId||opts.poId||''));
   if(NOTIFS.some(function(n){return !n.seen&&n.key===key;}))return null;  // already waiting
-  var n={id:'N'+Date.now()+Math.floor(Math.random()*999),key:key,role:role,
+  var n={id:'N'+Date.now()+Math.floor(Math.random()*9999),key:key,role:role,to:opts.to||'',
     title:title,body:body||'',jobId:opts.jobId||null,poId:opts.poId||null,
     at:(typeof ts==='function'?ts():new Date().toISOString()),ts:Date.now(),
     by:(typeof currentUser!=='undefined'&&currentUser?currentUser.name:'system'),seen:false};
   NOTIFS.unshift(n);
   saveNotifs();
+  if(!opts.noPhone)try{queuePhonePing(n);}catch(e){}
+  try{updateQueueBadge();}catch(e){}
   return n;
+}
+function notifIsFor(n,u){
+  if(!u)return false;
+  if(u.name==='Logkith')return true;
+  if(n.to)return n.to===u.name;
+  return n.role==='all'||(typeof hasRole==='function'?hasRole(u,n.role):u.filter===n.role);
+}
+function myNotifs(){
+  const u=(typeof currentUser!=='undefined')?currentUser:null;
+  return NOTIFS.filter(n=>!n.seen&&notifIsFor(n,u));
 }
 function notifsFor(role){return NOTIFS.filter(function(n){return !n.seen&&(n.role===role||n.role==='all');});}
 function unseenNotifCount(role){return notifsFor(role).length;}
 function markNotifSeen(id){
   var n=NOTIFS.find(function(x){return x.id===id;});
-  if(n){n.seen=true;n.seenAt=Date.now();saveNotifs();}
+  if(n&&!n.seen){n.seen=true;n.seenAt=Date.now();n.seenBy=currentUser?currentUser.name:'';saveNotifs();}
+  try{updateQueueBadge();}catch(e){}
 }
 function clearNotifsForJob(jobId,role){
-  NOTIFS.forEach(function(n){if(n.jobId===jobId&&(!role||n.role===role))n.seen=true;});
+  NOTIFS.forEach(function(n){if(n.jobId===jobId&&(!role||n.role===role)&&!n.seen){n.seen=true;n.seenAt=Date.now();}});
   saveNotifs();
+}
+
+// ── YOUR QUEUE ───────────────────────────────────────────────────────
+// Everything waiting on the person logged in: new pings, plus the jobs
+// sitting in the stages they own. Nobody should have to go looking.
+function myWork(){
+  const u=(typeof currentUser!=='undefined')?currentUser:null;
+  if(!u)return [];
+  const boss=u.name==='Logkith';
+  const has=r=>boss||(typeof hasRole==='function'?hasRole(u,r):u.filter===r);
+  const live=jobs.filter(j=>j&&!j.mergedInto&&j.stage!=='lost');
+  const out=[];
+  const add=(j,why)=>out.push({kind:'job',id:j.id,reg:j.reg||'',name:j.name||'',why,since:j.stageAt||0});
+  if(boss)live.filter(j=>j.stage==='signoff').forEach(j=>add(j,'Waiting on your sign-off'));
+  if(boss)live.filter(j=>j.stage==='disapproved').forEach(j=>add(j,'Disapproved \u2014 write why and fix it'));
+  if(has('estimator'))live.filter(j=>['intake','labour','financial'].includes(j.stage)&&(boss?true:j.assignedEstimator===u.name))
+    .forEach(j=>add(j,j.stage==='financial'?'Final estimate to confirm':(j.tmJob?'Pricing in progress':'Start pricing')));
+  if(has('parts'))live.filter(j=>['parts','po'].includes(j.stage))
+    .forEach(j=>add(j,j.stage==='parts'?'Price the parts':'Raise the orders'));
+  if(has('parts'))live.filter(j=>j.orderNeeded&&j.orderNeeded.pingedAt&&!j.orderNeeded.doneAt&&!['parts','po'].includes(j.stage))
+    .forEach(j=>add(j,'Order the parts \u2014 booked '+(j.bookedFor?fmtBookDate(j.bookedFor):'')));
+  if(has('adviser'))live.filter(j=>['contact','contacted','waiting','waiting2','ready','authwait'].includes(j.stage)||(j.stage==='booked'&&!j.bookedFor))
+    .forEach(j=>add(j,j.stage==='booked'?'Needs a booking date':stg(j.stage).label.replace(/^\d+ \u00b7 /,'')));
+  if(has('adviser'))live.filter(j=>j.partsLate&&!j.partsLate.clearedAt)
+    .forEach(j=>add(j,'Parts late ('+(j.partsLate.poNum||'PO')+') — rebook'));
+  if(has('workshop'))live.filter(j=>['checkin','inprog'].includes(j.stage))
+    .forEach(j=>add(j,j.stage==='checkin'?'Check the vehicle in':'In the workshop'));
+  if(has('accounts')){
+    live.filter(j=>['accounts','receivable'].includes(j.stage)).forEach(j=>add(j,j.stage==='accounts'?'Raise the invoice':'Chase payment'));
+    (typeof pos!=='undefined'?pos:[]).filter(p=>p.pay&&p.pay.state==='to-pay').forEach(p=>out.push({kind:'po',id:p.id,reg:p.num,
+      name:p.supplier,why:'Pay \u2014 '+((PO_PAY_METHODS[p.pay.method]||{}).label||'')+(p.pay.urgent?' (urgent)':''),since:0}));
+  }
+  const seen=new Set();
+  return out.filter(x=>{const k=x.kind+x.id;if(seen.has(k))return false;seen.add(k);return true;})
+            .sort((a,b)=>(a.since||0)-(b.since||0));
+}
+function updateQueueBadge(){
+  const el=document.getElementById('q-count');if(!el)return;
+  const n=myNotifs().length;
+  el.textContent=n?String(n):'';
+  el.style.display=n?'inline-block':'none';
+}
+function openQueueItem(kind,id,nid){
+  if(nid)markNotifSeen(nid);
+  const m=document.getElementById('q-modal');if(m)m.remove();
+  if(kind==='po'&&typeof openPODetail==='function'){openPODetail(id);return;}
+  if(id)openJob(id);
+}
+function markAllMineSeen(){
+  myNotifs().forEach(n=>{n.seen=true;n.seenAt=Date.now();n.seenBy=currentUser?currentUser.name:'';});
+  saveNotifs();updateQueueBadge();
+  const m=document.getElementById('q-modal');if(m)m.remove();
+  openQueue();
+}
+function openQueue(){
+  if(!currentUser){showLogin();return;}
+  const old=document.getElementById('q-modal');if(old)old.remove();
+  const ns=myNotifs();
+  const work=myWork();
+  const age=t=>{if(!t)return '';const h=Math.floor((Date.now()-t)/3600000);return h<1?'<1h':(h<24?h+'h':Math.floor(h/24)+'d');};
+  const w=document.createElement('div');
+  w.id='q-modal';
+  w.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1400;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px 16px';
+  w.innerHTML='<div style="background:var(--surface);border-radius:var(--r);padding:18px;max-width:560px;width:100%;max-height:86vh;overflow-y:auto">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
+      '<div style="font-weight:800;font-size:16px">\ud83d\udd14 Your queue \u2014 '+escHtml(currentUser.name)+'</div>'+
+      '<button onclick="document.getElementById(\'q-modal\').remove()" style="background:none;border:none;color:var(--dim);font-size:22px;cursor:pointer">\u00d7</button></div>'+
+    '<div id="pa-box"></div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+      '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint)">New for you ('+ns.length+')</div>'+
+      (ns.length?'<button class="btn btn-ghost btn-xs" onclick="markAllMineSeen()">Mark all read</button>':'')+'</div>'+
+    (ns.length?ns.map(n=>'<div style="background:var(--surface2);border-left:3px solid var(--gold);border-radius:var(--rs);padding:8px 10px;margin-bottom:6px;cursor:pointer" '+
+        'onclick="openQueueItem(\''+(n.poId&&!n.jobId?'po':'job')+'\',\''+escHtml(n.poId&&!n.jobId?n.poId:(n.jobId||''))+'\',\''+n.id+'\')">'+
+        '<div style="font-size:12px;font-weight:700">'+escHtml(n.title)+'</div>'+
+        (n.body?'<div style="font-size:11px;color:var(--dim);margin-top:2px">'+escHtml(n.body)+'</div>':'')+
+        '<div style="font-size:10px;color:var(--faint);margin-top:3px">'+escHtml(n.at||'')+(n.by?' \u00b7 from '+escHtml(n.by):'')+'</div></div>').join('')
+      :'<div style="font-size:12px;color:var(--green);padding:6px 0 10px">\u2713 Nothing new.</div>')+
+    '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin:14px 0 6px">Waiting on you ('+work.length+')</div>'+
+    (work.length?work.map(x=>'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer" '+
+        'onclick="openQueueItem(\''+x.kind+'\',\''+x.id+'\')">'+
+        '<div style="min-width:0;flex:1"><span style="font-weight:800;color:var(--gold);font-family:monospace">'+escHtml(x.reg)+'</span> '+
+          '<span style="font-size:12px">'+escHtml(x.name)+'</span>'+
+          '<div style="font-size:11px;color:var(--dim)">'+escHtml(x.why)+'</div></div>'+
+        (x.since?'<span style="font-size:10px;font-weight:700;color:'+((Date.now()-x.since)>86400000?'var(--red)':'var(--faint)')+'">'+age(x.since)+'</span>':'')+
+      '</div>').join('')
+      :'<div style="font-size:12px;color:var(--green);padding:6px 0">\u2713 Nothing waiting on you.</div>')+
+  '</div>';
+  w.addEventListener('click',e=>{if(e.target===w)w.remove();});
+  document.body.appendChild(w);
+  phoneAlertsH().then(h=>{const b=document.getElementById('pa-box');if(b)b.innerHTML=h;}).catch(()=>{});
 }
 
 function notifyRole(filter,msg){
@@ -3456,6 +4177,31 @@ function waLink(phone,msg){
   return'https://wa.me/'+phone+'?text='+encodeURIComponent(msg);
 }
 
+// ── ESTIMATOR APP LINK (16 Sep 2026) ────────────────────────────────
+const EST_APP='kith-estimator.html';
+function openInEstimator(id){window.open(EST_APP+'?job='+encodeURIComponent(id),'_blank');}
+function estimateSummaryH(j){
+  const e=j.estimate;
+  const open='<button class="btn btn-ghost btn-sm btn-full" style="margin-bottom:10px" onclick="openInEstimator(\''+j.id+'\')">\ud83e\uddee Open in the estimator app</button>';
+  if(!e||!e.lines)return open;
+  const kind={labour:'Labour',part:'Part',fluid:'Fluid',tyre:'Tyre',fixed:'Fixed',mot:'MOT',panel:'Panel'};
+  return '<div style="background:var(--surface2);border:1px solid var(--blue);border-radius:var(--r);padding:10px 12px;margin-bottom:10px">'+
+    '<div style="font-size:12px;font-weight:800;color:var(--blue)">\ud83e\uddee Priced in the estimator app \u2014 SOP v'+escHtml(e.sop_version||'')+'</div>'+
+    '<div style="font-size:10px;color:var(--faint);margin-bottom:6px">'+escHtml(e.priced_by||'')+(e.priced_at?' \u00b7 '+escHtml(new Date(e.priced_at).toLocaleString('en-GB')):'')+
+      (e.customer_type?' \u00b7 '+escHtml(e.customer_type):'')+(e.ramp_exempt?' \u00b7 ramp-exempt':'')+'</div>'+
+    e.lines.map(l=>'<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:3px 0;border-bottom:1px solid var(--border)">'+
+      '<span style="min-width:0"><span style="color:var(--faint)">'+escHtml(kind[l.kind]||l.kind||'')+'</span> '+escHtml(l.label||'')+
+      (l.working?'<div style="font-size:10px;color:var(--faint)">'+escHtml(String(l.working).slice(0,140))+'</div>':'')+'</span>'+
+      '<span style="font-weight:700;flex-shrink:0">\u00a3'+(parseFloat(l.total)||0).toFixed(2)+'</span></div>').join('')+
+    '<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:800;margin-top:6px">'+
+      '<span>Customer pays'+(e.vat?' (inc VAT \u00a3'+(parseFloat(e.vat)||0).toFixed(2)+')':'')+'</span>'+
+      '<span style="color:var(--gold)">\u00a3'+(parseFloat(e.customer_pays)||0).toFixed(2)+'</span></div>'+
+    (e.deposit_required?'<div style="font-size:11px;color:var(--amber);margin-top:3px">Deposit \u00a3'+(parseFloat(e.deposit)||0).toFixed(2)+'</div>':'')+
+    (e.intake_overrides&&e.intake_overrides.length?'<div style="font-size:11px;color:var(--red);margin-top:3px">Overrode intake: '+escHtml(e.intake_overrides.join('; '))+'</div>':'')+
+    (e.checklist_complete===false?'<div style="font-size:11px;color:var(--amber);margin-top:3px">\u26a0 Checklist not completed</div>':'')+
+  '</div>'+open;
+}
+
 function actH(j){
   const f=j.name?j.name.split(' ')[0]:'Customer';
   let h='<div class="stitle">Actions — '+(stg(j.stage).owner||'All')+'</div>'+dupeJobBanner(j)+custTypeBanner(j);
@@ -3471,7 +4217,7 @@ function actH(j){
         '<div style="margin-top:8px">'+notifyRole('estimator','New job — '+j.reg+' '+j.make+' '+j.model+'. Please start labour estimate.')+'</div>';
       break;
     case 'labour':
-      h+=photoStripH(j,true)+estimateDocsH(j,false);
+      h+=photoStripH(j,true)+estimateSummaryH(j)+estimateDocsH(j,false);
       h+='<div class="notice n-blue" style="margin-bottom:12px">Estimator: enter Techman number, labour hours, and list any parts needed for the Parts team to price.</div>'+
         '<div class="fg" style="margin-bottom:8px"><label class="fl2">Assign to Estimator <span class="req">*</span></label>'+
         '<select class="fsel" id="a-estimator">'+
@@ -3563,7 +4309,7 @@ function actH(j){
       const exSubtotal=labourEx+partsEx;
       const vatAmount=vatExempt?0:exSubtotal*0.20;
       const incVAT=exSubtotal+vatAmount;
-      h+='<div class="notice n-teal" style="margin-bottom:12px">Estimator: review and confirm. Parts team entered <strong>raw cost prices</strong> — markup is applied automatically below.</div>'+
+      h+=estimateSummaryH(j)+'<div class="notice n-teal" style="margin-bottom:12px">Estimator: review and confirm. Parts team entered <strong>raw cost prices</strong> — markup is applied automatically below.</div>'+
         srtBreakdownH(j,true)+
         photoStripH(j,true)+
         '<div style="background:var(--surface2);border-radius:var(--rs);padding:12px 14px;margin-bottom:12px">'+
@@ -3583,7 +4329,7 @@ function actH(j){
             '<div><div style="font-size:10px;color:var(--gold);text-transform:uppercase;font-weight:700">Total inc-VAT</div><div id="inc-vat-display" style="font-size:22px;font-weight:900;color:var(--gold)">£'+incVAT.toFixed(2)+'</div></div>'+
           '</div>'+
         '</div>'+
-        '<div class="fg" style="margin-bottom:4px"><label class="fl2">Final Quote to Customer (£) <span class="req">*</span></label><input class="fi2" id="a-final-quote" type="number" value="'+incVAT.toFixed(2)+'" placeholder="0.00"/></div>'+
+        '<div class="fg" style="margin-bottom:4px"><label class="fl2">Final Quote to Customer (£) <span class="req">*</span></label><input class="fi2" id="a-final-quote" type="number" value="'+((j.estimate&&parseFloat(j.quote))?parseFloat(j.quote):incVAT).toFixed(2)+'" placeholder="0.00"/></div>'+
         '<div style="font-size:11px;color:var(--faint);margin-bottom:12px">Adjust if needed. This is the price quoted to the customer.</div>'+
         (j.parts&&j.parts.length?
           '<div class="stitle" style="margin-bottom:6px">Parts Breakdown (cost → markup → sell price)</div>'+
@@ -3623,8 +4369,12 @@ function actH(j){
         '<button class="btn btn-gold btn-full" onclick="financialDone()">\u2713 Quote Confirmed \u2192 Service Adviser</button>'+
         '<div style="margin-top:8px">'+notifyRole('adviser','Quote ready for '+j.reg+' '+j.make+' '+j.model+' \u2014 \u00a3'+incVAT.toFixed(2)+' inc-VAT. Please contact the customer.')+'</div>';
       break;}
+    case 'disapproved':
+      h+=disapprovedH(j)+labourFixH(j,'disapproved')+estimateSummaryH(j)+
+        estimateDocsH(j,false)+photoStripH(j);
+      break;
     case 'signoff':
-      h+=signOffH(j)+
+      h+=signOffH(j)+(LF_OPEN[j.id]?labourFixH(j,'signoff'):'')+estimateSummaryH(j)+
         estimateDocsH(j,false)+
         photoStripH(j)+
         srtBreakdownH(j,false);
@@ -4444,6 +5194,7 @@ function supplierContactsH(){
 
 function quoteDrift(j){
   if(!j||!j.parts||!j.parts.length||!j.quote)return 0;
+  if(j.estimate&&j.estimate.sop_version)return 0;   // priced by the estimator app on SOP rules
   let sell=0;
   j.parts.forEach(p=>{const q=parseInt(p.qty)||1;
     const c=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
@@ -4898,12 +5649,14 @@ function openBookingModal(id){
         '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:none;border:none;color:var(--dim);font-size:22px;cursor:pointer">×</button>'+
       '</div>'+
       '<div style="font-size:12px;color:var(--dim);margin-bottom:14px">'+escHtml(j.reg||'')+' · '+escHtml(j.name||'')+'</div>'+
+      (function(){try{return smartSlotsH(j);}catch(e){console.warn('slots',e);return '';}})()+
       '<div style="display:flex;gap:10px;margin-bottom:14px">'+
         '<div style="flex:1"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin-bottom:4px">Date</div>'+
-          '<input type="date" id="bk-date" class="fi2" value="'+(j.bookedFor||'')+'" style="width:100%"/></div>'+
+          '<input type="date" id="bk-date" class="fi2" value="'+(j.bookedFor||'')+'" style="width:100%" onchange="checkBkDate(\''+j.id+'\')"/></div>'+
         '<div style="flex:1"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin-bottom:4px">Time</div>'+
           '<input type="time" id="bk-time" class="fi2" value="'+(j.bookedTime||'09:00')+'" style="width:100%"/></div>'+
       '</div>'+
+      '<div id="bk-probs"></div>'+
       '<div style="margin-bottom:14px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin-bottom:4px">Mechanic (optional)</div>'+
         '<select id="bk-mech" class="fi2" style="width:100%"><option value="">Unassigned</option>'+
         MECHANICS.map(m=>'<option value="'+escHtml(m)+'"'+(j.mechanic===m?' selected':'')+'>'+escHtml(m)+'</option>').join('')+'</select></div>'+
@@ -4930,10 +5683,14 @@ function saveBooking(id){
   const j=jobs.find(x=>x.id===id);if(!j)return;
   const d=document.getElementById('bk-date'),t=document.getElementById('bk-time'),mch=document.getElementById('bk-mech');
   if(!d||!d.value){alert('Pick a date first.');return;}
+  const probs=slotProblems(j,d.value);
+  if(probs.length&&!confirm('\u26a0 '+probs.join('\n\u26a0 ')+'\n\nBook it on '+fmtBookDate(d.value)+' anyway?'))return;
+  if(probs.length){j.log=j.log||[];j.log.push({t:ts(),s:'\u26a0 Booked against the calendar rules: '+probs.join('; ')+(currentUser?' ['+currentUser.name+']':'')});}
   j.bookedFor=d.value;
   j.bookedTime=t?t.value:'';
   if(mch)j.mechanic=mch.value;
   j.log=j.log||[];
+  try{checkOrderNeeded(j);}catch(e){console.warn('order check',e);}
   j.log.push({t:ts(),s:'📅 Booked for '+fmtBookDate(j.bookedFor)+(j.bookedTime?' at '+fmt12(j.bookedTime):'')+(j.mechanic?' — '+j.mechanic:'')+(currentUser?' ['+currentUser.name+']':'')});
   save(j);
   // Confirm on screen BEFORE any redraw, so a render error downstream
@@ -5001,6 +5758,7 @@ function setBookedFor(id,val){
   j.log=j.log||[];
   const who=currentUser?' ['+currentUser.name+']':'';
   j.log.push({t:ts(),s:(val?('Booked for '+val+(prev&&prev!==val?' (was '+prev+')':'')):'Booking date cleared')+who});
+  try{checkOrderNeeded(j);}catch(e){}
   save(j);renderWeek();renderAll();
 }
 function setMechanic(id,val){
@@ -5031,7 +5789,8 @@ function renderWeek(){
     const last=days[5];
     lbl.textContent=mon.getDate()+' '+mon.toLocaleString('en-GB',{month:'short'})+' – '+last.getDate()+' '+last.toLocaleString('en-GB',{month:'short'})+' '+last.getFullYear()+(weekOffset===0?'  (this week)':'');
   }
-  const booked=jobs.filter(j=>j.bookedFor&&j.stage!=='lost');
+  const wside=document.getElementById('week-side')?.value||'';
+  const booked=jobs.filter(j=>j.bookedFor&&j.stage!=='lost'&&!j.mergedInto&&(!wside||schedSide(j)===wside));
   let total=0;
   const cols=days.map((d,i)=>{
     const ds=dstr(d);
@@ -5048,14 +5807,21 @@ function renderWeek(){
           '<div style="font-weight:800;font-size:11px;letter-spacing:.5px;color:var(--gold)">'+(j.bookedTime?'<span style="color:var(--fg);font-weight:600;letter-spacing:0">'+escHtml(fmt12(j.bookedTime))+'</span> ':'')+escHtml(j.reg||'')+'</div>'+
           '<div style="font-size:11px;margin-top:1px">'+escHtml(j.name||'')+'</div>'+
           '<div style="font-size:10px;color:var(--dim);margin-top:2px;line-height:1.3">'+escHtml((j.work||'').slice(0,60))+'</div>'+
-          '<div style="font-size:9px;color:var(--faint);margin-top:3px">'+escHtml(stg(j.stage).label)+'</div>'+
+          '<div style="font-size:9px;color:var(--faint);margin-top:3px">'+(schedSide(j)==='bodywork'?'\ud83c\udfa8 Body \u00b7 ':'\ud83d\udd27 Mech \u00b7 ')+escHtml(stg(j.stage).label)+'</div>'+
         '</div>').join('');
       return head+cards;
     }).join('');
     return '<div style="min-width:0;border-right:1px solid var(--line,#2a2a2a);padding:0 8px">'+
       '<div style="position:sticky;top:0;background:var(--bg,#111);padding:8px 0;border-bottom:2px solid '+(ds===today?'var(--gold)':'var(--line,#2a2a2a)')+';margin-bottom:4px">'+
         '<div style="font-weight:800;font-size:12px;'+(ds===today?'color:var(--gold)':'')+'">'+DAYN[i]+' '+d.getDate()+'</div>'+
-        '<div style="font-size:10px;color:var(--faint)">'+dayJobs.length+' job'+(dayJobs.length===1?'':'s')+'</div>'+
+        (function(){
+          const sides=wside?[wside]:['mechanical','bodywork'];
+          return sides.map(sd=>{
+            const open=(SCHED_DAYS[sd]||[]).indexOf(d.getDay())>=0;
+            const n=bookedCountFor(sd,ds), cap=SCHED_CAP[sd]||0;
+            const col=!open?'var(--faint)':(n>=cap?'var(--red)':(n>=cap-1?'var(--amber)':'var(--green)'));
+            return '<div style="font-size:10px;color:'+col+'">'+(sd==='mechanical'?'Mech ':'Body ')+(open?n+'/'+cap+(n>=cap?' full':''):'closed')+'</div>';
+          }).join('');})()+
       '</div>'+
       (dayJobs.length?inner:'<div style="font-size:11px;color:var(--faint);padding:10px 0">—</div>')+
     '</div>';
@@ -5251,7 +6017,7 @@ function autoAssignEstimator(j){
   j.assignedAt=new Date().toISOString();
   j.log=j.log||[];
   j.log.push({t:ts(),s:'\u2192 Auto-assigned to '+pick.name+' (free, one job at a time)'});
-  try{if(typeof pushNotif==='function')pushNotif('estimator','\ud83d\udd27 New job to price \u2014 '+(j.reg||''),'Assigned to '+pick.name+'. '+(String(j.work||'').slice(0,60)),{jobId:j.id,key:'est-new|'+j.id});}catch(e){}
+  try{if(typeof pushNotif==='function')pushNotif('estimator','\ud83d\udd27 New job to price \u2014 '+(j.reg||''),'Assigned to '+pick.name+'. '+(String(j.work||'').slice(0,60)),{jobId:j.id,to:pick.name,key:'est-new|'+j.id});}catch(e){}
   return true;
 }
 function waitingEstimateJobs(){
@@ -7115,7 +7881,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-09-16-1640';
+const CRM_BUILD='2026-09-17-1200';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -10205,7 +10971,7 @@ function markPOPaid(poId){
   const conf='Paid: '+po.num+' to '+po.supplier+(poTotal(po)?' \u00a3'+poTotal(po).toFixed(2):'')+' by '+currentUser.name+(po.pay.ref?' (ref '+po.pay.ref+')':'')+'. Now awaiting arrival.';
   poQueueMsg(po,'whatsapp',(who&&who.wa)||po.createdBy||'',conf,'paid-confirmation');
   if(who&&typeof pushNotif==='function')
-    pushNotif(who.filter==='all'?'all':who.filter,'\u2713 Paid \u2014 '+po.num,conf,{poId:po.id,jobId:po.jobId||null,key:'paid|'+po.id});
+    pushNotif(who.filter==='all'?'all':who.filter,'\u2713 Paid \u2014 '+po.num,conf,{poId:po.id,jobId:po.jobId||null,to:who.name,key:'paid|'+po.id});
   NOTIFS.forEach(n=>{if(n.poId===po.id&&n.role==='accounts')n.seen=true;});
   if(typeof saveNotifs==='function')saveNotifs();
   if(po.jobId){
@@ -10240,6 +11006,10 @@ function finishPO(po,jobId){
   // ACCOUNTS HEADS-UP: driven by the payment method picked on the PO
   try{poPaymentHeadsUp(po);savePOs();}catch(e){console.warn('accounts heads-up:',e);}
   try{tagPartsOrdered(po);}catch(e){console.warn('tag parts:',e);}
+  try{
+    const _oj=jobId?jobs.find(x=>x.id===jobId):null;
+    if(_oj){checkPartsLate(_oj,po);checkOrderNeeded(_oj);save(_oj);}
+  }catch(e){console.warn('order/eta check:',e);}
   cx('ov-new-po');
   // Add to job log if linked
   if(jobId){
