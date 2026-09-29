@@ -1,0 +1,14 @@
+{
+  "name": "KITH Dashboard",
+  "short_name": "Dash",
+  "id": "kith-dash",
+  "start_url": "./kith-dash.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#14161A",
+  "theme_color": "#14161A",
+  "icons": [
+    { "src": "icon-dash-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-dash-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

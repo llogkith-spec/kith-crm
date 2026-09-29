@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KITH Adviser</title>
+<link rel="manifest" href="manifest-adviser.json">
+<meta name="theme-color" content="#14161A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="KITH Adviser">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="apple-touch-icon" href="icon-adv-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14161A; --bg-2:#1B1E24; --card:#20242B; --card-2:#262B33;
+  --line:#333A44; --line-soft:#2A2F37;
+  --ink:#EDEFF2; --ink-2:#A8B1BD; --ink-3:#6E7885;
+  --gold:#D8A32B; --gold-dim:#8A6A1C; --gold-bg:rgba(216,163,43,.10);
+  --go:#3FB07A; --go-bg:rgba(63,176,122,.12);
+  --warn:#E0A030; --warn-bg:rgba(224,160,48,.12);
+  --stop:#E05A4C; --stop-bg:rgba(224,90,76,.12);
+  --blue:#5B9BD5; --blue-bg:rgba(91,155,213,.12);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:14px;line-height:1.5}
+h1,h2,h3{font-family:"Barlow Condensed",Impact,sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin:0}
+.mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+[hidden]{display:none!important}
+
+.top{position:sticky;top:0;z-index:40;background:var(--bg-2);border-bottom:1px solid var(--line);padding:.55rem 1rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:.5rem}
+.brand h1{font-size:1.25rem;letter-spacing:.06em}
+.brand .v{font-family:"IBM Plex Mono",monospace;font-size:.66rem;color:var(--bg);background:var(--gold);padding:.1rem .35rem;border-radius:2px;font-weight:600}
+.spacer{flex:1}
+.pill{font-family:"IBM Plex Mono",monospace;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;padding:.25rem .5rem;border:1px solid var(--line);border-radius:99px;color:var(--ink-2);background:none;cursor:pointer}
+.pill.on{border-color:var(--gold);color:var(--gold);background:var(--gold-bg)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ink-3);display:inline-block}
+.dot.ok{background:var(--go)}.dot.err{background:var(--stop)}
+
+main{max-width:980px;margin:0 auto;padding:1rem 1rem 5rem}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem;margin-bottom:1rem}
+@media(max-width:560px){.tabs{grid-template-columns:1fr 1fr}}
+.tabs button{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:.55rem .7rem;cursor:pointer;text-align:left}
+.tabs button .n{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:1rem;letter-spacing:.03em;display:block}
+.tabs button .c{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3)}
+.tabs button.on{border-color:var(--gold);background:var(--gold-bg)}
+.tabs button .c.hot{color:var(--stop);font-weight:600}
+
+h2.sec{font-size:1rem;letter-spacing:.06em;color:var(--ink-2);margin:1.2rem 0 .5rem;display:flex;align-items:center;gap:.5rem}
+h2.sec .cnt{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3)}
+.hint{color:var(--ink-3);font-size:.82rem;margin:.1rem 0 .6rem}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;margin-bottom:.7rem;overflow:hidden}
+.card.hot{border-color:var(--stop)}
+.card.warm{border-color:var(--warn)}
+.card .hd{display:flex;align-items:flex-start;gap:.6rem;padding:.6rem .8rem;background:var(--card-2);border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+.reg{font-family:"IBM Plex Mono",monospace;font-weight:600;background:#F1C40F;color:#111;padding:.05rem .4rem;border-radius:3px;font-size:.85rem;letter-spacing:.04em}
+.card .hd .t{flex:1;min-width:160px}
+.card .hd .t b{display:block}
+.card .hd .t span{font-size:.78rem;color:var(--ink-3)}
+.card .bd{padding:.6rem .8rem}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:.62rem;text-transform:uppercase;letter-spacing:.07em;padding:.12rem .35rem;border-radius:2px;border:1px solid var(--line);color:var(--ink-3);white-space:nowrap}
+.tag.go{color:var(--go);border-color:var(--go)}.tag.warn{color:var(--warn);border-color:var(--warn)}
+.tag.stop{color:var(--stop);border-color:var(--stop)}.tag.gold{color:var(--gold);border-color:var(--gold)}
+.tag.blue{color:var(--blue);border-color:var(--blue)}
+.pl{display:flex;justify-content:space-between;gap:.6rem;padding:.3rem 0;border-bottom:1px dotted var(--line-soft);font-size:.85rem;align-items:center;flex-wrap:wrap}
+.pl:last-child{border-bottom:0}
+.pl .nm{flex:1;min-width:140px}
+.pl .acts{display:flex;gap:.35rem;flex-wrap:nowrap}
+.btns .when{margin:0;flex:1}
+@media(max-width:560px){.btns .when{flex-basis:100%}}
+.pl .nm small{color:var(--ink-3);display:block;font-family:"IBM Plex Mono",monospace;font-size:.7rem}
+.amt{font-family:"IBM Plex Mono",monospace;white-space:nowrap}
+.grp{margin-top:.5rem;padding-top:.5rem;border-top:1px solid var(--line-soft)}
+.grp:first-child{margin-top:0;padding-top:0;border-top:0}
+.grp .gh{display:flex;align-items:center;gap:.5rem;margin-bottom:.2rem;font-size:.8rem;color:var(--ink-2);flex-wrap:wrap}
+
+.btn{text-decoration:none;color:inherit;background:var(--card-2);border:1px solid var(--line);border-radius:5px;padding:.42rem .75rem;cursor:pointer;font-size:.85rem}
+.btn:hover{border-color:var(--gold);color:var(--gold)}
+.btn.primary{background:var(--gold);border-color:var(--gold);color:var(--bg);font-weight:600}
+.btn.primary:hover{background:#E8B23A;color:var(--bg)}
+.btn.go{border-color:var(--go);color:var(--go)}
+.btn.stop{border-color:var(--stop);color:var(--stop)}
+.btn.sm{padding:.22rem .5rem;font-size:.76rem}
+.btn.full{width:100%}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btns{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem}
+
+label.f{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);margin-bottom:.2rem;font-family:"IBM Plex Mono",monospace}
+input:not([type]),input[type=text],input[type=number],input[type=date],input[type=password],input[type=search],select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:.45rem .55rem;color:var(--ink)}
+textarea{min-height:64px;resize:vertical}
+input:focus,select:focus,textarea:focus{border-color:var(--gold);outline:none}
+.row{display:grid;gap:.5rem;margin-bottom:.6rem}
+.r2{grid-template-columns:1fr 1fr}.r3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:600px){.r2,.r3{grid-template-columns:1fr}}
+.line{display:grid;grid-template-columns:2fr 1.2fr .9fr .6fr auto;gap:.35rem;margin-bottom:.35rem;align-items:center}
+@media(max-width:600px){.line{grid-template-columns:1fr 1fr;}.line .nm-in{grid-column:1/-1}}
+.ck{display:flex;gap:.5rem;align-items:center;font-size:.85rem;cursor:pointer;padding:.2rem 0}
+.ck input{accent-color:var(--gold)}
+.chips{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.5rem}
+.chips button{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:.25rem .6rem;font-size:.78rem;cursor:pointer}
+.chips button.on{border-color:var(--gold);color:var(--gold);background:var(--gold-bg)}
+
+.note{border-left:3px solid var(--gold);background:var(--gold-bg);padding:.5rem .7rem;border-radius:0 4px 4px 0;font-size:.82rem;margin:.5rem 0}
+.note.stop{border-color:var(--stop);background:var(--stop-bg)}
+.note.go{border-color:var(--go);background:var(--go-bg)}
+.note.warn{border-color:var(--warn);background:var(--warn-bg)}
+.note.blue{border-color:var(--blue);background:var(--blue-bg)}
+.note b{display:block;font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.05em;font-size:.9rem}
+.empty{color:var(--ink-3);text-align:center;padding:1.1rem;border:1px dashed var(--line);border-radius:6px;font-size:.85rem}
+
+/* sheet (modal) */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:80;display:flex;align-items:flex-end;justify-content:center}
+@media(min-width:700px){.scrim{align-items:center}}
+.sheet{background:var(--card);border:1px solid var(--line);border-radius:10px 10px 0 0;width:100%;max-width:640px;max-height:92vh;overflow:auto;padding:1rem}
+@media(min-width:700px){.sheet{border-radius:10px}}
+.sheet h2{font-size:1.2rem;margin-bottom:.2rem}
+.sheet .x{float:right}
+
+/* login */
+#scr-login{max-width:520px;margin:2rem auto;padding:0 1rem}
+#scr-login h2{font-size:1.6rem}
+.who-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.5rem;margin:1rem 0}
+.who-btn{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.7rem;text-align:left;cursor:pointer}
+.who-btn.on{border-color:var(--gold);background:var(--gold-bg)}
+.who-btn .n{display:block;font-weight:600}
+.who-btn .r{display:block;font-size:.72rem;color:var(--ink-3)}
+.pin{font-size:1.4rem;letter-spacing:.4em;text-align:center}
+
+.stockrow{display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:center;padding:.55rem .8rem;border-bottom:1px solid var(--line-soft)}
+.stockrow:last-child{border-bottom:0}
+.qty{font-family:"IBM Plex Mono",monospace;font-size:1.05rem;font-weight:600}
+.qty.low{color:var(--stop)}
+.toast{position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);background:var(--card-2);border:1px solid var(--gold);color:var(--ink);padding:.55rem .9rem;border-radius:6px;font-size:.85rem;z-index:99;box-shadow:0 6px 24px rgba(0,0,0,.5);max-width:92vw}
+.spin{display:inline-block;width:11px;height:11px;border:2px solid var(--gold-dim);border-top-color:var(--gold);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}
+
+.when{font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-3)}
+.due{color:var(--stop);font-weight:600}
+.step{background:var(--bg);border:1px solid var(--line-soft);border-radius:6px;padding:.55rem .65rem;margin-top:.5rem}
+.step .h{display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem;flex-wrap:wrap}
+.msg{background:var(--bg);border:1px dashed var(--line);border-radius:6px;padding:.5rem .6rem;font-size:.8rem;white-space:pre-wrap;color:var(--ink-2);max-height:9rem;overflow:auto;margin:.4rem 0}
+.gate{display:flex;gap:.6rem;align-items:flex-start;padding:.45rem 0;border-bottom:1px dotted var(--line-soft)}
+.gate:last-child{border-bottom:0}
+.gate .tick{font-size:1rem;line-height:1.2}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.4rem;margin:.5rem 0}
+.slot{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:.45rem .55rem;cursor:pointer;text-align:left}
+.slot.on{border-color:var(--gold);background:var(--gold-bg)}
+.slot b{display:block;font-size:.84rem}
+.slot span{font-size:.7rem;color:var(--ink-3)}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><h1>KITH Adviser</h1><span class="v">v1.0</span></div>
+  <div class="spacer"></div>
+  <span class="dot" id="sync" title="Not loaded yet"></span>
+  <button class="pill" id="btnRefresh" hidden>Refresh</button>
+  <button class="pill" id="whoPill" hidden></button>
+</header>
+
+<div id="scr-login">
+  <h2>Who's on the phone?</h2>
+  <p class="hint">Your name goes on every message and booking.</p>
+  <div class="who-grid" id="whoGrid"></div>
+  <div id="pinBox" hidden>
+    <label class="f" for="pinIn">PIN</label>
+    <input type="password" inputmode="numeric" maxlength="6" class="pin" id="pinIn" placeholder="&#183;&#183;&#183;&#183;">
+    <button class="btn primary full" id="btnLogin" style="margin-top:.6rem">Sign in</button>
+    <div id="loginErr"></div>
+  </div>
+  <p class="hint" style="margin-top:1.4rem;font-size:.75rem">This says who you are so the CRM can record it. It is not a security lock.</p>
+</div>
+
+<main id="scr-main" hidden>
+  <nav class="tabs" id="tabs"></nav>
+  <div id="view"></div>
+</main>
+<div id="sheetHost"></div>
+<script src="kith-parts.js"></script>
+<script src="kith-adviser.js"></script>
+<script>
+'use strict';
+/* ===========================================================================
+   KITH ADVISER — the customer-facing half of the board, on a phone.
+   Send the estimate, chase for an answer, take the deposit and terms,
+   book them in, and tell them when the car is ready.
+   The rules live in kith-adviser.js so this app and the CRM agree.
+   Every job change is written with the same safe save the Parts app uses.
+   =========================================================================== */
+const A = window.KITHAdviser, P = window.KITHParts;
+const CFG = {
+  url: localStorage.getItem('kith_crm_url') || 'https://mxyrxyhvjndgjqupgstu.supabase.co',
+  key: localStorage.getItem('kith_crm_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog'
+};
+const REST = () => CFG.url.replace(/\/$/, '') + '/rest/v1/';
+const HDR = () => ({ apikey: CFG.key, Authorization: 'Bearer ' + CFG.key, 'Content-Type': 'application/json' });
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clone = o => JSON.parse(JSON.stringify(o));
+const gbp = n => A.gbp(n);
+function toast(msg, ms) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), ms || 3200); }
+
+// Stages this app owns. Sign-off (Logan) and the workshop stages are shown
+// but never moved from here.
+const SEND = ['contact'];
+const CHASE = A.CHASE_STAGES;                       // contacted, waiting, waiting2
+const BOOKING = ['ready'];
+const IN = ['booked', 'checkin', 'authwait', 'inprog', 'done'];
+const MINE = SEND.concat(CHASE, BOOKING, IN);
+// Sign-off is Logan's, never moved from here — loaded only so the adviser
+// can see how many are still with him.
+const WATCH = MINE.concat(['signoff']);
+const STAGE_LABEL = { signoff: '5 · With Logan', contact: '6 · Service Adviser', contacted: '7 · Contacted', waiting: '8 · Awaiting · Day 1',
+  waiting2: '9 · Awaiting · Day 2', ready: '10 · Deposit & T&Cs', booked: '11 · Booked', po: '12 · POs to raise', raised: '13 · POs raised',
+  checkin: '14 · Check-in', authwait: '15 · Awaiting authority', inprog: '16 · In progress', done: '17 · Work complete' };
+
+let ME = null, JOBS = [], POS = [], CAP = null, TAB = localStorage.getItem('kith_adv_tab') || 'send', BUSY = false;
+
+/* ---------------- loading ---------------- */
+async function load(silent) {
+  if (!silent) $('view').innerHTML = '<div class="empty"><span class="spin"></span> Loading from the CRM…</div>';
+  try {
+    const jobsQ = REST() + 'jobs?select=id,data&data->>stage=in.(' + WATCH.join(',') + ')&order=updated_at.desc';
+    const sysQ = REST() + 'jobs?select=id,data&id=in.(__pos__,__schedcap__)';
+    const [jr, sr] = await Promise.all([
+      fetch(jobsQ, { headers: Object.assign(HDR(), { Range: '0-4999', 'Range-Unit': 'items' }) }),
+      fetch(sysQ, { headers: HDR() })]);
+    if (!jr.ok || !sr.ok) throw new Error('CRM returned ' + (jr.ok ? sr.status : jr.status));
+    JOBS = ((await jr.json()) || []).filter(r => r.id && r.id.indexOf('__') !== 0 && r.data).map(r => Object.assign({}, r.data, { id: r.id }));
+    const sys = await sr.json();
+    const row = id => ((sys || []).find(r => r.id === id) || {}).data || {};
+    POS = row('__pos__').pos || [];
+    CAP = row('__schedcap__').cap || null;
+    setSync('ok', 'Up to date ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    render();
+  } catch (e) {
+    setSync('err', e.message);
+    if (!silent) $('view').innerHTML = '<div class="note stop"><b>Could not reach the CRM</b>' + esc(e.message) + '</div>';
+  }
+}
+function setSync(k, t) { const s = $('sync'); s.className = 'dot ' + k; s.title = t || ''; }
+// Safe save: read the job fresh, apply only this change, write only if
+// nobody else saved in between.
+async function change(jobId, fn) {
+  if (BUSY) return null; BUSY = true;
+  try {
+    const r = await P.updateRow({ url: CFG.url, key: CFG.key, rowId: jobId, mutate: fn });
+    const i = JOBS.findIndex(j => j.id === jobId);
+    if (i > -1 && r.data) JOBS[i] = Object.assign({}, r.data, { id: jobId });
+    return r;
+  } catch (e) { toast('⚠ ' + e.message, 5000); return null; }
+  finally { BUSY = false; }
+}
+// The latest ETA of anything still on order for a job — no slot before it.
+function partsEta(j) {
+  let best = null;
+  POS.filter(p => p.jobId === j.id && !['Cancelled', 'Returned', 'Received', 'Paid'].includes(p.status)).forEach(p => {
+    if (p.eta && (!best || p.eta > best)) best = p.eta;
+  });
+  return best;
+}
+const openPOs = j => POS.filter(p => p.jobId === j.id && P.OPEN.includes(p.status || 'Ordered'));
+
+/* ---------------- shared bits ---------------- */
+const jobHead = j => '<div class="hd"><span class="reg">' + esc(j.reg || '—') + '</span><div class="t"><b>' +
+  esc([[j.make, j.model].filter(Boolean).join(' '), j.name].filter(Boolean).join(' · ')) + '</b><span>' +
+  esc(STAGE_LABEL[j.stage] || j.stage || '') + (j.quote ? ' · ' + gbp(j.quote) : '') + (j.tmJob ? ' · TM ' + esc(j.tmJob) : '') + '</span></div>';
+const waBtn = (j, msg, label) => j.phone ? '<a class="btn primary sm" target="_blank" rel="noopener" href="' + esc(A.waLink(j.phone, msg)) + '">' + (label || '💬 WhatsApp') + '</a>' : '';
+const callBtn = j => j.phone ? '<a class="btn sm" href="' + esc(A.telLink(j.phone)) + '">📞 Call</a>' : '<span class="hint" style="margin:0">No phone number on the job</span>';
+const msgBox = m => '<div class="msg">' + esc(m) + '</div>';
+
+/* ---------------- tabs ---------------- */
+function counts() {
+  const send = JOBS.filter(j => SEND.includes(j.stage));
+  const chase = JOBS.filter(j => CHASE.includes(j.stage));
+  const dueNow = chase.filter(j => { const c = A.chaseDue(j); return c && (c.step !== undefined || c.giveUp); });
+  const booking = JOBS.filter(j => BOOKING.includes(j.stage));
+  const ready = JOBS.filter(j => j.stage === 'done');
+  const rebook = JOBS.filter(j => j.stage === 'booked' && j.partsLate && !j.partsLate.clearedAt);
+  return { send: send.length, chase: chase.length, dueNow: dueNow.length, booking: booking.length, ready: ready.length, rebook: rebook.length, in: JOBS.filter(j => IN.includes(j.stage)).length };
+}
+function render() {
+  const c = counts();
+  const tabs = [
+    { k: 'send', n: 'By hand', c: c.send + ' waiting', hot: c.send > 0 },
+    { k: 'chase', n: 'Chasing', c: c.dueNow ? c.dueNow + ' due now' : c.chase + ' waiting', hot: c.dueNow > 0 },
+    { k: 'book', n: 'Booking', c: (c.rebook ? c.rebook + ' to rebook' : c.booking + ' to book'), hot: c.rebook > 0 },
+    { k: 'in', n: 'In & ready', c: c.ready ? c.ready + ' ready' : c.in + ' in', hot: c.ready > 0 }
+  ];
+  $('tabs').innerHTML = tabs.map(t => '<button data-tab="' + t.k + '" class="' + (TAB === t.k ? 'on' : '') + '"><span class="n">' + t.n +
+    '</span><span class="c' + (t.hot ? ' hot' : '') + '">' + esc(t.c) + '</span></button>').join('');
+  $('tabs').querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { TAB = b.dataset.tab; try { localStorage.setItem('kith_adv_tab', TAB); } catch (e) {} render(); });
+  ({ send: renderSend, chase: renderChase, book: renderBook, in: renderIn })[TAB]();
+}
+
+/* ---------------- 1. to send ---------------- */
+function renderSend() {
+  const list = JOBS.filter(j => SEND.includes(j.stage)).sort((a, b) => (a.stageAt || 0) - (b.stageAt || 0));
+  const waiting = JOBS.filter(j => j.stage === 'signoff').length;
+  let h = '<div class="note"><b>Quotes send themselves now</b>When Logan approves a quote it goes straight to the customer on WhatsApp, or by text if they have no WhatsApp, and the chase clock starts. Anything in this list needs sending by hand — it was passed over rather than sent.</div>';
+  h += waiting ? '<div class="note"><b>' + waiting + ' still with Logan</b>Nothing goes to a customer until he has approved it.</div>' : '';
+  if (!list.length) h += '<div class="empty">Nothing to send by hand.</div>';
+  h += list.map(j => {
+    const docs = (j.estimateDocs || []).length;
+    const m = A.quoteMsg(j);
+    return '<div class="card"><div class="hd">' + jobHead(j).replace('<div class="hd">', '') +
+      '<span class="when">' + esc(A.fmtWait(A.hoursWaiting(j))) + ' since sign-off</span></div><div class="bd">' +
+      '<div class="hint" style="margin:0 0 .3rem">' + esc(j.work || '') + '</div>' +
+      (docs ? '<div class="note go" style="margin:.3rem 0"><b>✓ Estimate attached</b>' + docs + ' document' + (docs === 1 ? '' : 's') + ' on the job — send it with the message.</div>'
+            : '<div class="note stop" style="margin:.3rem 0"><b>No estimate attached</b>The customer needs the Techman estimate. Get it on the job before you send.</div>') +
+      (A.depositNeeded(j) ? '<div class="note warn" style="margin:.3rem 0"><b>Deposit needed to book</b>' + gbp(A.depositAmount(j)) + ' (' + A.DEPOSIT_PERCENT + '% of ' + gbp(j.quote) + ')</div>' : '') +
+      msgBox(m) +
+      '<div class="btns">' + waBtn(j, m) + callBtn(j) +
+      '<button class="btn go sm" data-sent="' + esc(j.id) + '">✓ Sent — start the clock</button></div></div></div>';
+  }).join('');
+  $('view').innerHTML = h;
+  document.querySelectorAll('[data-sent]').forEach(b => b.onclick = async () => {
+    const j = JOBS.find(x => x.id === b.dataset.sent);
+    if (!(j.estimateDocs || []).length && !confirm('There is no estimate document on this job.\n\nSay it has been sent anyway?')) return;
+    const r = await change(j.id, d => A.markSent(d, 'WhatsApp', ME));
+    if (r) { toast('✓ Sent — chasing starts in an hour'); TAB = 'chase'; render(); }
+  });
+}
+
+/* ---------------- 2. chasing ---------------- */
+function renderChase() {
+  const list = JOBS.filter(j => CHASE.includes(j.stage))
+    .map(j => ({ j, c: A.chaseDue(j) }))
+    .sort((a, b) => (b.c && b.c.hrs || 0) - (a.c && a.c.hrs || 0));
+  const due = list.filter(x => x.c && x.c.step !== undefined);
+  const over = list.filter(x => x.c && x.c.giveUp);
+  const soon = list.filter(x => x.c && (x.c.waiting || x.c.allSent));
+  let h = '';
+  if (!list.length) h = '<div class="empty">Nobody to chase. Everything has had an answer.</div>';
+  const sec = (t, l) => l.length ? '<h2 class="sec">' + t + ' <span class="cnt">' + l.length + '</span></h2>' + l.map(chaseCard).join('') : '';
+  h += sec('Do now', due) + sec('Two days, no answer', over) + sec('Waiting', soon);
+  $('view').innerHTML = h;
+  wireChase();
+}
+function chaseCard(x) {
+  const j = x.j, c = x.c;
+  const dayN = A.chaseDayOf(j);
+  const done = (j.chasesSent || []).length;
+  let h = '<div class="card ' + (c.step !== undefined ? 'warm' : c.giveUp ? 'hot' : '') + '">' + jobHead(j) +
+    '<span class="when">Day ' + dayN + ' · ' + esc(A.fmtWait(c.hrs)) + ' · ' + done + ' of ' + A.CHASE_STEPS.length + ' done</span></div><div class="bd">';
+  if (c.step !== undefined) {
+    const cfg = c.cfg, m = cfg.build(j);
+    h += '<div class="step"><div class="h"><b>' + esc(cfg.label) + '</b><span class="due">due now</span></div>' +
+      msgBox(m) + '<div class="btns">' +
+      (cfg.call ? callBtn(j) : waBtn(j, m)) +
+      '<button class="btn sm" data-chase="' + esc(j.id) + '|' + c.step + '|no answer">No answer</button>' +
+      '<button class="btn go sm" data-chase="' + esc(j.id) + '|' + c.step + '|spoke to them">Spoke to them</button></div></div>';
+  } else if (c.giveUp) {
+    h += '<div class="note stop" style="margin-top:0"><b>Two days, every contact made</b>SOP says close it off as a lost booking.</div>';
+  } else if (c.waiting) {
+    h += '<div class="hint" style="margin:0">Next: ' + esc(c.label) + ' in ' + esc(A.fmtWait(Math.max(0, c.nextIn))) + '.</div>';
+  }
+  if ((j.chasesSent || []).length) h += '<div class="hint" style="margin:.4rem 0 0">' +
+    j.chasesSent.map(s => '✓ ' + esc(s.label) + (s.outcome ? ' — ' + esc(s.outcome) : '') + ' · ' + esc(s.at)).join('<br>') + '</div>';
+  h += '<div class="btns" style="border-top:1px solid var(--line-soft);padding-top:.5rem;margin-top:.5rem">' +
+    '<button class="btn primary sm" data-yes="' + esc(j.id) + '">✓ They said yes</button>' +
+    '<button class="btn stop sm" data-no="' + esc(j.id) + '">✕ Lost</button></div>';
+  return h + '</div></div>';
+}
+function wireChase() {
+  document.querySelectorAll('[data-chase]').forEach(b => b.onclick = async () => {
+    const [id, step, outcome] = b.dataset.chase.split('|');
+    const r = await change(id, d => A.recordChase(d, +step, outcome, ME));
+    if (r) { toast('✓ Recorded'); render(); }
+  });
+  document.querySelectorAll('[data-yes]').forEach(b => b.onclick = () => yesSheet(b.dataset.yes));
+  document.querySelectorAll('[data-no]').forEach(b => b.onclick = () => lostSheet(b.dataset.no));
+}
+function yesSheet(id) {
+  const j = JOBS.find(x => x.id === id);
+  sheet('<button class="btn sm x" data-close>Close</button><h2>' + esc(j.reg || '') + ' said yes</h2>' +
+    '<p class="hint">Next: terms to sign' + (A.depositNeeded(j) ? ', then a deposit of ' + gbp(A.depositAmount(j)) : '') + '. Then the diary.</p>' +
+    '<div class="row"><div><label class="f" for="yVia">How did they say yes?</label><select id="yVia">' +
+    ['WhatsApp', 'Phone', 'Text', 'Email', 'In person'].map(v => '<option>' + v + '</option>').join('') + '</select></div></div>' +
+    '<button class="btn primary full" id="yGo">Record it</button>');
+  $('yGo').onclick = async () => {
+    const r = await change(id, d => A.customerYes(d, $('yVia').value, ME));
+    if (r) { closeSheet(); TAB = 'book'; toast('✓ Yes recorded — terms and deposit next'); render(); }
+  };
+}
+function lostSheet(id) {
+  const reasons = ['Too expensive', 'Went elsewhere', 'No answer after 2 days', 'Selling the car', 'Doing it themselves', 'Changed their mind'];
+  let picked = '';
+  sheet('<button class="btn sm x" data-close>Close</button><h2>Close it off</h2><p class="hint">Why are we losing this one? It goes on the job.</p>' +
+    '<div class="chips" id="lr">' + reasons.map((r, i) => '<button data-lr="' + i + '">' + esc(r) + '</button>').join('') + '</div>' +
+    '<input type="text" id="lOther" placeholder="Or type the reason…">' +
+    '<button class="btn stop full" style="margin-top:.6rem" id="lGo">Mark as lost</button><div id="lErr"></div>');
+  document.querySelectorAll('[data-lr]').forEach(b => b.onclick = () => { document.querySelectorAll('[data-lr]').forEach(x => x.classList.remove('on')); b.classList.add('on'); picked = reasons[+b.dataset.lr]; });
+  $('lGo').onclick = async () => {
+    const why = ($('lOther').value || '').trim() || picked;
+    if (!why) { $('lErr').innerHTML = '<div class="note stop"><b>Pick a reason</b>Logan looks at these.</div>'; return; }
+    const r = await change(id, d => A.customerNo(d, why, ME));
+    if (r) { closeSheet(); toast('Closed off'); render(); }
+  };
+}
+
+/* ---------------- 3. booking ---------------- */
+function renderBook() {
+  const toBook = JOBS.filter(j => BOOKING.includes(j.stage));
+  const rebook = JOBS.filter(j => j.stage === 'booked' && j.partsLate && !j.partsLate.clearedAt);
+  let h = '';
+  if (rebook.length) h += '<h2 class="sec">Parts late — needs rebooking <span class="cnt">' + rebook.length + '</span></h2>' + rebook.map(rebookCard).join('');
+  h += '<h2 class="sec">Deposit &amp; terms <span class="cnt">' + toBook.length + '</span></h2>';
+  h += toBook.length ? toBook.map(bookCard).join('') : '<div class="empty">Nobody waiting to be booked in.</div>';
+  $('view').innerHTML = h;
+  wireBook();
+}
+function bookCard(j) {
+  const dep = A.depositDone(j), tc = A.tcDone(j), ready = A.readyToBook(j);
+  const eta = partsEta(j);
+  const o = A.offerSlots(j, JOBS, { cap: CAP, partsEta: eta });
+  return '<div class="card ' + (ready ? '' : 'warm') + '">' + jobHead(j) + '</div><div class="bd">' +
+    '<div class="gate"><span class="tick" style="color:' + (tc ? 'var(--go)' : 'var(--stop)') + '">' + (tc ? '✓' : '✕') + '</span><div style="flex:1">' +
+      '<b>Terms signed</b>' + (tc ? '<div class="hint" style="margin:0">' + esc(j.fleetAccount ? 'Fleet account — signed for the whole fleet' : j.tcAgreedAt || '') + '</div>'
+        : '<div class="btns">' + waBtn(j, A.tcMsg(j), '💬 Send the form') + '<button class="btn go sm" data-tc="' + esc(j.id) + '">✓ Signed</button></div>') + '</div></div>' +
+    '<div class="gate"><span class="tick" style="color:' + (dep ? 'var(--go)' : 'var(--stop)') + '">' + (dep ? '✓' : '✕') + '</span><div style="flex:1">' +
+      '<b>Deposit ' + (A.depositNeeded(j) ? gbp(A.depositAmount(j)) : 'not needed') + '</b>' +
+      (dep ? '<div class="hint" style="margin:0">' + esc(A.depositNeeded(j) ? (j.depositAt || '') : A.noDepositReason(j)) + '</div>'
+           : '<div class="btns">' + waBtn(j, A.depositMsg(j), '💬 Ask for it') + '<button class="btn go sm" data-dep="' + esc(j.id) + '">£ Received</button></div>') + '</div></div>' +
+    (eta ? '<div class="note blue"><b>Parts due ' + esc(A.fmtBookDate(eta)) + '</b>No slot before then.</div>' : '') +
+    '<div class="hint" style="margin:.5rem 0 .2rem">' + esc(o.ruleLabel) + ' · first ' + o.slots.length + ' free day' + (o.slots.length === 1 ? '' : 's') + '</div>' +
+    '<div class="slots">' + o.slots.map(s => '<button class="slot" data-slot="' + esc(j.id) + '|' + s.date + '"><b>' + esc(s.label) + '</b><span>' + s.taken + ' of ' + s.cap + ' booked</span></button>').join('') + '</div>' +
+    '<div class="btns">' + waBtn(j, A.slotsMsg(j, o.slots), '💬 Offer the first three') +
+      (ready ? '' : '<span class="hint" style="margin:0;flex-basis:100%">Pick a day once the terms and deposit are in — or book anyway and say why.</span>') + '</div></div></div>';
+}
+function rebookCard(j) {
+  const eta = (j.partsLate || {}).eta;
+  const o = A.offerSlots(j, JOBS, { cap: CAP, partsEta: eta });
+  return '<div class="card hot">' + jobHead(j) + '</div><div class="bd">' +
+    '<div class="note stop" style="margin-top:0"><b>' + esc(j.partsLate.poNum || 'A part') + ' arrives ' + esc(A.fmtBookDate(eta)) + '</b>' +
+    'Booked ' + esc(A.fmtBookDate(j.bookedFor)) + ' — the part lands after the car is due in.</div>' +
+    msgBox(A.rebookMsg(j, eta)) +
+    '<div class="slots">' + o.slots.slice(0, 4).map(s => '<button class="slot" data-slot="' + esc(j.id) + '|' + s.date + '"><b>' + esc(s.label) + '</b><span>' + s.taken + ' of ' + s.cap + ' booked</span></button>').join('') + '</div>' +
+    '<div class="btns">' + waBtn(j, A.rebookMsg(j, eta)) +
+    '<button class="btn sm" data-keep="' + esc(j.id) + '">Leave the date as it is</button></div></div></div>';
+}
+function wireBook() {
+  document.querySelectorAll('[data-tc]').forEach(b => b.onclick = async () => {
+    const r = await change(b.dataset.tc, d => A.markTerms(d, ME)); if (r) { toast('✓ Terms signed'); render(); } });
+  document.querySelectorAll('[data-dep]').forEach(b => b.onclick = () => depositSheet(b.dataset.dep));
+  document.querySelectorAll('[data-slot]').forEach(b => b.onclick = () => { const [id, ds] = b.dataset.slot.split('|'); bookSheet(id, ds); });
+  document.querySelectorAll('[data-keep]').forEach(b => b.onclick = async () => {
+    const r = await change(b.dataset.keep, d => { d.partsLate = Object.assign({}, d.partsLate, { clearedAt: Date.now() });
+      d.log = d.log || []; d.log.push({ t: A.ts(), s: '✓ Date left as it is despite the late part [' + ME + ']' }); return d; });
+    if (r) { toast('Left as it is'); render(); } });
+}
+function depositSheet(id) {
+  const j = JOBS.find(x => x.id === id);
+  sheet('<button class="btn sm x" data-close>Close</button><h2>Deposit for ' + esc(j.reg || '') + '</h2>' +
+    '<p class="hint">Suggested ' + A.DEPOSIT_PERCENT + '%: ' + gbp(A.depositAmount(j)) + ' of ' + gbp(j.quote) + '</p>' +
+    '<div class="row r2"><div><label class="f" for="dAmt">How much came in</label><input type="number" step="0.01" min="0" id="dAmt" value="' + A.depositAmount(j).toFixed(2) + '"></div>' +
+    '<div><label class="f" for="dHow">How</label><select id="dHow"><option>Bank transfer</option><option>Card</option><option>Cash</option></select></div></div>' +
+    '<button class="btn primary full" id="dGo">Record it</button><div id="dErr"></div>');
+  $('dGo').onclick = async () => {
+    try {
+      const r = await change(id, d => A.markDeposit(d, $('dAmt').value, $('dHow').value, ME));
+      if (r) { closeSheet(); toast('✓ Deposit recorded'); render(); }
+    } catch (e) { $('dErr').innerHTML = '<div class="note stop"><b>Not recorded</b>' + esc(e.message) + '</div>'; }
+  };
+}
+function bookSheet(id, ds) {
+  const j = JOBS.find(x => x.id === id);
+  const probs = A.slotProblems(j, ds, JOBS, { cap: CAP, partsEta: partsEta(j) });
+  const ready = A.readyToBook(j);
+  sheet('<button class="btn sm x" data-close>Close</button><h2>Book ' + esc(j.reg || '') + ' in</h2>' +
+    '<p class="hint">' + esc(A.fmtBookDate(ds)) + '</p>' +
+    probs.map(p => '<div class="note warn"><b>Check this</b>' + esc(p) + '</div>').join('') +
+    (ready ? '' : '<div class="note stop"><b>' + (A.depositDone(j) ? '' : 'Deposit ') + (!A.depositDone(j) && !A.tcDone(j) ? 'and ' : '') + (A.tcDone(j) ? '' : 'terms ') +
+      'still outstanding</b>SOP says both before a slot is given away. Book anyway only if Logan has said so — put the reason in.</div>' +
+      '<input type="text" id="bWhy" placeholder="Why are we booking it anyway?">') +
+    '<div class="row r2" style="margin-top:.6rem"><div><label class="f" for="bTime">Time in</label><input type="text" id="bTime" placeholder="09:00" value="09:00"></div>' +
+    '<div><label class="f" for="bDate">Day</label><input type="date" id="bDate" value="' + esc(ds) + '"></div></div>' +
+    '<button class="btn primary full" id="bGo">Book it in</button><div id="bErr"></div>');
+  $('bGo').onclick = async () => {
+    const why = ready ? '' : ($('bWhy').value || '').trim();
+    if (!ready && !why) { $('bErr').innerHTML = '<div class="note stop"><b>Say why</b>Deposit or terms are outstanding.</div>'; return; }
+    try {
+      const r = await change(id, d => A.book(d, $('bDate').value, $('bTime').value, ME, null, why || null));
+      if (!r) return;
+      closeSheet();
+      const jj = JOBS.find(x => x.id === id);
+      sheet('<h2 style="color:var(--go)">✓ Booked in</h2><p class="hint">' + esc(A.fmtBookDate(jj.bookedFor)) + (jj.bookedTime ? ' at ' + esc(A.fmt12(jj.bookedTime)) : '') + '</p>' +
+        msgBox(A.bookedMsg(jj)) + '<div class="btns">' + waBtn(jj, A.bookedMsg(jj), '💬 Send the confirmation') +
+        '<button class="btn full" data-close style="margin-top:.5rem">Done</button></div>');
+      render();
+    } catch (e) { $('bErr').innerHTML = '<div class="note stop"><b>Not booked</b>' + esc(e.message) + '</div>'; }
+  };
+}
+
+/* ---------------- 4. in & ready ---------------- */
+function renderIn() {
+  const done = JOBS.filter(j => j.stage === 'done');
+  const inWork = JOBS.filter(j => ['booked', 'checkin', 'authwait', 'inprog'].includes(j.stage))
+    .sort((a, b) => String(a.bookedFor || '9').localeCompare(String(b.bookedFor || '9')));
+  let h = '<h2 class="sec">Work finished — before you ring them <span class="cnt">' + done.length + '</span></h2>';
+  h += done.length ? done.map(readyCard).join('') : '<div class="empty">Nothing finished waiting on a call.</div>';
+  h += '<h2 class="sec">In the workshop <span class="cnt">' + inWork.length + '</span></h2>';
+  h += inWork.length ? inWork.map(j => '<div class="card">' + jobHead(j) + '<span class="when">' + (j.bookedFor ? esc(A.fmtBookDate(j.bookedFor)) : 'no date') + '</span></div>' +
+    '<div class="bd"><div class="hint" style="margin:0">' + esc(j.work || '') + '</div>' +
+    (openPOs(j).length ? '<div class="note warn" style="margin:.4rem 0 0"><b>' + openPOs(j).length + ' order still to arrive</b>' +
+      esc(openPOs(j).map(p => p.num + ' ' + p.supplier + (p.eta ? ' due ' + A.fmtBookDate(p.eta) : '')).join(' · ')) + '</div>' : '') +
+    '<div class="btns">' + callBtn(j) + '</div></div></div>').join('') : '<div class="empty">Nothing in.</div>';
+  $('view').innerHTML = h;
+  document.querySelectorAll('[data-gate]').forEach(b => b.onclick = async () => {
+    const [id, k, on] = b.dataset.gate.split('|');
+    const r = await change(id, d => A.setCollectItem(d, k, on === '1', ME)); if (r) render();
+  });
+  document.querySelectorAll('[data-ready]').forEach(b => b.onclick = async () => {
+    const j = JOBS.find(x => x.id === b.dataset.ready);
+    try {
+      const r = await change(j.id, d => A.tellReady(d, ME));
+      if (!r) return;
+      sheet('<h2 style="color:var(--go)">✓ ' + esc(j.reg || '') + ' — customer told</h2><p class="hint">It has moved to 18 · Accounts. Taking the money is their job, not yours.</p>' +
+        msgBox(A.readyMsg(j)) + '<div class="btns">' + waBtn(j, A.readyMsg(j), '💬 Send it') + '<button class="btn full" data-close style="margin-top:.5rem">Done</button></div>');
+      render();
+    } catch (e) { toast('⚠ ' + e.message, 5000); }
+  });
+}
+function readyCard(j) {
+  const gate = A.collectGate(j), left = gate.filter(g => !g.done).length;
+  return '<div class="card ' + (left ? 'warm' : '') + '">' + jobHead(j) + '</div><div class="bd">' +
+    '<div class="hint" style="margin:0 0 .3rem">' + (left ? left + ' of 5 still to do before the customer is told' : 'All five done — ready to ring them') + '</div>' +
+    gate.map(g => '<div class="gate"><span class="tick" style="color:' + (g.done ? 'var(--go)' : 'var(--ink-3)') + '">' + (g.done ? '✓' : '○') + '</span>' +
+      '<div style="flex:1"><b style="font-weight:500">' + esc(g.label) + '</b></div>' +
+      '<button class="btn sm ' + (g.done ? '' : 'go') + '" data-gate="' + esc(j.id) + '|' + g.k + '|' + (g.done ? '0' : '1') + '">' + (g.done ? 'Undo' : 'Done') + '</button></div>').join('') +
+    '<div class="btns"><button class="btn primary sm" data-ready="' + esc(j.id) + '"' + (left ? ' disabled' : '') + '>💬 Tell them it\'s ready</button>' +
+    (left ? '<span class="hint" style="margin:0">The five checks come first.</span>' : '') + '</div></div></div>';
+}
+
+/* ---------------- sheet ---------------- */
+function sheet(html) {
+  $('sheetHost').innerHTML = '<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true">' + html + '</div></div>';
+  $('scrim').addEventListener('click', e => { if (e.target.id === 'scrim') closeSheet(); });
+  $('sheetHost').querySelectorAll('[data-close]').forEach(b => b.onclick = closeSheet);
+}
+function closeSheet() { $('sheetHost').innerHTML = ''; }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+
+/* ---------------- who is using it ---------------- */
+const FALLBACK_STAFF = [{ name: 'Fardeen', role: 'adviser' }, { name: 'Ali', role: 'adviser' }, { name: 'Logkith', role: 'director' }];
+let STAFF = [], PICKED = null;
+const isAdviser = x => x.role === 'adviser' || x.role === 'director' || (Array.isArray(x.roles) && x.roles.includes('adviser'));
+async function loadStaff() {
+  try {
+    const r = await fetch(REST() + 'kith_staff?select=id,data&limit=100', { headers: HDR() });
+    if (!r.ok) throw new Error('staff ' + r.status);
+    STAFF = ((await r.json()) || []).map(x => Object.assign({ id: x.id }, x.data || {})).filter(x => x.name && x.active !== false && isAdviser(x));
+    if (!STAFF.length) throw new Error('empty');
+  } catch (e) { STAFF = FALLBACK_STAFF.slice(); }
+  renderWho();
+}
+function renderWho() {
+  $('whoGrid').innerHTML = STAFF.map((p, i) => '<button class="who-btn ' + (PICKED && PICKED.name === p.name ? 'on' : '') + '" data-i="' + i + '"><span class="n">' + esc(p.name) +
+    '</span><span class="r">' + esc(p.role === 'director' ? 'Director' : 'Service Adviser') + '</span></button>').join('');
+  $('whoGrid').querySelectorAll('[data-i]').forEach(b => b.onclick = () => {
+    PICKED = STAFF[+b.dataset.i]; renderWho(); $('pinBox').hidden = false; $('pinIn').value = ''; $('pinIn').focus();
+    $('loginErr').innerHTML = PICKED.pin ? '' : '<div class="note warn"><b>No PIN set for ' + esc(PICKED.name) + '</b>Anyone can sign in as them. Set one on the staff record.</div>';
+  });
+}
+function doLogin() {
+  if (!PICKED) return;
+  if (PICKED.pin && String($('pinIn').value) !== String(PICKED.pin)) {
+    $('loginErr').innerHTML = '<div class="note stop"><b>Wrong PIN</b>Try again.</div>'; $('pinIn').value = ''; return;
+  }
+  ME = PICKED.name;
+  try { localStorage.setItem('kith_adv_me', ME); } catch (e) {}
+  showMain();
+}
+function showMain() {
+  $('scr-login').hidden = true; $('scr-main').hidden = false;
+  $('whoPill').hidden = false; $('whoPill').textContent = ME; $('whoPill').className = 'pill on';
+  $('btnRefresh').hidden = false;
+  load();
+}
+$('btnLogin').onclick = doLogin;
+$('pinIn').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+$('btnRefresh').onclick = () => load();
+$('whoPill').onclick = () => { if (!confirm('Sign out ' + ME + '?')) return; ME = null; try { localStorage.removeItem('kith_adv_me'); } catch (e) {}
+  $('scr-main').hidden = true; $('scr-login').hidden = false; $('whoPill').hidden = true; $('btnRefresh').hidden = true; PICKED = null; renderWho(); };
+
+// A chase becomes due on the clock, so the list refreshes itself.
+setInterval(() => { if (ME && !$('sheetHost').innerHTML && document.visibilityState !== 'hidden') load(true); }, 60000);
+
+(function start() {
+  let saved = null; try { saved = localStorage.getItem('kith_adv_me'); } catch (e) {}
+  loadStaff().then(() => { if (saved && STAFF.some(s => s.name === saved)) { ME = saved; showMain(); } });
+})();
+</script>
+</body>
+</html>

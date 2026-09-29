@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KITH Parts</title>
+<link rel="manifest" href="manifest-parts.json">
+<meta name="theme-color" content="#14161A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="KITH Parts">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="apple-touch-icon" href="icon-parts-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14161A; --bg-2:#1B1E24; --card:#20242B; --card-2:#262B33;
+  --line:#333A44; --line-soft:#2A2F37;
+  --ink:#EDEFF2; --ink-2:#A8B1BD; --ink-3:#6E7885;
+  --gold:#D8A32B; --gold-dim:#8A6A1C; --gold-bg:rgba(216,163,43,.10);
+  --go:#3FB07A; --go-bg:rgba(63,176,122,.12);
+  --warn:#E0A030; --warn-bg:rgba(224,160,48,.12);
+  --stop:#E05A4C; --stop-bg:rgba(224,90,76,.12);
+  --blue:#5B9BD5; --blue-bg:rgba(91,155,213,.12);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:14px;line-height:1.5}
+h1,h2,h3{font-family:"Barlow Condensed",Impact,sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin:0}
+.mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+[hidden]{display:none!important}
+
+.top{position:sticky;top:0;z-index:40;background:var(--bg-2);border-bottom:1px solid var(--line);padding:.55rem 1rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:.5rem}
+.brand h1{font-size:1.25rem;letter-spacing:.06em}
+.brand .v{font-family:"IBM Plex Mono",monospace;font-size:.66rem;color:var(--bg);background:var(--gold);padding:.1rem .35rem;border-radius:2px;font-weight:600}
+.spacer{flex:1}
+.pill{font-family:"IBM Plex Mono",monospace;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;padding:.25rem .5rem;border:1px solid var(--line);border-radius:99px;color:var(--ink-2);background:none;cursor:pointer}
+.pill.on{border-color:var(--gold);color:var(--gold);background:var(--gold-bg)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ink-3);display:inline-block}
+.dot.ok{background:var(--go)}.dot.err{background:var(--stop)}
+
+main{max-width:980px;margin:0 auto;padding:1rem 1rem 5rem}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem;margin-bottom:1rem}
+@media(max-width:560px){.tabs{grid-template-columns:1fr 1fr}}
+.tabs button{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:.55rem .7rem;cursor:pointer;text-align:left}
+.tabs button .n{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:1rem;letter-spacing:.03em;display:block}
+.tabs button .c{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3)}
+.tabs button.on{border-color:var(--gold);background:var(--gold-bg)}
+.tabs button .c.hot{color:var(--stop);font-weight:600}
+
+h2.sec{font-size:1rem;letter-spacing:.06em;color:var(--ink-2);margin:1.2rem 0 .5rem;display:flex;align-items:center;gap:.5rem}
+h2.sec .cnt{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3)}
+.hint{color:var(--ink-3);font-size:.82rem;margin:.1rem 0 .6rem}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;margin-bottom:.7rem;overflow:hidden}
+.card.hot{border-color:var(--stop)}
+.card.warm{border-color:var(--warn)}
+.card .hd{display:flex;align-items:flex-start;gap:.6rem;padding:.6rem .8rem;background:var(--card-2);border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+.reg{font-family:"IBM Plex Mono",monospace;font-weight:600;background:#F1C40F;color:#111;padding:.05rem .4rem;border-radius:3px;font-size:.85rem;letter-spacing:.04em}
+.card .hd .t{flex:1;min-width:160px}
+.card .hd .t b{display:block}
+.card .hd .t span{font-size:.78rem;color:var(--ink-3)}
+.card .bd{padding:.6rem .8rem}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:.62rem;text-transform:uppercase;letter-spacing:.07em;padding:.12rem .35rem;border-radius:2px;border:1px solid var(--line);color:var(--ink-3);white-space:nowrap}
+.tag.go{color:var(--go);border-color:var(--go)}.tag.warn{color:var(--warn);border-color:var(--warn)}
+.tag.stop{color:var(--stop);border-color:var(--stop)}.tag.gold{color:var(--gold);border-color:var(--gold)}
+.tag.blue{color:var(--blue);border-color:var(--blue)}
+.pl{display:flex;justify-content:space-between;gap:.6rem;padding:.3rem 0;border-bottom:1px dotted var(--line-soft);font-size:.85rem;align-items:center;flex-wrap:wrap}
+.pl:last-child{border-bottom:0}
+.pl .nm{flex:1;min-width:140px}
+.pl .acts{display:flex;gap:.35rem;flex-wrap:nowrap}
+.btns .when{margin:0;flex:1}
+@media(max-width:560px){.btns .when{flex-basis:100%}}
+.pl .nm small{color:var(--ink-3);display:block;font-family:"IBM Plex Mono",monospace;font-size:.7rem}
+.amt{font-family:"IBM Plex Mono",monospace;white-space:nowrap}
+.grp{margin-top:.5rem;padding-top:.5rem;border-top:1px solid var(--line-soft)}
+.grp:first-child{margin-top:0;padding-top:0;border-top:0}
+.grp .gh{display:flex;align-items:center;gap:.5rem;margin-bottom:.2rem;font-size:.8rem;color:var(--ink-2);flex-wrap:wrap}
+
+.btn{text-decoration:none;color:inherit;background:var(--card-2);border:1px solid var(--line);border-radius:5px;padding:.42rem .75rem;cursor:pointer;font-size:.85rem}
+.btn:hover{border-color:var(--gold);color:var(--gold)}
+.btn.primary{background:var(--gold);border-color:var(--gold);color:var(--bg);font-weight:600}
+.btn.primary:hover{background:#E8B23A;color:var(--bg)}
+.btn.go{border-color:var(--go);color:var(--go)}
+.btn.stop{border-color:var(--stop);color:var(--stop)}
+.btn.sm{padding:.22rem .5rem;font-size:.76rem}
+.btn.full{width:100%}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btns{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem}
+
+label.f{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);margin-bottom:.2rem;font-family:"IBM Plex Mono",monospace}
+input:not([type]),input[type=text],input[type=number],input[type=date],input[type=password],input[type=search],select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:.45rem .55rem;color:var(--ink)}
+textarea{min-height:64px;resize:vertical}
+input:focus,select:focus,textarea:focus{border-color:var(--gold);outline:none}
+.row{display:grid;gap:.5rem;margin-bottom:.6rem}
+.r2{grid-template-columns:1fr 1fr}.r3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:600px){.r2,.r3{grid-template-columns:1fr}}
+.line{display:grid;grid-template-columns:2fr 1.2fr .9fr .6fr auto;gap:.35rem;margin-bottom:.35rem;align-items:center}
+@media(max-width:600px){.line{grid-template-columns:1fr 1fr;}.line .nm-in{grid-column:1/-1}}
+.ck{display:flex;gap:.5rem;align-items:center;font-size:.85rem;cursor:pointer;padding:.2rem 0}
+.ck input{accent-color:var(--gold)}
+.chips{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.5rem}
+.chips button{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:.25rem .6rem;font-size:.78rem;cursor:pointer}
+.chips button.on{border-color:var(--gold);color:var(--gold);background:var(--gold-bg)}
+
+.note{border-left:3px solid var(--gold);background:var(--gold-bg);padding:.5rem .7rem;border-radius:0 4px 4px 0;font-size:.82rem;margin:.5rem 0}
+.note.stop{border-color:var(--stop);background:var(--stop-bg)}
+.note.go{border-color:var(--go);background:var(--go-bg)}
+.note.warn{border-color:var(--warn);background:var(--warn-bg)}
+.note.blue{border-color:var(--blue);background:var(--blue-bg)}
+.note b{display:block;font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.05em;font-size:.9rem}
+.empty{color:var(--ink-3);text-align:center;padding:1.1rem;border:1px dashed var(--line);border-radius:6px;font-size:.85rem}
+
+/* sheet (modal) */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:80;display:flex;align-items:flex-end;justify-content:center}
+@media(min-width:700px){.scrim{align-items:center}}
+.sheet{background:var(--card);border:1px solid var(--line);border-radius:10px 10px 0 0;width:100%;max-width:640px;max-height:92vh;overflow:auto;padding:1rem}
+@media(min-width:700px){.sheet{border-radius:10px}}
+.sheet h2{font-size:1.2rem;margin-bottom:.2rem}
+.sheet .x{float:right}
+
+/* login */
+#scr-login{max-width:520px;margin:2rem auto;padding:0 1rem}
+#scr-login h2{font-size:1.6rem}
+.who-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.5rem;margin:1rem 0}
+.who-btn{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.7rem;text-align:left;cursor:pointer}
+.who-btn.on{border-color:var(--gold);background:var(--gold-bg)}
+.who-btn .n{display:block;font-weight:600}
+.who-btn .r{display:block;font-size:.72rem;color:var(--ink-3)}
+.pin{font-size:1.4rem;letter-spacing:.4em;text-align:center}
+
+.stockrow{display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:center;padding:.55rem .8rem;border-bottom:1px solid var(--line-soft)}
+.stockrow:last-child{border-bottom:0}
+@media(max-width:560px){.stockrow{grid-template-columns:1fr}.stockrow>div:last-child{flex-wrap:wrap}}
+.qty{font-family:"IBM Plex Mono",monospace;font-size:1.05rem;font-weight:600}
+.qty.low{color:var(--stop)}
+.toast{position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);background:var(--card-2);border:1px solid var(--gold);color:var(--ink);padding:.55rem .9rem;border-radius:6px;font-size:.85rem;z-index:99;box-shadow:0 6px 24px rgba(0,0,0,.5);max-width:92vw}
+.spin{display:inline-block;width:11px;height:11px;border:2px solid var(--gold-dim);border-top-color:var(--gold);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><h1>KITH Parts</h1><span class="v">v1.0</span></div>
+  <div class="spacer"></div>
+  <span class="dot" id="sync" title="Not loaded yet"></span>
+  <button class="pill" id="btnRefresh" hidden>Refresh</button>
+  <button class="pill" id="whoPill" hidden></button>
+</header>
+
+<div id="scr-login">
+  <h2>Who's on parts?</h2>
+  <p class="hint">Your name goes on every order you raise.</p>
+  <div class="who-grid" id="whoGrid"></div>
+  <div id="pinBox" hidden>
+    <label class="f" for="pinIn">PIN</label>
+    <input type="password" inputmode="numeric" maxlength="6" class="pin" id="pinIn" placeholder="····">
+    <button class="btn primary full" id="btnLogin" style="margin-top:.6rem">Sign in</button>
+    <div id="loginErr"></div>
+  </div>
+  <p class="hint" style="margin-top:1.4rem;font-size:.75rem">This says who you are so the CRM can record it. It is not a security lock.</p>
+</div>
+
+<main id="scr-main" hidden>
+  <nav class="tabs" id="tabs"></nav>
+  <div id="view"></div>
+</main>
+
+<div id="sheetHost"></div>
+
+<script src="kith-parts.js"></script>
+<script>
+'use strict';
+/* ===========================================================================
+   KITH PARTS — ordering, deliveries, returns and consumable stock.
+   Runs on the same Supabase data as the CRM: jobs are rows in "jobs",
+   every purchase order lives in the "__pos__" row (same shape the CRM and
+   the accounts app read), and consumable stock lives in "__stock__".
+   All the rules are in kith-parts.js so the CRM and this app agree.
+   =========================================================================== */
+const P = window.KITHParts;
+const CFG = {
+  url: localStorage.getItem('kith_crm_url') || 'https://mxyrxyhvjndgjqupgstu.supabase.co',
+  key: localStorage.getItem('kith_crm_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog'
+};
+const REST = () => CFG.url.replace(/\/$/, '') + '/rest/v1/';
+const HDR = () => ({ apikey: CFG.key, Authorization: 'Bearer ' + CFG.key, 'Content-Type': 'application/json' });
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const gbp = n => '£' + (Number(n) || 0).toFixed(2);
+const clone = o => JSON.parse(JSON.stringify(o));
+const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const fmtDate = s => { if (!s) return ''; const d = new Date(s + 'T00:00:00'); return isNaN(d) ? s : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }); };
+function toast(msg, ms) {
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), ms || 3200);
+}
+
+const STAGE_LABEL = { booked: '11 · Booked', po: '12 · POs to raise', raised: '13 · POs raised', checkin: '14 · Check-in', authwait: '15 · Awaiting authority',
+  inprog: '16 · In progress', ready: '10 · Deposit & T&Cs', contact: '6 · Service adviser', contacted: '7 · Contacted', waiting: '8 · Awaiting', waiting2: '9 · Awaiting' };
+const EARLY_REASONS = ['Not on the shelf — supplier has to order it in', 'Long lead time / special order', 'Needs painting or prep before the day', 'Last one in stock — securing it', 'Price deal / bulk order'];
+const RETURN_REASONS = ['Wrong part', 'Faulty', 'Not needed', 'Customer cancelled', 'Damaged in delivery', 'Ordered twice'];
+const FALLBACK_SUPPLIERS = ['NAPA', 'GSF Car Parts', 'Euro Car Parts', 'LKQ / Andrew Page', 'Main Dealer', 'TPS (VW Group)', 'Genuine Parts', 'Autodoc', 'eBay', 'Amazon', 'Valeo', 'Unipart', 'Febi Bilstein', 'Local Factor', 'Other']
+  .map(name => ({ name, type: 'supplier', active: true }));
+
+/* ---------------- state ---------------- */
+let ME = null, MY_ROLE = null;
+let JOBS = [], POS = [], POS_BASE = [], STOCK = [], STOCK_BASE = [], DIR = FALLBACK_SUPPLIERS.slice();
+let TAB = localStorage.getItem('kith_parts_tab') || 'order';
+let BUSY = false, LOADED = false, MAXNUM = 0;
+
+/* ---------------- loading ---------------- */
+// Only the jobs parts could need to act on: approved work that isn't
+// finished. Asking the server to filter keeps this app light on data.
+const WORK_STAGES = ['booked', 'po', 'raised', 'checkin', 'authwait', 'inprog'];
+const CLOSED_STAGES = ['lost', 'done', 'accounts', 'receivable', 'review', 'followup', 'disapproved'];
+async function load(silent) {
+  if (!silent) $('view').innerHTML = '<div class="empty"><span class="spin"></span> Loading from the CRM…</div>';
+  try {
+    const jobsQ = REST() + 'jobs?select=id,data&or=(data->>stage.in.(' + WORK_STAGES.join(',') + '),data->>estApproved.eq.true)' +
+      '&data->>stage=not.in.(' + CLOSED_STAGES.join(',') + ')&order=updated_at.desc';
+    const sysQ = REST() + 'jobs?select=id,data&id=in.(__pos__,__stock__,__directory__)';
+    const [jr, sr] = await Promise.all([fetch(jobsQ, { headers: Object.assign(HDR(), { Range: '0-4999', 'Range-Unit': 'items' }) }), fetch(sysQ, { headers: HDR() })]);
+    if (!jr.ok || !sr.ok) throw new Error('CRM returned ' + (jr.ok ? sr.status : jr.status));
+    const jrows = await jr.json(), srows = await sr.json();
+    JOBS = (jrows || []).filter(r => r.id && r.id.indexOf('__') !== 0 && r.data).map(r => Object.assign({}, r.data, { id: r.id }));
+    const sys = id => (srows || []).find(r => r.id === id);
+    const posRow = (sys('__pos__') || {}).data || {};
+    POS = posRow.pos || []; POS_BASE = clone(POS); MAXNUM = Math.max(MAXNUM, Number(posRow.maxNum) || 0);
+    STOCK = ((sys('__stock__') || {}).data || {}).items || []; STOCK_BASE = clone(STOCK);
+    const d = ((sys('__directory__') || {}).data || {}).DIRECTORY;
+    if (Array.isArray(d) && d.length) DIR = d;
+    LOADED = true; setSync('ok', 'Up to date ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    // Deliveries of consumables go into stock, whichever screen booked them in
+    const bd = P.bookDeliveries(STOCK, POS, ME || 'Parts');
+    if (bd.n) { STOCK = bd.stock; try { await saveStock(); toast('✓ ' + bd.n + ' delivery line' + (bd.n === 1 ? '' : 's') + ' booked into stock'); } catch (e) { console.warn(e); } }
+    render();
+  } catch (e) {
+    setSync('err', e.message);
+    if (!silent) $('view').innerHTML = '<div class="note stop"><b>Could not reach the CRM</b>' + esc(e.message) + '</div>';
+  }
+}
+function setSync(k, title) { const s = $('sync'); s.className = 'dot ' + k; s.title = title || ''; }
+
+async function savePOs() {
+  const res = await P.saveList({ url: CFG.url, key: CFG.key, rowId: '__pos__', field: 'pos', base: POS_BASE, local: POS, numField: 'num', nextNum: P.nextPoNum });
+  POS = res.list; POS_BASE = clone(res.list); MAXNUM = Math.max(MAXNUM, res.maxNum || 0);
+  return res;
+}
+async function saveStock() {
+  const res = await P.saveList({ url: CFG.url, key: CFG.key, rowId: '__stock__', field: 'items', base: STOCK_BASE, local: STOCK, deltaFields: ['qty'] });
+  STOCK = res.list; STOCK_BASE = clone(res.list);
+  return res;
+}
+// Change one job safely (fresh copy from the server, only this change applied)
+async function changeJob(jobId, mutate) {
+  const r = await P.updateRow({ url: CFG.url, key: CFG.key, rowId: jobId, mutate });
+  const i = JOBS.findIndex(j => j.id === jobId);
+  if (i > -1 && r.data) JOBS[i] = Object.assign({}, r.data, { id: jobId });
+  return r;
+}
+const logLine = s => ({ t: P.ts(), s: s + (ME ? ' [' + ME + ']' : '') });
+async function jobLog(jobId, s) {
+  if (!jobId || jobId === 'consumables') return;
+  try { await changeJob(jobId, d => { d.log = d.log || []; d.log.push(logLine(s)); return d; }); } catch (e) { console.warn('job log:', e); }
+}
+// A ping in the CRM's notification list (the bell + phone pings)
+async function notify(role, title, body, extra) {
+  try {
+    const cur = await (await fetch(REST() + 'jobs?id=eq.__notifs__&select=data', { headers: HDR() })).json();
+    const list = (cur && cur[0] && cur[0].data && cur[0].data.list) || [];
+    const key = (extra && extra.key) || role + '|' + title;
+    if (list.some(n => !n.seen && n.key === key)) return;
+    const n = Object.assign({ id: 'N' + Date.now() + Math.floor(Math.random() * 9999), key, role, to: '', title, body: body || '', jobId: null, poId: null,
+      at: P.ts(), ts: Date.now(), by: ME || 'parts', seen: false }, extra || {});
+    await P.saveList({ url: CFG.url, key: CFG.key, rowId: '__notifs__', field: 'list', base: list, local: [n].concat(list) });
+  } catch (e) { console.warn('notify:', e); }
+}
+
+/* ---------------- lookups ---------------- */
+const jobOf = id => JOBS.find(j => j.id === id) || null;
+const suppliers = () => DIR.filter(d => d.active !== false && (d.type === 'supplier' || d.type === 'both'));
+const acctOf = name => { const d = DIR.find(x => x.name === name); return (d && d.acct) || 'ok'; };
+const acctNote = name => { const d = DIR.find(x => x.name === name); return (d && d.acctNote) || ''; };
+const posForJob = id => POS.filter(p => p.jobId === id);
+function jobTitle(j) {
+  if (!j) return '';
+  return '<span class="reg">' + esc(j.reg || '—') + '</span>';
+}
+function jobSub(j) {
+  return esc([[j.make, j.model].filter(Boolean).join(' '), j.name].filter(Boolean).join(' · '));
+}
+function stockMatch(name) {
+  const n = String(name || '').toLowerCase().trim();
+  if (!n) return null;
+  return STOCK.find(s => { if (s.kind === 'paint') return false; const m = s.name.toLowerCase(); return m === n || n.includes(m) || m.includes(n); }) || null;
+}
+
+/* ---------------- render ---------------- */
+function counts() {
+  const t = today();
+  const toOrder = JOBS.filter(P.needsOrdering);
+  const open = POS.filter(p => P.OPEN.includes(p.status || 'Ordered'));
+  return {
+    order: toOrder.length, orderNow: toOrder.filter(j => P.orderWindow(j).state === 'now').length,
+    way: open.length, late: open.filter(p => p.eta && p.eta < t).length,
+    ret: POS.filter(p => p.status === 'Return Requested' || p.status === 'Part Returned').length,
+    stock: STOCK.length, low: STOCK.filter(P.isLow).length
+  };
+}
+function render() {
+  const c = counts();
+  const tabs = [
+    { k: 'order', n: 'To order', c: c.orderNow ? c.orderNow + ' now' : c.order + ' jobs', hot: c.orderNow > 0 },
+    { k: 'way', n: 'On the way', c: c.late ? c.late + ' late' : c.way + ' open', hot: c.late > 0 },
+    { k: 'ret', n: 'Returns', c: c.ret + ' open', hot: false },
+    { k: 'stock', n: 'Stock', c: c.low ? c.low + ' low' : c.stock + ' items', hot: c.low > 0 }
+  ];
+  $('tabs').innerHTML = tabs.map(t => '<button data-tab="' + t.k + '" class="' + (TAB === t.k ? 'on' : '') + '"><span class="n">' + t.n +
+    '</span><span class="c' + (t.hot ? ' hot' : '') + '">' + esc(t.c) + '</span></button>').join('');
+  $('tabs').querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { TAB = b.dataset.tab; try { localStorage.setItem('kith_parts_tab', TAB); } catch (e) {} render(); });
+  ({ order: renderOrder, way: renderWay, ret: renderReturns, stock: renderStock })[TAB]();
+}
+
+/* ---- TO ORDER ---- */
+function renderOrder() {
+  const list = JOBS.filter(P.needsOrdering).map(j => ({ j, w: P.orderWindow(j) }));
+  const now = list.filter(x => x.w.state === 'now').sort((a, b) => (a.j.bookedFor || '9').localeCompare(b.j.bookedFor || '9'));
+  const wait = list.filter(x => x.w.state === 'wait').sort((a, b) => a.w.orderFrom.localeCompare(b.w.orderFrom));
+  const unb = list.filter(x => x.w.state === 'unbooked');
+  let h = '';
+  if (!list.length) h = '<div class="empty">Nothing to order. Every approved job has its parts on a PO or on the shelf.</div>';
+  if (now.length) h += '<h2 class="sec">Order now <span class="cnt">' + now.length + '</span></h2>' + now.map(orderCard).join('');
+  if (unb.length) h += '<h2 class="sec">Approved, not booked yet <span class="cnt">' + unb.length + '</span></h2><p class="hint">Mechanical parts normally wait for the booking. Order early only with a reason.</p>' + unb.map(orderCard).join('');
+  if (wait.length) h += '<h2 class="sec">Booked — too early to order <span class="cnt">' + wait.length + '</span></h2><p class="hint">Parts are ordered ' + P.ORDER_WINDOW_DAYS + ' days before the booking. These show the day to order.</p>' + wait.map(orderCard).join('');
+  $('view').innerHTML = h;
+  wireOrder();
+}
+function orderCard(x) {
+  const j = x.j, w = x.w;
+  const groups = P.toOrderBySupplier(j);
+  const ask = P.realParts(j).map((p, i) => ({ p, i })).filter(o => !o.p.poNum && P.partState(o.p) === 'ask');
+  const done = P.realParts(j).filter(p => p.poNum || p.stockStatus === 'stock');
+  const cls = w.state === 'now' ? (w.days != null && w.days < 1 ? 'hot' : 'warm') : '';
+  const when = w.state === 'now' ? '<span class="tag ' + (w.days != null && w.days < 1 ? 'stop' : 'warn') + '">' + esc(w.why) + '</span>'
+    : w.state === 'wait' ? '<span class="tag">Order from ' + esc(fmtDate(w.orderFrom)) + '</span>' : '<span class="tag">Not booked</span>';
+  let h = '<div class="card ' + cls + '"><div class="hd">' + jobTitle(j) + '<div class="t"><b>' + jobSub(j) + '</b><span>' +
+    esc(STAGE_LABEL[j.stage] || j.stage || '') + (j.bookedFor ? ' · booked ' + esc(fmtDate(j.bookedFor)) + (j.bookedTime ? ' ' + esc(j.bookedTime) : '') : '') + (j.tmJob ? ' · TM ' + esc(j.tmJob) : '') +
+    '</span></div>' + when + '</div><div class="bd">';
+  if (ask.length) {
+    h += '<div class="grp"><div class="gh"><span class="tag stop">Shelf or buy?</span> Consumables — check the shelf first</div>' +
+      ask.map(o => { const s = stockMatch(o.p.name);
+        return '<div class="pl"><div class="nm">' + esc(o.p.name) + ' ×' + (parseInt(o.p.qty) || 1) +
+          (s ? '<small>' + esc(s.qty) + ' ' + esc(s.unit) + ' on the shelf</small>' : '') + '</div>' +
+          '<span class="acts"><button class="btn sm go" data-shelf="' + esc(j.id) + '|' + o.i + '">On the shelf</button>' +
+          '<button class="btn sm" data-buy="' + esc(j.id) + '|' + o.i + '">Need to buy</button></span></div>'; }).join('') + '</div>';
+  }
+  Object.keys(groups).forEach(sup => {
+    const g = groups[sup];
+    const tot = g.reduce((a, o) => a + o.cost * (parseInt(o.p.qty) || 1), 0);
+    const st = acctOf(sup);
+    h += '<div class="grp"><div class="gh"><b>' + esc(sup) + '</b>' + (st === 'stop' ? ' <span class="tag stop">On stop</span>' : st === 'cash' ? ' <span class="tag warn">Cash only</span>' : '') + '</div>' +
+      g.map(o => '<div class="pl"><div class="nm">' + esc(o.p.name) + ' ×' + (parseInt(o.p.qty) || 1) +
+        (o.p.num ? '<small>' + esc(o.p.num) + '</small>' : '<small style="color:var(--warn)">no part number</small>') + '</div><span class="amt">' + (o.cost ? gbp(o.cost) : '—') + '</span></div>').join('') +
+      '<div class="btns"><button class="btn primary sm" data-raise="' + esc(j.id) + '" data-sup="' + esc(sup) + '">Raise PO' + (sup !== '(no supplier)' ? ' — ' + esc(sup) : '') +
+      ' (' + g.length + (tot ? ' · ' + gbp(tot) : '') + ')</button></div></div>';
+  });
+  if (done.length) h += '<div class="hint" style="margin:.5rem 0 0">✓ ' + done.length + ' already on a PO or on the shelf</div>';
+  return h + '</div></div>';
+}
+function wireOrder() {
+  document.querySelectorAll('[data-raise]').forEach(b => b.onclick = () => {
+    const j = jobOf(b.dataset.raise); const sup = b.dataset.sup;
+    const g = P.toOrderBySupplier(j)[sup] || [];
+    openRaise({ jobId: j.id, supplier: sup === '(no supplier)' ? '' : sup,
+      lines: g.map(o => ({ i: o.i, name: o.p.name, num: o.p.num || '', price: o.cost || '', qty: parseInt(o.p.qty) || 1 })) });
+  });
+  document.querySelectorAll('[data-shelf],[data-buy]').forEach(b => b.onclick = () => {
+    const shelf = !!b.dataset.shelf; const [jid, i] = (b.dataset.shelf || b.dataset.buy).split('|');
+    setShelf(jid, +i, shelf);
+  });
+}
+async function setShelf(jobId, i, shelf) {
+  if (BUSY) return; BUSY = true;
+  const j = jobOf(jobId); const part = j.parts[i];
+  try {
+    await changeJob(jobId, d => {
+      const k = P.findPart(d.parts || [], i, part.name); if (k < 0) throw new Error('That part has been changed on the job — refresh.');
+      d.parts[k].stockStatus = shelf ? 'stock' : 'buy';
+      d.log = d.log || []; d.log.push(logLine(part.name + (shelf ? ' — taken from the shelf' : ' — not on the shelf, to buy')));
+      return d;
+    });
+    const s = shelf ? stockMatch(part.name) : null;
+    if (s && confirm('Take ' + (parseInt(part.qty) || 1) + ' ' + s.unit + ' of ' + s.name + ' off the stock count?\n\nOn the shelf now: ' + s.qty)) {
+      STOCK = STOCK.map(x => x.id === s.id ? P.adjustStock(x, -(parseInt(part.qty) || 1), 'used on ' + (j.reg || jobId), ME) : x);
+      await saveStock();
+    }
+    toast(shelf ? '✓ From the shelf — no PO needed' : '✓ Added to the order list');
+  } catch (e) { toast('⚠ ' + e.message, 5000); }
+  BUSY = false; render();
+}
+
+/* ---- RAISE A PO ---- */
+let RAISE = null;
+function openRaise(o) {
+  RAISE = Object.assign({ lines: [] }, o);
+  if (!RAISE.lines.length) RAISE.lines.push({ name: '', num: '', price: '', qty: 1 });
+  const j = o.jobId && o.jobId !== 'consumables' ? jobOf(o.jobId) : null;
+  const w = j ? P.orderWindow(j) : { state: 'now' };
+  const early = j && w.state !== 'now';
+  const sups = suppliers().map(s => s.name);
+  if (RAISE.supplier && !sups.includes(RAISE.supplier)) sups.unshift(RAISE.supplier);
+  sheet('<button class="btn sm x" data-close>Close</button><h2>Raise a PO</h2>' +
+    '<p class="hint">' + (j ? jobTitle(j) + ' ' + jobSub(j) : 'Consumables / stock — no job') + '</p>' +
+    '<div class="note"><b>This records the order</b>You still place it with the supplier. Pay method tells accounts what to do.</div>' +
+    '<div class="row"><div><label class="f" for="rSup">Supplier</label><select id="rSup"><option value="">Choose a supplier…</option>' +
+    sups.map(s => '<option' + (s === RAISE.supplier ? ' selected' : '') + '>' + esc(s) + '</option>').join('') + '</select><div id="rAcct"></div></div></div>' +
+    '<label class="f">Parts</label><div id="rLines"></div><button class="btn sm" id="rAdd">+ Add a part</button>' +
+    '<div class="row r2" style="margin-top:.7rem"><div><label class="f" for="rEta">Due in (ETA)</label><input type="date" id="rEta" value="' + esc(RAISE.eta || '') + '"></div>' +
+    '<div><label class="f" for="rPay">How are we paying?</label><select id="rPay"><option value="">Choose…</option>' +
+    Object.keys(P.PAY_METHODS).map(k => '<option value="' + k + '">' + esc(P.PAY_METHODS[k].label) + '</option>').join('') + '</select></div></div>' +
+    '<label class="ck"><input type="checkbox" id="rUrgent"> Urgent — text accounts as well as email</label>' +
+    (early ? '<div class="note warn"><b>Ordering early</b>' + esc(w.state === 'wait' ? 'Booked ' + fmtDate(j.bookedFor) + ' — normally ordered from ' + fmtDate(w.orderFrom) + '.' : 'Not booked yet.') +
+      ' Say why it needs ordering now.</div><div class="chips" id="rEarly">' + EARLY_REASONS.map((r, i) => '<button data-er="' + i + '">' + esc(r) + '</button>').join('') +
+      '</div><input type="text" id="rEarlyOther" placeholder="Or type a reason…">' : '') +
+    '<div class="row" style="margin-top:.6rem"><div><label class="f" for="rNotes">Notes</label><textarea id="rNotes" placeholder="Account number, delivery instructions…"></textarea></div></div>' +
+    '<div id="rTotal" class="hint"></div>' +
+    '<button class="btn primary full" id="rGo">Raise the PO</button><div id="rErr"></div>');
+  let earlyPick = '';
+  const drawLines = () => {
+    $('rLines').innerHTML = RAISE.lines.map((l, k) => '<div class="line"><input class="nm-in" type="text" data-k="' + k + '" data-f="name" placeholder="Part" value="' + esc(l.name) + '">' +
+      '<input type="text" data-k="' + k + '" data-f="num" placeholder="Part no." value="' + esc(l.num) + '">' +
+      '<input type="number" step="0.01" min="0" data-k="' + k + '" data-f="price" placeholder="£ net" value="' + esc(l.price) + '">' +
+      '<input type="number" step="1" min="1" data-k="' + k + '" data-f="qty" value="' + esc(l.qty) + '">' +
+      '<button class="btn sm stop" data-rm="' + k + '" aria-label="Remove">✕</button></div>').join('');
+    $('rLines').querySelectorAll('[data-f]').forEach(inp => inp.oninput = () => { RAISE.lines[+inp.dataset.k][inp.dataset.f] = inp.value; total(); });
+    $('rLines').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { RAISE.lines.splice(+b.dataset.rm, 1); drawLines(); total(); });
+  };
+  const total = () => { const t = RAISE.lines.reduce((a, l) => a + (parseFloat(l.price) || 0) * (parseInt(l.qty) || 1), 0); $('rTotal').textContent = t ? 'Total ' + gbp(t) + ' ex VAT' : ''; };
+  const acct = () => { const s = $('rSup').value; const st = acctOf(s);
+    $('rAcct').innerHTML = st === 'stop' ? '<div class="note stop"><b>On stop</b>' + esc(acctNote(s) || 'Accounts have restricted this supplier.') + '</div>'
+      : st === 'cash' ? '<div class="note warn"><b>Cash only</b>' + esc(acctNote(s) || 'Pay on collection — no account credit.') + '</div>' : ''; };
+  drawLines(); total(); acct();
+  $('rSup').onchange = acct;
+  $('rPay').onchange = () => { const m = P.PAY_METHODS[$('rPay').value]; if (m) $('rUrgent').checked = m.needsPay; };
+  $('rAdd').onclick = () => { RAISE.lines.push({ name: '', num: '', price: '', qty: 1 }); drawLines(); };
+  if (early) document.querySelectorAll('[data-er]').forEach(b => b.onclick = () => {
+    document.querySelectorAll('[data-er]').forEach(x => x.classList.remove('on')); b.classList.add('on'); earlyPick = EARLY_REASONS[+b.dataset.er]; });
+  $('rGo').onclick = async () => {
+    const err = m => { $('rErr').innerHTML = '<div class="note stop"><b>Not raised</b>' + esc(m) + '</div>'; };
+    const supplier = $('rSup').value;
+    const earlyReason = early ? (($('rEarlyOther').value || '').trim() || earlyPick) : '';
+    if (early && !earlyReason) return err('Say why this is being ordered early.');
+    if (acctOf(supplier) === 'stop' && !confirm(supplier + ' is ON STOP.\n\n' + (acctNote(supplier) || '') + '\n\nRaise the PO anyway?')) return;
+    let po;
+    try {
+      po = P.makePO({ supplier, jobId: RAISE.jobId || null, items: RAISE.lines, eta: $('rEta').value, pay: $('rPay').value, urgent: $('rUrgent').checked,
+        notes: $('rNotes').value, by: ME, list: POS, floor: MAXNUM, reg: j && j.reg, earlyReason, onStop: acctOf(supplier) === 'stop' });
+    } catch (e) { return err(e.message); }
+    const headsUp = po._headsUp; delete po._headsUp;
+    $('rGo').disabled = true; $('rGo').innerHTML = '<span class="spin"></span> Saving…';
+    let saved = null, ren = null;
+    try {
+      POS = [po].concat(POS);
+      const res = await savePOs();
+      ren = (res.renamed || []).find(r => r.id === po.id) || null;
+      saved = POS.find(p => p.id === po.id) || po;
+    } catch (e) {
+      // the PO itself did not reach the server: take it back off this screen
+      POS = POS.filter(p => p.id !== po.id);
+      $('rGo').disabled = false; $('rGo').textContent = 'Raise the PO';
+      return err(e.message + ' — nothing was saved, try again.');
+    }
+    // From here the PO is saved. Whatever happens next, it is never removed.
+    const m = P.PAY_METHODS[saved.pay.method];
+    notify('accounts', (saved.pay.urgent ? '⚠ Urgent — ' : '') + (m.needsPay ? 'Pay ' : 'FYI ') + saved.supplier + (P.poTotal(saved) ? ' ' + gbp(P.poTotal(saved)) : ''),
+      headsUp.split(po.num).join(saved.num), { poId: saved.id, jobId: saved.jobId, key: 'acct-pay|' + saved.id });
+    const lines = RAISE.lines.slice();
+    let jobOk = true, jobErr = '';
+    if (j) {
+      try { await tagJobForPO(j.id, lines, saved, ren); }
+      catch (e) { jobOk = false; jobErr = e.message; }
+    }
+    closeSheet();
+    sheet('<h2 style="color:var(--go)">✓ ' + esc(saved.num) + ' raised</h2><p class="hint">' + esc(saved.supplier) + (j ? ' · ' + esc(j.reg || '') : '') + (ren ? ' · renumbered from ' + esc(ren.from) + ' (someone else took it at the same moment)' : '') + '</p>' +
+      (jobOk ? '' : '<div class="note stop"><b>The PO is saved — but the job wasn’t updated</b>' + esc(jobErr) + '<br>Until it is, the parts still show as to order. Don’t raise the PO again.' +
+        '<div class="btns"><button class="btn primary sm" id="retryTag">Try the job update again</button></div></div>') +
+      '<div class="note warn"><b>Still to do</b>Place the order with ' + esc(saved.supplier) + '. Book it in on “On the way” when it arrives.</div>' +
+      '<button class="btn primary full" data-close>Done</button>');
+    if (!jobOk) $('retryTag').onclick = async () => {
+      $('retryTag').disabled = true;
+      try { await tagJobForPO(j.id, lines, saved, ren); closeSheet(); toast('✓ Job updated'); render(); }
+      catch (e) { $('retryTag').disabled = false; toast('⚠ Still not updated: ' + e.message, 6000); }
+    };
+    render();
+  };
+}
+// Put the PO on the job's parts and move the job on. Safe to run twice.
+async function tagJobForPO(jobId, lines, saved, ren) {
+  await changeJob(jobId, d => {
+    const want = lines.filter(l => l.i != null).map(l => P.findPart(d.parts || [], l.i, l.name)).filter(k => k > -1);
+    if (!want.length && (d.parts || []).some(p => p && p.poId === saved.id)) return null;   // already done
+    const out = P.tagJob(d, want, saved, ME);
+    if (ren) out.log.push(logLine(ren.from + ' was taken at the same moment — this order is ' + ren.to));
+    // arrives after the booking? the adviser needs to rebook
+    if (saved.eta && out.bookedFor && saved.eta > out.bookedFor) {
+      out.partsLate = { poId: saved.id, poNum: saved.num, eta: saved.eta, at: Date.now() };
+      out.log.push(logLine('⚠ ' + saved.num + ' arrives ' + fmtDate(saved.eta) + ' — after the booking on ' + fmtDate(out.bookedFor) + '. Needs rebooking.'));
+    }
+    return out;
+  });
+  const jj = jobOf(jobId);
+  if (jj && jj.partsLate && jj.partsLate.poId === saved.id)
+    notify('adviser', '⚠ Rebook ' + (jj.reg || 'job') + ' — parts late', saved.num + ' (' + saved.supplier + ') due ' + fmtDate(saved.eta) + ', booked ' + fmtDate(jj.bookedFor) + '.', { jobId: jj.id, key: 'late|' + saved.id });
+}
+
+/* ---- ON THE WAY ---- */
+let WAY_Q = '';
+function renderWay() {
+  const t = today();
+  const hay = p => [p.num, p.supplier, (jobOf(p.jobId) || {}).reg, (p.items || []).map(i => i.name + ' ' + i.num).join(' ')].join(' ').toLowerCase();
+  let open = POS.filter(p => P.OPEN.includes(p.status || 'Ordered'));
+  if (WAY_Q) open = open.filter(p => hay(p).includes(WAY_Q.toLowerCase()));
+  const late = open.filter(p => p.eta && p.eta < t), due = open.filter(p => p.eta === t),
+    later = open.filter(p => p.eta && p.eta > t).sort((a, b) => a.eta.localeCompare(b.eta)), noEta = open.filter(p => !p.eta);
+  let h = '<input type="search" id="wayQ" placeholder="Search reg, PO, supplier or part…" value="' + esc(WAY_Q) + '" style="margin-bottom:.4rem">';
+  if (!open.length) h += '<div class="empty">' + (WAY_Q ? 'Nothing matches.' : 'Nothing on the way. Every PO has been booked in.') + '</div>';
+  const sec = (title, list, cls) => list.length ? '<h2 class="sec">' + title + ' <span class="cnt">' + list.length + '</span></h2>' + list.map(p => poCard(p, cls)).join('') : '';
+  h += sec('Late', late, 'hot') + sec('Due today', due, 'warm') + sec('Coming', later, '') + sec('No date given', noEta, '');
+  $('view').innerHTML = h;
+  $('wayQ').oninput = e => { WAY_Q = e.target.value; const pos = e.target.selectionStart; renderWay(); const q = $('wayQ'); q.focus(); q.setSelectionRange(pos, pos); };
+  document.querySelectorAll('[data-gi]').forEach(b => b.onclick = () => openGoodsIn(b.dataset.gi));
+  document.querySelectorAll('[data-nis]').forEach(b => b.onclick = () => doNotInStock(b.dataset.nis));
+  document.querySelectorAll('[data-boo]').forEach(b => b.onclick = () => doBackOnOrder(b.dataset.boo));
+  document.querySelectorAll('[data-eta]').forEach(b => b.onclick = () => doEta(b.dataset.eta));
+}
+function poCard(p, cls) {
+  const j = jobOf(p.jobId);
+  const pay = p.pay ? (p.pay.state === 'paid' ? '<span class="tag go">Paid</span>' : p.pay.state === 'to-pay' ? '<span class="tag stop">Accounts to pay</span>' : '<span class="tag">' + esc((P.PAY_METHODS[p.pay.method] || {}).label || '') + '</span>') : '';
+  const st = p.status || 'Ordered';
+  return '<div class="card ' + (cls || '') + '"><div class="hd"><span class="mono" style="color:var(--gold);font-weight:600">' + esc(p.num) + '</span>' +
+    '<div class="t"><b>' + esc(p.supplier) + '</b><span>' + (j ? esc(j.reg || '') + ' · ' + jobSub(j) : p.jobId === 'consumables' ? 'Consumables / stock' : p.jobId ? 'Job ' + esc(p.jobId) : 'No job') +
+    ' · raised ' + esc(p.createdAt || '') + ' by ' + esc(p.createdBy || '') + '</span></div>' +
+    (st !== 'Ordered' ? '<span class="tag ' + (st === 'Not in stock' ? 'stop' : st === 'Part Received' ? 'warn' : 'blue') + '">' + esc(st) + '</span>' : '') + pay + '</div><div class="bd">' +
+    (p.items || []).map(i => '<div class="pl"><div class="nm">' + esc(i.name) + ' ×' + (parseInt(i.qty) || 1) + (i.num ? '<small>' + esc(i.num) + '</small>' : '') + '</div>' +
+      (i.received != null ? '<span class="tag ' + (i.received >= (parseInt(i.qty) || 1) ? 'go' : 'warn') + '">' + i.received + ' in</span>' : '') +
+      '<span class="amt">' + (parseFloat(i.price) ? gbp(parseFloat(i.price) * (parseInt(i.qty) || 1)) : '') + '</span></div>').join('') +
+    (p.outOfStockNote ? '<div class="note stop"><b>Not in stock</b>' + esc(p.outOfStockNote) + '</div>' : '') +
+    '<div class="btns"><span class="hint when">' + (p.eta ? 'Due ' + esc(fmtDate(p.eta)) : 'No ETA') + ' · ' + gbp(P.poTotal(p)) + '</span>' +
+    '<button class="btn sm" data-eta="' + esc(p.id) + '">Change ETA</button>' +
+    (st === 'Not in stock' ? '<button class="btn sm" data-boo="' + esc(p.id) + '">Back on order</button>' : '<button class="btn sm stop" data-nis="' + esc(p.id) + '">Not in stock</button>') +
+    '<button class="btn primary sm" data-gi="' + esc(p.id) + '">Book it in</button></div></div></div>';
+}
+function openGoodsIn(poId) {
+  const p = POS.find(x => x.id === poId); if (!p) return;
+  sheet('<button class="btn sm x" data-close>Close</button><h2>Book in ' + esc(p.num) + '</h2><p class="hint">' + esc(p.supplier) + ' — how many of each actually arrived?</p>' +
+    (p.items || []).map((i, k) => '<div class="pl"><div class="nm">' + esc(i.name) + (i.num ? '<small>' + esc(i.num) + '</small>' : '') + '</div>' +
+      '<span class="hint" style="margin:0">of ' + (parseInt(i.qty) || 1) + '</span><input type="number" min="0" max="' + (parseInt(i.qty) || 1) + '" id="gi' + k + '" value="' + (parseInt(i.qty) || 1) + '" style="width:5rem"></div>').join('') +
+    '<div class="row" style="margin-top:.6rem"><div><label class="f" for="giNote">Delivery note / anything wrong</label><input type="text" id="giNote" placeholder="e.g. box damaged, 1 short"></div></div>' +
+    '<button class="btn primary full" id="giGo">Book it in</button>');
+  $('giGo').onclick = async () => {
+    const rec = (p.items || []).map((i, k) => $('gi' + k).value);
+    const r = P.goodsIn(p, rec, $('giNote').value, ME);
+    $('giGo').disabled = true;
+    try {
+      POS = POS.map(x => x.id === p.id ? r.po : x);
+      await savePOs();
+      if (p.jobId && p.jobId !== 'consumables') {
+        await jobLog(p.jobId, r.allIn ? '📦 ' + p.num + ' delivered in full — ' + p.supplier : '⚠ ' + p.num + ' SHORT DELIVERY — ' + p.supplier + ': ' + r.missing.join('; '));
+        const j = jobOf(p.jobId);
+        const openLeft = posForJob(p.jobId).filter(x => P.OPEN.includes(x.status || 'Ordered')).length;
+        if (r.allIn && j && ['raised', 'po', 'booked'].includes(j.stage) && !openLeft && !P.realParts(j).some(x => P.partState(x) === 'buy' || P.partState(x) === 'ask')) {
+          if (confirm('Everything for ' + (j.reg || 'this job') + ' is in.\n\nMove it on to Vehicle Check-In?\n\n(The work still has to be done — it will not be marked complete.)'))
+            await changeJob(j.id, d => { d.stage = 'checkin'; d.stageAt = Date.now(); d.stageHistory = d.stageHistory || [];
+              const last = d.stageHistory[d.stageHistory.length - 1]; if (last && !last.left) last.left = d.stageAt;
+              d.stageHistory.push({ stage: 'checkin', at: d.stageAt, by: ME }); d.log = d.log || []; d.log.push(logLine('→ Parts in — ready for vehicle check-in')); return d; });
+        }
+      }
+      if (!r.allIn && !r.noneIn) notify('parts', '⚠ Short delivery — ' + p.num, p.supplier + ': ' + r.missing.join('; '), { poId: p.id, jobId: p.jobId, key: 'short|' + p.id });
+      const bd = P.bookDeliveries(STOCK, POS, ME);
+      if (bd.n) { STOCK = bd.stock; await saveStock(); }
+      closeSheet(); toast(r.allIn ? '✓ All in' : r.noneIn ? 'Nothing arrived — still on order' : '⚠ Short delivery recorded'); render();
+    } catch (e) { toast('⚠ ' + e.message, 5000); $('giGo').disabled = false; }
+  };
+}
+async function doNotInStock(poId) {
+  const p = POS.find(x => x.id === poId); if (!p) return;
+  const note = prompt('What did ' + p.supplier + ' say?\n\ne.g. "Out of stock, 3-5 days" or "Discontinued, try Euro Car Parts"', '');
+  if (note === null) return;
+  try {
+    POS = POS.map(x => x.id === p.id ? P.notInStock(p, note, ME) : x); await savePOs();
+    await jobLog(p.jobId, '⚠ ' + p.num + ' — ' + p.supplier + ' has NOT got the parts' + (note ? ': ' + note : ''));
+    render();
+    if (confirm('Order these from another supplier instead?')) openRaise({ jobId: p.jobId, supplier: '', lines: (p.items || []).map(i => ({ name: i.name, num: i.num, price: i.price, qty: i.qty })) });
+  } catch (e) { toast('⚠ ' + e.message, 5000); }
+}
+async function doBackOnOrder(poId) {
+  const p = POS.find(x => x.id === poId); if (!p) return;
+  try { POS = POS.map(x => x.id === p.id ? P.backOnOrder(p, ME) : x); await savePOs(); render(); } catch (e) { toast('⚠ ' + e.message, 5000); }
+}
+async function doEta(poId) {
+  const p = POS.find(x => x.id === poId); if (!p) return;
+  const v = prompt('New ETA for ' + p.num + ' (YYYY-MM-DD)', p.eta || today());
+  if (v === null) return;
+  if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v.trim())) return toast('Use the format 2026-09-24');
+  try {
+    POS = POS.map(x => { if (x.id !== p.id) return x; const o = clone(x); o.eta = v.trim(); o.statusLog = o.statusLog || [];
+      o.statusLog.push(P.ts() + ' → ETA ' + (o.eta || 'cleared') + ' [' + ME + ']'); return o; });
+    await savePOs();
+    const j = jobOf(p.jobId);
+    if (j && v && j.bookedFor && v > j.bookedFor) {
+      await changeJob(j.id, d => { d.partsLate = { poId: p.id, poNum: p.num, eta: v, at: Date.now() }; d.log = d.log || [];
+        d.log.push(logLine('⚠ ' + p.num + ' now due ' + fmtDate(v) + ' — after the booking on ' + fmtDate(d.bookedFor) + '. Needs rebooking.')); return d; });
+      notify('adviser', '⚠ Rebook ' + (j.reg || 'job') + ' — parts late', p.num + ' (' + p.supplier + ') now due ' + fmtDate(v) + ', booked ' + fmtDate(j.bookedFor) + '.', { jobId: j.id, key: 'late|' + p.id + '|' + v });
+      toast('⚠ Arrives after the booking — the adviser has been told to rebook', 5000);
+    }
+    render();
+  } catch (e) { toast('⚠ ' + e.message, 5000); }
+}
+
+/* ---- RETURNS ---- */
+function renderReturns() {
+  const open = POS.filter(p => p.status === 'Return Requested' || p.status === 'Part Returned');
+  const done = POS.filter(p => p.status === 'Returned').slice(0, 20);
+  let h = '<button class="btn primary full" id="retStart">↩ Start a return</button>';
+  h += '<h2 class="sec">Going back <span class="cnt">' + open.length + '</span></h2>';
+  h += open.length ? open.map(p => retCard(p, true)).join('') : '<div class="empty">No returns waiting to go back.</div>';
+  if (done.length) h += '<h2 class="sec">Gone back <span class="cnt">last ' + done.length + '</span></h2>' + done.map(p => retCard(p, false)).join('');
+  $('view').innerHTML = h;
+  $('retStart').onclick = openReturnPicker;
+  document.querySelectorAll('[data-retd]').forEach(b => b.onclick = () => doReturned(b.dataset.retd));
+}
+function retCard(p, open) {
+  const j = jobOf(p.jobId);
+  return '<div class="card ' + (open ? 'warm' : '') + '"><div class="hd"><span class="mono" style="color:var(--gold);font-weight:600">' + esc(p.num) + '</span><div class="t"><b>' + esc(p.supplier) + '</b><span>' +
+    (j ? esc(j.reg || '') + ' · ' : '') + 'raised ' + esc(p.returnAt || '') + ' by ' + esc(p.returnBy || '') + (p.returnRef ? ' · ref ' + esc(p.returnRef) : '') + '</span></div>' +
+    '<span class="tag ' + (open ? 'warn' : '') + '">' + esc(p.status) + '</span></div><div class="bd">' +
+    '<div class="note stop" style="margin-top:0"><b>Why</b>' + esc(p.returnReason || '') + '</div>' +
+    (p.items || []).filter(i => p.status !== 'Part Returned' || i.returned).map(i => '<div class="pl"><div class="nm">' + esc(i.name) + (i.num ? '<small>' + esc(i.num) + '</small>' : '') + '</div>' +
+      '<span class="amt">×' + (i.returnedQty || parseInt(i.qty) || 1) + ' · ' + gbp((parseFloat(i.price) || 0) * (i.returnedQty || parseInt(i.qty) || 1)) + '</span></div>').join('') +
+    '<div class="btns"><span class="hint" style="margin:0;flex:1">Credit due ' + gbp(P.returnValue(p)) + '</span>' +
+    (open ? '<button class="btn primary sm" data-retd="' + esc(p.id) + '">✓ Gone back to the supplier</button>' : '') + '</div></div></div>';
+}
+function openReturnPicker() {
+  const can = POS.filter(p => ['Received', 'Part Received', 'Paid', 'Awaiting Delivery', 'Ordered'].includes(p.status || 'Ordered'));
+  const draw = q => {
+    q = (q || '').toLowerCase();
+    const list = can.filter(p => !q || [p.num, p.supplier, (jobOf(p.jobId) || {}).reg, (p.items || []).map(i => i.name).join(' ')].join(' ').toLowerCase().includes(q)).slice(0, 30);
+    $('rpList').innerHTML = list.length ? list.map(p => '<button class="btn full" style="text-align:left;margin-bottom:.35rem" data-rp="' + esc(p.id) + '"><b class="mono">' + esc(p.num) + '</b> · ' + esc(p.supplier) +
+      ((jobOf(p.jobId) || {}).reg ? ' · ' + esc(jobOf(p.jobId).reg) : '') + '<br><small style="color:var(--ink-3)">' + esc((p.items || []).map(i => i.name).join(', ')) + '</small></button>').join('')
+      : '<div class="empty">No order matches.</div>';
+    $('rpList').querySelectorAll('[data-rp]').forEach(b => b.onclick = () => openReturn(b.dataset.rp));
+  };
+  sheet('<button class="btn sm x" data-close>Close</button><h2>Start a return</h2><p class="hint">Which order is it from?</p>' +
+    '<input type="search" id="rpQ" placeholder="Reg, PO number, supplier or part…"><div id="rpList" style="margin-top:.5rem"></div>');
+  $('rpQ').oninput = e => draw(e.target.value); draw(''); $('rpQ').focus();
+}
+function openReturn(poId) {
+  const p = POS.find(x => x.id === poId); if (!p) return;
+  let reason = '';
+  sheet('<button class="btn sm x" data-close>Close</button><h2>Return from ' + esc(p.num) + '</h2><p class="hint">' + esc(p.supplier) + '</p>' +
+    (p.items || []).map((i, k) => '<div class="pl"><label class="ck nm"><input type="checkbox" id="rt' + k + '"' + ((p.items || []).length === 1 ? ' checked' : '') + '> ' + esc(i.name) + '</label>' +
+      '<input type="number" min="1" max="' + (parseInt(i.qty) || 1) + '" id="rq' + k + '" value="' + (parseInt(i.qty) || 1) + '" style="width:5rem"></div>').join('') +
+    '<label class="f" style="margin-top:.7rem">Why is it going back?</label><div class="chips" id="rtR">' + RETURN_REASONS.map((r, i) => '<button data-rr="' + i + '">' + esc(r) + '</button>').join('') + '</div>' +
+    '<input type="text" id="rtOther" placeholder="Or type the reason…">' +
+    '<div class="row" style="margin-top:.6rem"><div><label class="f" for="rtRef">Supplier return / RMA number</label><input type="text" id="rtRef"></div></div>' +
+    '<button class="btn primary full" id="rtGo">Raise the return</button><div id="rtErr"></div>');
+  document.querySelectorAll('[data-rr]').forEach(b => b.onclick = () => { document.querySelectorAll('[data-rr]').forEach(x => x.classList.remove('on')); b.classList.add('on'); reason = RETURN_REASONS[+b.dataset.rr]; });
+  $('rtGo').onclick = async () => {
+    const idx = (p.items || []).map((i, k) => k).filter(k => $('rt' + k).checked);
+    const qtys = {}; idx.forEach(k => { qtys[k] = $('rq' + k).value; });
+    let r;
+    try { r = P.raiseReturn(p, idx, qtys, ($('rtOther').value || '').trim() || reason, $('rtRef').value, ME); }
+    catch (e) { $('rtErr').innerHTML = '<div class="note stop"><b>Not raised</b>' + esc(e.message) + '</div>'; return; }
+    try {
+      POS = POS.map(x => x.id === p.id ? r.po : x); await savePOs();
+      await jobLog(p.jobId, '↩ ' + p.num + ' — ' + (r.all ? 'all items' : r.names.length + ' of ' + (p.items || []).length + ' items') + ' returned to ' + p.supplier + ': ' + r.names.join(', ') + ' — ' + r.po.returnReason);
+      notify('accounts', '↩ Credit due — ' + p.supplier, p.num + ': ' + r.names.join(', ') + ' (' + r.po.returnReason + '). Expect a credit of about ' + gbp(P.returnValue(r.po)) + '.', { poId: p.id, key: 'credit|' + p.id + '|' + r.po.returnAt });
+      closeSheet(); TAB = 'ret'; toast('↩ Return raised'); render();
+    } catch (e) { toast('⚠ ' + e.message, 5000); }
+  };
+}
+async function doReturned(poId) {
+  const p = POS.find(x => x.id === poId); if (!p) return;
+  if (!confirm('Has ' + p.num + ' gone back to ' + p.supplier + '?')) return;
+  try { POS = POS.map(x => x.id === p.id ? P.markReturned(p, ME) : x); await savePOs(); await jobLog(p.jobId, '↩ ' + p.num + ' gone back to ' + p.supplier); render(); }
+  catch (e) { toast('⚠ ' + e.message, 5000); }
+}
+
+/* ---- STOCK ---- */
+function renderStock() {
+  const low = STOCK.filter(P.isLow), ok = STOCK.filter(s => !P.isLow(s)).sort((a, b) => a.name.localeCompare(b.name));
+  let h = '<div class="btns" style="margin-top:0"><button class="btn primary" id="stAdd">+ Add an item</button>' +
+    (low.length ? '<button class="btn stop" id="stOrder">Order what’s low (' + low.length + ')</button>' : '') + '</div>';
+  h += '<p class="hint" style="margin-top:.6rem">Oils, fluids, filters, bulbs, cleaners — things used across jobs. Deliveries on a stock PO are added automatically when booked in. Paint and bodyshop materials show here too so you can order them — they’re used against jobs in the <a href="kith-stock.html" style="color:var(--gold)">Stock app</a>.</p>';
+  if (!STOCK.length) h += '<div class="empty">No stock items yet. Add the consumables you keep on the shelf.</div>';
+  if (low.length) h += '<h2 class="sec">Running low <span class="cnt">' + low.length + '</span></h2><div class="card hot">' + low.map(stockRow).join('') + '</div>';
+  if (ok.length) h += '<h2 class="sec">On the shelf <span class="cnt">' + ok.length + '</span></h2><div class="card">' + ok.map(stockRow).join('') + '</div>';
+  $('view').innerHTML = h;
+  $('stAdd').onclick = () => openStockItem(null);
+  if ($('stOrder')) $('stOrder').onclick = orderLow;
+  document.querySelectorAll('[data-sadj]').forEach(b => b.onclick = () => { const [id, d] = b.dataset.sadj.split('|'); adjust(id, +d); });
+  document.querySelectorAll('[data-suse]').forEach(b => b.onclick = () => useStock(b.dataset.suse));
+  document.querySelectorAll('[data-sedit]').forEach(b => b.onclick = () => openStockItem(b.dataset.sedit));
+}
+function stockRow(s) {
+  const onOrder = POS.filter(p => P.OPEN.includes(p.status || 'Ordered')).reduce((a, p) => a + (p.items || []).filter(i => i.stockId === s.id).reduce((b, i) => b + (parseInt(i.qty) || 1) - (i.received || 0), 0), 0);
+  return '<div class="stockrow"><div><b>' + esc(s.name) + '</b>' + (s.kind === 'paint' ? ' <span class="tag gold">Paint</span>' : '') + '<div class="hint" style="margin:0">' +
+    [s.num, s.supplier, s.min ? 'reorder at ' + s.min : 'no reorder level', onOrder ? onOrder + ' on order' : ''].filter(Boolean).map(esc).join(' · ') + '</div></div>' +
+    '<div style="display:flex;align-items:center;gap:.35rem"><span class="qty' + (P.isLow(s) ? ' low' : '') + '">' + esc(s.qty) + '</span><span class="hint" style="margin:0">' + esc(s.unit) + '</span>' +
+    '<button class="btn sm" data-sadj="' + esc(s.id) + '|-1" aria-label="One less">−</button><button class="btn sm" data-sadj="' + esc(s.id) + '|1" aria-label="One more">+</button>' +
+    '<button class="btn sm" data-suse="' + esc(s.id) + '">Use…</button><button class="btn sm" data-sedit="' + esc(s.id) + '">Edit</button></div></div>';
+}
+async function adjust(id, d, why) {
+  if (BUSY) return; BUSY = true;
+  try { STOCK = STOCK.map(x => x.id === id ? P.adjustStock(x, d, why || (d > 0 ? 'counted in' : 'used'), ME) : x); await saveStock(); render(); }
+  catch (e) { toast('⚠ ' + e.message, 5000); }
+  BUSY = false;
+}
+function useStock(id) {
+  const s = STOCK.find(x => x.id === id); if (!s) return;
+  sheet('<button class="btn sm x" data-close>Close</button><h2>Use ' + esc(s.name) + '</h2><p class="hint">' + esc(s.qty) + ' ' + esc(s.unit) + ' on the shelf</p>' +
+    '<div class="row r2"><div><label class="f" for="uQ">How many ' + esc(s.unit) + '</label><input type="number" step="0.5" min="0" id="uQ" value="1"></div>' +
+    '<div><label class="f" for="uR">On which car? (reg)</label><input type="text" id="uR" placeholder="optional"></div></div>' +
+    '<button class="btn primary full" id="uGo">Take it off the count</button>');
+  $('uGo').onclick = async () => { const q = parseFloat($('uQ').value) || 0; if (!q) return; const r = ($('uR').value || '').trim().toUpperCase();
+    closeSheet(); await adjust(id, -q, r ? 'used on ' + r : 'used'); };
+}
+function openStockItem(id) {
+  const s = id ? STOCK.find(x => x.id === id) : {};
+  const sups = suppliers().map(x => x.name);
+  sheet('<button class="btn sm x" data-close>Close</button><h2>' + (id ? 'Edit ' + esc(s.name) : 'Add a stock item') + '</h2>' +
+    '<div class="row"><div><label class="f" for="sN">Name</label><input type="text" id="sN" value="' + esc(s.name || '') + '" placeholder="e.g. 5W-30 engine oil"></div></div>' +
+    '<div class="row r3"><div><label class="f" for="sQ">On the shelf</label><input type="number" step="0.5" min="0" id="sQ" value="' + esc(s.qty != null ? s.qty : '') + '"></div>' +
+    '<div><label class="f" for="sU">Counted in</label><input type="text" id="sU" value="' + esc(s.unit || 'each') + '" placeholder="each, litre, box"></div>' +
+    '<div><label class="f" for="sM">Reorder when down to</label><input type="number" step="0.5" min="0" id="sM" value="' + esc(s.min != null ? s.min : '') + '"></div></div>' +
+    '<div class="row r3"><div><label class="f" for="sS">Usual supplier</label><select id="sS"><option value=""></option>' + sups.map(n => '<option' + (n === s.supplier ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + '</select></div>' +
+    '<div><label class="f" for="sP">Part no.</label><input type="text" id="sP" value="' + esc(s.num || '') + '"></div>' +
+    '<div><label class="f" for="sC">Net cost each</label><input type="number" step="0.01" min="0" id="sC" value="' + esc(s.price || '') + '"></div></div>' +
+    '<button class="btn primary full" id="sGo">' + (id ? 'Save' : 'Add it') + '</button>' + (id ? '<button class="btn stop full" id="sDel" style="margin-top:.4rem">Remove this item</button>' : '') + '<div id="sErr"></div>');
+  $('sGo').onclick = async () => {
+    try {
+      if (id) {
+        STOCK = STOCK.map(x => { if (x.id !== id) return x;
+          let o = clone(x); const newQ = parseFloat($('sQ').value) || 0;
+          Object.assign(o, { name: $('sN').value.trim() || o.name, unit: $('sU').value.trim() || 'each', min: parseFloat($('sM').value) || 0, supplier: $('sS').value, num: $('sP').value.trim(), price: parseFloat($('sC').value) || '' });
+          if (newQ !== (parseFloat(x.qty) || 0)) o = P.adjustStock(o, newQ - (parseFloat(x.qty) || 0), 'stock count', ME);
+          return o; });
+      } else {
+        STOCK = [P.makeStockItem({ name: $('sN').value, qty: $('sQ').value, unit: $('sU').value, min: $('sM').value, supplier: $('sS').value, num: $('sP').value, price: $('sC').value }, ME)].concat(STOCK);
+      }
+      await saveStock(); closeSheet(); render();
+    } catch (e) { STOCK = clone(STOCK_BASE); $('sErr').innerHTML = '<div class="note stop"><b>Not saved</b>' + esc(e.message) + '</div>'; }
+  };
+  if (id) $('sDel').onclick = async () => { if (!confirm('Remove ' + s.name + ' from stock?')) return;
+    try { STOCK = STOCK.filter(x => x.id !== id); await saveStock(); closeSheet(); render(); } catch (e) { toast('⚠ ' + e.message, 5000); } };
+}
+function orderLow() {
+  const low = STOCK.filter(P.isLow);
+  const bySup = {};
+  low.forEach(s => { const k = s.supplier || ''; (bySup[k] = bySup[k] || []).push(s); });
+  const keys = Object.keys(bySup);
+  sheet('<button class="btn sm x" data-close>Close</button><h2>Order what’s low</h2><p class="hint">One PO per supplier. Quantities bring each item back to twice its reorder level — change them on the next screen.</p>' +
+    keys.map(k => '<div class="card"><div class="hd"><div class="t"><b>' + esc(k || 'No usual supplier') + '</b><span>' + bySup[k].map(s => esc(s.name) + ' ×' + P.reorderQty(s)).join(', ') + '</span></div>' +
+      '<button class="btn primary sm" data-ol="' + esc(k) + '">Raise PO</button></div></div>').join(''));
+  document.querySelectorAll('[data-ol]').forEach(b => b.onclick = () => {
+    const k = b.dataset.ol;
+    openRaise({ jobId: 'consumables', supplier: k, lines: bySup[k].map(s => ({ name: s.name, num: s.num || '', price: s.price || '', qty: P.reorderQty(s), stockId: s.id })) });
+  });
+}
+
+/* ---------------- sheet ---------------- */
+function sheet(html) {
+  $('sheetHost').innerHTML = '<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true">' + html + '</div></div>';
+  $('scrim').addEventListener('click', e => { if (e.target.id === 'scrim') closeSheet(); });
+  $('sheetHost').querySelectorAll('[data-close]').forEach(b => b.onclick = closeSheet);
+}
+function closeSheet() { $('sheetHost').innerHTML = ''; }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+
+/* ---------------- who is using it ---------------- */
+// Parts people, plus the director. Same names and PINs as the CRM.
+const FALLBACK_STAFF = [{ name: 'Giles', role: 'parts' }, { name: 'Sudha', role: 'parts' }, { name: 'Ali', role: 'parts' }, { name: 'Logkith', role: 'director' }];
+let STAFF = [], PICKED = null;
+const isPartsPerson = x => x.role === 'parts' || x.role === 'director' || (Array.isArray(x.roles) && x.roles.includes('parts')) || x.name === 'Ali';
+async function loadStaff() {
+  try {
+    const r = await fetch(REST() + 'kith_staff?select=id,data&limit=100', { headers: HDR() });
+    if (!r.ok) throw new Error('staff ' + r.status);
+    STAFF = ((await r.json()) || []).map(x => Object.assign({ id: x.id }, x.data || {})).filter(x => x.name && x.active !== false && isPartsPerson(x));
+    if (!STAFF.length) throw new Error('empty');
+  } catch (e) { STAFF = FALLBACK_STAFF.slice(); }
+  renderWho();
+}
+function renderWho() {
+  $('whoGrid').innerHTML = STAFF.map((p, i) => '<button class="who-btn ' + (PICKED && PICKED.name === p.name ? 'on' : '') + '" data-i="' + i + '"><span class="n">' + esc(p.name) + '</span><span class="r">' +
+    esc(p.role === 'director' ? 'Director' : 'Parts') + '</span></button>').join('');
+  $('whoGrid').querySelectorAll('[data-i]').forEach(b => b.onclick = () => {
+    PICKED = STAFF[+b.dataset.i]; renderWho(); $('pinBox').hidden = false; $('pinIn').value = ''; $('pinIn').focus();
+    $('loginErr').innerHTML = PICKED.pin ? '' : '<div class="note warn"><b>No PIN set for ' + esc(PICKED.name) + '</b>Anyone can sign in as them. Set one on the staff record.</div>';
+  });
+}
+function doLogin() {
+  if (!PICKED) return;
+  if (PICKED.pin && String($('pinIn').value) !== String(PICKED.pin)) {
+    $('loginErr').innerHTML = '<div class="note stop"><b>Wrong PIN</b>Try again.</div>'; $('pinIn').value = ''; return;
+  }
+  ME = PICKED.name; MY_ROLE = PICKED.role || 'parts';
+  try { localStorage.setItem('kith_parts_me', ME); } catch (e) {}
+  showMain();
+}
+function showMain() {
+  $('scr-login').hidden = true; $('scr-main').hidden = false;
+  $('whoPill').hidden = false; $('whoPill').textContent = ME; $('whoPill').className = 'pill on';
+  $('btnRefresh').hidden = false;
+  load();
+}
+$('btnLogin').onclick = doLogin;
+$('pinIn').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+$('btnRefresh').onclick = () => load();
+$('whoPill').onclick = () => { if (!confirm('Sign out ' + ME + '?')) return; ME = null; try { localStorage.removeItem('kith_parts_me'); } catch (e) {}
+  $('scr-main').hidden = true; $('scr-login').hidden = false; $('whoPill').hidden = true; $('btnRefresh').hidden = true; PICKED = null; renderWho(); };
+
+// New work turns up without anyone pressing Refresh (paused while a form is open)
+setInterval(() => { if (ME && !$('sheetHost').innerHTML && document.visibilityState !== 'hidden') load(true); }, 60000);
+
+(function start() {
+  let saved = null; try { saved = localStorage.getItem('kith_parts_me'); } catch (e) {}
+  loadStaff().then(() => { if (saved && STAFF.some(s => s.name === saved)) { ME = saved; MY_ROLE = (STAFF.find(s => s.name === saved) || {}).role; showMain(); } });
+})();
+</script>
+</body>
+</html>

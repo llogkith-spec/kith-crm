@@ -773,6 +773,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 
 <script src="engine.js"></script>
 <script src="kith-rules.js"></script>
+<script src="kith-bot.js"></script>
 <script>
 const BUILD='v8.2 \u00b7 22 Sep';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
@@ -1362,7 +1363,7 @@ async function loadFromSupabase(){
       }
       const sysB2B=rows.find(r=>r.id==='__b2b__');
       const sysSubs=rows.find(r=>r.id==='__subs__');
-      if(sysPos&&sysPos.data){ pos=sysPos.data.pos||[]; POS_BASE=clone(pos); }
+      if(sysPos&&sysPos.data){ pos=sysPos.data.pos||[]; POS_BASE=clone(pos); POS_MAXNUM=Math.max(POS_MAXNUM,Number(sysPos.data.maxNum)||0); }
       if(sysB2B&&sysB2B.data&&!b2bLeads.length) b2bLeads=sysB2B.data.b2bLeads||[]; // only as a fallback - never clobber a loaded list
       if(sysSubs&&sysSubs.data){ subs=sysSubs.data.subs||[]; SUBS_BASE=clone(subs); }
       if(jobs&&jobs.length)snapshotJobs('before server load');
@@ -3231,25 +3232,44 @@ function bookInFromReady(id){ bookIntoCalendar(id); }
 
 // ── LOGAN SIGN-OFF ─────────────────────────────────────────────────
 // Every quote gets looked at before it goes anywhere near a customer.
+// Approving a quote IS the send. The message goes out on WhatsApp, or by
+// text if the customer has no WhatsApp, and the job goes straight to
+// 7 - Contacted so the chase clock starts. Nobody re-types or re-sends it.
+// While the WhatsApp/Twilio accounts are still being set up the message
+// waits in the outbox and can be sent by hand in one tap from the Inbox app.
+async function queueOutbox(msg){
+  try{
+    await casWrite('__outbox__',server=>{
+      const list=(server&&server.msgs)||[];
+      if(list.some(m=>m&&m.id===msg.id))return server||{msgs:list};
+      return Object.assign({},server||{},{msgs:[msg].concat(list).slice(0,3000)});
+    });
+    return true;
+  }catch(e){console.warn('outbox:',e);return false;}
+}
 function signOff(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
   const amt=parseFloat(j.quote)||parseFloat(j.finalEst)||0;
   if(!currentUser||currentUser.name!=='Logkith'){alert('Only Logkith can sign a quote off.');return;}
-  j.signedOff=true;
-  j.signedOffAt=ts();
-  j.signedOffBy=currentUser.name;
-  j.signedOffAmount=amt;
-  if(!parseFloat(j.quote)&&amt)j.quote=amt;   // older jobs only carry finalEst
-  j.signOffNote='';
-  j.log=j.log||[];
-  j.log.push({t:ts(),s:'\u2713 SIGNED OFF at \u00a3'+amt.toFixed(2)+' \u2014 sent to the service adviser ['+currentUser.name+']'});
-  // Move it on here rather than through mv(). mv() re-finds the job from the
-  // global curId, so pressing Approve from anywhere but the open panel moved
-  // nothing and said nothing.
+  if(!String(j.phone||'').trim()){
+    alert('\u26d4 No phone number on '+(j.reg||'this job')+'.\n\nThe quote is sent to the customer the moment you approve it, so it needs a number.');
+    return;
+  }
+  const from=j.stage;
+  let out;
+  try{ out=KITHBot.approveAndSend(j,currentUser.name); }
+  catch(e){ alert('\u26d4 '+e.message); return; }
+  // copy the approved job back over the one on screen
+  Object.keys(out.job).forEach(k=>{ j[k]=out.job[k]; });
   save(j);
-  pushToAdviser(j.id);
+  queueOutbox(out.message);
+  try{stampStage(j,'contacted');}catch(e){}
+  curId=j.id;lastJobId=j.id;
+  try{forceRenderDetail();}catch(e){}
+  renderAll();
+  try{stageMoved(j,from,'contacted');}catch(e){}
   setTimeout(()=>{try{estAutoSweep();}catch(e){}},1500);
-  if(typeof toast==='function')toast('\u2713 Signed off \u2014 now with the service adviser');
+  if(typeof toast==='function')toast('\u2713 Approved \u2014 quote on its way to '+(j.name||'the customer'));
 }
 // Move a signed-off job to the adviser. Kept separate so both the Approve
 // button and the recovery button use exactly the same path.
@@ -3826,8 +3846,9 @@ function signOffH(j){
       (j.stage==='signoff'
         ? '<div style="background:rgba(160,120,20,.2);border:1px solid var(--amber);border-radius:var(--rs);padding:8px 10px;margin-top:8px">'+
             '<div style="font-size:11px;font-weight:800;color:var(--amber)">\u26a0 Signed off, but still sat here</div>'+
-            '<div style="font-size:11px;color:var(--dim);margin:2px 0 6px">It never got passed to the adviser. Push it on now.</div>'+
-            '<button class="btn btn-green btn-sm btn-full" onclick="pushToAdviser(\''+j.id+'\')">\u2192 Send to the service adviser</button>'+
+            '<div style="font-size:11px;color:var(--dim);margin:2px 0 6px">The quote never went out. Send it now.</div>'+
+            '<button class="btn btn-green btn-sm btn-full" onclick="signOff(\''+j.id+'\')">\u2192 Send the quote to the customer</button>'+
+            '<button class="btn btn-ghost btn-xs btn-full" style="margin-top:5px" onclick="pushToAdviser(\''+j.id+'\')">Hand it to the adviser instead</button>'+
           '</div>'
         : '')+
       (stale&&isBoss?'<button class="btn btn-gold btn-xs btn-full" style="margin-top:6px" onclick="signOff(\''+j.id+'\')">Re-approve at \u00a3'+amt.toFixed(2)+'</button>':'')+
@@ -3835,10 +3856,10 @@ function signOffH(j){
   }
   return soToggleH(j)+'<div style="background:rgba(160,120,20,.16);border:2px solid var(--amber);border-radius:var(--r);padding:11px 13px;margin-bottom:10px">'+
     '<div style="font-size:12px;font-weight:800;color:var(--amber)">\u23f3 Waiting on sign-off \u2014 \u00a3'+amt.toFixed(2)+'</div>'+
-    '<div style="font-size:11px;color:var(--dim);margin:3px 0 8px">Nothing goes to the customer until this has been looked at.</div>'+
+    '<div style="font-size:11px;color:var(--dim);margin:3px 0 8px">Nothing goes to the customer until this has been looked at. Approving sends the quote to them straight away \u2014 WhatsApp, or a text if they have no WhatsApp.</div>'+
     (j.signOffNote?'<div style="font-size:11px;color:var(--red);margin-bottom:7px">Last sent back: '+escHtml(j.signOffNote)+'</div>':'')+
     (isBoss
-      ? '<button class="btn btn-green btn-sm btn-full" style="margin-bottom:5px" onclick="signOff(\''+j.id+'\')">\u2713 Approve \u2014 send to the adviser</button>'+
+      ? '<button class="btn btn-green btn-sm btn-full" style="margin-bottom:5px" onclick="signOff(\''+j.id+'\')">\u2713 Approve \u2014 send the quote to the customer</button>'+
         '<button class="btn btn-ghost btn-sm btn-full" style="color:var(--red);border-color:var(--red)" onclick="openSendBack(\''+j.id+'\')">\u21a9 Send back \u2014 WhatsApp them what to amend</button>'+
         (canAdjustLabour(j)?'<button class="btn btn-gold btn-sm btn-full" style="margin-top:5px" onclick="toggleLabourFix(\''+j.id+'\')">\u270f\ufe0f '+(LF_OPEN[j.id]?'Close labour adjust':'Adjust labour')+'</button>':'')+
         '<button class="btn btn-ghost btn-sm btn-full" style="margin-top:5px;color:var(--red);border-color:var(--red)" onclick="disapproveJob(\''+j.id+'\')">\u2717 Disapproved \u2014 needs a reason</button>'+
@@ -9004,8 +9025,16 @@ function queueJobSync(j){
 // ── orders and subcontract bookings: one record each, merged by id ──
 function poItemMerge(b,m,t){ return mergeObj(b,m,t,PO_LISTS); }
 function poNumVal(n){ const m=String(n||'').match(/(\d+)\s*$/); return m?parseInt(m[1]):0; }
+// The highest number ever issued, kept on the __pos__ row itself, so a
+// deleted order never frees its number up — the Parts app reads the same.
+var POS_MAXNUM=Number(localStorage.getItem('kith_pos_maxnum')||0)||0;
+function noteMaxNum(list){
+  (list||[]).forEach(p=>{POS_MAXNUM=Math.max(POS_MAXNUM,poNumVal(p&&p.num));});
+  try{localStorage.setItem('kith_pos_maxnum',String(POS_MAXNUM));}catch(e){}
+  return POS_MAXNUM;
+}
 function nextPoNum(list){
-  const max=(list||pos).reduce((a,p)=>Math.max(a,poNumVal(p.num)),0);
+  const max=(list||pos).reduce((a,p)=>Math.max(a,poNumVal(p.num)),POS_MAXNUM||0);
   return 'KITH-PO-'+String(max+1).padStart(3,'0');
 }
 // Two orders raised at the same moment on two devices can pick the same
@@ -9055,9 +9084,10 @@ function syncPOs(){
     const mine=clone(pos); let renames=[];
     const written=await casWrite('__pos__',server=>{
       const serverList=(server&&server.pos)||[];
+      POS_MAXNUM=Math.max(POS_MAXNUM,Number(server&&server.maxNum)||0);
       const merged=mergeList(POS_BASE||[],mine,serverList,x=>x.id,poItemMerge);
       renames=renumberDupes(merged,serverList);
-      return {pos:merged};
+      return Object.assign({},server||{},{pos:merged,maxNum:noteMaxNum(merged)});
     });
     mergeIntoLocalList(pos,written.pos);
     POS_BASE=clone(written.pos);
@@ -9084,7 +9114,7 @@ function pullSysLists(rows){
       const server=sp.data.pos;
       if(JSON.stringify(server)!==JSON.stringify(POS_BASE||[])){
         const merged=mergeList(POS_BASE||[],pos,server,x=>x.id,poItemMerge);
-        mergeIntoLocalList(pos,merged);POS_BASE=clone(server);
+        mergeIntoLocalList(pos,merged);POS_BASE=clone(server);noteMaxNum(server);
         safeSet('kith_pos',JSON.stringify(pos));
         if(document.getElementById('po-list-wrap')&&typeof renderPOList==='function'&&document.getElementById('ov-po')?.classList.contains('open'))renderPOList();
         return true;
@@ -9872,8 +9902,8 @@ function tcLink(j){return TC_PAGE;}
 // ── DEPOSIT & T&Cs BEFORE BOOKING ──────────────────────────────────
 // Over the threshold we take a deposit, and terms go out, before a
 // slot is given away. Both have to be ticked to move to Booked.
-const DEPOSIT_THRESHOLD=500;      // quote inc-VAT at or above this needs a deposit
-const DEPOSIT_PERCENT=25;         // suggested deposit
+const DEPOSIT_THRESHOLD=200;      // quote inc-VAT at or above this needs a deposit (Service Adviser SOP)
+const DEPOSIT_PERCENT=50;         // half up front on mechanical work
 // Retail customers over the threshold pay a deposit before we give a slot
 // away. B2B/fleet accounts don't — they're on agreed terms.
 function depositNeeded(j){

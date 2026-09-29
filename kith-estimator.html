@@ -65,7 +65,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 /* ---------- fields ---------- */
 label.f{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.09em;
   color:var(--ink-3);margin-bottom:.22rem;font-family:"IBM Plex Mono",monospace}
-input[type=text],input[type=number],select,textarea{width:100%;background:var(--bg);
+input:not([type]),input[type=text],input[type=number],select,textarea{width:100%;background:var(--bg);
   border:1px solid var(--line);border-radius:5px;padding:.45rem .55rem;color:var(--ink)}
 textarea{min-height:96px;resize:vertical;font-family:"IBM Plex Mono",monospace;font-size:.84rem}
 input:focus,select:focus,textarea:focus{border-color:var(--gold);outline:none}
@@ -164,13 +164,42 @@ details .dbody{padding:0 .6rem .6rem}
 .spin{display:inline-block;width:11px;height:11px;border:2px solid var(--gold-dim);
   border-top-color:var(--gold);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px}
 @keyframes sp{to{transform:rotate(360deg)}}
+.lookup{font-size:.78rem;color:var(--ink-2);background:var(--gold-bg);border-left:2px solid var(--gold);padding:.25rem .5rem;margin:-.1rem 0 .45rem;border-radius:0 3px 3px 0}
+.lookup span{color:var(--ink-3)}
+.lres{font-family:"IBM Plex Mono",monospace;font-size:.76rem;color:var(--ink-2);margin:.1rem 0 .45rem;min-height:0}
+.lres:empty{display:none}
+.lres b{color:var(--gold)}.lres span{color:var(--ink-3)}.lres .bad{color:var(--stop)}
+.aihead{font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.05em;font-size:.85rem;color:var(--gold);margin:.6rem 0 .2rem}
 @media(prefers-reduced-motion:reduce){.spin{animation:none}}
+/* ---------- the four sections and their tabs ----------
+   These had no styling at all: every section showed at once and the tabs
+   rendered as blank white boxes, so the Labour/Parts handover was invisible
+   and the role gating hid nothing. */
+.sec{display:none}
+.sec.on{display:block}
+.sectabs{display:grid;grid-template-columns:repeat(4,1fr);gap:.45rem;margin-bottom:1.1rem}
+@media(max-width:760px){.sectabs{grid-template-columns:1fr 1fr}}
+.sectab{background:var(--card);border:1px solid var(--line);border-radius:7px;padding:.5rem .6rem;
+  cursor:pointer;text-align:left;transition:.12s;min-width:0}
+.sectab:hover:not(:disabled){border-color:var(--gold-dim)}
+.sectab .t{display:block;font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;
+  letter-spacing:.04em;font-size:1rem;color:var(--ink)}
+.sectab .s{display:block;font-family:"IBM Plex Mono",monospace;font-size:.82rem;color:var(--gold);margin:.05rem 0}
+.sectab .d{display:block;font-size:.68rem;color:var(--ink-3);line-height:1.35;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sectab.on{border-color:var(--gold);background:var(--gold-bg)}
+.sectab.done{border-color:var(--go)}
+.sectab.done .t:after{content:" \2713";color:var(--go)}
+.sectab.locked,.sectab:disabled{opacity:.4;cursor:not-allowed}
+.sectab.locked .d:after{content:" \00b7 not your section";color:var(--ink-3)}
+.lookup{font-size:.78rem;color:var(--ink-2);background:var(--gold-bg);border-left:2px solid var(--gold);padding:.25rem .5rem;margin:-.1rem 0 .45rem;border-radius:0 3px 3px 0}
+.lookup span{color:var(--ink-3)}
 </style>
 </head>
 <body>
 
 <div class="top">
-  <div class="brand"><h1>KITH Estimator</h1><span class="v" id="verChip">v8.0</span></div>
+  <div class="brand"><h1>KITH Estimator</h1><span class="v" id="verChip">v8.1</span></div>
   <span class="pill" id="pillCust">Retail</span>
   <span class="pill" id="pillRamp" hidden>Ramp-exempt</span>
   <span class="pill" id="pillAI">AI off</span>
@@ -306,6 +335,8 @@ details .dbody{padding:0 .6rem .6rem}
     <div class="body">
       <p class="hint">Phone the supplier for the net price — never a public website. Parts band <b>per part</b> on the unit cost; quantity never bands a part up. Fluids and tyres skip the ladder entirely.</p>
       <div class="lines" id="partList"></div>
+      <datalist id="supList"><option>GSF Car Parts</option><option>Euro Car Parts</option><option>LKQ / Andrew Page</option><option>NAPA</option>
+        <option>Main Dealer</option><option>TPS (VW Group)</option><option>Autodoc</option><option>Local Factor</option></datalist>
     </div>
   </section>
 
@@ -591,6 +622,7 @@ function labourRow(l,i){
       <input type="text" value="${esc(l.label)}" data-f="label" placeholder="Job name" style="flex:1" ${l.override?'disabled':''}>
       <button class="btn sm danger" data-del="1">Remove</button>
     </div>
+    ${l.where?`<div class="lookup">\ud83d\udd0e Look it up: <b>${esc(l.where)}</b>${l.typical?` <span>\u00b7 usually ${esc(l.typical)} h</span>`:''}</div>`:''}
     <div class="row r4" style="margin-bottom:.35rem">
       <div><label class="f">SRT hours</label>
         <input type="number" step="0.01" min="0" value="${l.srt}" data-f="srt" ${l.override?'disabled':''}></div>
@@ -607,6 +639,7 @@ function labourRow(l,i){
         <option value="major" ${l.inspection==='major'?'selected':''}>60-point (30 min)</option>
       </select></div>
     </div>
+    <div class="lres" data-lres="${i}"></div>
     <div class="row r2" style="margin-bottom:0">
       <div><label class="f">Paired second item — raw SRT</label>
         <input type="number" step="0.01" min="0" value="${l.pairSecondarySrt||0}" data-f="pairSecondarySrt"></div>
@@ -672,15 +705,28 @@ function partRow(p,i){
     <span class="tag">Part</span>
     <input type="text" value="${esc(p.label)}" data-f="label" placeholder="Part name" style="flex:1">
     <button class="btn sm danger" data-del="1">Remove</button></div>
+    ${p.search||p.variant?`<div class="lookup">\ud83d\udd0e Partslink24: search <b>${esc(p.search||p.label)}</b>${p.variant?` <span>\u00b7 check ${esc(p.variant)}</span>`:''}</div>`:''}
+    <div class="row r2" style="margin-bottom:.35rem">
+      <div><label class="f">Part number</label><div style="display:flex;gap:.35rem">
+        <input type="text" value="${esc(p.num||'')}" data-f="num" placeholder="from Partslink24" style="flex:1">
+        ${CATALOGUE.enabled?`<button class="btn sm" data-find="${i}">Find</button>`:`<a class="btn sm" href="${CATALOGUE.webUrl}" target="_blank" rel="noopener">Open</a>`}</div></div>
+      <div><label class="f">Supplier</label><input type="text" value="${esc(p.supplier||'')}" data-f="supplier" placeholder="who quoted it" list="supList"></div>
+    </div>
     <div class="row r2" style="margin-bottom:0">
       <div><label class="f">Net cost per part</label><input type="number" step="0.01" min="0" value="${p.unitNet}" data-f="unitNet"></div>
       <div><label class="f">Quantity</label><input type="number" step="1" min="1" value="${p.qty}" data-f="qty"></div>
-    </div></div>`;
+    </div>
+    <div class="lres" data-pres="${i}"></div></div>`;
 }
 function renderParts(){
   const el=$('partList');
   if(!S.parts.length){el.innerHTML='<div class="empty">No parts, fluids or tyres yet.</div>';return;}
   el.innerHTML=S.parts.map(partRow).join('');
+  el.querySelectorAll('[data-find]').forEach(b=>b.onclick=async()=>{
+    const i=+b.dataset.find;b.disabled=true;
+    try{const n=await CATALOGUE.find(S.parts[i],vehicleCtx());
+      if(n){S.parts[i].num=n;renderParts();renderAll();toast('Part number filled in.');}else toast('Not found \u2014 look it up by hand.');}
+    catch(e){toast('Catalogue: '+e.message);}finally{b.disabled=false;}});
   el.querySelectorAll('.ln').forEach(node=>{
     const i=+node.dataset.i;
     node.querySelector('[data-del]').onclick=()=>{S.parts.splice(i,1);renderParts();renderAll();};
@@ -713,7 +759,8 @@ function buildLines(){
   S.parts.forEach(p=>{
     if(p.type==='fluid')out.push(KITH.fluidLine({label:p.label,unitSell:KITH.FLUIDS[p.label]||0,qty:p.qty}));
     else if(p.type==='tyre')out.push(KITH.tyreLine({label:p.label||'Tyre',netEach:p.netEach,qty:p.qty}));
-    else out.push(KITH.partLine({label:p.label||'Part',unitNet:p.unitNet,qty:p.qty,customer:cust}));});
+    else out.push(Object.assign(KITH.partLine({label:p.label||'Part',unitNet:p.unitNet,qty:p.qty,customer:cust}),
+      {num:String(p.num||'').trim(),supplier:String(p.supplier||'').trim()}));});
   S.fixed.forEach(f=>{
     if(f.type==='panel'){
       const price=KITH.panelPrice(f.panel,f.cat);
@@ -808,9 +855,28 @@ function renderChecks(q){
 }
 
 let LAST=null;
+function paintLineResults(q){
+  const labs=q.lines.filter(l=>l.kind==='labour');
+  document.querySelectorAll('[data-lres]').forEach(el=>{
+    const l=labs[+el.dataset.lres];
+    if(!l||!(parseFloat(l.srt)>0)){el.innerHTML='';return;}
+    if(l.escalate){el.innerHTML='<span class="bad">Ask Logan \u2014 this line cannot be priced by the book</span>';return;}
+    const hrs=Number(l.chargedHours).toFixed(2);
+    el.innerHTML=Number(l.srt).toFixed(2)+'h book'+(l.multiplier&&l.multiplier!==1?' \u00d7 '+l.multiplier:'')+
+      ' = '+hrs+'h \u00d7 \u00a3'+l.rate+'/hr = <b>'+gbp(l.total)+'</b>'+
+      (l.minApplied?' <span>(minimum charge)</span>':'')+(l.bodyMinApplied?' <span>(bodywork minimum)</span>':'');
+  });
+  const parts=q.lines.filter(l=>['part','fluid','tyre'].indexOf(l.kind)>-1);
+  document.querySelectorAll('[data-pres]').forEach(el=>{
+    const l=parts[+el.dataset.pres];
+    if(!l||!(parseFloat(l.unitNet)>0)){el.innerHTML='';return;}
+    el.innerHTML=gbp(l.unitNet)+' net'+(l.mult?' \u00d7 '+l.mult:'')+' = '+gbp(l.unitSell)+' each \u00b7 <b>'+gbp(l.total)+'</b>'+
+      (l.minSellApplied?' <span>(minimum sell)</span>':'');
+  });
+}
 function renderAll(){
   const q=KITH.quote(buildLines(),{customer:S.customer});
-  LAST=q; renderTape(q); renderChecks(q);
+  LAST=q; renderTape(q); renderChecks(q); paintLineResults(q);
   if(typeof renderSecTabs==='function'&&$('secTabs'))renderSecTabs();
   $('pillRamp').hidden=!S.rampExempt;
   $('btnCrm').disabled=!q.readyToSend||!q.lines.length;
@@ -850,17 +916,72 @@ $('btnIdentify').onclick=async()=>{
         ${j.what_to_look_for?`<p class="hint" style="margin:.4rem 0"><b>Look for:</b> ${esc(j.what_to_look_for)}</p>`:''}
         ${j.typical_srt_range?`<p class="hint" style="margin:.2rem 0">Expect roughly ${esc(j.typical_srt_range)}.</p>`:''}
         ${j.notes?`<p class="hint">${esc(j.notes)}</p>`:''}
-        <button class="btn sm" data-add='${esc(JSON.stringify({label:j.name,tier:j.labour_tier,category:j.category}))}'>Add as a labour line</button>
+        ${opsAndPartsH(j,i)}
         </div></details>`;});
     if(r.requires_escalation)html+=`<div class="note stop"><b>Escalate to Logan</b>${esc(r.escalation_reason||'')}</div>`;
     (r.suggested_addons||[]).length&&(html+=`<div class="note"><b>Worth offering the customer</b>${r.suggested_addons.map(a=>'• '+esc(a.name)+' — '+esc(a.why)).join('<br>')}</div>`);
     out.innerHTML=html||'<div class="note">Nothing came back. Price it by hand.</div>';
+    AI_JOBS=r.jobs||[];
+    out.querySelectorAll('[data-addjob]').forEach(b=>b.onclick=()=>addFromAI(+b.dataset.addjob,out));
     out.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{
       const j=JSON.parse(b.dataset.add.replace(/&quot;/g,'"').replace(/&amp;/g,'&'));
       S.labour.push({label:j.label,srt:0,tier:j.tier||'TOP',category:j.category||'mechanical',
         pairSecondarySrt:0,extraSrt:0,inspection:''});
       renderLabour();renderAll();toast('Added — now put the SRT in.');});
   }catch(e){out.innerHTML=`<div class="note stop"><b>Could not break it down</b>${esc(e.message)}</div>`;}
+};
+
+/* The AI's checklist for one job: what to look up and what to order.
+   Nothing is added until the estimator ticks it and presses the button. */
+let AI_JOBS=[];
+function opsAndPartsH(j,i){
+  const ops=j.operations||[], parts=j.parts||[];
+  if(!ops.length&&!parts.length)
+    return `<button class="btn sm" data-add='${esc(JSON.stringify({label:j.name,tier:j.labour_tier,category:j.category}))}'>Add as a labour line</button>`;
+  return (ops.length?`<div class="aihead">Labour to look up \u2014 tick what applies</div>`+ops.map((o,k)=>
+      `<label class="ck"><input type="checkbox" data-op="${i}|${k}" ${o.required!==false?'checked':''}>
+        <span><b>${esc(o.name)}</b>${o.required===false?' <span class="tag">if needed</span>':''}
+        ${o.where?`<br><span class="hint" style="margin:0">\ud83d\udd0e ${esc(o.where)}</span>`:''}
+        ${o.typical_hours?`<span class="hint" style="margin:0"> \u00b7 usually ${esc(o.typical_hours)} h</span>`:''}
+        ${o.why?`<br><span class="hint" style="margin:0">${esc(o.why)}</span>`:''}</span></label>`).join(''):'')+
+    (parts.length?`<div class="aihead">Parts to order \u2014 find the numbers in Partslink24</div>`+parts.map((p,k)=>
+      `<label class="ck"><input type="checkbox" data-pt="${i}|${k}" checked>
+        <span><b>${esc(p.name)}</b> \u00d7${esc(p.qty||1)}${p.kind&&p.kind!=='part'?' <span class="tag">'+esc(p.kind)+'</span>':''}
+        ${p.partslink_search?`<br><span class="hint" style="margin:0">\ud83d\udd0e search: ${esc(p.partslink_search)}</span>`:''}
+        ${p.variant_check?`<br><span class="hint" style="margin:0;color:var(--warn)">Check: ${esc(p.variant_check)}</span>`:''}</span></label>`).join(''):'')+
+    `<div class="btns" style="margin-top:.4rem"><button class="btn primary sm" data-addjob="${i}">Add ticked to the quote</button></div>`;
+}
+function addFromAI(i,out){
+  const j=AI_JOBS[i];if(!j)return;
+  let nL=0,nP=0;
+  (j.operations||[]).forEach((o,k)=>{
+    const cb=out.querySelector(`[data-op="${i}|${k}"]`);if(!cb||!cb.checked)return;
+    S.labour.push({label:o.name,srt:0,tier:j.labour_tier||'TOP',category:j.category||'mechanical',
+      pairSecondarySrt:0,extraSrt:0,inspection:'',where:o.where||'',typical:o.typical_hours||''});nL++;});
+  (j.parts||[]).forEach((p,k)=>{
+    const cb=out.querySelector(`[data-pt="${i}|${k}"]`);if(!cb||!cb.checked)return;
+    const q=Math.max(1,parseInt(p.qty)||1);
+    // fluids the SOP sells at a fixed price go on as fluids; everything else is a part to phone for
+    const fl=p.kind==='fluid'&&Object.keys(KITH.FLUIDS).find(f=>f.toLowerCase().split(/\W+/).some(w=>w.length>3&&p.name.toLowerCase().includes(w)));
+    if(fl)S.parts.push({type:'fluid',label:fl,qty:q});
+    else S.parts.push({type:'part',label:p.name,unitNet:0,qty:q,num:'',supplier:'',search:p.partslink_search||'',variant:p.variant_check||''});
+    nP++;});
+  renderLabour();renderParts();renderAll();
+  const b=out.querySelector(`[data-addjob="${i}"]`);if(b){b.disabled=true;b.textContent='\u2713 Added';}
+  toast('Added '+nL+' labour line'+(nL===1?'':'s')+' and '+nP+' part'+(nP===1?'':'s')+' \u2014 now put in the book hours and part numbers.',5000);
+}
+
+/* ===========================================================================
+   PARTS CATALOGUE HOOK
+   Partslink24 is a login only for now, so the estimator looks the number up
+   and types it in. When an API is available, set enabled:true and fill in
+   find() — it gets the part line and the vehicle and returns a part number
+   (or null). Nothing else in the page needs to change.
+   =========================================================================== */
+const CATALOGUE={
+  enabled:false,
+  webUrl:'https://www.partslink24.com/',
+  async find(part,vehicle){return null;}
 };
 
 $('btnSanity').onclick=async()=>{
@@ -979,6 +1100,10 @@ const STAGE_LABEL={intake:'1 Intake',labour:'2 Labour',estimating:'2 Labour',par
   financial:'4 Final',signoff:'5 Sign-off'};
 // Everything past pricing. Listing FINISHED stages means an unknown stage
 // still shows up rather than silently disappearing.
+// The CRM's own finished stage keys, filtered on the server (DONE_STAGES
+// below still runs in the page for anything unusual).
+const SERVER_DONE=['signoff','disapproved','contact','contacted','waiting','waiting2','ready','booked','po','raised',
+  'checkin','authwait','inprog','done','accounts','receivable','review','followup','lost'];
 const DONE_STAGES=['signoff','disapproved','contact','contacted','waiting','waiting2','ready','booked','po','raised',
   'checkin','authwait','inprog','done','accounts','receivable','review','followup','lost',
   'adviser','awaiting','pos','complete','work complete','invoiced','follow-up','archived','closed','cancelled'];
@@ -999,7 +1124,10 @@ const CTYPE_MAP={retail:'retail',business:'retail',trade:'trade',warranty:'retai
 
 async function crmGet(){
   if(!CRM.key)throw new Error('No CRM key set. Open Settings and paste the Supabase anon key.');
-  const r=await fetch(CRM.url.replace(/\/$/,'')+'/rest/v1/'+CRM.table+'?select=id,data&order=updated_at.desc',
+  // Finished stages are filtered out on the server. The page used to pull
+  // every job ever taken in, every 30 seconds, just to show a short queue.
+  const r=await fetch(CRM.url.replace(/\/$/,'')+'/rest/v1/'+CRM.table+'?select=id,data&order=updated_at.desc'+
+      '&or='+encodeURIComponent('(data->>stage.is.null,data->>stage.not.in.('+SERVER_DONE.join(',')+'))'),
     {headers:{apikey:CRM.key,Authorization:'Bearer '+CRM.key,Range:'0-4999','Range-Unit':'items'}});
   if(!r.ok)throw new Error('CRM returned '+r.status);
   const rows=await r.json();
@@ -1203,7 +1331,8 @@ function restoreWork(){
     S.labour.push({label:JOB.labourDesc||'Labour',srt:parseFloat(JOB.srt)||0,tier:'TOP',category:'mechanical'});
   (JOB.parts||[]).forEach(p=>{
     const c=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
-    S.parts.push({type:'part',label:p.name||'',unitNet:c,qty:parseInt(p.qty)||1});
+    S.parts.push({type:'part',label:p.name||'',unitNet:c,qty:parseInt(p.qty)||1,num:p.num||'',
+      supplier:(p.supplier||p.supplier1||p.supplier2||p.supplier3||'')});
   });
 }
 function snapshotWork(){
@@ -1230,8 +1359,12 @@ function writeCrmFigures(){
   JOB.parts=parts.map(l=>{
     const qty=parseInt(l.qty)||1;
     const unit=(l.unitNet!=null&&!isNaN(l.unitNet))?Number(l.unitNet):KITH.money((l.total||0)/qty);
-    return {name:l.label||l.kind,qty:qty,price:unit,sop_sell:l.total,
+    const out={name:l.label||l.kind,qty:qty,price:unit,sop_sell:l.total,
       noMarkup:l.kind!=='part'};     // fluids and tyres are sold at the SOP price already
+    // Part number and supplier go to the CRM so the parts team never retypes them
+    if(l.num)out.num=l.num;
+    if(l.supplier)out.supplier=l.supplier;
+    return out;
   });
 }
 
@@ -1801,7 +1934,10 @@ let PENDING_JOB=new URLSearchParams(location.search).get('job');
 function openFromLink(){
   if(!PENDING_JOB||!ME)return;
   const id=PENDING_JOB;
-  if(JOBS.some(j=>String(j.id)===String(id))){PENDING_JOB=null;history.replaceState(null,'',location.pathname);openJob(id);}
+  if(JOBS.some(j=>String(j.id)===String(id))){PENDING_JOB=null;history.replaceState(null,'',location.pathname);openJob(id);return;}
+  // A link to a job that has moved past pricing: fetch just that one.
+  crmFetchOne(id).then(j=>{if(!j||PENDING_JOB!==id)return;JOBS.push(Object.assign({},j,{id:j.id||id}));
+    PENDING_JOB=null;history.replaceState(null,'',location.pathname);openJob(id);}).catch(()=>{});
 }
 if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('message',e=>{

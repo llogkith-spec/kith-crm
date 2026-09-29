@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KITH Stock</title>
+<link rel="manifest" href="manifest-stock.json">
+<meta name="theme-color" content="#14161A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="KITH Stock">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="apple-touch-icon" href="icon-stock-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14161A; --bg-2:#1B1E24; --card:#20242B; --card-2:#262B33;
+  --line:#333A44; --line-soft:#2A2F37;
+  --ink:#EDEFF2; --ink-2:#A8B1BD; --ink-3:#6E7885;
+  --gold:#D8A32B; --gold-dim:#8A6A1C; --gold-bg:rgba(216,163,43,.10);
+  --go:#3FB07A; --go-bg:rgba(63,176,122,.12);
+  --warn:#E0A030; --warn-bg:rgba(224,160,48,.12);
+  --stop:#E05A4C; --stop-bg:rgba(224,90,76,.12);
+  --blue:#5B9BD5; --blue-bg:rgba(91,155,213,.12);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:14px;line-height:1.5}
+h1,h2,h3{font-family:"Barlow Condensed",Impact,sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin:0}
+.mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+[hidden]{display:none!important}
+
+.top{position:sticky;top:0;z-index:40;background:var(--bg-2);border-bottom:1px solid var(--line);padding:.55rem 1rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:.5rem}
+.brand h1{font-size:1.25rem;letter-spacing:.06em}
+.brand .v{font-family:"IBM Plex Mono",monospace;font-size:.66rem;color:var(--bg);background:var(--gold);padding:.1rem .35rem;border-radius:2px;font-weight:600}
+.spacer{flex:1}
+.pill{font-family:"IBM Plex Mono",monospace;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;padding:.25rem .5rem;border:1px solid var(--line);border-radius:99px;color:var(--ink-2);background:none;cursor:pointer}
+.pill.on{border-color:var(--gold);color:var(--gold);background:var(--gold-bg)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ink-3);display:inline-block}
+.dot.ok{background:var(--go)}.dot.err{background:var(--stop)}
+
+main{max-width:980px;margin:0 auto;padding:1rem 1rem 5rem}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem;margin-bottom:1rem}
+@media(max-width:560px){.tabs{grid-template-columns:1fr 1fr}}
+.tabs button{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:.55rem .7rem;cursor:pointer;text-align:left}
+.tabs button .n{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:1rem;letter-spacing:.03em;display:block}
+.tabs button .c{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3)}
+.tabs button.on{border-color:var(--gold);background:var(--gold-bg)}
+.tabs button .c.hot{color:var(--stop);font-weight:600}
+
+h2.sec{font-size:1rem;letter-spacing:.06em;color:var(--ink-2);margin:1.2rem 0 .5rem;display:flex;align-items:center;gap:.5rem}
+h2.sec .cnt{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3)}
+.hint{color:var(--ink-3);font-size:.82rem;margin:.1rem 0 .6rem}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;margin-bottom:.7rem;overflow:hidden}
+.card.hot{border-color:var(--stop)}
+.card.warm{border-color:var(--warn)}
+.card .hd{display:flex;align-items:flex-start;gap:.6rem;padding:.6rem .8rem;background:var(--card-2);border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+.reg{font-family:"IBM Plex Mono",monospace;font-weight:600;background:#F1C40F;color:#111;padding:.05rem .4rem;border-radius:3px;font-size:.85rem;letter-spacing:.04em}
+.card .hd .t{flex:1;min-width:160px}
+.card .hd .t b{display:block}
+.card .hd .t span{font-size:.78rem;color:var(--ink-3)}
+.card .bd{padding:.6rem .8rem}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:.62rem;text-transform:uppercase;letter-spacing:.07em;padding:.12rem .35rem;border-radius:2px;border:1px solid var(--line);color:var(--ink-3);white-space:nowrap}
+.tag.go{color:var(--go);border-color:var(--go)}.tag.warn{color:var(--warn);border-color:var(--warn)}
+.tag.stop{color:var(--stop);border-color:var(--stop)}.tag.gold{color:var(--gold);border-color:var(--gold)}
+.tag.blue{color:var(--blue);border-color:var(--blue)}
+.pl{display:flex;justify-content:space-between;gap:.6rem;padding:.3rem 0;border-bottom:1px dotted var(--line-soft);font-size:.85rem;align-items:center;flex-wrap:wrap}
+.pl:last-child{border-bottom:0}
+.pl .nm{flex:1;min-width:140px}
+.pl .acts{display:flex;gap:.35rem;flex-wrap:nowrap}
+.btns .when{margin:0;flex:1}
+@media(max-width:560px){.btns .when{flex-basis:100%}}
+.pl .nm small{color:var(--ink-3);display:block;font-family:"IBM Plex Mono",monospace;font-size:.7rem}
+.amt{font-family:"IBM Plex Mono",monospace;white-space:nowrap}
+.grp{margin-top:.5rem;padding-top:.5rem;border-top:1px solid var(--line-soft)}
+.grp:first-child{margin-top:0;padding-top:0;border-top:0}
+.grp .gh{display:flex;align-items:center;gap:.5rem;margin-bottom:.2rem;font-size:.8rem;color:var(--ink-2);flex-wrap:wrap}
+
+.btn{text-decoration:none;color:inherit;background:var(--card-2);border:1px solid var(--line);border-radius:5px;padding:.42rem .75rem;cursor:pointer;font-size:.85rem}
+.btn:hover{border-color:var(--gold);color:var(--gold)}
+.btn.primary{background:var(--gold);border-color:var(--gold);color:var(--bg);font-weight:600}
+.btn.primary:hover{background:#E8B23A;color:var(--bg)}
+.btn.go{border-color:var(--go);color:var(--go)}
+.btn.stop{border-color:var(--stop);color:var(--stop)}
+.btn.sm{padding:.22rem .5rem;font-size:.76rem}
+.btn.full{width:100%}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btns{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem}
+
+label.f{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);margin-bottom:.2rem;font-family:"IBM Plex Mono",monospace}
+input:not([type]),input[type=text],input[type=number],input[type=date],input[type=password],input[type=search],select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:.45rem .55rem;color:var(--ink)}
+textarea{min-height:64px;resize:vertical}
+input:focus,select:focus,textarea:focus{border-color:var(--gold);outline:none}
+.row{display:grid;gap:.5rem;margin-bottom:.6rem}
+.r2{grid-template-columns:1fr 1fr}.r3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:600px){.r2,.r3{grid-template-columns:1fr}}
+.line{display:grid;grid-template-columns:2fr 1.2fr .9fr .6fr auto;gap:.35rem;margin-bottom:.35rem;align-items:center}
+@media(max-width:600px){.line{grid-template-columns:1fr 1fr;}.line .nm-in{grid-column:1/-1}}
+.ck{display:flex;gap:.5rem;align-items:center;font-size:.85rem;cursor:pointer;padding:.2rem 0}
+.ck input{accent-color:var(--gold)}
+.chips{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.5rem}
+.chips button{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:.25rem .6rem;font-size:.78rem;cursor:pointer}
+.chips button.on{border-color:var(--gold);color:var(--gold);background:var(--gold-bg)}
+
+.note{border-left:3px solid var(--gold);background:var(--gold-bg);padding:.5rem .7rem;border-radius:0 4px 4px 0;font-size:.82rem;margin:.5rem 0}
+.note.stop{border-color:var(--stop);background:var(--stop-bg)}
+.note.go{border-color:var(--go);background:var(--go-bg)}
+.note.warn{border-color:var(--warn);background:var(--warn-bg)}
+.note.blue{border-color:var(--blue);background:var(--blue-bg)}
+.note b{display:block;font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.05em;font-size:.9rem}
+.empty{color:var(--ink-3);text-align:center;padding:1.1rem;border:1px dashed var(--line);border-radius:6px;font-size:.85rem}
+
+/* sheet (modal) */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:80;display:flex;align-items:flex-end;justify-content:center}
+@media(min-width:700px){.scrim{align-items:center}}
+.sheet{background:var(--card);border:1px solid var(--line);border-radius:10px 10px 0 0;width:100%;max-width:640px;max-height:92vh;overflow:auto;padding:1rem}
+@media(min-width:700px){.sheet{border-radius:10px}}
+.sheet h2{font-size:1.2rem;margin-bottom:.2rem}
+.sheet .x{float:right}
+
+/* login */
+#scr-login{max-width:520px;margin:2rem auto;padding:0 1rem}
+#scr-login h2{font-size:1.6rem}
+.who-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.5rem;margin:1rem 0}
+.who-btn{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.7rem;text-align:left;cursor:pointer}
+.who-btn.on{border-color:var(--gold);background:var(--gold-bg)}
+.who-btn .n{display:block;font-weight:600}
+.who-btn .r{display:block;font-size:.72rem;color:var(--ink-3)}
+.pin{font-size:1.4rem;letter-spacing:.4em;text-align:center}
+
+.countrow{display:grid;grid-template-columns:1fr 5.5rem 3rem auto;gap:.5rem;align-items:center;padding:.5rem .8rem;border-bottom:1px solid var(--line-soft)}
+.countrow:last-child{border-bottom:0}
+.countrow.on{background:var(--go-bg)}
+.countrow .nm b{display:block;font-weight:600}
+.countrow .nm small{color:var(--ink-3);font-family:"IBM Plex Mono",monospace;font-size:.68rem}
+.countrow .cdiff{font-family:"IBM Plex Mono",monospace;font-size:.8rem;color:var(--warn);text-align:right}
+.cthead{padding:.35rem .8rem;background:var(--card-2);font-family:"IBM Plex Mono",monospace;font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);border-bottom:1px solid var(--line-soft)}
+@media(max-width:560px){.countrow{grid-template-columns:1fr 4.5rem auto}.countrow .cdiff{display:none}}
+.bar{height:6px;background:var(--bg);border:1px solid var(--line-soft);border-radius:99px;overflow:hidden;margin:.4rem 0}
+.bar i{display:block;height:100%;background:var(--gold)}
+.bar.done i{background:var(--go)}
+.stockrow{display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:center;padding:.55rem .8rem;border-bottom:1px solid var(--line-soft)}
+.stockrow:last-child{border-bottom:0}
+.qty{font-family:"IBM Plex Mono",monospace;font-size:1.05rem;font-weight:600}
+.qty.low{color:var(--stop)}
+.toast{position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);background:var(--card-2);border:1px solid var(--gold);color:var(--ink);padding:.55rem .9rem;border-radius:6px;font-size:.85rem;z-index:99;box-shadow:0 6px 24px rgba(0,0,0,.5);max-width:92vw}
+.spin{display:inline-block;width:11px;height:11px;border:2px solid var(--gold-dim);border-top-color:var(--gold);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}
+.tabs.n2{grid-template-columns:repeat(2,1fr)}.tabs.n3{grid-template-columns:repeat(3,1fr)}
+@media(max-width:560px){.tabs.n3{grid-template-columns:repeat(3,1fr)}}
+table.t{width:100%;border-collapse:collapse;font-size:.84rem}
+table.t th{font-family:"IBM Plex Mono",monospace;font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);font-weight:500;text-align:left;padding:.35rem .5rem;border-bottom:1px solid var(--line)}
+table.t td{padding:.4rem .5rem;border-bottom:1px solid var(--line-soft);vertical-align:top}
+table.t td.n,table.t th.n{text-align:right;font-family:"IBM Plex Mono",monospace;white-space:nowrap}
+table.t tr:last-child td{border-bottom:0}
+.useline{display:grid;grid-template-columns:2fr .8fr auto auto;gap:.35rem;align-items:center;margin-bottom:.35rem}
+.useline .c{font-family:"IBM Plex Mono",monospace;font-size:.8rem;color:var(--ink-2);white-space:nowrap;min-width:4.5rem;text-align:right}
+@media(max-width:560px){.useline{grid-template-columns:1fr auto auto}.useline select{grid-column:1/-1}}
+@media(max-width:560px){.stockrow{grid-template-columns:1fr}.stockrow>div:last-child{justify-content:flex-start!important}}
+.log{font-size:.78rem;color:var(--ink-2);max-height:220px;overflow:auto;border:1px solid var(--line-soft);border-radius:5px;padding:.4rem .55rem;background:var(--bg)}
+.log div{padding:.12rem 0;border-bottom:1px dotted var(--line-soft)}
+.log div:last-child{border-bottom:0}
+.log span{color:var(--ink-3);font-family:"IBM Plex Mono",monospace;font-size:.68rem;margin-right:.4rem}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><h1>KITH Stock</h1><span class="v">v1.0</span></div>
+  <div class="spacer"></div>
+  <span class="dot" id="sync" title="Not loaded yet"></span>
+  <button class="pill" id="btnRefresh" hidden>Refresh</button>
+  <button class="pill" id="whoPill" hidden></button>
+</header>
+
+<div id="scr-login">
+  <h2>Who's this?</h2>
+  <p class="hint">Your name goes on everything you change.</p>
+  <div class="who-grid" id="whoGrid"></div>
+  <div id="pinBox" hidden>
+    <label class="f" for="pinIn">PIN</label>
+    <input type="password" inputmode="numeric" maxlength="6" class="pin" id="pinIn" placeholder="····">
+    <button class="btn primary full" id="btnLogin" style="margin-top:.6rem">Sign in</button>
+    <div id="loginErr"></div>
+  </div>
+  <p class="hint" style="margin-top:1.4rem;font-size:.75rem">This says who you are so every change is recorded against a name. It is not a security lock.</p>
+</div>
+
+<main id="scr-main" hidden>
+  <nav class="tabs" id="tabs"></nav>
+  <div id="view"></div>
+</main>
+
+<div id="sheetHost"></div>
+
+<script src="kith-parts.js"></script>
+<script src="kith-stock.js"></script>
+<script>
+'use strict';
+/* ===========================================================================
+   KITH STOCK — bodywork and mechanical stock in one place.
+     Bodywork    "__stock__" row, items with kind:'paint' (paint and materials)
+     Mechanical  "__stock__" row, everything else (the Parts app's Stock tab)
+   Every save goes through KITHParts.saveList: re-read, merge only what this
+   screen changed, write only if nobody saved in between. Counts are merged
+   as changes (+3, −1), so two people using stock at once both count.
+   =========================================================================== */
+const P = window.KITHParts, S = window.KITHStock;
+const CFG = {
+  url: localStorage.getItem('kith_crm_url') || 'https://mxyrxyhvjndgjqupgstu.supabase.co',
+  key: localStorage.getItem('kith_crm_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog'
+};
+const REST = () => CFG.url.replace(/\/$/, '') + '/rest/v1/';
+const HDR = () => ({ apikey: CFG.key, Authorization: 'Bearer ' + CFG.key, 'Content-Type': 'application/json' });
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
+const gbp = n => (n < 0 ? '−£' : '£') + Math.abs(Number(n) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const gbp0 = n => (n < 0 ? '−£' : '£') + Math.round(Math.abs(Number(n) || 0)).toLocaleString('en-GB');
+const clone = o => JSON.parse(JSON.stringify(o));
+const today = () => S.iso(new Date());
+const money2 = n => Math.round(n * 100) / 100;
+const fmtDate = s => { if (!s) return ''; const d = new Date(s + 'T00:00:00'); return isNaN(d) ? s : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); };
+function toast(msg, ms) {
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), ms || 3200);
+}
+const FALLBACK_SUPPLIERS = ['NAPA', 'GSF Car Parts', 'Euro Car Parts', 'LKQ / Andrew Page', 'Main Dealer', 'Autodoc', 'eBay', 'Amazon', 'Local Factor', 'Other']
+  .map(name => ({ name, type: 'supplier', active: true }));
+
+/* ---------------- state ---------------- */
+let ME = null, MY = null;
+let STOCK = [], STOCK_BASE = [], POS = [], JOBS = [], MJOBS = [], DIR = FALLBACK_SUPPLIERS.slice();
+let TAB = null, BUSY = false, COUNT = null;
+// The stock is held by parts and accounts (and the director), same as the
+// orders — the bodyshop asks them for what it needs.
+const STOCK_ROLES = ['parts', 'accounts', 'director'];
+const canUse = x => STOCK_ROLES.includes(x.role) || x.name === 'Ali' ||
+  (Array.isArray(x.roles) && x.roles.some(r => STOCK_ROLES.concat('stock').includes(r)));
+
+/* ---------------- loading ---------------- */
+const WORK_STAGES = ['booked', 'po', 'raised', 'checkin', 'authwait', 'inprog'];
+async function load(silent) {
+  if (!silent) $('view').innerHTML = '<div class="empty"><span class="spin"></span> Loading…</div>';
+  try {
+    const ids = ['__stock__', '__pos__', '__directory__'];
+    const since = new Date(); since.setDate(since.getDate() - 60);
+    const q = [
+      fetch(REST() + 'jobs?select=id,data&id=in.(' + ids.join(',') + ')', { headers: HDR() }),
+      // jobs in the workshop, so materials can be put against them
+      fetch(REST() + 'jobs?select=id,data&data->>stage=in.(' + WORK_STAGES.join(',') + ')&order=updated_at.desc', { headers: Object.assign(HDR(), { Range: '0-999', 'Range-Unit': 'items' }) }),
+      // jobs that have used materials lately, for the report
+      fetch(REST() + 'jobs?select=id,data&data->>materialsLast=gte.' + S.iso(since) + '&order=updated_at.desc', { headers: Object.assign(HDR(), { Range: '0-999', 'Range-Unit': 'items' }) })
+    ];
+    const [sr, jr, mr] = await Promise.all(q);
+    if (!sr.ok || !jr.ok || !mr.ok) throw new Error('CRM returned ' + [sr, jr, mr].find(r => !r.ok).status);
+    const srows = await sr.json(), jrows = await jr.json(), mrows = await mr.json();
+    const sys = id => ((srows || []).find(r => r.id === id) || {}).data || {};
+    STOCK = sys('__stock__').items || []; STOCK_BASE = clone(STOCK);
+    POS = sys('__pos__').pos || [];
+    const d = sys('__directory__').DIRECTORY; if (Array.isArray(d) && d.length) DIR = d;
+    const toJob = r => Object.assign({}, r.data, { id: r.id });
+    JOBS = (jrows || []).filter(r => r.id && r.id.indexOf('__') !== 0 && r.data).map(toJob);
+    MJOBS = (mrows || []).filter(r => r.id && r.id.indexOf('__') !== 0 && r.data).map(toJob);
+    setSync('ok', 'Up to date ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    render();
+  } catch (e) {
+    setSync('err', e.message);
+    if (!silent) $('view').innerHTML = '<div class="note stop"><b>Could not reach the CRM</b>' + esc(e.message) + '</div>';
+  }
+}
+function setSync(k, title) { const s = $('sync'); s.className = 'dot ' + k; s.title = title || ''; }
+
+async function saveStock() {
+  const res = await P.saveList({ url: CFG.url, key: CFG.key, rowId: '__stock__', field: 'items', base: STOCK_BASE, local: STOCK, deltaFields: ['qty'] });
+  STOCK = res.list; STOCK_BASE = clone(res.list); return res;
+}
+async function changeJob(jobId, mutate) {
+  const r = await P.updateRow({ url: CFG.url, key: CFG.key, rowId: jobId, mutate });
+  [JOBS, MJOBS].forEach(L => { const i = L.findIndex(j => j.id === jobId); if (i > -1 && r.data) L[i] = Object.assign({}, r.data, { id: jobId }); });
+  if (r.data && r.data.materials && !MJOBS.some(j => j.id === jobId)) MJOBS.unshift(Object.assign({}, r.data, { id: jobId }));
+  return r;
+}
+async function notify(role, title, body, extra) {
+  const cur = await (await fetch(REST() + 'jobs?id=eq.__notifs__&select=data', { headers: HDR() })).json();
+  const list = (cur && cur[0] && cur[0].data && cur[0].data.list) || [];
+  const key = (extra && extra.key) || role + '|' + title;
+  if (list.some(n => !n.seen && n.key === key)) return false;
+  const n = Object.assign({ id: 'N' + Date.now() + Math.floor(Math.random() * 9999), key, role, to: '', title, body: body || '', jobId: null, poId: null,
+    at: P.ts(), ts: Date.now(), by: ME || 'stock', seen: false }, extra || {});
+  await P.saveList({ url: CFG.url, key: CFG.key, rowId: '__notifs__', field: 'list', base: list, local: [n].concat(list) });
+  return true;
+}
+
+/* ---------------- render ---------------- */
+const sectionItems = k => STOCK.filter(it => S.kindOf(it) === k);
+function render() {
+  const tabs = S.SECTIONS.map(sec => {
+    const items = sectionItems(sec.k), low = items.filter(x => P.isLow(x) && (x.countedOn || num(x.qty))).length;
+    return { k: sec.k, n: sec.label, c: low ? low + ' low' : items.length + ' items', hot: low > 0 };
+  });
+  if (!tabs.some(t => t.k === TAB)) TAB = tabs[0].k;
+  $('tabs').className = 'tabs n' + tabs.length;
+  $('tabs').innerHTML = tabs.map(t => '<button data-tab="' + t.k + '" class="' + (TAB === t.k ? 'on' : '') + '"><span class="n">' + t.n +
+    '</span><span class="c' + (t.hot ? ' hot' : '') + '">' + esc(t.c) + '</span></button>').join('');
+  $('tabs').querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { TAB = b.dataset.tab; try { localStorage.setItem('kith_stock_tab', TAB); } catch (e) {} render(); });
+  if (COUNT) renderCount(); else renderItems(TAB);
+}
+
+/* ======================= THE THREE SECTIONS =========================== */
+function renderItems(kind) {
+  const sec = S.SECTIONS.find(x => x.k === kind) || S.SECTIONS[0];
+  const paint = kind === 'paint';
+  const items = sectionItems(kind);
+  // An item nobody has counted yet isn't "running low" — it just has no
+  // number on it. It sits in its own list until the first stocktake.
+  const uncounted = items.filter(x => !x.countedOn && !num(x.qty));
+  const low = items.filter(x => P.isLow(x) && !uncounted.includes(x));
+  const never = uncounted.length;
+  let h = '<div class="btns" style="margin-top:0">' +
+    '<button class="btn primary" id="iCount">Stocktake</button>' +
+    (paint ? '<button class="btn" id="iUse">Use on a job</button>' : '') +
+    '<button class="btn" id="iAdd">+ Add an item</button>' +
+    '<button class="btn" id="iStd">Add the standard list</button>' +
+    (low.length ? '<button class="btn stop" id="iAsk">Ask parts to order what’s low (' + low.length + ')</button>' : '') + '</div>';
+  h += '<p class="hint" style="margin-top:.6rem">' + esc(sec.hint) +
+    (paint ? ' Record what each bodywork job uses and the job carries its real materials cost.' : '') +
+    ' On the shelf: ' + gbp(S.stockValue(items)) + ' across ' + items.length + ' item' + (items.length === 1 ? '' : 's') + '.' +
+    (never ? ' <b>' + never + ' never counted.</b>' : '') + '</p>';
+  if (!items.length) h += '<div class="empty">Nothing here yet. <b>Add the standard list</b> puts the usual ' + esc(sec.label.toLowerCase()) + ' shelf in at zero, then a stocktake fills in the numbers.</div>';
+  if (low.length) h += '<h2 class="sec">Running low <span class="cnt">' + low.length + '</span></h2><div class="card hot">' + low.map(itemRow).join('') + '</div>';
+  if (uncounted.length) h += '<h2 class="sec">Not counted yet <span class="cnt">' + uncounted.length + '</span></h2>' +
+    '<p class="hint">Press <b>Stocktake</b> and count them in. Until then they show as zero and won’t be ordered.</p>' +
+    '<div class="card warm">' + uncounted.map(itemRow).join('') + '</div>';
+  const rest = items.filter(x => !P.isLow(x) && !uncounted.includes(x)).sort((a, b) => a.name.localeCompare(b.name));
+  S.catsFor(kind).forEach(cat => {
+    const g = rest.filter(x => (x.cat || 'Other') === cat || (cat === 'Other' && !S.catsFor(kind).includes(x.cat)));
+    if (g.length) h += '<h2 class="sec">' + esc(cat) + ' <span class="cnt">' + g.length + '</span></h2><div class="card">' + g.map(itemRow).join('') + '</div>';
+  });
+  if (paint) h += materialsSection();
+  $('view').innerHTML = h;
+  $('iCount').onclick = () => startCount(kind);
+  if ($('iUse')) $('iUse').onclick = () => openUse();
+  $('iAdd').onclick = () => openItem(null, kind);
+  $('iStd').onclick = () => addStandard(kind);
+  if ($('iAsk')) $('iAsk').onclick = () => askParts(kind);
+  document.querySelectorAll('[data-sadj]').forEach(b => b.onclick = () => { const [id, d] = b.dataset.sadj.split('|'); adjust(id, +d); });
+  document.querySelectorAll('[data-suse]').forEach(b => b.onclick = () => paint ? openUse(b.dataset.suse) : useShop(b.dataset.suse));
+  document.querySelectorAll('[data-sedit]').forEach(b => b.onclick = () => openItem(b.dataset.sedit, kind));
+}
+
+// The usual shelf for this section, at zero, ready to be counted
+async function addStandard(kind) {
+  if (BUSY) return;
+  const add = S.starterItems(STOCK, kind, ME, null, P.makeStockItem);
+  if (!add.length) return toast('The standard list is already on here.', 4000);
+  if (!confirm('Add ' + add.length + ' item' + (add.length === 1 ? '' : 's') + ' to ' + (S.SECTIONS.find(x => x.k === kind) || {}).label + '?\n\nThey go on at zero with a reorder level. Count them in with a stocktake, and change anything that is not how you work.')) return;
+  BUSY = true;
+  try { STOCK = add.concat(STOCK); await saveStock(); render(); toast('✓ ' + add.length + ' items added — now do a stocktake'); }
+  catch (e) { STOCK = clone(STOCK_BASE); toast('⚠ ' + e.message, 5000); }
+  BUSY = false;
+}
+
+/* ---------------------------- STOCKTAKE ------------------------------ */
+// Tick each item as it is counted. Nothing is written until Finish, and
+// then only the ones that moved — as changes, so a delivery booked in by
+// someone else while you count is not wiped out.
+function startCount(kind) {
+  COUNT = { kind, counts: {}, at: Date.now() };
+  try { localStorage.setItem('kith_stock_count', JSON.stringify(COUNT)); } catch (e) {}
+  render();
+}
+function saveCountDraft() { try { localStorage.setItem('kith_stock_count', JSON.stringify(COUNT)); } catch (e) {} }
+function endCount() { COUNT = null; try { localStorage.removeItem('kith_stock_count'); } catch (e) {} render(); }
+function renderCount() {
+  const kind = COUNT.kind;
+  if (TAB !== kind) TAB = kind;
+  const items = sectionItems(kind).sort((a, b) => (a.cat || 'Other').localeCompare(b.cat || 'Other') || a.name.localeCompare(b.name));
+  const done = items.filter(it => it.id in COUNT.counts).length;
+  const moved = items.filter(it => it.id in COUNT.counts && num(COUNT.counts[it.id]) !== num(it.qty));
+  const val = moved.reduce((a, it) => a + (num(COUNT.counts[it.id]) - num(it.qty)) * num(it.price), 0);
+  let h = '<div class="note"><b>Stocktake — ' + esc((S.SECTIONS.find(x => x.k === kind) || {}).label) + '</b>' +
+    'Count the shelf and tick each one. The box is what is actually there. Nothing is saved until you press Finish, so you can stop and come back.</div>' +
+    '<div class="hint" style="margin:0">' + done + ' of ' + items.length + ' counted' + (moved.length ? ' · ' + moved.length + ' different from the book' + (val ? ' (' + (val > 0 ? '+' : '') + gbp(val) + ')' : '') : '') + '</div>' +
+    '<div class="bar' + (done === items.length && items.length ? ' done' : '') + '"><i style="width:' + (items.length ? Math.round(done / items.length * 100) : 0) + '%"></i></div>' +
+    '<div class="btns"><button class="btn primary" id="cDone"' + (done ? '' : ' disabled') + '>Finish and save (' + done + ')</button>' +
+    '<button class="btn" id="cSame">Tick the rest as correct</button><button class="btn stop" id="cStop">Stop, keep nothing</button></div>';
+  let cat = null;
+  h += '<div class="card" style="margin-top:.8rem">';
+  items.forEach(it => {
+    const c = it.cat || 'Other';
+    if (c !== cat) { cat = c; h += '<div class="cthead">' + esc(c) + '</div>'; }
+    const got = it.id in COUNT.counts, v = got ? COUNT.counts[it.id] : '';
+    const diff = got ? money2(num(v) - num(it.qty)) : 0;
+    h += '<div class="countrow' + (got ? ' on' : '') + '"><div class="nm"><b>' + esc(it.name) + '</b>' +
+      '<small>book ' + esc(it.qty) + ' ' + esc(it.unit || '') + (it.countedOn ? ' · last counted ' + esc(fmtDate(it.countedOn)) : ' · never counted') + '</small></div>' +
+      '<input type="number" step="0.1" min="0" inputmode="decimal" data-cq="' + esc(it.id) + '" value="' + esc(v) + '" placeholder="' + esc(it.qty) + '" aria-label="Counted ' + esc(it.name) + '">' +
+      '<span class="cdiff">' + (got && diff ? (diff > 0 ? '+' : '') + diff : '') + '</span>' +
+      '<button class="btn sm ' + (got ? 'go' : '') + '" data-ct="' + esc(it.id) + '" aria-label="Tick ' + esc(it.name) + '">' + (got ? '✓' : 'Tick') + '</button></div>';
+  });
+  h += '</div>';
+  $('view').innerHTML = h;
+  const tally = () => {
+    const n = items.filter(x => x.id in COUNT.counts).length;
+    const diff = items.filter(x => x.id in COUNT.counts && num(COUNT.counts[x.id]) !== num(x.qty));
+    const v = diff.reduce((a, x) => a + (num(COUNT.counts[x.id]) - num(x.qty)) * num(x.price), 0);
+    $('view').querySelector('.hint').textContent = n + ' of ' + items.length + ' counted' +
+      (diff.length ? ' · ' + diff.length + ' different from the book' + (v ? ' (' + (v > 0 ? '+' : '') + gbp(v) + ')' : '') : '');
+    $('view').querySelector('.bar').classList.toggle('done', n === items.length && !!items.length);
+    $('view').querySelector('.bar i').style.width = (items.length ? Math.round(n / items.length * 100) : 0) + '%';
+    $('cDone').disabled = !n;
+    $('cDone').textContent = 'Finish and save (' + n + ')';
+  };
+  document.querySelectorAll('[data-cq]').forEach(inp => inp.oninput = () => {
+    const id = inp.dataset.cq;
+    if (inp.value === '') delete COUNT.counts[id]; else COUNT.counts[id] = inp.value;
+    saveCountDraft();
+    const row = inp.closest('.countrow'); const it = STOCK.find(x => x.id === id);
+    row.classList.toggle('on', inp.value !== '');
+    const d = inp.value === '' ? 0 : money2(num(inp.value) - num(it.qty));
+    row.querySelector('.cdiff').textContent = d ? (d > 0 ? '+' : '') + d : '';
+    row.querySelector('[data-ct]').textContent = inp.value === '' ? 'Tick' : '✓';
+    row.querySelector('[data-ct]').classList.toggle('go', inp.value !== '');
+    tally();
+  });
+  // Tick with nothing typed = the book figure is right
+  document.querySelectorAll('[data-ct]').forEach(b => b.onclick = () => {
+    const id = b.dataset.ct, inp = document.querySelector('[data-cq="' + id + '"]');
+    if (id in COUNT.counts) { delete COUNT.counts[id]; inp.value = ''; }
+    else { const it = STOCK.find(x => x.id === id); COUNT.counts[id] = String(num(it.qty)); inp.value = COUNT.counts[id]; }
+    saveCountDraft();
+    inp.dispatchEvent(new Event('input'));
+  });
+  $('cSame').onclick = () => { items.forEach(it => { if (!(it.id in COUNT.counts)) COUNT.counts[it.id] = String(num(it.qty)); }); saveCountDraft(); renderCount(); };
+  $('cStop').onclick = () => { if (confirm('Throw this count away? Nothing has been saved yet.')) endCount(); };
+  $('cDone').onclick = finishCount;
+}
+async function finishCount() {
+  if (BUSY) return; BUSY = true;
+  const r = S.stocktakeApply(STOCK, COUNT.counts, ME, null, P.adjustStock);
+  try {
+    STOCK = r.stock; await saveStock();
+    const moved = r.changes.length;
+    endCount();
+    toast('✓ ' + r.counted + ' counted' + (moved ? ', ' + moved + ' corrected (' + (r.valueDiff > 0 ? '+' : '') + gbp(r.valueDiff) + ')' : ', all correct'), 6000);
+    if (moved) {
+      try {
+        await notify('parts', 'Stocktake — ' + moved + ' item' + (moved === 1 ? '' : 's') + ' corrected',
+          r.changes.map(c => c.name + ': ' + c.was + ' → ' + c.now + ' ' + c.unit).join('\n') + '\n\nValue ' + (r.valueDiff > 0 ? '+' : '') + gbp(r.valueDiff) + ' (' + ME + ')',
+          { key: 'stocktake|' + Date.now() });
+      } catch (e) { console.warn('notify', e); }
+    }
+  } catch (e) { STOCK = clone(STOCK_BASE); toast('⚠ ' + e.message + ' — the count is still here, try Finish again', 6000); }
+  BUSY = false;
+}
+
+function onOrder(s) {
+  return POS.filter(p => P.OPEN.includes(p.status || 'Ordered')).reduce((a, p) => a + (p.items || []).filter(i => i.stockId === s.id).reduce((b, i) => b + (parseInt(i.qty) || 1) - (i.received || 0), 0), 0);
+}
+function itemRow(s) {
+  const oo = onOrder(s);
+  const waiting = !s.countedOn && !num(s.qty);          // never counted, so not low either
+  return '<div class="stockrow"><div><b>' + esc(s.name) + '</b><div class="hint" style="margin:0">' +
+    [s.num, s.supplier, num(s.price) ? gbp(s.price) + ' per ' + (s.unit || 'each') : 'no cost set', s.min ? 'reorder at ' + s.min : 'no reorder level', oo ? oo + ' on order' : '',
+      waiting ? 'to count' : S.countedAgo(s, today()) > 60 ? 'not counted for ' + S.countedAgo(s, today()) + ' days' : ''].filter(Boolean).map(esc).join(' · ') + '</div></div>' +
+    '<div style="display:flex;align-items:center;gap:.35rem;flex-wrap:wrap;justify-content:flex-end"><span class="qty' + (P.isLow(s) && !waiting ? ' low' : '') + '">' + esc(s.qty) + '</span><span class="hint" style="margin:0">' + esc(s.unit) + '</span>' +
+    '<button class="btn sm" data-sadj="' + esc(s.id) + '|-1" aria-label="One less">−</button><button class="btn sm" data-sadj="' + esc(s.id) + '|1" aria-label="One more">+</button>' +
+    '<button class="btn sm" data-suse="' + esc(s.id) + '">Use…</button><button class="btn sm" data-sedit="' + esc(s.id) + '">Edit</button></div></div>';
+}
+async function adjust(id, d, why) {
+  if (BUSY) return; BUSY = true;
+  try { STOCK = STOCK.map(x => x.id === id ? P.adjustStock(x, d, why || (d > 0 ? 'counted in' : 'used'), ME) : x); await saveStock(); render(); }
+  catch (e) { STOCK = clone(STOCK_BASE); toast('⚠ ' + e.message, 5000); }
+  BUSY = false;
+}
+function useShop(id) {
+  const s = STOCK.find(x => x.id === id); if (!s) return;
+  sheet('<button class="btn sm x" data-close>Close</button><h2>Use ' + esc(s.name) + '</h2><p class="hint">' + esc(s.qty) + ' ' + esc(s.unit) + ' on the shelf</p>' +
+    '<div class="row r2"><div><label class="f" for="uQ">How many ' + esc(s.unit) + '</label><input type="number" step="0.5" min="0" id="uQ" value="1"></div>' +
+    '<div><label class="f" for="uR">On which car? (reg)</label><input type="text" id="uR" placeholder="optional"></div></div>' +
+    '<button class="btn primary full" id="uGo">Take it off the count</button>');
+  $('uGo').onclick = async () => { const q = parseFloat($('uQ').value) || 0; if (!q) return; const r = ($('uR').value || '').trim().toUpperCase();
+    closeSheet(); await adjust(id, -q, r ? 'used on ' + r : 'used'); };
+}
+const suppliers = () => DIR.filter(d => d.active !== false && (d.type === 'supplier' || d.type === 'both'));
+function openItem(id, kind) {
+  const s = id ? STOCK.find(x => x.id === id) : { kind: kind === 'paint' || kind === 'tyre' ? kind : undefined, cat: S.catsFor(kind)[0], unit: kind === 'paint' ? 'litre' : 'each' };
+  const k = S.kindOf(s), paint = k === 'paint';
+  const sups = suppliers().map(x => x.name);
+  if (s.supplier && !sups.includes(s.supplier)) sups.unshift(s.supplier);
+  sheet('<button class="btn sm x" data-close>Close</button><h2>' + (id ? 'Edit ' + esc(s.name) : paint ? 'Add paint or materials' : 'Add a mechanical item') + '</h2>' +
+    '<div class="row r2"><div><label class="f" for="sN">Name</label><input type="text" id="sN" value="' + esc(s.name || '') + '" placeholder="' + (paint ? 'e.g. 2K clear coat' : k === 'tyre' ? 'e.g. Rubber valves TR414' : 'e.g. 5W-30 engine oil') + '"></div>' +
+    '<div><label class="f" for="sK">Shelf</label><select id="sK">' + S.catsFor(k).map(c => '<option' + (c === s.cat ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '</select></div></div>' +
+    '<div class="row r3"><div><label class="f" for="sQ">On the shelf</label><input type="number" step="0.1" min="0" id="sQ" value="' + esc(s.qty != null ? s.qty : '') + '"></div>' +
+    '<div><label class="f" for="sU">Counted in</label><input type="text" id="sU" value="' + esc(s.unit || 'each') + '" placeholder="litre, roll, box, each"></div>' +
+    '<div><label class="f" for="sM">Reorder when down to</label><input type="number" step="0.1" min="0" id="sM" value="' + esc(s.min != null ? s.min : '') + '"></div></div>' +
+    '<div class="row r3"><div><label class="f" for="sS">Usual supplier</label><select id="sS"><option value=""></option>' + sups.map(n => '<option' + (n === s.supplier ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + '</select></div>' +
+    '<div><label class="f" for="sP">Part / product no.</label><input type="text" id="sP" value="' + esc(s.num || '') + '"></div>' +
+    '<div><label class="f" for="sC">Net cost per unit (£)</label><input type="number" step="0.01" min="0" id="sC" value="' + esc(s.price || '') + '"></div></div>' +
+    (paint ? '<p class="hint">The cost per unit is what a job is charged for materials: 0.25 litre of clear at £48.00 a litre puts £12.00 on the job.</p>' : '<p class="hint">The cost per unit is what it costs us — it gives the value of the shelf and what a stocktake correction is worth.</p>') +
+    '<button class="btn primary full" id="sGo">' + (id ? 'Save' : 'Add it') + '</button>' + (id ? '<button class="btn stop full" id="sDel" style="margin-top:.4rem">Remove this item</button>' : '') + '<div id="sErr"></div>' +
+    (id && (s.log || []).length ? '<h2 class="sec">History</h2><div class="log">' + s.log.slice().reverse().map(l => '<div><span>' + esc(l.t) + '</span>' + esc(l.s) + '</div>').join('') + '</div>' : ''));
+  $('sGo').onclick = async () => {
+    if (BUSY) return; BUSY = true;
+    try {
+      if (id) {
+        STOCK = STOCK.map(x => { if (x.id !== id) return x;
+          let o = clone(x); const newQ = parseFloat($('sQ').value) || 0;
+          Object.assign(o, { name: $('sN').value.trim() || o.name, unit: $('sU').value.trim() || 'each', min: parseFloat($('sM').value) || 0, supplier: $('sS').value, num: $('sP').value.trim(), price: parseFloat($('sC').value) || '' });
+          o.cat = $('sK').value;
+          if (newQ !== (parseFloat(x.qty) || 0)) o = P.adjustStock(o, newQ - (parseFloat(x.qty) || 0), 'stock count', ME);
+          return o; });
+      } else {
+        STOCK = [P.makeStockItem({ name: $('sN').value, qty: $('sQ').value, unit: $('sU').value, min: $('sM').value, supplier: $('sS').value, num: $('sP').value, price: $('sC').value,
+          kind: k === 'shop' ? '' : k, cat: $('sK').value }, ME)].concat(STOCK);
+      }
+      await saveStock(); closeSheet(); render();
+    } catch (e) { STOCK = clone(STOCK_BASE); $('sErr').innerHTML = '<div class="note stop"><b>Not saved</b>' + esc(e.message) + '</div>'; }
+    BUSY = false;
+  };
+  if (id) $('sDel').onclick = async () => { if (!confirm('Remove ' + s.name + ' from stock?')) return;
+    try { STOCK = STOCK.filter(x => x.id !== id); await saveStock(); closeSheet(); render(); } catch (e) { STOCK = clone(STOCK_BASE); toast('⚠ ' + e.message, 5000); } };
+}
+async function askParts(kind) {
+  const low = sectionItems(kind).filter(x => P.isLow(x) && (x.countedOn || num(x.qty)));
+  const body = low.map(s => s.name + ' — ' + s.qty + ' ' + s.unit + ' left, order ' + P.reorderQty(s) + (s.supplier ? ' from ' + s.supplier : '')).join('\n');
+  try {
+    const sent = await notify('parts', ((S.SECTIONS.find(x => x.k === kind) || {}).label || 'Stock') + ' stock running low', body, { key: 'stocklow|' + kind + '|' + low.map(s => s.id).sort().join(',') });
+    toast(sent ? '✓ Parts told — it’s on their list in the Parts app' : 'Parts have already been told about these', 4000);
+  } catch (e) { toast('⚠ ' + e.message, 5000); }
+}
+
+// Materials used by job
+function materialsSection() {
+  const rows = S.materialsReport(MJOBS);
+  const month = today().slice(0, 7);
+  const thisMonth = MJOBS.reduce((a, j) => a + (j.materials || []).filter(m => (m.on || '').slice(0, 7) === month).reduce((b, m) => b + num(m.cost), 0), 0);
+  let h = '<h2 class="sec">Materials by job <span class="cnt">last 60 days</span></h2>';
+  if (!rows.length) return h + '<div class="empty">Nothing recorded yet. “Use on a job” puts the materials on the job.</div>';
+  h += '<p class="hint">' + gbp(thisMonth) + ' of materials used this month. Percent is of the job’s price before VAT.</p>';
+  h += '<div class="card"><table class="t"><tr><th>Job</th><th class="n">Materials</th><th class="n">Job ex VAT</th><th class="n">%</th></tr>' +
+    rows.map(r => '<tr><td><span class="reg">' + esc(r.reg || '—') + '</span> ' + esc(r.work.slice(0, 48)) + '<div class="hint" style="margin:0">' + esc(fmtDate(r.last)) + '</div></td>' +
+      '<td class="n">' + gbp(r.cost) + '</td><td class="n">' + (r.value ? gbp(r.value) : '—') + '</td><td class="n">' + (r.pct != null ? r.pct + '%' : '—') + '</td></tr>').join('') + '</table></div>';
+  return h;
+}
+
+// Use materials on a job
+function openUse(firstId) {
+  const items = sectionItems('paint').filter(s => num(s.qty) > 0).sort((a, b) => a.name.localeCompare(b.name));
+  if (!items.length) return toast('Nothing on the shelf to use — add or count in some paint first.', 4500);
+  let lines = [{ stockId: firstId || '', qty: '' }], showAll = false;
+  const body = P.isBodywork;
+  const opts = () => {
+    const js = JOBS.filter(j => showAll || body(j)).sort((a, b) => (a.reg || '').localeCompare(b.reg || ''));
+    return '<option value="">Choose…</option>' + (js.length ? '<optgroup label="Customer jobs in the workshop">' + js.map(j => '<option value="J:' + esc(j.id) + '">' + esc((j.reg || '—') + ' · ' + [j.make, j.model].filter(Boolean).join(' ') + ' · ' + (j.work || '').slice(0, 40)) + '</option>').join('') + '</optgroup>' : '') +
+      '';
+  };
+  sheet('<button class="btn sm x" data-close>Close</button><h2>Use on a job</h2>' +
+    '<div class="row"><div><label class="f" for="mJ">Which job?</label><select id="mJ">' + opts() + '</select>' +
+    '<label class="ck" style="margin-top:.3rem"><input type="checkbox" id="mAll"> Show every job in the workshop, not just bodywork</label></div></div>' +
+    '<label class="f">What was used</label><div id="mL"></div><button class="btn sm" id="mAdd">+ Another item</button>' +
+    '<div id="mT" class="note" style="margin-top:.7rem"></div>' +
+    '<button class="btn primary full" id="mGo">Take it off the shelf and put it on the job</button><div id="mErr"></div>');
+  const draw = () => {
+    $('mL').innerHTML = lines.map((l, k) => { const it = items.find(s => s.id === l.stockId);
+      return '<div class="useline"><select data-k="' + k + '" data-f="stockId"><option value="">Item…</option>' + items.map(s => '<option value="' + esc(s.id) + '"' + (s.id === l.stockId ? ' selected' : '') + '>' + esc(s.name + ' (' + s.qty + ' ' + s.unit + ')') + '</option>').join('') + '</select>' +
+        '<input type="number" step="0.05" min="0" data-k="' + k + '" data-f="qty" placeholder="' + esc(it ? it.unit : 'qty') + '" value="' + esc(l.qty) + '">' +
+        '<span class="c">' + (it && num(l.qty) ? gbp(num(l.qty) * num(it.price)) : '') + '</span>' +
+        '<button class="btn sm stop" data-rm="' + k + '" aria-label="Remove">✕</button></div>'; }).join('');
+    $('mL').querySelectorAll('[data-f]').forEach(i => { i.oninput = i.onchange = () => { lines[+i.dataset.k][i.dataset.f] = i.value; if (i.dataset.f === 'stockId') draw(); else total(); }; });
+    $('mL').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { lines.splice(+b.dataset.rm, 1); if (!lines.length) lines.push({ stockId: '', qty: '' }); draw(); });
+    total();
+  };
+  const total = () => {
+    let t = 0; lines.forEach(l => { const it = items.find(s => s.id === l.stockId); if (it) t += num(l.qty) * num(it.price); });
+    const sp = $('mL').querySelectorAll('.useline .c');
+    lines.forEach((l, k) => { const it = items.find(s => s.id === l.stockId); if (sp[k]) sp[k].textContent = it && num(l.qty) ? gbp(num(l.qty) * num(it.price)) : ''; });
+    $('mT').innerHTML = '<b>Materials ' + gbp(t) + '</b>' + (lines.some(l => { const it = items.find(s => s.id === l.stockId); return it && !num(it.price); }) ? 'One or more items has no cost set — edit the item to add it.' : 'At cost, ex VAT.');
+  };
+  draw();
+  $('mAll').onchange = () => { showAll = $('mAll').checked; const v = $('mJ').value; $('mJ').innerHTML = opts(); $('mJ').value = v; };
+  $('mAdd').onclick = () => { lines.push({ stockId: '', qty: '' }); draw(); };
+  $('mGo').onclick = async () => {
+    const target = $('mJ').value;
+    if (!target) return errBox('mErr', 'Choose the job it was used on.');
+    const tid = target.slice(2);
+    const job = JOBS.find(j => j.id === tid) || null;
+    const reg = (job && job.reg) || '';
+    let r;
+    try { r = S.useMaterials(STOCK, lines, reg, ME, null, P.adjustStock); } catch (e) { return errBox('mErr', e.message); }
+    if (BUSY) return; BUSY = true;
+    $('mGo').disabled = true; $('mGo').innerHTML = '<span class="spin"></span> Saving…';
+    try { STOCK = r.stock; await saveStock(); }
+    catch (e) { STOCK = clone(STOCK_BASE); BUSY = false; $('mGo').disabled = false; $('mGo').textContent = 'Try again'; return errBox('mErr', e.message + ' — nothing was taken off, try again.'); }
+    // The shelf count is saved. Now put it on the job; retry once, and
+    // if that still fails say so plainly, so it can be added by hand.
+    let recorded = false, lastErr = null;
+    for (let i = 0; i < 2 && !recorded; i++) {
+      try {
+        await changeJob(job.id, d => S.addMaterialsToJob(d, r.used, ME));
+        recorded = true;
+      } catch (e) { lastErr = e; }
+    }
+    BUSY = false;
+    if (recorded) { closeSheet(); render(); toast('✓ ' + gbp(r.total) + ' of materials on ' + reg); }
+    else { render(); errBox('mErr', 'Taken off the shelf, but not recorded on ' + reg + ' (' + (lastErr && lastErr.message) + '). Tell Logan: ' + gbp(r.total) + ' of materials — ' + r.used.map(u => u.qty + ' ' + u.unit + ' ' + u.name).join(', ') + '.'); }
+  };
+}
+
+const errBox = (id, m) => { $(id).innerHTML = '<div class="note stop"><b>Not saved</b>' + esc(m) + '</div>'; };
+
+/* ---------------- sheet ---------------- */
+function sheet(html) {
+  $('sheetHost').innerHTML = '<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true">' + html + '</div></div>';
+  $('scrim').addEventListener('click', e => { if (e.target.id === 'scrim') closeSheet(); });
+  $('sheetHost').querySelectorAll('[data-close]').forEach(b => b.onclick = closeSheet);
+}
+function closeSheet() { $('sheetHost').innerHTML = ''; }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+
+/* ---------------- who is using it ---------------- */
+const FALLBACK_STAFF = [{ name: 'Giles', role: 'parts' }, { name: 'Sudha', role: 'parts' }, { name: 'Ali', role: 'parts' }, { name: 'Logkith', role: 'director' }];
+let STAFF = [], PICKED = null;
+async function loadStaff() {
+  try {
+    const r = await fetch(REST() + 'kith_staff?select=id,data&limit=100', { headers: HDR() });
+    if (!r.ok) throw new Error('staff ' + r.status);
+    STAFF = ((await r.json()) || []).map(x => Object.assign({ id: x.id }, x.data || {})).filter(x => x.name && x.active !== false && canUse(x));
+    if (!STAFF.length) throw new Error('empty');
+  } catch (e) { STAFF = FALLBACK_STAFF.slice(); }
+  renderWho();
+}
+const roleName = p => p.role === 'director' ? 'Director' : p.role === 'parts' ? 'Parts' : p.role === 'accounts' ? 'Accounts' : (p.role || 'Staff').replace(/^./, c => c.toUpperCase());
+function renderWho() {
+  $('whoGrid').innerHTML = STAFF.map((p, i) => '<button class="who-btn ' + (PICKED && PICKED.name === p.name ? 'on' : '') + '" data-i="' + i + '"><span class="n">' + esc(p.name) + '</span><span class="r">' + esc(roleName(p)) + '</span></button>').join('');
+  $('whoGrid').querySelectorAll('[data-i]').forEach(b => b.onclick = () => {
+    PICKED = STAFF[+b.dataset.i]; renderWho(); $('pinBox').hidden = false; $('pinIn').value = ''; $('pinIn').focus();
+    $('loginErr').innerHTML = PICKED.pin ? '' : '<div class="note warn"><b>No PIN set for ' + esc(PICKED.name) + '</b>Anyone can sign in as them. Set one on the staff record.</div>';
+  });
+}
+function doLogin() {
+  if (!PICKED) return;
+  if (PICKED.pin && String($('pinIn').value) !== String(PICKED.pin)) { $('loginErr').innerHTML = '<div class="note stop"><b>Wrong PIN</b>Try again.</div>'; $('pinIn').value = ''; return; }
+  ME = PICKED.name; MY = PICKED;
+  try { localStorage.setItem('kith_stock_me', ME); } catch (e) {}
+  showMain();
+}
+function showMain() {
+  let saved = null; try { saved = localStorage.getItem('kith_stock_tab'); } catch (e) {}
+  try { const d = JSON.parse(localStorage.getItem('kith_stock_count') || 'null'); if (d && d.kind && d.counts) COUNT = d; } catch (e) {}
+  TAB = saved === 'shop' ? 'shop' : 'paint';
+  $('scr-login').hidden = true; $('scr-main').hidden = false;
+  $('whoPill').hidden = false; $('whoPill').textContent = ME; $('whoPill').className = 'pill on';
+  $('btnRefresh').hidden = false;
+  load();
+}
+$('btnLogin').onclick = doLogin;
+$('pinIn').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+$('btnRefresh').onclick = () => load();
+$('whoPill').onclick = () => { if (!confirm('Sign out ' + ME + '?')) return; ME = null; MY = null; COUNT = null; try { localStorage.removeItem('kith_stock_me'); } catch (e) {}
+  $('scr-main').hidden = true; $('scr-login').hidden = false; $('whoPill').hidden = true; $('btnRefresh').hidden = true; PICKED = null; renderWho(); };
+
+// Other people's changes turn up without pressing Refresh (paused while a form is open)
+setInterval(() => { if (ME && !$('sheetHost').innerHTML && !BUSY && !COUNT && document.visibilityState !== 'hidden') load(true); }, 60000);
+
+(function start() {
+  let saved = null; try { saved = localStorage.getItem('kith_stock_me'); } catch (e) {}
+  loadStaff().then(() => { const p = saved && STAFF.find(s => s.name === saved); if (p) { ME = p.name; MY = p; showMain(); } });
+})();
+</script>
+</body>
+</html>

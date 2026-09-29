@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KITH Dashboard</title>
+<link rel="manifest" href="manifest-dash.json">
+<meta name="theme-color" content="#14161A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="KITH Dashboard">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="apple-touch-icon" href="icon-dash-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14161A; --bg-2:#1B1E24; --card:#20242B; --card-2:#262B33;
+  --line:#333A44; --line-soft:#2A2F37;
+  --ink:#EDEFF2; --ink-2:#A8B1BD; --ink-3:#6E7885;
+  --gold:#D8A32B; --gold-dim:#8A6A1C; --gold-bg:rgba(216,163,43,.10);
+  --go:#3FB07A; --go-bg:rgba(63,176,122,.12);
+  --warn:#E0A030; --warn-bg:rgba(224,160,48,.12);
+  --stop:#E05A4C; --stop-bg:rgba(224,90,76,.12);
+  --blue:#5B9BD5; --blue-bg:rgba(91,155,213,.12);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:14px;line-height:1.5}
+h1,h2,h3{font-family:"Barlow Condensed",Impact,sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin:0}
+.mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+[hidden]{display:none!important}
+
+.top{position:sticky;top:0;z-index:40;background:var(--bg-2);border-bottom:1px solid var(--line);padding:.55rem 1rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:.5rem}
+.brand h1{font-size:1.25rem;letter-spacing:.06em}
+.brand .v{font-family:"IBM Plex Mono",monospace;font-size:.66rem;color:var(--bg);background:var(--gold);padding:.1rem .35rem;border-radius:2px;font-weight:600}
+.spacer{flex:1}
+.pill{font-family:"IBM Plex Mono",monospace;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;padding:.25rem .5rem;border:1px solid var(--line);border-radius:99px;color:var(--ink-2);background:none;cursor:pointer}
+.pill.on{border-color:var(--gold);color:var(--gold);background:var(--gold-bg)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ink-3);display:inline-block}
+.dot.ok{background:var(--go)}.dot.err{background:var(--stop)}
+
+main{max-width:980px;margin:0 auto;padding:1rem 1rem 5rem}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem;margin-bottom:1rem}
+@media(max-width:560px){.tabs{grid-template-columns:1fr 1fr}}
+.tabs button{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:.55rem .7rem;cursor:pointer;text-align:left}
+.tabs button .n{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:1rem;letter-spacing:.03em;display:block}
+.tabs button .c{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3)}
+.tabs button.on{border-color:var(--gold);background:var(--gold-bg)}
+.tabs button .c.hot{color:var(--stop);font-weight:600}
+
+h2.sec{font-size:1rem;letter-spacing:.06em;color:var(--ink-2);margin:1.2rem 0 .5rem;display:flex;align-items:center;gap:.5rem}
+h2.sec .cnt{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3)}
+.hint{color:var(--ink-3);font-size:.82rem;margin:.1rem 0 .6rem}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;margin-bottom:.7rem;overflow:hidden}
+.card.hot{border-color:var(--stop)}
+.card.warm{border-color:var(--warn)}
+.card .hd{display:flex;align-items:flex-start;gap:.6rem;padding:.6rem .8rem;background:var(--card-2);border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+.reg{font-family:"IBM Plex Mono",monospace;font-weight:600;background:#F1C40F;color:#111;padding:.05rem .4rem;border-radius:3px;font-size:.85rem;letter-spacing:.04em}
+.card .hd .t{flex:1;min-width:160px}
+.card .hd .t b{display:block}
+.card .hd .t span{font-size:.78rem;color:var(--ink-3)}
+.card .bd{padding:.6rem .8rem}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:.62rem;text-transform:uppercase;letter-spacing:.07em;padding:.12rem .35rem;border-radius:2px;border:1px solid var(--line);color:var(--ink-3);white-space:nowrap}
+.tag.go{color:var(--go);border-color:var(--go)}.tag.warn{color:var(--warn);border-color:var(--warn)}
+.tag.stop{color:var(--stop);border-color:var(--stop)}.tag.gold{color:var(--gold);border-color:var(--gold)}
+.tag.blue{color:var(--blue);border-color:var(--blue)}
+.pl{display:flex;justify-content:space-between;gap:.6rem;padding:.3rem 0;border-bottom:1px dotted var(--line-soft);font-size:.85rem;align-items:center;flex-wrap:wrap}
+.pl:last-child{border-bottom:0}
+.pl .nm{flex:1;min-width:140px}
+.pl .acts{display:flex;gap:.35rem;flex-wrap:nowrap}
+.btns .when{margin:0;flex:1}
+@media(max-width:560px){.btns .when{flex-basis:100%}}
+.pl .nm small{color:var(--ink-3);display:block;font-family:"IBM Plex Mono",monospace;font-size:.7rem}
+.amt{font-family:"IBM Plex Mono",monospace;white-space:nowrap}
+.grp{margin-top:.5rem;padding-top:.5rem;border-top:1px solid var(--line-soft)}
+.grp:first-child{margin-top:0;padding-top:0;border-top:0}
+.grp .gh{display:flex;align-items:center;gap:.5rem;margin-bottom:.2rem;font-size:.8rem;color:var(--ink-2);flex-wrap:wrap}
+
+.btn{text-decoration:none;color:inherit;background:var(--card-2);border:1px solid var(--line);border-radius:5px;padding:.42rem .75rem;cursor:pointer;font-size:.85rem}
+.btn:hover{border-color:var(--gold);color:var(--gold)}
+.btn.primary{background:var(--gold);border-color:var(--gold);color:var(--bg);font-weight:600}
+.btn.primary:hover{background:#E8B23A;color:var(--bg)}
+.btn.go{border-color:var(--go);color:var(--go)}
+.btn.stop{border-color:var(--stop);color:var(--stop)}
+.btn.sm{padding:.22rem .5rem;font-size:.76rem}
+.btn.full{width:100%}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btns{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem}
+
+label.f{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);margin-bottom:.2rem;font-family:"IBM Plex Mono",monospace}
+input:not([type]),input[type=text],input[type=number],input[type=date],input[type=password],input[type=search],select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:.45rem .55rem;color:var(--ink)}
+textarea{min-height:64px;resize:vertical}
+input:focus,select:focus,textarea:focus{border-color:var(--gold);outline:none}
+.row{display:grid;gap:.5rem;margin-bottom:.6rem}
+.r2{grid-template-columns:1fr 1fr}.r3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:600px){.r2,.r3{grid-template-columns:1fr}}
+.line{display:grid;grid-template-columns:2fr 1.2fr .9fr .6fr auto;gap:.35rem;margin-bottom:.35rem;align-items:center}
+@media(max-width:600px){.line{grid-template-columns:1fr 1fr;}.line .nm-in{grid-column:1/-1}}
+.ck{display:flex;gap:.5rem;align-items:center;font-size:.85rem;cursor:pointer;padding:.2rem 0}
+.ck input{accent-color:var(--gold)}
+.chips{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.5rem}
+.chips button{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:.25rem .6rem;font-size:.78rem;cursor:pointer}
+.chips button.on{border-color:var(--gold);color:var(--gold);background:var(--gold-bg)}
+
+.note{border-left:3px solid var(--gold);background:var(--gold-bg);padding:.5rem .7rem;border-radius:0 4px 4px 0;font-size:.82rem;margin:.5rem 0}
+.note.stop{border-color:var(--stop);background:var(--stop-bg)}
+.note.go{border-color:var(--go);background:var(--go-bg)}
+.note.warn{border-color:var(--warn);background:var(--warn-bg)}
+.note.blue{border-color:var(--blue);background:var(--blue-bg)}
+.note b{display:block;font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.05em;font-size:.9rem}
+.empty{color:var(--ink-3);text-align:center;padding:1.1rem;border:1px dashed var(--line);border-radius:6px;font-size:.85rem}
+
+/* sheet (modal) */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:80;display:flex;align-items:flex-end;justify-content:center}
+@media(min-width:700px){.scrim{align-items:center}}
+.sheet{background:var(--card);border:1px solid var(--line);border-radius:10px 10px 0 0;width:100%;max-width:640px;max-height:92vh;overflow:auto;padding:1rem}
+@media(min-width:700px){.sheet{border-radius:10px}}
+.sheet h2{font-size:1.2rem;margin-bottom:.2rem}
+.sheet .x{float:right}
+
+/* login */
+#scr-login{max-width:520px;margin:2rem auto;padding:0 1rem}
+#scr-login h2{font-size:1.6rem}
+.who-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.5rem;margin:1rem 0}
+.who-btn{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.7rem;text-align:left;cursor:pointer}
+.who-btn.on{border-color:var(--gold);background:var(--gold-bg)}
+.who-btn .n{display:block;font-weight:600}
+.who-btn .r{display:block;font-size:.72rem;color:var(--ink-3)}
+.pin{font-size:1.4rem;letter-spacing:.4em;text-align:center}
+
+.countrow{display:grid;grid-template-columns:1fr 5.5rem 3rem auto;gap:.5rem;align-items:center;padding:.5rem .8rem;border-bottom:1px solid var(--line-soft)}
+.countrow:last-child{border-bottom:0}
+.countrow.on{background:var(--go-bg)}
+.countrow .nm b{display:block;font-weight:600}
+.countrow .nm small{color:var(--ink-3);font-family:"IBM Plex Mono",monospace;font-size:.68rem}
+.countrow .cdiff{font-family:"IBM Plex Mono",monospace;font-size:.8rem;color:var(--warn);text-align:right}
+.cthead{padding:.35rem .8rem;background:var(--card-2);font-family:"IBM Plex Mono",monospace;font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);border-bottom:1px solid var(--line-soft)}
+@media(max-width:560px){.countrow{grid-template-columns:1fr 4.5rem auto}.countrow .cdiff{display:none}}
+.bar{height:6px;background:var(--bg);border:1px solid var(--line-soft);border-radius:99px;overflow:hidden;margin:.4rem 0}
+.bar i{display:block;height:100%;background:var(--gold)}
+.bar.done i{background:var(--go)}
+.stockrow{display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:center;padding:.55rem .8rem;border-bottom:1px solid var(--line-soft)}
+.stockrow:last-child{border-bottom:0}
+.qty{font-family:"IBM Plex Mono",monospace;font-size:1.05rem;font-weight:600}
+.qty.low{color:var(--stop)}
+.toast{position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);background:var(--card-2);border:1px solid var(--gold);color:var(--ink);padding:.55rem .9rem;border-radius:6px;font-size:.85rem;z-index:99;box-shadow:0 6px 24px rgba(0,0,0,.5);max-width:92vw}
+.spin{display:inline-block;width:11px;height:11px;border:2px solid var(--gold-dim);border-top-color:var(--gold);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}
+.tabs.n2{grid-template-columns:repeat(2,1fr)}.tabs.n3{grid-template-columns:repeat(3,1fr)}
+@media(max-width:560px){.tabs.n3{grid-template-columns:repeat(3,1fr)}}
+table.t{width:100%;border-collapse:collapse;font-size:.84rem}
+table.t th{font-family:"IBM Plex Mono",monospace;font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);font-weight:500;text-align:left;padding:.35rem .5rem;border-bottom:1px solid var(--line)}
+table.t td{padding:.4rem .5rem;border-bottom:1px solid var(--line-soft);vertical-align:top}
+table.t td.n,table.t th.n{text-align:right;font-family:"IBM Plex Mono",monospace;white-space:nowrap}
+table.t tr:last-child td{border-bottom:0}
+.useline{display:grid;grid-template-columns:2fr .8fr auto auto;gap:.35rem;align-items:center;margin-bottom:.35rem}
+.useline .c{font-family:"IBM Plex Mono",monospace;font-size:.8rem;color:var(--ink-2);white-space:nowrap;min-width:4.5rem;text-align:right}
+@media(max-width:560px){.useline{grid-template-columns:1fr auto auto}.useline select{grid-column:1/-1}}
+@media(max-width:560px){.stockrow{grid-template-columns:1fr}.stockrow>div:last-child{justify-content:flex-start!important}}
+.log{font-size:.78rem;color:var(--ink-2);max-height:220px;overflow:auto;border:1px solid var(--line-soft);border-radius:5px;padding:.4rem .55rem;background:var(--bg)}
+.log div{padding:.12rem 0;border-bottom:1px dotted var(--line-soft)}
+.log div:last-child{border-bottom:0}
+.log span{color:var(--ink-3);font-family:"IBM Plex Mono",monospace;font-size:.68rem;margin-right:.4rem}
+/* the five service lines — checked against the colour-blind and contrast
+   rules for this dark background, and never re-ordered */
+.viz{--s-mechanical:#3987e5;--s-tyres:#d95926;--s-tuning:#199e70;--s-exhaust:#c98500;--s-bodywork:#d55181;
+     --grid:#2A2F37;--ink-dim:#A8B1BD}
+.tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:.4rem;margin-bottom:1rem}
+@media(max-width:860px){.tiles{grid-template-columns:repeat(2,1fr)}}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:.6rem .7rem;min-width:0}
+.tile .l{font-family:"IBM Plex Mono",monospace;font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);display:block}
+.tile .v{font-family:"IBM Plex Mono",monospace;font-size:1.5rem;font-weight:600;display:block;font-variant-numeric:tabular-nums;line-height:1.2}
+.tile .s{font-size:.72rem;color:var(--ink-3);display:block}
+.tile .s.up{color:var(--go)}.tile .s.down{color:var(--stop)}
+.chartbox{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.8rem .9rem 1rem;margin-bottom:1rem}
+.chartbox h3{font-family:"Barlow Condensed",sans-serif;font-size:1.05rem;text-transform:uppercase;letter-spacing:.04em;margin:0 0 .1rem}
+.chartbox .sub{font-size:.78rem;color:var(--ink-3);margin-bottom:.7rem}
+.legend{display:flex;flex-wrap:wrap;gap:.5rem 1rem;margin:.6rem 0 0}
+.legend span{display:flex;align-items:center;gap:.35rem;font-size:.78rem;color:var(--ink-2)}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+svg{display:block;width:100%;height:auto;overflow:visible}
+svg text{font-family:"IBM Plex Mono",monospace;fill:var(--ink-3);font-size:13px}
+svg text.val{fill:var(--ink);font-size:15px;font-weight:600}
+svg .gridline{stroke:var(--grid);stroke-width:1}
+svg rect.seg{stroke:var(--card);stroke-width:2}
+svg .hit{fill:transparent;cursor:pointer}
+.tip{position:fixed;z-index:120;background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:.45rem .6rem;font-size:.78rem;pointer-events:none;box-shadow:0 6px 24px rgba(0,0,0,.6);max-width:60vw}
+.tip b{display:block;font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.04em;font-size:.85rem}
+.tip .row{display:flex;justify-content:space-between;gap:.8rem;font-family:"IBM Plex Mono",monospace;font-size:.72rem}
+table.t{width:100%;border-collapse:collapse;font-size:.85rem}
+table.t th{font-family:"IBM Plex Mono",monospace;font-size:.6rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);font-weight:500;text-align:right;padding:.4rem .45rem;border-bottom:1px solid var(--line)}
+table.t th:first-child{text-align:left}
+table.t td{padding:.45rem;border-bottom:1px solid var(--line-soft);text-align:right;font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.t td:first-child{text-align:left;font-family:"IBM Plex Sans",sans-serif}
+table.t tr.sub td{color:var(--ink-2);font-size:.8rem}
+table.t tr.sub td:first-child{padding-left:1.6rem}
+table.t tr.tot td{border-top:1px solid var(--line);font-weight:600;border-bottom:0}
+table.t tr[data-open]{cursor:pointer}
+table.t tr[data-open]:hover td{background:var(--card-2)}
+.dot{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:.45rem;vertical-align:-1px}
+.conv{color:var(--ink)}
+.conv.good{color:var(--go)}.conv.mid{color:var(--warn)}.conv.bad{color:var(--stop)}
+.joblist{max-height:320px;overflow:auto;border:1px solid var(--line-soft);border-radius:6px}
+.joblist div.j{display:flex;gap:.6rem;align-items:center;padding:.4rem .6rem;border-bottom:1px solid var(--line-soft);font-size:.82rem}
+.joblist div.j:last-child{border-bottom:0}
+.joblist .w{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><h1>KITH Dashboard</h1><span class="v">v1.0</span></div>
+  <div class="spacer"></div>
+  <span class="dot" id="sync" title="Not loaded yet" style="border-radius:50%"></span>
+  <button class="pill" id="btnRefresh" hidden>Refresh</button>
+  <button class="pill" id="whoPill" hidden></button>
+</header>
+
+<div id="scr-login">
+  <h2>Who's looking?</h2>
+  <div class="who-grid" id="whoGrid"></div>
+  <div id="pinBox" hidden>
+    <label class="f" for="pinIn">PIN</label>
+    <input type="password" inputmode="numeric" maxlength="6" class="pin" id="pinIn" placeholder="····">
+    <button class="btn primary full" id="btnLogin" style="margin-top:.6rem">Sign in</button>
+    <div id="loginErr"></div>
+  </div>
+</div>
+
+<main id="scr-main" class="viz" hidden>
+  <div class="chips" id="range"></div>
+  <div id="view"></div>
+</main>
+
+<div id="sheetHost"></div>
+
+<script src="kith-lines.js"></script>
+<script>
+'use strict';
+/* ===========================================================================
+   KITH DASHBOARD — how much work comes in on each service line, and how much
+   of it we win. Mechanical (repairs, servicing, MOT), Tyres, Tuning, Exhaust,
+   Bodywork, week by week.
+
+   It reads only the handful of fields it needs from each job — what the work
+   is, the stage, the price and when it came in — not the whole job, so it is
+   light on data however many jobs there are.
+   =========================================================================== */
+const L = window.KITHLines;
+const CFG = {
+  url: localStorage.getItem('kith_crm_url') || 'https://mxyrxyhvjndgjqupgstu.supabase.co',
+  key: localStorage.getItem('kith_crm_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog'
+};
+const REST = () => CFG.url.replace(/\/$/, '') + '/rest/v1/';
+const HDR = () => ({ apikey: CFG.key, Authorization: 'Bearer ' + CFG.key, 'Content-Type': 'application/json' });
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const gbp0 = n => '£' + Math.round(Number(n) || 0).toLocaleString('en-GB');
+const gbp = n => '£' + (Number(n) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pc = v => v == null ? '—' : v + '%';
+const convClass = v => v == null ? '' : v >= 60 ? 'good' : v >= 35 ? 'mid' : 'bad';
+
+let ME = null, JOBS = [], WEEKS = 8, OPEN = null, SUM = null;
+
+/* ---------------- loading ---------------- */
+// Only the fields the numbers need
+const FIELDS = 'id,work:data->>work,notes:data->>notes,stage:data->>stage,quote:data->>quote,finalEst:data->>finalEst,' +
+  'createdAt:data->>createdAt,enquiredAt:data->>enquiredAt,line:data->>line,sub:data->>sub,estApproved:data->>estApproved,' +
+  'mergedInto:data->>mergedInto,reg:data->>reg,name:data->>name,source:data->>source';
+async function load(silent) {
+  if (!silent) $('view').innerHTML = '<div class="empty"><span class="spin"></span> Adding it all up…</div>';
+  try {
+    const r = await fetch(REST() + 'jobs?select=' + encodeURIComponent(FIELDS) + '&order=updated_at.desc',
+      { headers: Object.assign(HDR(), { Range: '0-9999', 'Range-Unit': 'items', Prefer: 'count=none' }) });
+    if (!r.ok) throw new Error('CRM returned ' + r.status);
+    const rows = await r.json();
+    JOBS = (rows || []).filter(x => x.id && String(x.id).indexOf('__') !== 0).map(x => Object.assign({}, x, {
+      estApproved: x.estApproved === 'true' || x.estApproved === true,
+      mergedInto: x.mergedInto && x.mergedInto !== 'null' ? x.mergedInto : ''
+    }));
+    setSync('ok', 'Up to date ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    render();
+  } catch (e) {
+    setSync('err', e.message);
+    if (!silent) $('view').innerHTML = '<div class="note stop"><b>Could not reach the CRM</b>' + esc(e.message) + '</div>';
+  }
+}
+function setSync(k, t) { const s = $('sync'); s.className = 'dot ' + k; s.title = t || ''; }
+
+/* ---------------- render ---------------- */
+const RANGES = [[4, '4 weeks'], [8, '8 weeks'], [13, 'A quarter'], [26, 'Half a year']];
+function render() {
+  $('range').innerHTML = RANGES.map(([n, lab]) => '<button data-w="' + n + '" class="' + (WEEKS === n ? 'on' : '') + '">' + lab + '</button>').join('');
+  $('range').querySelectorAll('[data-w]').forEach(b => b.onclick = () => { WEEKS = +b.dataset.w; try { localStorage.setItem('kith_dash_weeks', WEEKS); } catch (e) {} render(); });
+  SUM = L.summarise(JOBS, { weeks: WEEKS });
+  $('view').innerHTML = tiles() + weeksChart() + convChart() + table() + footnote();
+  wire();
+}
+
+// ── the week's headline numbers ──
+function tile(l, v, s, cls) {
+  return '<div class="tile"><span class="l">' + esc(l) + '</span><span class="v">' + esc(v) + '</span>' +
+    '<span class="s ' + (cls || '') + '">' + esc(s || '') + '</span></div>';
+}
+function tiles() {
+  const w = SUM.weeks[SUM.weeks.length - 1], t = SUM.totalByWeek[w], all = SUM.total;
+  const tr = k => { const x = L.trend(SUM, k); return x ? { s: (x.pct == null ? 'nothing last week' : (x.pct >= 0 ? '+' : '') + x.pct + '% on all of last week'), c: x.up ? 'up' : 'down' } : { s: 'first week', c: '' }; };
+  const a = tr('in'), b = tr('won');
+  return '<div class="tiles">' +
+    tile('This week so far', t.in, a.s, a.c) +
+    tile('Won this week', t.won, b.s, b.c) +
+    tile('Conversion, ' + WEEKS + ' weeks', pc(all.conv), all.won + ' won · ' + all.lost + ' lost') +
+    tile('Won, ' + WEEKS + ' weeks', gbp0(all.wonValue), 'average ' + gbp0(all.avgWon) + ' a job') +
+    tile('Still open', all.open, 'quoted or being priced') + '</div>';
+}
+
+// ── enquiries a week, stacked by line ──
+// Drawn in a fixed 800-wide box and scaled by the browser, so the text stays
+// the size it looks on the page however wide the screen is.
+function weeksChart() {
+  const W = SUM.weeks, VB = 800, H = 210, top = 26, bot = 30, left = 4, right = 4;
+  const max = Math.max(1, ...W.map(w => SUM.totalByWeek[w].in));
+  const slot = (VB - left - right) / W.length, bw = Math.min(54, slot * 0.62);
+  let bars = '', hits = '';
+  W.forEach((w, i) => {
+    const cx = left + slot * i + slot / 2, x = cx - bw / 2;
+    let y = H - bot;
+    L.LINE_KEYS.forEach(k => {
+      const n = SUM.byWeek[k][w].in;
+      if (!n) return;
+      const h = (H - top - bot) * n / max;
+      y -= h;
+      bars += '<rect class="seg" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + h.toFixed(1) +
+        '" rx="3" fill="var(--s-' + k + ')" data-tipline="' + k + '" data-tipweek="' + w + '"></rect>';
+    });
+    const tot = SUM.totalByWeek[w].in;
+    if (tot) bars += '<text class="val" x="' + cx.toFixed(1) + '" y="' + (y - 7).toFixed(1) + '" text-anchor="middle">' + tot + '</text>';
+    bars += '<text x="' + cx.toFixed(1) + '" y="' + (H - 10) + '" text-anchor="middle">' + esc(shortWeek(w)) + '</text>';
+    hits += '<rect class="hit" x="' + (left + slot * i).toFixed(1) + '" y="' + top + '" width="' + slot.toFixed(1) + '" height="' + (H - top - bot) + '" data-tipweek="' + w + '"></rect>';
+  });
+  return '<div class="chartbox"><h3>What came in, week by week</h3><div class="sub">Every enquiry taken in, split by service line. ' +
+    (SUM.noWork ? SUM.noWork + ' had nothing written in the work box and sit under Repairs.' : 'Hover a bar for the week.') + '</div>' +
+    '<svg viewBox="0 0 ' + VB + ' ' + H + '" role="img" aria-label="Enquiries a week by service line">' +
+    '<line class="gridline" x1="0" y1="' + (H - bot) + '" x2="' + VB + '" y2="' + (H - bot) + '"></line>' + bars + hits + '</svg>' +
+    legend() + '</div>';
+}
+const shortWeek = w => L.weekLabel(w).replace('This week', 'Now').replace('Last week', 'Last');
+const legend = () => '<div class="legend">' + L.LINE_KEYS.map(k =>
+  '<span><i style="background:var(--s-' + k + ')"></i>' + esc(L.lineLabel(k)) + '</span>').join('') + '</div>';
+
+// ── how much of each line we win ──
+function convChart() {
+  const rows = L.LINE_KEYS.map(k => ({ k, r: SUM.lines[k] })).filter(x => x.r.won + x.r.lost > 0);
+  if (!rows.length) return '';
+  const VB = 800, RH = 34, H = rows.length * RH + 8, barX = 130, barW = 480;
+  let out = '';
+  rows.forEach((x, i) => {
+    const y = i * RH + 6, v = x.r.conv || 0;
+    out += '<text x="0" y="' + (y + 14) + '" class="val">' + esc(L.lineLabel(x.k)) + '</text>' +
+      '<rect x="' + barX + '" y="' + y + '" width="' + barW + '" height="16" rx="3" fill="var(--grid)"></rect>' +
+      '<rect x="' + barX + '" y="' + y + '" width="' + (barW * v / 100).toFixed(1) + '" height="16" rx="3" fill="var(--s-' + x.k + ')" data-tipline="' + x.k + '"></rect>' +
+      '<text class="val" x="' + (barX + barW + 12) + '" y="' + (y + 13) + '">' + pc(x.r.conv) + '</text>' +
+      '<text x="' + (barX + barW + 12) + '" y="' + (y + 26) + '">' + x.r.won + ' won · ' + x.r.lost + ' lost</text>';
+  });
+  return '<div class="chartbox"><h3>How many we win</h3><div class="sub">Of the ones the customer has decided on — still-open quotes are not counted either way.</div>' +
+    '<svg viewBox="0 0 ' + VB + ' ' + H + '" role="img" aria-label="Conversion by service line">' + out + '</svg></div>';
+}
+
+// ── the table ──
+function row(k, r, isSub, label, colour) {
+  return '<tr class="' + (isSub ? 'sub' : '') + '"' + (isSub ? '' : ' data-open="' + k + '"') + '>' +
+    '<td>' + (colour ? '<i class="dot" style="background:var(--s-' + k + ')"></i>' : '') + esc(label) + '</td>' +
+    '<td>' + r.in + '</td><td>' + r.quoted + '</td><td>' + r.won + '</td><td>' + r.lost + '</td><td>' + r.open + '</td>' +
+    '<td class="conv ' + convClass(r.conv) + '">' + pc(r.conv) + '</td><td>' + gbp0(r.wonValue) + '</td><td>' + (r.won ? gbp0(r.avgWon) : '—') + '</td></tr>';
+}
+function table() {
+  let h = '<div class="chartbox"><h3>Every line, last ' + WEEKS + ' weeks</h3>' +
+    '<div class="sub">Tap a line to see the jobs behind it.</div>' +
+    '<table class="t"><thead><tr><th>Line</th><th>In</th><th>Quoted</th><th>Won</th><th>Lost</th><th>Open</th><th>Conv.</th><th>Value won</th><th>Avg job</th></tr></thead><tbody>';
+  L.LINE_KEYS.forEach(k => {
+    h += row(k, SUM.lines[k], false, L.lineLabel(k), true);
+    const L2 = L.LINES.find(x => x.k === k);
+    (L2.subs || []).forEach(sb => {
+      const r = SUM.subs[k + '/' + sb.k];
+      if (r && r.in) h += row(k, r, true, sb.label, false);
+    });
+  });
+  h += row('all', SUM.total, false, 'Everything', false).replace('<tr class=""', '<tr class="tot"').replace(' data-open="all"', ' data-open="all"');
+  h += '</tbody></table>' + (OPEN ? jobList(OPEN) : '') + '</div>';
+  return h;
+}
+function jobList(k) {
+  const list = L.jobsIn(JOBS, { weeks: WEEKS, line: k === 'all' ? '' : k });
+  const state = j => L.isWon(j) ? ['go', 'won'] : L.isLost(j) ? ['stop', 'lost'] : ['warn', 'open'];
+  return '<h2 class="sec" style="margin-top:1rem">' + esc(k === 'all' ? 'Everything' : L.lineLabel(k)) + ' — ' + list.length + ' job' + (list.length === 1 ? '' : 's') +
+    ' <button class="btn sm" id="closeList" style="margin-left:auto">Close</button></h2>' +
+    '<div class="joblist">' + (list.length ? list.map(j => {
+      const [cls, lab] = state(j);
+      return '<div class="j"><span class="tag ' + cls + '">' + lab + '</span><span class="reg">' + esc(j.reg || '—') + '</span>' +
+        '<span class="w">' + esc(j.work || 'nothing written down') + '</span>' +
+        '<span class="amt">' + (parseFloat(j.quote) ? gbp(j.quote) : '—') + '</span>' +
+        '<span class="hint" style="margin:0">' + esc(new Date(L.cameIn(j)).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })) + '</span></div>';
+    }).join('') : '<div class="empty">Nothing in this line yet.</div>') + '</div>';
+}
+function footnote() {
+  return '<p class="hint">A job counts in the week its enquiry came in. <b>Won</b> is booked in or beyond, or approved by the customer; ' +
+    '<b>lost</b> is Lost or Disapproved; anything else is still <b>open</b>. Conversion is won out of won plus lost, so quotes still sitting with a customer ' +
+    'don’t drag it down. The line is read from what the work says — set <code>line</code> on a job to overrule it.</p>';
+}
+
+/* ---------------- hover ---------------- */
+function wire() {
+  $('view').querySelectorAll('[data-open]').forEach(tr => tr.onclick = () => { OPEN = OPEN === tr.dataset.open ? null : tr.dataset.open; render(); });
+  if ($('closeList')) $('closeList').onclick = e => { e.stopPropagation(); OPEN = null; render(); };
+  const tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true; document.body.appendChild(tip);
+  const show = (el, ev) => {
+    const w = el.dataset.tipweek, k = el.dataset.tipline;
+    let html = '';
+    if (w && k) { const r = SUM.byWeek[k][w]; html = '<b>' + esc(L.lineLabel(k)) + ' · ' + esc(L.weekLabel(w)) + '</b>' + tipRows(r); }
+    else if (w) { html = '<b>' + esc(L.weekLabel(w)) + '</b>' + L.LINE_KEYS.filter(x => SUM.byWeek[x][w].in).map(x =>
+      '<div class="row"><span><i class="dot" style="background:var(--s-' + x + ')"></i>' + esc(L.lineLabel(x)) + '</span><span>' + SUM.byWeek[x][w].in + '</span></div>').join('') +
+      '<div class="row" style="border-top:1px solid var(--line);margin-top:.2rem;padding-top:.2rem"><span>All</span><span>' + SUM.totalByWeek[w].in + '</span></div>'; }
+    else if (k) { html = '<b>' + esc(L.lineLabel(k)) + '</b>' + tipRows(SUM.lines[k]); }
+    if (!html) return;
+    tip.innerHTML = html; tip.hidden = false;
+    const x = Math.min(ev.clientX + 14, window.innerWidth - 220), y = Math.max(8, ev.clientY - 20);
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  };
+  $('view').querySelectorAll('[data-tipweek],[data-tipline]').forEach(el => {
+    el.addEventListener('mousemove', ev => show(el, ev));
+    el.addEventListener('mouseleave', () => { tip.hidden = true; });
+    el.addEventListener('click', () => { const k = el.dataset.tipline; if (k) { OPEN = k; render(); } });
+  });
+  window.addEventListener('scroll', () => { tip.hidden = true; }, { passive: true });
+}
+const tipRows = r => '<div class="row"><span>Came in</span><span>' + r.in + '</span></div>' +
+  '<div class="row"><span>Won</span><span>' + r.won + '</span></div>' +
+  '<div class="row"><span>Lost</span><span>' + r.lost + '</span></div>' +
+  '<div class="row"><span>Conversion</span><span>' + pc(r.conv) + '</span></div>' +
+  '<div class="row"><span>Value won</span><span>' + gbp0(r.wonValue) + '</span></div>';
+
+/* ---------------- who is looking ---------------- */
+const FALLBACK_STAFF = [{ name: 'Logkith', role: 'director' }];
+const DASH_ROLES = ['director', 'accounts', 'adviser'];
+const canUse = x => DASH_ROLES.includes(x.role) || (Array.isArray(x.roles) && x.roles.some(r => DASH_ROLES.concat('dash').includes(r)));
+let STAFF = [], PICKED = null;
+async function loadStaff() {
+  try {
+    const r = await fetch(REST() + 'kith_staff?select=id,data&limit=100', { headers: HDR() });
+    if (!r.ok) throw new Error('staff');
+    STAFF = ((await r.json()) || []).map(x => Object.assign({ id: x.id }, x.data || {})).filter(x => x.name && x.active !== false && canUse(x));
+    if (!STAFF.length) throw new Error('empty');
+  } catch (e) { STAFF = FALLBACK_STAFF.slice(); }
+  renderWho();
+}
+function renderWho() {
+  $('whoGrid').innerHTML = STAFF.map((p, i) => '<button class="who-btn ' + (PICKED && PICKED.name === p.name ? 'on' : '') + '" data-i="' + i + '"><span class="n">' + esc(p.name) + '</span><span class="r">' +
+    esc(p.role === 'director' ? 'Director' : p.role === 'accounts' ? 'Accounts' : 'Service adviser') + '</span></button>').join('');
+  $('whoGrid').querySelectorAll('[data-i]').forEach(b => b.onclick = () => {
+    PICKED = STAFF[+b.dataset.i]; renderWho(); $('pinBox').hidden = false; $('pinIn').value = ''; $('pinIn').focus();
+  });
+}
+function doLogin() {
+  if (!PICKED) return;
+  if (PICKED.pin && String($('pinIn').value) !== String(PICKED.pin)) { $('loginErr').innerHTML = '<div class="note stop"><b>Wrong PIN</b>Try again.</div>'; $('pinIn').value = ''; return; }
+  ME = PICKED.name;
+  try { localStorage.setItem('kith_dash_me', ME); } catch (e) {}
+  showMain();
+}
+function showMain() {
+  try { WEEKS = +localStorage.getItem('kith_dash_weeks') || 8; } catch (e) {}
+  $('scr-login').hidden = true; $('scr-main').hidden = false;
+  $('whoPill').hidden = false; $('whoPill').textContent = ME; $('whoPill').className = 'pill on';
+  $('btnRefresh').hidden = false;
+  load();
+}
+$('btnLogin').onclick = doLogin;
+$('pinIn').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+$('btnRefresh').onclick = () => load();
+$('whoPill').onclick = () => { if (!confirm('Sign out ' + ME + '?')) return; ME = null; try { localStorage.removeItem('kith_dash_me'); } catch (e) {}
+  $('scr-main').hidden = true; $('scr-login').hidden = false; $('whoPill').hidden = true; $('btnRefresh').hidden = true; PICKED = null; renderWho(); };
+// it can sit on a screen all day without asking the server every minute
+setInterval(() => { if (ME && document.visibilityState !== 'hidden') load(true); }, 5 * 60000);
+(function start() {
+  let saved = null; try { saved = localStorage.getItem('kith_dash_me'); } catch (e) {}
+  loadStaff().then(() => { const p = saved && STAFF.find(s => s.name === saved); if (p) { ME = p.name; showMain(); } });
+})();
+</script>
+</body>
+</html>

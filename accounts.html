@@ -155,15 +155,52 @@ async function fetchCRMPos() {
   } catch(e) { console.warn('CRM PO fetch:', e); return []; }
 }
 
-// Also fetch job records so we can look up regs / customer info for display
+// Also fetch job records so we can look up regs / customer info for display.
+// The whole list is kept here so a refresh only has to ask for what changed.
+var CRM_JOBS = [], CRM_SINCE = null, CRM_FULL_AT = 0;
+var CRM_OVERLAP_MS = 10*60*1000;     // re-read the last 10 min, in case a phone's clock is behind
+var CRM_FULL_EVERY_MS = 10*60*1000;  // and a full read every 10 min as a safety net
+function _noteCrmStamp(rows) {
+  var cap = Date.now() + 5*60*1000;  // ignore a device whose clock is way ahead
+  (rows||[]).forEach(function(r){
+    if (!r || !r.updated_at) return;
+    if (Date.parse(r.updated_at) > cap) return;
+    if (!CRM_SINCE || r.updated_at > CRM_SINCE) CRM_SINCE = r.updated_at;
+  });
+}
+function _mergeCrmJobs(rows) {
+  var byId = {};
+  CRM_JOBS.forEach(function(j, i){ if (j && j.id) byId[j.id] = i; });
+  (rows||[]).forEach(function(r){
+    if (!r || !r.id || String(r.id).slice(0,2) === '__' || !r.data) return;
+    var j = r.data;
+    if (!j.id) j.id = r.id;
+    if (byId[j.id] !== undefined) CRM_JOBS[byId[j.id]] = j;
+    else { byId[j.id] = CRM_JOBS.length; CRM_JOBS.push(j); }
+  });
+  return CRM_JOBS;
+}
 async function fetchCRMJobs() {
   try {
-    var r = await fetch(SB+'/rest/v1/jobs?select=id,data', {headers:SH});
-    if (!r.ok) return [];
+    var r = await fetch(SB+'/rest/v1/jobs?select=id,data,updated_at', {headers:SH});
+    if (!r.ok) return CRM_JOBS;
     var arr = await r.json();
-    return (arr||[]).filter(function(x){return x.id && !x.id.startsWith('__');})
-                    .map(function(x){return x.data || x;});
-  } catch(e) { return []; }
+    CRM_JOBS = []; _mergeCrmJobs(arr); _noteCrmStamp(arr); CRM_FULL_AT = Date.now();
+    return CRM_JOBS;
+  } catch(e) { return CRM_JOBS; }
+}
+// Only what changed since the last look — this is what the 20-second live
+// sync uses, so a busy day no longer means downloading the shop every tick.
+async function fetchCRMJobsChanged() {
+  if (!CRM_SINCE || (Date.now() - CRM_FULL_AT) > CRM_FULL_EVERY_MS) return fetchCRMJobs();
+  try {
+    var from = new Date(new Date(CRM_SINCE).getTime() - CRM_OVERLAP_MS).toISOString();
+    var r = await fetch(SB+'/rest/v1/jobs?select=id,data,updated_at&updated_at=gt.'+encodeURIComponent(from), {headers:SH});
+    if (!r.ok) return CRM_JOBS;
+    var arr = await r.json();
+    _mergeCrmJobs(arr); _noteCrmStamp(arr);
+    return CRM_JOBS;
+  } catch(e) { return CRM_JOBS; }
 }
 
 // Save the whole POs array back to the CRM's __pos__ row
@@ -1082,7 +1119,7 @@ async function refreshFromCRM() {
   if (_liveBusy) return;
   _liveBusy = true;
   try {
-    var got = await Promise.all([fetchCRMPos(), fetchCRMJobs(), fetchCRMSubs()]);
+    var got = await Promise.all([fetchCRMPos(), fetchCRMJobsChanged(), fetchCRMSubs()]);
     _applyCRM(got[0], got[1], got[2], (sales||[]).filter(function(s){ return !s._crm; }));
     _liveAt = new Date();
     _rerenderCurrent();

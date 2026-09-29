@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KITH Inbox</title>
+<link rel="manifest" href="manifest-inbox.json">
+<meta name="theme-color" content="#14161A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="KITH Inbox">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="apple-touch-icon" href="icon-inbox-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14161A; --bg-2:#1B1E24; --card:#20242B; --card-2:#262B33;
+  --line:#333A44; --line-soft:#2A2F37;
+  --ink:#EDEFF2; --ink-2:#A8B1BD; --ink-3:#6E7885;
+  --gold:#D8A32B; --gold-dim:#8A6A1C; --gold-bg:rgba(216,163,43,.10);
+  --go:#3FB07A; --go-bg:rgba(63,176,122,.12);
+  --warn:#E0A030; --warn-bg:rgba(224,160,48,.12);
+  --stop:#E05A4C; --stop-bg:rgba(224,90,76,.12);
+  --blue:#5B9BD5; --blue-bg:rgba(91,155,213,.12);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:14px;line-height:1.5}
+h1,h2,h3{font-family:"Barlow Condensed",Impact,sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin:0}
+.mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+[hidden]{display:none!important}
+
+.top{position:sticky;top:0;z-index:40;background:var(--bg-2);border-bottom:1px solid var(--line);padding:.55rem 1rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:.5rem}
+.brand h1{font-size:1.25rem;letter-spacing:.06em}
+.brand .v{font-family:"IBM Plex Mono",monospace;font-size:.66rem;color:var(--bg);background:var(--gold);padding:.1rem .35rem;border-radius:2px;font-weight:600}
+.spacer{flex:1}
+.pill{font-family:"IBM Plex Mono",monospace;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;padding:.25rem .5rem;border:1px solid var(--line);border-radius:99px;color:var(--ink-2);background:none;cursor:pointer}
+.pill.on{border-color:var(--gold);color:var(--gold);background:var(--gold-bg)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ink-3);display:inline-block}
+.dot.ok{background:var(--go)}.dot.err{background:var(--stop)}
+
+main{max-width:980px;margin:0 auto;padding:1rem 1rem 5rem}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem;margin-bottom:1rem}
+@media(max-width:560px){.tabs{grid-template-columns:1fr 1fr}}
+.tabs button{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:.55rem .7rem;cursor:pointer;text-align:left}
+.tabs button .n{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:1rem;letter-spacing:.03em;display:block}
+.tabs button .c{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3)}
+.tabs button.on{border-color:var(--gold);background:var(--gold-bg)}
+.tabs button .c.hot{color:var(--stop);font-weight:600}
+
+h2.sec{font-size:1rem;letter-spacing:.06em;color:var(--ink-2);margin:1.2rem 0 .5rem;display:flex;align-items:center;gap:.5rem}
+h2.sec .cnt{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3)}
+.hint{color:var(--ink-3);font-size:.82rem;margin:.1rem 0 .6rem}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;margin-bottom:.7rem;overflow:hidden}
+.card.hot{border-color:var(--stop)}
+.card.warm{border-color:var(--warn)}
+.card .hd{display:flex;align-items:flex-start;gap:.6rem;padding:.6rem .8rem;background:var(--card-2);border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+.reg{font-family:"IBM Plex Mono",monospace;font-weight:600;background:#F1C40F;color:#111;padding:.05rem .4rem;border-radius:3px;font-size:.85rem;letter-spacing:.04em}
+.card .hd .t{flex:1;min-width:160px}
+.card .hd .t b{display:block}
+.card .hd .t span{font-size:.78rem;color:var(--ink-3)}
+.card .bd{padding:.6rem .8rem}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:.62rem;text-transform:uppercase;letter-spacing:.07em;padding:.12rem .35rem;border-radius:2px;border:1px solid var(--line);color:var(--ink-3);white-space:nowrap}
+.tag.go{color:var(--go);border-color:var(--go)}.tag.warn{color:var(--warn);border-color:var(--warn)}
+.tag.stop{color:var(--stop);border-color:var(--stop)}.tag.gold{color:var(--gold);border-color:var(--gold)}
+.tag.blue{color:var(--blue);border-color:var(--blue)}
+.pl{display:flex;justify-content:space-between;gap:.6rem;padding:.3rem 0;border-bottom:1px dotted var(--line-soft);font-size:.85rem;align-items:center;flex-wrap:wrap}
+.pl:last-child{border-bottom:0}
+.pl .nm{flex:1;min-width:140px}
+.pl .acts{display:flex;gap:.35rem;flex-wrap:nowrap}
+.btns .when{margin:0;flex:1}
+@media(max-width:560px){.btns .when{flex-basis:100%}}
+.pl .nm small{color:var(--ink-3);display:block;font-family:"IBM Plex Mono",monospace;font-size:.7rem}
+.amt{font-family:"IBM Plex Mono",monospace;white-space:nowrap}
+.grp{margin-top:.5rem;padding-top:.5rem;border-top:1px solid var(--line-soft)}
+.grp:first-child{margin-top:0;padding-top:0;border-top:0}
+.grp .gh{display:flex;align-items:center;gap:.5rem;margin-bottom:.2rem;font-size:.8rem;color:var(--ink-2);flex-wrap:wrap}
+
+.btn{text-decoration:none;color:inherit;background:var(--card-2);border:1px solid var(--line);border-radius:5px;padding:.42rem .75rem;cursor:pointer;font-size:.85rem}
+.btn:hover{border-color:var(--gold);color:var(--gold)}
+.btn.primary{background:var(--gold);border-color:var(--gold);color:var(--bg);font-weight:600}
+.btn.primary:hover{background:#E8B23A;color:var(--bg)}
+.btn.go{border-color:var(--go);color:var(--go)}
+.btn.stop{border-color:var(--stop);color:var(--stop)}
+.btn.sm{padding:.22rem .5rem;font-size:.76rem}
+.btn.full{width:100%}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btns{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem}
+
+label.f{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);margin-bottom:.2rem;font-family:"IBM Plex Mono",monospace}
+input:not([type]),input[type=text],input[type=number],input[type=date],input[type=password],input[type=search],select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:.45rem .55rem;color:var(--ink)}
+textarea{min-height:64px;resize:vertical}
+input:focus,select:focus,textarea:focus{border-color:var(--gold);outline:none}
+.row{display:grid;gap:.5rem;margin-bottom:.6rem}
+.r2{grid-template-columns:1fr 1fr}.r3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:600px){.r2,.r3{grid-template-columns:1fr}}
+.line{display:grid;grid-template-columns:2fr 1.2fr .9fr .6fr auto;gap:.35rem;margin-bottom:.35rem;align-items:center}
+@media(max-width:600px){.line{grid-template-columns:1fr 1fr;}.line .nm-in{grid-column:1/-1}}
+.ck{display:flex;gap:.5rem;align-items:center;font-size:.85rem;cursor:pointer;padding:.2rem 0}
+.ck input{accent-color:var(--gold)}
+.chips{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.5rem}
+.chips button{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:.25rem .6rem;font-size:.78rem;cursor:pointer}
+.chips button.on{border-color:var(--gold);color:var(--gold);background:var(--gold-bg)}
+
+.note{border-left:3px solid var(--gold);background:var(--gold-bg);padding:.5rem .7rem;border-radius:0 4px 4px 0;font-size:.82rem;margin:.5rem 0}
+.note.stop{border-color:var(--stop);background:var(--stop-bg)}
+.note.go{border-color:var(--go);background:var(--go-bg)}
+.note.warn{border-color:var(--warn);background:var(--warn-bg)}
+.note.blue{border-color:var(--blue);background:var(--blue-bg)}
+.note b{display:block;font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.05em;font-size:.9rem}
+.empty{color:var(--ink-3);text-align:center;padding:1.1rem;border:1px dashed var(--line);border-radius:6px;font-size:.85rem}
+
+/* sheet (modal) */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:80;display:flex;align-items:flex-end;justify-content:center}
+@media(min-width:700px){.scrim{align-items:center}}
+.sheet{background:var(--card);border:1px solid var(--line);border-radius:10px 10px 0 0;width:100%;max-width:640px;max-height:92vh;overflow:auto;padding:1rem}
+@media(min-width:700px){.sheet{border-radius:10px}}
+.sheet h2{font-size:1.2rem;margin-bottom:.2rem}
+.sheet .x{float:right}
+
+/* login */
+#scr-login{max-width:520px;margin:2rem auto;padding:0 1rem}
+#scr-login h2{font-size:1.6rem}
+.who-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.5rem;margin:1rem 0}
+.who-btn{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.7rem;text-align:left;cursor:pointer}
+.who-btn.on{border-color:var(--gold);background:var(--gold-bg)}
+.who-btn .n{display:block;font-weight:600}
+.who-btn .r{display:block;font-size:.72rem;color:var(--ink-3)}
+.pin{font-size:1.4rem;letter-spacing:.4em;text-align:center}
+
+.countrow{display:grid;grid-template-columns:1fr 5.5rem 3rem auto;gap:.5rem;align-items:center;padding:.5rem .8rem;border-bottom:1px solid var(--line-soft)}
+.countrow:last-child{border-bottom:0}
+.countrow.on{background:var(--go-bg)}
+.countrow .nm b{display:block;font-weight:600}
+.countrow .nm small{color:var(--ink-3);font-family:"IBM Plex Mono",monospace;font-size:.68rem}
+.countrow .cdiff{font-family:"IBM Plex Mono",monospace;font-size:.8rem;color:var(--warn);text-align:right}
+.cthead{padding:.35rem .8rem;background:var(--card-2);font-family:"IBM Plex Mono",monospace;font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);border-bottom:1px solid var(--line-soft)}
+@media(max-width:560px){.countrow{grid-template-columns:1fr 4.5rem auto}.countrow .cdiff{display:none}}
+.bar{height:6px;background:var(--bg);border:1px solid var(--line-soft);border-radius:99px;overflow:hidden;margin:.4rem 0}
+.bar i{display:block;height:100%;background:var(--gold)}
+.bar.done i{background:var(--go)}
+.stockrow{display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:center;padding:.55rem .8rem;border-bottom:1px solid var(--line-soft)}
+.stockrow:last-child{border-bottom:0}
+.qty{font-family:"IBM Plex Mono",monospace;font-size:1.05rem;font-weight:600}
+.qty.low{color:var(--stop)}
+.toast{position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);background:var(--card-2);border:1px solid var(--gold);color:var(--ink);padding:.55rem .9rem;border-radius:6px;font-size:.85rem;z-index:99;box-shadow:0 6px 24px rgba(0,0,0,.5);max-width:92vw}
+.spin{display:inline-block;width:11px;height:11px;border:2px solid var(--gold-dim);border-top-color:var(--gold);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}
+.tabs.n2{grid-template-columns:repeat(2,1fr)}.tabs.n3{grid-template-columns:repeat(3,1fr)}
+@media(max-width:560px){.tabs.n3{grid-template-columns:repeat(3,1fr)}}
+table.t{width:100%;border-collapse:collapse;font-size:.84rem}
+table.t th{font-family:"IBM Plex Mono",monospace;font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);font-weight:500;text-align:left;padding:.35rem .5rem;border-bottom:1px solid var(--line)}
+table.t td{padding:.4rem .5rem;border-bottom:1px solid var(--line-soft);vertical-align:top}
+table.t td.n,table.t th.n{text-align:right;font-family:"IBM Plex Mono",monospace;white-space:nowrap}
+table.t tr:last-child td{border-bottom:0}
+.useline{display:grid;grid-template-columns:2fr .8fr auto auto;gap:.35rem;align-items:center;margin-bottom:.35rem}
+.useline .c{font-family:"IBM Plex Mono",monospace;font-size:.8rem;color:var(--ink-2);white-space:nowrap;min-width:4.5rem;text-align:right}
+@media(max-width:560px){.useline{grid-template-columns:1fr auto auto}.useline select{grid-column:1/-1}}
+@media(max-width:560px){.stockrow{grid-template-columns:1fr}.stockrow>div:last-child{justify-content:flex-start!important}}
+.log{font-size:.78rem;color:var(--ink-2);max-height:220px;overflow:auto;border:1px solid var(--line-soft);border-radius:5px;padding:.4rem .55rem;background:var(--bg)}
+.log div{padding:.12rem 0;border-bottom:1px dotted var(--line-soft)}
+.log div:last-child{border-bottom:0}
+.log span{color:var(--ink-3);font-family:"IBM Plex Mono",monospace;font-size:.68rem;margin-right:.4rem}
+.tabs.n4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:560px){.tabs.n4{grid-template-columns:1fr 1fr}}
+.msg{border-left:3px solid var(--line);padding:.35rem .6rem;margin:.3rem 0;font-size:.84rem;background:var(--bg);border-radius:0 4px 4px 0}
+.msg.out{border-color:var(--gold)}
+.msg.in{border-color:var(--go)}
+.msg .w{font-family:"IBM Plex Mono",monospace;font-size:.62rem;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);display:block}
+.msg pre{margin:.2rem 0 0;font:inherit;white-space:pre-wrap;word-break:break-word}
+.need{display:flex;gap:.35rem;flex-wrap:wrap;margin:.4rem 0}
+.need span{font-family:"IBM Plex Mono",monospace;font-size:.62rem;text-transform:uppercase;letter-spacing:.07em;padding:.15rem .4rem;border-radius:2px;border:1px solid var(--stop);color:var(--stop)}
+.need span.got{border-color:var(--go);color:var(--go)}
+.bar{height:6px;background:var(--bg);border:1px solid var(--line-soft);border-radius:99px;overflow:hidden;margin:.4rem 0}
+.bar i{display:block;height:100%;background:var(--gold)}
+.q3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.35rem}
+@media(max-width:560px){.q3{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><h1>KITH Inbox</h1><span class="v">v1.0</span></div>
+  <div class="spacer"></div>
+  <span class="dot" id="sync" title="Not loaded yet"></span>
+  <button class="pill" id="btnRefresh" hidden>Refresh</button>
+  <button class="pill" id="whoPill" hidden></button>
+</header>
+
+<div id="scr-login">
+  <h2>Who's on the inbox?</h2>
+  <p class="hint">Your name goes on every enquiry you deal with.</p>
+  <div class="who-grid" id="whoGrid"></div>
+  <div id="pinBox" hidden>
+    <label class="f" for="pinIn">PIN</label>
+    <input type="password" inputmode="numeric" maxlength="6" class="pin" id="pinIn" placeholder="····">
+    <button class="btn primary full" id="btnLogin" style="margin-top:.6rem">Sign in</button>
+    <div id="loginErr"></div>
+  </div>
+  <p class="hint" style="margin-top:1.4rem;font-size:.75rem">This says who you are so every enquiry is recorded against a name. It is not a security lock.</p>
+</div>
+
+<main id="scr-main" hidden>
+  <nav class="tabs" id="tabs"></nav>
+  <div id="view"></div>
+</main>
+
+<div id="sheetHost"></div>
+
+<script src="kith-parts.js"></script>
+<script src="kith-bot.js"></script>
+<script>
+'use strict';
+/* ===========================================================================
+   KITH INBOX — every enquiry in one place, and the bot that works them.
+
+   Instagram, TikTok, WhatsApp, email, the website, a phone call, someone
+   walking in: they all land here. All a lead needs to get in is a NAME, a
+   PHONE NUMBER and a REG. The bot then asks the rest over WhatsApp, and one
+   button turns it into a job in the CRM.
+
+   Leads live in the "__leads__" row, messages waiting to go out in
+   "__outbox__", and which channels are switched on in "__msgcfg__".
+   Nothing here sends anything itself: until the WhatsApp, Twilio and email
+   accounts are connected, every message sits queued and can be sent by hand
+   in one tap. Once they are connected the sender empties the queue.
+   =========================================================================== */
+const P = window.KITHParts, B = window.KITHBot;
+const CFG = {
+  url: localStorage.getItem('kith_crm_url') || 'https://mxyrxyhvjndgjqupgstu.supabase.co',
+  key: localStorage.getItem('kith_crm_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog'
+};
+const REST = () => CFG.url.replace(/\/$/, '') + '/rest/v1/';
+const HDR = () => ({ apikey: CFG.key, Authorization: 'Bearer ' + CFG.key, 'Content-Type': 'application/json' });
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clone = o => JSON.parse(JSON.stringify(o));
+function toast(msg, ms) {
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), ms || 3200);
+}
+const errBox = (id, m) => { const e = $(id); if (e) e.innerHTML = '<div class="note stop"><b>Not saved</b>' + esc(m) + '</div>'; };
+
+/* ---------------- state ---------------- */
+let ME = null, MY = null;
+let LEADS = [], LEADS_BASE = [], OUT = [], OUT_BASE = [], LIVE = {};
+let TAB = 'new', BUSY = false;
+
+/* ---------------- loading ---------------- */
+async function load(silent) {
+  if (!silent) $('view').innerHTML = '<div class="empty"><span class="spin"></span> Loading…</div>';
+  try {
+    const r = await fetch(REST() + 'jobs?select=id,data&id=in.(__leads__,__outbox__,__msgcfg__)', { headers: HDR() });
+    if (!r.ok) throw new Error('CRM returned ' + r.status);
+    const rows = await r.json();
+    const sys = id => ((rows || []).find(x => x.id === id) || {}).data || {};
+    LEADS = sys('__leads__').leads || []; LEADS_BASE = clone(LEADS);
+    OUT = sys('__outbox__').msgs || []; OUT_BASE = clone(OUT);
+    LIVE = sys('__msgcfg__').live || {};
+    setSync('ok', 'Up to date ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    render();
+  } catch (e) {
+    setSync('err', e.message);
+    if (!silent) $('view').innerHTML = '<div class="note stop"><b>Could not reach the CRM</b>' + esc(e.message) + '</div>';
+  }
+}
+function setSync(k, title) { const s = $('sync'); s.className = 'dot ' + k; s.title = title || ''; }
+
+async function saveLeads() {
+  const res = await P.saveList({ url: CFG.url, key: CFG.key, rowId: '__leads__', field: 'leads', base: LEADS_BASE, local: LEADS });
+  LEADS = res.list; LEADS_BASE = clone(res.list); return res;
+}
+async function saveOut() {
+  const res = await P.saveList({ url: CFG.url, key: CFG.key, rowId: '__outbox__', field: 'msgs', base: OUT_BASE, local: OUT });
+  OUT = res.list; OUT_BASE = clone(res.list); return res;
+}
+// Both lists in one go, and neither is left half-written
+async function saveAll() { await saveLeads(); await saveOut(); }
+async function withSave(fn, okMsg) {
+  if (BUSY) return false; BUSY = true;
+  const lb = clone(LEADS), ob = clone(OUT);
+  try { fn(); await saveAll(); render(); if (okMsg) toast(okMsg); return true; }
+  catch (e) { LEADS = lb; OUT = ob; throw e; }
+  finally { BUSY = false; }
+}
+
+/* ---------------- render ---------------- */
+const liveCount = () => ['whatsapp', 'sms', 'email'].filter(c => LIVE[c]).length;
+const queued = () => OUT.filter(B.isQueued);
+const leadsIn = st => LEADS.filter(l => B.leadState(l) === st);
+function render() {
+  const tabs = [
+    { k: 'new', n: 'Needs details', c: leadsIn('new').length + ' waiting', hot: leadsIn('new').length > 0 },
+    { k: 'bot', n: 'Bot asking', c: leadsIn('bot').length + ' open', hot: false },
+    { k: 'ready', n: 'Ready', c: leadsIn('ready').length + ' to take in', hot: leadsIn('ready').length > 0 },
+    { k: 'out', n: 'Messages', c: queued().length ? queued().length + ' queued' : 'all sent', hot: queued().length > 0 }
+  ];
+  $('tabs').className = 'tabs n4';
+  $('tabs').innerHTML = tabs.map(t => '<button data-tab="' + t.k + '" class="' + (TAB === t.k ? 'on' : '') + '"><span class="n">' + t.n +
+    '</span><span class="c' + (t.hot ? ' hot' : '') + '">' + esc(t.c) + '</span></button>').join('');
+  $('tabs').querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { TAB = b.dataset.tab; try { localStorage.setItem('kith_inbox_tab', TAB); } catch (e) {} render(); });
+  ({ new: renderLeads, bot: renderLeads, ready: renderLeads, out: renderOut })[TAB](TAB);
+}
+function banner() {
+  if (liveCount() === 3) return '';
+  const off = ['whatsapp', 'sms', 'email'].filter(c => !LIVE[c]).map(c => ({ whatsapp: 'WhatsApp', sms: 'text messages', email: 'email' })[c]);
+  return '<div class="note warn"><b>' + (liveCount() ? 'Not everything is connected yet' : 'Nothing is connected yet') + '</b>' +
+    'Messages are written and held on the Messages tab. ' + off.join(', ') + ' can’t go automatically until the account' + (off.length === 1 ? ' is' : 's are') +
+    ' set up — until then send them by hand from there, one tap each.</div>';
+}
+function renderLeads(kind) {
+  const list = leadsIn(kind).sort((a, b) => (b.t || 0) - (a.t || 0));
+  let h = '<div class="btns" style="margin-top:0"><button class="btn primary" id="lNew">+ New enquiry</button></div>' + banner();
+  h += '<p class="hint">' + ({
+    new: 'Came in without enough to work with. The auto-reply asks for a name, a number and a reg — fill them in as they come back.',
+    bot: 'We have their details. The bot is asking what the car is doing over WhatsApp.',
+    ready: 'Name, number, reg and what they want. One button puts it in the CRM at 1 · Intake.'
+  })[kind] + '</p>';
+  if (!list.length) h += '<div class="empty">Nothing here.</div>';
+  h += list.map(leadCard).join('');
+  $('view').innerHTML = h;
+  $('lNew').onclick = () => openNew();
+  wireLeadButtons();
+}
+function leadCard(l) {
+  const miss = B.missing(l);
+  const last = (l.messages || []).slice(-3);
+  const mine = OUT.filter(m => m.leadId === l.id);
+  const q = mine.filter(B.isQueued).length;
+  return '<div class="card" data-lead="' + esc(l.id) + '"><div class="hd">' +
+    '<span class="tag gold">' + esc(B.channelLabel(l.channel)) + '</span>' +
+    '<div class="t"><b>' + esc(l.name || l.handle || 'No name yet') + '</b><span>' +
+      esc([l.phone, l.reg, l.email].filter(Boolean).join(' · ') || 'nothing yet') + ' · ' + esc(l.at) + '</span></div>' +
+    (q ? '<span class="tag warn">' + q + ' queued</span>' : mine.length ? '<span class="tag go">sent</span>' : '') +
+    '</div><div class="bd">' +
+    (l.what ? '<div class="note" style="margin-top:0"><b>What they want</b>' + esc(l.what) + '</div>' : '') +
+    '<div class="need">' + B.NEEDED.map(k => '<span class="' + (miss.includes(k) ? '' : 'got') + '">' + (k === 'reg' ? 'reg' : k) + '</span>').join('') + '</div>' +
+    last.map(m => '<div class="msg ' + (m.dir === 'in' ? 'in' : 'out') + '"><span class="w">' + (m.dir === 'in' ? '← ' : '→ ') +
+      esc(B.channelLabel(m.channel)) + ' · ' + esc(m.at) + (m.status ? ' · ' + esc(m.status) : '') + '</span><pre>' + esc(m.text) + '</pre></div>').join('') +
+    '<div class="btns">' +
+      '<button class="btn sm" data-ledit="' + esc(l.id) + '">Fill in details</button>' +
+      '<button class="btn sm" data-lreply="' + esc(l.id) + '">They replied…</button>' +
+      (B.hasAll(l) ? '<button class="btn sm" data-lask="' + esc(l.id) + '">Ask for more</button>' : '') +
+      (B.leadState(l) === 'ready' ? '<button class="btn sm primary" data-ljob="' + esc(l.id) + '">Send to the CRM</button>' : '') +
+      '<button class="btn sm stop" data-ljunk="' + esc(l.id) + '">Not a job</button>' +
+    '</div></div></div>';
+}
+function wireLeadButtons() {
+  document.querySelectorAll('[data-ledit]').forEach(b => b.onclick = () => openEdit(b.dataset.ledit));
+  document.querySelectorAll('[data-lreply]').forEach(b => b.onclick = () => openReply(b.dataset.lreply));
+  document.querySelectorAll('[data-lask]').forEach(b => b.onclick = () => askMore(b.dataset.lask));
+  document.querySelectorAll('[data-ljob]').forEach(b => b.onclick = () => toCRM(b.dataset.ljob));
+  document.querySelectorAll('[data-ljunk]').forEach(b => b.onclick = () => markJunk(b.dataset.ljunk));
+}
+const leadOf = id => LEADS.find(l => l.id === id);
+
+/* ---------------- a new enquiry ---------------- */
+const CH_ORDER = ['phone', 'walkin', 'whatsapp', 'instagram', 'tiktok', 'email', 'facebook', 'website'];
+function openNew() {
+  let ch = 'phone';
+  sheet('<button class="btn sm x" data-close>Close</button><h2>New enquiry</h2>' +
+    '<p class="hint">Where did it come from?</p><div class="chips" id="nCh">' +
+      CH_ORDER.map(c => '<button data-c="' + c + '" class="' + (c === ch ? 'on' : '') + '">' + esc(B.channelLabel(c)) + '</button>').join('') + '</div>' +
+    '<div class="row"><div><label class="f" for="nLine">Type it as one line</label>' +
+      '<input type="text" id="nLine" placeholder="Mr Jones 07700 900123 AB12 CDE clutch slipping"></div></div>' +
+    '<p class="hint" id="nRead"></p>' +
+    '<div class="row q3"><div><label class="f" for="nName">Name</label><input type="text" id="nName"></div>' +
+      '<div><label class="f" for="nPhone">Phone</label><input type="text" id="nPhone" inputmode="tel"></div>' +
+      '<div><label class="f" for="nReg">Reg</label><input type="text" id="nReg" style="text-transform:uppercase"></div></div>' +
+    '<div class="row r2"><div><label class="f" for="nWhat">What they want</label><input type="text" id="nWhat"></div>' +
+      '<div><label class="f" for="nHandle">Handle / email</label><input type="text" id="nHandle" placeholder="@name or an email"></div></div>' +
+    '<div id="nPrev"></div>' +
+    '<button class="btn primary full" id="nGo">Add it</button><div id="nErr"></div>');
+  const fill = () => {
+    const p = B.parseLine($('nLine').value);
+    ['name', 'phone', 'reg', 'what'].forEach(k => { if (p[k] && !$('n' + k[0].toUpperCase() + k.slice(1)).value) $('n' + k[0].toUpperCase() + k.slice(1)).value = p[k]; });
+    if (p.email && !$('nHandle').value) $('nHandle').value = p.email;
+    preview();
+  };
+  const preview = () => {
+    const l = draft();
+    const st = B.leadState(l), miss = B.missing(l);
+    $('nRead').textContent = miss.length ? 'Still needs: ' + miss.join(', ') : 'Everything needed is here.';
+    $('nPrev').innerHTML = '<div class="note"><b>' + (B.isByHand(ch) ? 'We will send' : miss.length ? 'The auto-reply' : 'The bot will send') + '</b><pre style="white-space:pre-wrap;font:inherit;margin:0">' +
+      esc(firstMessage(l)) + '</pre></div>';
+    return st;
+  };
+  const draft = () => B.makeLead({ channel: ch, handle: $('nHandle').value, name: $('nName').value, phone: $('nPhone').value,
+    reg: $('nReg').value, what: $('nWhat').value, email: /@/.test($('nHandle').value) ? $('nHandle').value : '' }, ME);
+  $('nCh').querySelectorAll('[data-c]').forEach(b => b.onclick = () => { ch = b.dataset.c; $('nCh').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); preview(); });
+  $('nLine').oninput = fill;
+  ['nName', 'nPhone', 'nReg', 'nWhat', 'nHandle'].forEach(id => $(id).oninput = preview);
+  preview();
+  $('nGo').onclick = async () => {
+    const lead = draft();
+    if (!lead.handle && !lead.phone && !lead.email) return errBox('nErr', 'Give it something to go on — a number, a handle or an email.');
+    const dup = B.findLead(LEADS, lead);
+    if (dup && !confirm('That looks like ' + (dup.name || dup.handle) + ', already in the inbox.\n\nAdd it as a second enquiry anyway?')) return;
+    try {
+      await withSave(() => {
+        LEADS = [lead].concat(LEADS);
+        const m = firstMessageQueue(lead);
+        if (m) { OUT = [m].concat(OUT); LEADS = LEADS.map(x => x.id === lead.id ? B.addMessage(x, { dir: 'out', channel: m.route[0], text: m.text, status: 'queued', msgId: m.id }) : x); }
+      }, '✓ Added' + (canSend(lead) ? ' — message queued' : ''));
+      closeSheet();
+    } catch (e) { errBox('nErr', e.message); }
+  };
+}
+// What goes out first, for this kind of enquiry
+function firstMessage(l) {
+  if (B.isByHand(l.channel)) return B.MESSAGES.tookByPhone(l);
+  if (!B.hasAll(l)) return B.MESSAGES.capture(l);
+  return B.MESSAGES.opener(l);
+}
+const canSend = l => !!B.intlPhone(l.phone) || B.looksLikeEmail(l.email);
+function firstMessageQueue(l, by) {
+  if (!canSend(l)) return null;                 // nothing to send to yet — the auto-reply is on the platform
+  try {
+    return B.queue({ kind: B.isByHand(l.channel) ? 'took' : B.hasAll(l) ? 'opener' : 'capture', leadId: l.id,
+      phone: l.phone, email: l.email, text: firstMessage(l), route: B.QUOTE_ROUTE }, by || ME);
+  } catch (e) { return null; }
+}
+
+/* ---------------- working a lead ---------------- */
+function openEdit(id) {
+  const l = leadOf(id); if (!l) return;
+  sheet('<button class="btn sm x" data-close>Close</button><h2>' + esc(l.name || l.handle || 'Enquiry') + '</h2>' +
+    '<p class="hint">' + esc(B.channelLabel(l.channel)) + ' · ' + esc(l.at) + '</p>' +
+    '<div class="row q3"><div><label class="f" for="eName">Name</label><input type="text" id="eName" value="' + esc(l.name) + '"></div>' +
+      '<div><label class="f" for="ePhone">Phone</label><input type="text" id="ePhone" inputmode="tel" value="' + esc(l.phone) + '"></div>' +
+      '<div><label class="f" for="eReg">Reg</label><input type="text" id="eReg" style="text-transform:uppercase" value="' + esc(l.reg) + '"></div></div>' +
+    '<div class="row r2"><div><label class="f" for="eWhat">What they want</label><input type="text" id="eWhat" value="' + esc(l.what) + '"></div>' +
+      '<div><label class="f" for="eEmail">Email</label><input type="text" id="eEmail" value="' + esc(l.email || '') + '"></div></div>' +
+    '<div class="row"><div><label class="f" for="eNotes">Notes</label><textarea id="eNotes">' + esc(l.notes || '') + '</textarea></div></div>' +
+    '<label class="ck"><input type="checkbox" id="eSend"> Send the next message now (the bot’s opener)</label>' +
+    '<button class="btn primary full" id="eGo" style="margin-top:.5rem">Save</button><div id="eErr"></div>');
+  $('eGo').onclick = async () => {
+    try {
+      await withSave(() => {
+        const was = leadOf(id);
+        const upd = B.updateLead(was, { name: $('eName').value, phone: $('ePhone').value, reg: $('eReg').value,
+          what: $('eWhat').value, email: $('eEmail').value, notes: $('eNotes').value }, ME);
+        LEADS = LEADS.map(x => x.id === id ? upd : x);
+        if ($('eSend').checked) {
+          const m = B.queue({ kind: 'opener', leadId: id, phone: upd.phone, email: upd.email, text: B.MESSAGES.opener(upd), route: B.QUOTE_ROUTE }, ME);
+          OUT = [m].concat(OUT);
+          LEADS = LEADS.map(x => x.id === id ? B.addMessage(x, { dir: 'out', channel: m.route[0], text: m.text, status: 'queued', msgId: m.id }) : x);
+        }
+      }, '✓ Saved');
+      closeSheet();
+    } catch (e) { errBox('eErr', e.message); }
+  };
+}
+function openReply(id) {
+  const l = leadOf(id); if (!l) return;
+  sheet('<button class="btn sm x" data-close>Close</button><h2>What did they say?</h2>' +
+    '<p class="hint">' + esc(l.name || l.handle) + ' · paste or type their reply. Anything useful in it — a number, a reg — is picked up.</p>' +
+    '<div class="row"><div><textarea id="rTxt" placeholder="its slipping in 3rd, reg is AB12 CDE"></textarea></div></div>' +
+    '<button class="btn primary full" id="rGo">Save their reply</button><div id="rErr"></div>');
+  $('rGo').onclick = async () => {
+    const text = $('rTxt').value.trim();
+    if (!text) return errBox('rErr', 'Nothing typed.');
+    try {
+      await withSave(() => {
+        const p = B.parseLine(text);
+        LEADS = LEADS.map(x => {
+          if (x.id !== id) return x;
+          let out = B.addMessage(x, { dir: 'in', channel: x.channel, text });
+          // what they first asked, plus what they have just told us
+          const detail = text.replace(/\s+/g, ' ').trim().slice(0, 300);
+          const what = x.what && detail.toLowerCase().indexOf(x.what.toLowerCase()) < 0 ? (x.what + ' — ' + detail) : (x.what || detail);
+          out = B.updateLead(out, { name: p.name, phone: p.phone, reg: p.reg, email: p.email, what }, ME);
+          return out;
+        });
+      }, '✓ Saved');
+      closeSheet();
+    } catch (e) { errBox('rErr', e.message); }
+  };
+}
+async function askMore(id) {
+  const l = leadOf(id); if (!l) return;
+  const ask = prompt('What do we need from them?\n\nLeave it as it is for the usual questions.',
+    '• What exactly is it doing, and when?\n• Any warning lights on the dash?\n• A photo or a short video if you can');
+  if (ask === null) return;
+  try {
+    await withSave(() => {
+      const m = B.queue({ kind: 'more', leadId: id, phone: l.phone, email: l.email, text: B.MESSAGES.moreDetail(l, ask), route: B.QUOTE_ROUTE }, ME);
+      OUT = [m].concat(OUT);
+      LEADS = LEADS.map(x => x.id === id ? B.addMessage(x, { dir: 'out', channel: m.route[0], text: m.text, status: 'queued', msgId: m.id }) : x);
+    }, '✓ Queued');
+  } catch (e) { toast('⚠ ' + e.message, 5000); }
+}
+async function markJunk(id) {
+  const l = leadOf(id);
+  if (!confirm('Mark this one as not a job?\n\n' + (l.name || l.handle || '') + '\n\nIt stays in the list but drops out of the way.')) return;
+  try { await withSave(() => { LEADS = LEADS.map(x => x.id === id ? Object.assign({}, x, { state: 'junk', junkBy: ME, junkAt: B.ts() }) : x); }, '✓ Put aside'); }
+  catch (e) { toast('⚠ ' + e.message, 5000); }
+}
+// Into the CRM as a job at 1 · Intake
+async function toCRM(id) {
+  const l = leadOf(id); if (!l || BUSY) return;
+  let job;
+  try { job = B.leadToJob(l, ME); } catch (e) { return toast('⚠ ' + e.message, 5000); }
+  if (!confirm('Put ' + job.reg + ' into the CRM?\n\n' + (job.name || '') + ' · ' + (job.work || 'no description') + '\n\nIt lands at 1 · Intake for the estimator.')) return;
+  BUSY = true;
+  try {
+    const r = await fetch(REST() + 'jobs', { method: 'POST', headers: Object.assign(HDR(), { Prefer: 'resolution=merge-duplicates,return=representation' }),
+      body: JSON.stringify([{ id: job.id, data: job, updated_at: new Date().toISOString() }]) });
+    if (!r.ok) throw new Error('CRM returned ' + r.status);
+    LEADS = LEADS.map(x => x.id === id ? Object.assign({}, x, { state: 'job', jobId: job.id, jobAt: B.ts(), jobBy: ME }) : x);
+    await saveLeads();
+    render();
+    toast('✓ ' + job.reg + ' is in the CRM at 1 · Intake', 5000);
+  } catch (e) { LEADS = clone(LEADS_BASE); toast('⚠ ' + e.message, 6000); }
+  BUSY = false;
+}
+
+/* ---------------- messages waiting to go ---------------- */
+function renderOut(){
+  const q = OUT.filter(B.isQueued), stuck = OUT.filter(m => m.status === 'stuck'), sent = OUT.filter(m => m.status === 'sent').slice(0, 30);
+  let h = banner();
+  h += '<p class="hint">Every message the bot has written. ' + (liveCount() ? 'Anything on a connected channel goes on its own. ' : '') +
+    'The rest wait here — tap <b>WhatsApp</b> or <b>Text</b> to send it yourself, then <b>Mark sent</b>.</p>';
+  if (!OUT.length) h += '<div class="empty">Nothing written yet.</div>';
+  if (stuck.length) h += '<h2 class="sec">Would not send <span class="cnt">' + stuck.length + '</span></h2><div>' + stuck.map(msgCard).join('') + '</div>';
+  if (q.length) h += '<h2 class="sec">Waiting to go <span class="cnt">' + q.length + '</span></h2><div>' + q.map(msgCard).join('') + '</div>';
+  if (sent.length) h += '<h2 class="sec">Gone out <span class="cnt">' + sent.length + '</span></h2><div>' + sent.map(msgCard).join('') + '</div>';
+  $('view').innerHTML = h;
+  document.querySelectorAll('[data-msent]').forEach(b => b.onclick = () => markSent(b.dataset.msent, b.dataset.via || 'by hand'));
+  document.querySelectorAll('[data-mdrop]').forEach(b => b.onclick = () => dropMsg(b.dataset.mdrop));
+  document.querySelectorAll('[data-mopen]').forEach(b => b.onclick = () => { const m = OUT.find(x => x.id === b.dataset.mopen); if (m) markSent(m.id, b.dataset.via); });
+}
+function msgCard(m) {
+  const who = LEADS.find(l => l.id === m.leadId);
+  const KIND = { quote: 'The quote', capture: 'Asking for their details', opener: 'First message from the bot', more: 'Asking for more', took: 'We have got your enquiry', message: 'Message' };
+  return '<div class="card"><div class="hd"><span class="tag ' + (m.status === 'sent' ? 'go' : m.status === 'stuck' ? 'stop' : 'warn') + '">' + esc(m.status) + '</span>' +
+    '<div class="t"><b>' + esc(KIND[m.kind] || m.kind) + '</b><span>' + esc((who && (who.name || who.handle)) || m.to || m.email) + ' · ' + esc(m.at) +
+    (m.sentVia ? ' · sent on ' + esc(m.sentVia) : '') + (m.error ? ' · ' + esc(m.error) : '') + '</span></div></div><div class="bd">' +
+    '<div class="msg out"><pre>' + esc(m.text) + '</pre></div>' +
+    (m.status === 'sent' ? '' : '<div class="btns">' +
+      (m.to ? '<a class="btn sm" href="' + esc(B.waLink(m)) + '" target="_blank" rel="noopener" data-mopen="' + esc(m.id) + '" data-via="WhatsApp by hand">WhatsApp</a>' +
+        '<a class="btn sm" href="' + esc(B.smsLink(m)) + '" data-mopen="' + esc(m.id) + '" data-via="text by hand">Text</a>' : '') +
+      (m.email ? '<a class="btn sm" href="' + esc(B.mailLink(m)) + '" data-mopen="' + esc(m.id) + '" data-via="email by hand">Email</a>' : '') +
+      '<button class="btn sm go" data-msent="' + esc(m.id) + '">Mark sent</button>' +
+      '<button class="btn sm stop" data-mdrop="' + esc(m.id) + '">Drop it</button></div>') +
+    '</div></div>';
+}
+async function markSent(id, via) {
+  try {
+    await withSave(() => {
+      OUT = OUT.map(m => m.id === id ? B.markSent(m, via || 'by hand') : m);
+      const m = OUT.find(x => x.id === id);
+      LEADS = LEADS.map(l => l.id === (m && m.leadId) ? Object.assign({}, l, { messages: (l.messages || []).map(x => x.msgId === id ? Object.assign({}, x, { status: 'sent' }) : x) }) : l);
+    });
+  } catch (e) { toast('⚠ ' + e.message, 5000); }
+}
+async function dropMsg(id) {
+  if (!confirm('Drop this message? It will not be sent.')) return;
+  try { await withSave(() => { OUT = OUT.filter(m => m.id !== id); }, 'Dropped'); }
+  catch (e) { toast('⚠ ' + e.message, 5000); }
+}
+
+/* ---------------- sheet ---------------- */
+function sheet(html) {
+  $('sheetHost').innerHTML = '<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true">' + html + '</div></div>';
+  $('scrim').addEventListener('click', e => { if (e.target.id === 'scrim') closeSheet(); });
+  $('sheetHost').querySelectorAll('[data-close]').forEach(b => b.onclick = closeSheet);
+}
+function closeSheet() { $('sheetHost').innerHTML = ''; }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+
+/* ---------------- who is using it ---------------- */
+const FALLBACK_STAFF = [{ name: 'Ali', role: 'adviser' }, { name: 'Sudha', role: 'accounts' }, { name: 'Logkith', role: 'director' }];
+const INBOX_ROLES = ['adviser', 'director', 'accounts', 'parts'];
+const canUse = x => INBOX_ROLES.includes(x.role) || (Array.isArray(x.roles) && x.roles.some(r => INBOX_ROLES.concat('inbox').includes(r)));
+let STAFF = [], PICKED = null;
+async function loadStaff() {
+  try {
+    const r = await fetch(REST() + 'kith_staff?select=id,data&limit=100', { headers: HDR() });
+    if (!r.ok) throw new Error('staff ' + r.status);
+    STAFF = ((await r.json()) || []).map(x => Object.assign({ id: x.id }, x.data || {})).filter(x => x.name && x.active !== false && canUse(x));
+    if (!STAFF.length) throw new Error('empty');
+  } catch (e) { STAFF = FALLBACK_STAFF.slice(); }
+  renderWho();
+}
+const roleName = p => ({ director: 'Director', adviser: 'Service adviser', accounts: 'Accounts', parts: 'Parts' })[p.role] || (p.role || 'Staff');
+function renderWho() {
+  $('whoGrid').innerHTML = STAFF.map((p, i) => '<button class="who-btn ' + (PICKED && PICKED.name === p.name ? 'on' : '') + '" data-i="' + i + '"><span class="n">' + esc(p.name) + '</span><span class="r">' + esc(roleName(p)) + '</span></button>').join('');
+  $('whoGrid').querySelectorAll('[data-i]').forEach(b => b.onclick = () => {
+    PICKED = STAFF[+b.dataset.i]; renderWho(); $('pinBox').hidden = false; $('pinIn').value = ''; $('pinIn').focus();
+    $('loginErr').innerHTML = PICKED.pin ? '' : '<div class="note warn"><b>No PIN set for ' + esc(PICKED.name) + '</b>Anyone can sign in as them. Set one on the staff record.</div>';
+  });
+}
+function doLogin() {
+  if (!PICKED) return;
+  if (PICKED.pin && String($('pinIn').value) !== String(PICKED.pin)) { $('loginErr').innerHTML = '<div class="note stop"><b>Wrong PIN</b>Try again.</div>'; $('pinIn').value = ''; return; }
+  ME = PICKED.name; MY = PICKED;
+  try { localStorage.setItem('kith_inbox_me', ME); } catch (e) {}
+  showMain();
+}
+function showMain() {
+  let saved = null; try { saved = localStorage.getItem('kith_inbox_tab'); } catch (e) {}
+  if (saved) TAB = saved;
+  $('scr-login').hidden = true; $('scr-main').hidden = false;
+  $('whoPill').hidden = false; $('whoPill').textContent = ME; $('whoPill').className = 'pill on';
+  $('btnRefresh').hidden = false;
+  load();
+}
+$('btnLogin').onclick = doLogin;
+$('pinIn').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+$('btnRefresh').onclick = () => load();
+$('whoPill').onclick = () => { if (!confirm('Sign out ' + ME + '?')) return; ME = null; MY = null; try { localStorage.removeItem('kith_inbox_me'); } catch (e) {}
+  $('scr-main').hidden = true; $('scr-login').hidden = false; $('whoPill').hidden = true; $('btnRefresh').hidden = true; PICKED = null; renderWho(); };
+
+// New enquiries turn up without anyone pressing Refresh
+setInterval(() => { if (ME && !$('sheetHost').innerHTML && !BUSY && document.visibilityState !== 'hidden') load(true); }, 45000);
+
+(function start() {
+  let saved = null; try { saved = localStorage.getItem('kith_inbox_me'); } catch (e) {}
+  loadStaff().then(() => { const p = saved && STAFF.find(s => s.name === saved); if (p) { ME = p.name; MY = p; showMain(); } });
+})();
+</script>
+</body>
+</html>
