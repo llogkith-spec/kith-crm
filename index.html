@@ -242,7 +242,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 </style>
 </head>
-<body onload="initLogin();loadFromSupabase();subscribeRealtime();">
+<body onload="initLogin();">
 
 <!-- LOGIN SCREEN -->
 <div class="login-screen" id="login-screen">
@@ -1010,11 +1010,39 @@ const SB_HDR = {'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':
 
 async function sbSelect(){
   // Fetch up to 5000 jobs — Supabase defaults to 1000 without Range header
-  const res=await fetch(SB_URL+'/rest/v1/jobs?select=id,data&order=updated_at.desc',{
+  const res=await fetch(SB_URL+'/rest/v1/jobs?select=id,data,updated_at&order=updated_at.desc',{
     headers:{...SB_HDR,'Range':'0-4999','Range-Unit':'items','Prefer':'count=none'}
   });
   if(!res.ok) throw new Error('HTTP '+res.status);
-  return res.json();
+  const rows=await res.json();
+  _notePollStamp(rows);
+  return rows;
+}
+
+// ── EGRESS SAVER (29 Sep 2026) ───────────────────────────
+// The board used to re-download EVERY job every 10 seconds on every open
+// device (twice over — the poll was started twice), even in hidden tabs.
+// That burned through Supabase's 250 GB egress allowance. Now a poll only
+// asks for rows changed since the last one it saw, skips hidden tabs, and
+// does one full resync every 30 minutes as a safety net.
+let _pollLast=null, _pollFullAt=0, _pollStarted=false, _pollBusy=false;
+const POLL_EVERY=15000, POLL_FULL_EVERY=30*60*1000, POLL_OVERLAP=90*1000;
+function _notePollStamp(rows,full){
+  (rows||[]).forEach(r=>{ if(r&&r.updated_at&&(!_pollLast||r.updated_at>_pollLast))_pollLast=r.updated_at; });
+  if(full!==false)_pollFullAt=Date.now();
+}
+async function sbSelectSince(since){
+  // look back a little further than the last stamp seen, so a phone whose
+  // clock is a few seconds out can't slip a change past us
+  const from=new Date(new Date(since).getTime()-POLL_OVERLAP).toISOString();
+  const res=await fetch(SB_URL+'/rest/v1/jobs?select=id,data,updated_at&id=neq.__notifs__&updated_at=gt.'+
+    encodeURIComponent(from)+'&order=updated_at.asc',{
+    headers:{...SB_HDR,'Range':'0-4999','Range-Unit':'items','Prefer':'count=none'}
+  });
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const rows=await res.json();
+  _notePollStamp(rows,false);
+  return rows;
 }
 
 async function sbUpsert(rows){
@@ -1369,10 +1397,15 @@ async function loadFromSupabase(){
 }
 
 function subscribeRealtime(){
-  setInterval(async()=>{
+  if(_pollStarted)return;            // was being started twice on every page load
+  _pollStarted=true;
+  const tick=async()=>{
+    if(document.hidden||_pollBusy)return;   // nobody looking — don't download anything
+    _pollBusy=true;
     try{
-      const rows=await sbSelect();
-      if(!rows||!rows.length)return;
+      const full=!_pollLast||(Date.now()-_pollFullAt>POLL_FULL_EVERY);
+      const rows=full?await sbSelect():await sbSelectSince(_pollLast);
+      if(!rows||!rows.length){setSbStatus('ok');return;}
       const rawById={};
       rows.forEach(r=>{ if(r.data&&r.id&&!r.id.startsWith('__'))rawById[r.id]=JSON.stringify(r.data); });
       const incoming=rows.filter(r=>r.data&&r.id&&!r.id.startsWith('__')).map(r=>migrateJob(r.data)).filter(Boolean);
@@ -1405,7 +1438,10 @@ function subscribeRealtime(){
       }
       setSbStatus('ok');
     }catch(e){setSbStatus('err');}
-  },10000);
+    finally{_pollBusy=false;}
+  };
+  setInterval(tick,POLL_EVERY);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick();});
 }
 
 function setSbStatus(state){
@@ -3310,7 +3346,7 @@ async function loadSopRules(){
     runRepriceSweep();
   }catch(e){console.warn('SOP amendments not loaded:',e.message);}
 }
-setInterval(()=>{try{if(typeof currentUser!=='undefined'&&currentUser)loadSopRules();}catch(e){}},60*1000);
+setInterval(()=>{try{if(!document.hidden&&typeof currentUser!=='undefined'&&currentUser)loadSopRules();}catch(e){}},5*60*1000);
 function sopPendingCount(){return rulesReady()?KITHRules.pending(SOP_RULES).length:0;}
 
 // Jobs still waiting follow the live amendments. Idempotent: a job is only
@@ -4860,16 +4896,21 @@ function saveNotifs(){
     }catch(e){console.warn('notif sync:',e);}
   },700);
 }
-async function fetchNotifsRemote(){
-  const r=await fetch(SB_URL+'/rest/v1/jobs?id=eq.__notifs__&select=data',{headers:SB_HDR});
+let _notifStamp=null;
+async function fetchNotifsRemote(onlyIfChanged){
+  let url=SB_URL+'/rest/v1/jobs?id=eq.__notifs__&select=data,updated_at';
+  if(onlyIfChanged&&_notifStamp)url+='&updated_at=neq.'+encodeURIComponent(_notifStamp);
+  const r=await fetch(url,{headers:SB_HDR});
   if(!r.ok)return [];
   const rows=await r.json();
+  if(rows[0]&&rows[0].updated_at)_notifStamp=rows[0].updated_at;
   return (rows[0]&&rows[0].data&&rows[0].data.list)||[];
 }
 async function syncNotifs(){
+  if(document.hidden)return;
   try{
     const before=new Set(myNotifs().map(n=>n.id));
-    NOTIFS=mergeNotifs(NOTIFS,await fetchNotifsRemote());
+    NOTIFS=mergeNotifs(NOTIFS,await fetchNotifsRemote(true));
     try{if(typeof safeSet==='function')safeSet('kith_notifs',JSON.stringify(NOTIFS));}catch(e){}
     myNotifs().filter(n=>!before.has(n.id)&&Date.now()-(n.ts||0)<10*60000).slice(0,3)
       .forEach(n=>{try{showNotif('\ud83d\udd14 '+n.title,n.body||'','notif-'+n.id);}catch(e){}});
@@ -8793,7 +8834,7 @@ function toggleLeadHelp(){
 }
 
 // ── keep it live ───────────────────────────────────────────────────
-setInterval(()=>{ try{ if(typeof currentUser!=='undefined'&&currentUser)loadLeads().then(ok=>{ if(ok){updateLeadBadge();
+setInterval(()=>{ try{ if(!document.hidden&&typeof currentUser!=='undefined'&&currentUser)loadLeads().then(ok=>{ if(ok){updateLeadBadge();
   if(document.getElementById('ov-inbox')?.classList.contains('open')){renderInboxList();renderLeadPane();} } }); }catch(e){} },30000);
 setTimeout(()=>{ try{ if(typeof currentUser!=='undefined'&&currentUser)loadLeads().then(()=>updateLeadBadge()); }catch(e){} },6000);
 
@@ -11077,7 +11118,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-09-21-1030';
+const CRM_BUILD='2026-09-29-1030';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
