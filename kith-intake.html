@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="KITH Intake"/>
 <meta name="theme-color" content="#1a1a2e"/>
-<title>KITH Cars — Job Intake v2.3</title>
+<title>KITH Cars — Job Intake v2.4</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{--gold:#c9a84c;--dark:#1a1a2e;--red:#c62828;--green:#2e7d32;--amber:#e65100;--blue:#1565c0;--purple:#5b3a8c;--teal:#00695c;--border:#e0e0e0;--bg:#f0f2f5;--dim:#666;--faint:#aaa}
@@ -108,6 +108,47 @@ input:checked+.tsl:before{transform:translateX(20px)}
 .conf.medium{background:#fff3e0;color:var(--amber)}
 .conf.low{background:#ffebee;color:var(--red)}
 .pend{font-size:10px;font-weight:800;color:var(--amber);text-transform:uppercase;letter-spacing:.06em;background:#fff3e0;padding:2px 6px;border-radius:4px;display:inline-block;margin-left:6px}
+/* v2.4 — the top of the form + the "what's needed" tracker */
+.need{position:sticky;top:calc(52px + env(safe-area-inset-top));z-index:90;background:#fff;border-bottom:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.need-hd{max-width:560px;margin:0 auto;padding:9px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;font-weight:800}
+.need-count{min-width:26px;height:26px;border-radius:13px;background:var(--red);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;padding:0 7px}
+.need-count.ok{background:var(--green)}
+.need-txt{flex:1;line-height:1.3}
+.need-txt small{display:block;font-size:11px;font-weight:600;color:var(--dim)}
+.need-arrow{font-size:12px;color:var(--faint);transition:transform .2s}
+.need.open .need-arrow{transform:rotate(180deg)}
+.need-body{display:none;max-width:560px;margin:0 auto;padding:0 14px 12px;max-height:55vh;overflow:auto}
+.need.open .need-body{display:block}
+.need-grp{font-size:10px;font-weight:800;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:10px 0 4px}
+.need-row{display:flex;gap:9px;align-items:flex-start;padding:6px 0;font-size:13px;line-height:1.35;border-bottom:1px solid #f4f4f4}
+.need-row:last-child{border-bottom:none}
+.need-ic{width:18px;height:18px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;margin-top:1px}
+.need-row.done .need-ic{background:var(--green);color:#fff}
+.need-row.must .need-ic{background:#ffebee;border:2px solid var(--red)}
+.need-row.ask .need-ic{background:#fff3e0;border:2px solid var(--amber)}
+.need-row.done{color:var(--faint)}
+.need-row.done .need-lbl{text-decoration:line-through}
+.need-why{display:block;font-size:11px;color:var(--dim);font-weight:400}
+.need-tag{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:1px 5px;border-radius:3px;margin-left:5px;vertical-align:1px}
+.need-row.must .need-tag{background:#ffebee;color:var(--red)}
+.need-row.ask .need-tag{background:#fff3e0;color:var(--amber)}
+.start{background:var(--dark);color:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px}
+.start h1{font-size:19px;font-weight:900;margin-bottom:4px}
+.start p{font-size:13px;color:#bbb;line-height:1.5}
+.start ol{margin:10px 0 0 18px;font-size:13px;line-height:1.7;color:#ddd}
+.start ol b{color:var(--gold)}
+.chan{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:12px}
+.chan-btn{background:#f8f9fa;border:2px solid var(--border);border-radius:10px;padding:9px 2px;cursor:pointer;font-size:10px;font-weight:800;color:var(--dark);text-align:center;line-height:1.3}
+.chan-btn .ci{display:block;font-size:20px;margin-bottom:2px}
+.chan-btn.sel{border-color:var(--gold);background:rgba(201,168,76,.12);color:#7a5c00}
+.opener{background:#e8f5e9;border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:11px 13px;font-size:13.5px;line-height:1.55;margin-bottom:14px;color:#1b5e20}
+.opener .say-lbl{margin-bottom:4px}
+.back{background:#e3f2fd;border:1.5px solid var(--blue);border-radius:10px;padding:10px 12px;font-size:12.5px;color:#0d47a1;margin-top:6px;line-height:1.5;display:none}
+.back .btn{margin-top:8px;padding:9px;font-size:13px}
+.miss{background:#fff3e0;border:1.5px solid var(--amber);border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.6;color:#bf360c}
+.next{background:#fff;border-radius:14px;padding:16px;margin:0 0 16px;text-align:left;box-shadow:0 1px 6px rgba(0,0,0,.07)}
+.next .sec{margin-bottom:8px}
+.next li{font-size:13.5px;line-height:1.55;margin:0 0 6px 18px}
 </style>
 </head>
 <body>
@@ -118,6 +159,15 @@ input:checked+.tsl:before{transform:translateX(20px)}
     <div id="ai-pill" onclick="aiSettings()" style="font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:20px;border:1px solid #555;color:#888;cursor:pointer">AI off</div>
     <div class="hdr-user" id="hdr-user" onclick="changeStaff()">Change ▾</div>
   </div>
+</div>
+
+<div class="need" id="need" style="display:none">
+  <div class="need-hd" onclick="document.getElementById('need').classList.toggle('open')">
+    <div class="need-count" id="need-count">4</div>
+    <div class="need-txt" id="need-txt">Still needed<small>Tap to see the list</small></div>
+    <div class="need-arrow">▼</div>
+  </div>
+  <div class="need-body" id="need-body"></div>
 </div>
 
 <div id="scr-staff" style="padding:14px">
@@ -138,18 +188,74 @@ input:checked+.tsl:before{transform:translateX(20px)}
 
   <!-- STEP 0 — JOB TYPE, drilling down to area then category -->
   <div class="step on" id="s0">
-    <div class="card">
-      <div class="sec">Step 1 of 5 — What kind of job is this?</div>
+    <div class="start">
+      <h1>New enquiry — start here</h1>
+      <p>Every call, WhatsApp, walk-in or email goes through this form. Get the four essentials first — if the call drops, we can still call them back.</p>
+      <ol>
+        <li><b>Name</b> — who we're talking to</li>
+        <li><b>Phone</b> — the number we'll WhatsApp the estimate to</li>
+        <li><b>Reg</b> — so we know the car</li>
+        <li><b>What they want</b> — in their words</li>
+      </ol>
+      <p style="margin-top:10px">The bar at the top shows what's still missing — tap it.</p>
+    </div>
 
-      <div class="brain">
+    <div class="card" id="quick-card">
+      <div class="sec">No estimate needed? Use a quick route</div>
+      <div class="svc-grid" style="grid-template-columns:1fr 1fr 1fr">
+        <button class="svc-btn" id="qk-straight" onclick="pickQuick('straight')">⚡ Straight job<span class="svc-sub">MOT, remap, tyre fit — fixed price. Straight to SOs.</span></button>
+        <button class="svc-btn" id="qk-consumables" onclick="pickQuick('consumables')">🛢 Consumables<span class="svc-sub">Oil, coolant, AdBlue, shop stock. To Parts.</span></button>
+        <button class="svc-btn" id="qk-staffparts" onclick="pickQuick('staffparts')">🔩 Parts for staff<span class="svc-sub">A tech needs a part, or workshop kit. To Parts.</span></button>
+      </div>
+      <div id="quick-off" style="display:none;margin-top:10px">
+        <button class="btn btn-ghost" style="padding:9px;font-size:13px" onclick="pickQuick(null)">← Not a quick one — back to the full intake</button>
+      </div>
+    </div>
+
+    <div class="card" id="ess-card">
+      <div class="sec">1 · How did they get in touch?</div>
+      <div class="chan" id="chan-grid"></div>
+      <div id="opener"></div>
+
+      <div class="sec" style="margin-top:4px">2 · The four essentials</div>
+      <div class="fg"><label class="fl">Customer name <span class="req">*</span></label>
+        <input class="fi" id="f-name" placeholder="Full name" autocomplete="off"/></div>
+      <div class="grid2">
+        <div class="fg"><label class="fl">Phone <span class="req">*</span></label>
+          <input class="fi" id="f-phone" type="tel" placeholder="07..." autocomplete="off"/></div>
+        <div class="fg"><label class="fl">On WhatsApp?</label>
+          <select class="fi" id="f-haswa"><option value="yes">Yes — same number</option>
+            <option value="diff">Yes — different number</option><option value="no">No WhatsApp</option></select></div>
+      </div>
+      <div class="fg" id="wa-diff-fg" style="display:none"><label class="fl">WhatsApp number</label>
+        <input class="fi" id="f-wa" type="tel" placeholder="07..."/></div>
+      <div class="fg" id="email-fg" style="display:none"><label class="fl">Email address <span class="req" id="email-req" style="display:none">*</span></label>
+        <input class="fi" id="f-email" type="email" placeholder="name@example.com" autocomplete="off"/>
+        <div class="hint" id="email-why" style="display:none">No WhatsApp — the estimate goes to this email instead.</div>
+        <label id="noemail-row" style="display:none;align-items:center;gap:8px;margin-top:8px;font-size:13px;font-weight:600;color:var(--dim)">
+          <input type="checkbox" id="f-noemail" style="width:18px;height:18px"/> No email either — we'll text or call them</label></div>
+      <div class="fg">
+        <label class="fl">Registration <span class="req">*</span></label>
+        <input class="fi fi-reg" id="f-reg" maxlength="8" placeholder="AB12 CDE" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'');dupCheck(this.value)"/>
+        <div class="dup" id="dup-msg"></div>
+        <div class="back" id="back-msg"></div>
+      </div>
+      <div class="hint" style="margin:-6px 0 12px">Our own stock for sale? Skip name and phone — just the reg.</div>
+
+      <div class="brain" id="words-box" style="margin-bottom:0">
         <div class="brain-hd"><span style="font-size:18px">&#129504;</span>
-          <span class="t">Type what the customer said</span></div>
+          <span class="t">What do they want? In their words <span class="req">*</span></span></div>
         <textarea class="fi" id="f-words" rows="3" placeholder="Their words, not yours. e.g. horrible grinding when I stop and the orange light came on yesterday"></textarea>
         <button class="btn btn-gold" id="brain-btn" onclick="runTriage()" style="margin-top:10px;padding:12px">Work out where this goes</button>
         <div style="font-size:11px;color:#8a7340;margin-top:8px;line-height:1.45">It suggests — you decide. It never gives a price and never says a car is safe to drive.</div>
       </div>
-      <div id="brain-out"></div>
+      <div id="brain-out" style="margin-top:12px"></div>
+    </div>
 
+    <div id="quick-panel"></div>
+
+    <div class="card" id="jt-card">
+      <div class="sec">3 · What kind of job is this?</div>
       <div id="jobtype-grid"></div>
       <div id="area-drill"></div>
       <div id="cat-drill"></div>
@@ -171,11 +277,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
   <div class="step" id="s2">
     <div class="card">
       <div class="sec">Step 3 of 5 — Vehicle</div>
-      <div class="fg">
-        <label class="fl">Registration Plate <span class="req">*</span></label>
-        <input class="fi fi-reg" id="f-reg" maxlength="8" placeholder="AB12 CDE" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'');dupCheck(this.value)"/>
-        <div class="dup" id="dup-msg"></div>
-      </div>
+      <div class="notice n-blue" id="veh-reg-line" style="margin-bottom:14px">Reg: <strong id="veh-reg-show">—</strong> <span style="font-size:11px">(change it at the top)</span></div>
       <div class="grid2">
         <div class="fg"><label class="fl">Make</label><input class="fi" id="f-make" placeholder="e.g. BMW"/></div>
         <div class="fg"><label class="fl">Model</label><input class="fi" id="f-model" placeholder="e.g. 3 Series"/></div>
@@ -245,6 +347,11 @@ input:checked+.tsl:before{transform:translateX(20px)}
       <div class="sec">Safety check — ask before anything else</div>
       <div class="notice n-red"><strong>Tick anything the customer mentions.</strong> If any apply, the car goes for a diagnostic first. We do not price a repair off a description.</div>
       <div id="safety-list"></div>
+      <div class="tog-row" style="margin-top:6px;border-top:1px solid #f0f0f0">
+        <label class="tog"><input type="checkbox" id="f-safety-asked"><span class="tsl"></span></label>
+        <div><div style="font-size:14px;font-weight:700">I've read this list to the customer</div>
+          <div style="font-size:11px;color:#888">Even if nothing applies — ask every one</div></div>
+      </div>
       <div id="safety-result"></div>
     </div>
     <div id="guided-content"></div>
@@ -257,19 +364,14 @@ input:checked+.tsl:before{transform:translateX(20px)}
   <!-- STEP 4 — CUSTOMER + SUBMIT -->
   <div class="step" id="s4">
     <div class="card" id="contact-card">
-      <div class="sec">Step 5 of 5 — Customer details</div>
-      <div class="fg"><label class="fl">Customer Name <span class="req">*</span></label><input class="fi" id="f-name" placeholder="Full name"/></div>
-      <div class="grid2">
-        <div class="fg"><label class="fl">Phone <span class="req">*</span></label><input class="fi" id="f-phone" type="tel" placeholder="07..."/></div>
-        <div class="fg"><label class="fl">WhatsApp?</label>
-          <select class="fi" id="f-haswa"><option value="yes">Yes — same number</option>
-            <option value="diff">Yes — different number</option><option value="no">No WhatsApp</option></select></div>
-      </div>
-      <div class="fg"><label class="fl">Lead Source</label>
+      <div class="sec">Step 5 of 5 — Last bits</div>
+      <div class="fg"><label class="fl">Lead source</label>
         <select class="fi" id="f-source">
-          <option>Walk In</option><option>Phone Call</option><option>Google</option><option>Referral</option>
+          <option>Walk In</option><option>Phone Call</option><option>WhatsApp</option><option>Email</option>
+          <option>Google</option><option>Social media</option><option>Referral</option>
           <option>Returning Customer</option><option>AA</option><option>Warranty company</option>
-          <option>B2B / Fleet</option><option>Website</option><option>Other</option></select></div>
+          <option>B2B / Fleet</option><option>Website</option><option>Other</option></select>
+        <div class="hint">Filled in from how they got in touch — change it if they found us another way (Google, a referral…).</div></div>
     </div>
 
     <div class="card">
@@ -304,7 +406,8 @@ input:checked+.tsl:before{transform:translateX(20px)}
   <div style="text-align:center;padding:30px 0">
     <div class="suc-icon">✅</div>
     <h2 style="font-size:22px;font-weight:900;margin-bottom:8px">Job Submitted</h2>
-    <div id="suc-msg" style="color:#555;font-size:14px;line-height:1.7;margin-bottom:24px"></div>
+    <div id="suc-msg" style="color:#555;font-size:14px;line-height:1.7;margin-bottom:18px"></div>
+    <div id="suc-next"></div>
     <button class="btn btn-dark" onclick="resetForm()">+ New Job Intake</button>
   </div>
 </div>
@@ -316,7 +419,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
 var SB_URL='https://mxyrxyhvjndgjqupgstu.supabase.co';
 var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
 var SOP_VERSION='8.0';
-var INTAKE_BUILD='2.3';
+var INTAKE_BUILD='2.4';
 // The CRM keeps one row per job in `jobs` ({id, data, updated_at}).
 // Earlier builds wrote to `kith_jobs`, which nothing reads — jobs vanished.
 var JOBS_TABLE='jobs';
@@ -356,7 +459,7 @@ var RAMP_RULES={
 };
 
 var STAFF=[
-  {n:'Fardeen',r:'Service Adviser',i:'📞'},{n:'Ali',r:'Service Adviser',i:'📞'},
+  {n:'Ali',r:'Service Adviser',i:'📞'},
   {n:'Sesugh',r:'Estimator (8am–5pm)',i:'📋'},{n:'Joel',r:'Estimator (12pm–5pm)',i:'📋'},
   {n:'Giles',r:'Workshop Manager',i:'🔧'},{n:'Harith',r:'Parts',i:'🔩'},
   {n:'Sudha',r:'Accounts',i:'💷'},{n:'Logan',r:'Director',i:'👑'}
@@ -484,6 +587,9 @@ var BODY_FLOW=function(){
       'Is it a dent, a scratch, or does the whole panel need repainting?',
       'How many panels altogether?','Insurance, or are they paying themselves?'])+
     note('n-blue','<strong>Take photos.</strong> The bodywork estimator quotes from photos and can ask for better ones. Attach them to the job in the CRM.')+
+    '<div class="tog-row" style="margin-bottom:12px"><label class="tog"><input type="checkbox" id="f-photos"><span class="tsl"></span></label>'+
+    '<div><div style="font-size:14px;font-weight:700">Photos taken, or customer is sending them on WhatsApp</div>'+
+    '<div style="font-size:11px;color:#888">Whole car, each damaged panel close up, and the reg plate</div></div></div>'+
     chipGroup('Panels affected','panels',['Front bumper','Rear bumper','Bonnet','Boot / tailgate','Roof','Front door (L)','Front door (R)','Rear door (L)','Rear door (R)','Front quarter','Rear quarter','Sliding door','Trim / moulding'])+
     chipGroup('Type of repair','body-type',['Full panel repaint','Dent repair only','SMART repair','Dent and repaint','Welding / rust','Full respray','Alloy wheel refurb','Caliper respray'])+
     fld('Damage description','f-body-desc','textarea','Size, depth, where on the panel...')+
@@ -598,7 +704,8 @@ if(staffName){document.getElementById('scr-staff').style.display='none';
 function setStaff(n){staffName=n;localStorage.setItem('kith_staff',n);
   document.getElementById('scr-staff').style.display='none';
   document.getElementById('scr-form').style.display='block';
-  document.getElementById('hdr-user').textContent=n+' ▾';}
+  document.getElementById('hdr-user').textContent=n+' ▾';
+  if(channel)paintOpener();updateNeeds();}
 function changeStaff(){if(confirm('Change staff member?')){
   document.getElementById('scr-form').style.display='none';
   document.getElementById('scr-success').style.display='none';
@@ -842,12 +949,16 @@ function custPartsWarn(){
 function go(n){
   if(n>curStep){
     if(curStep===0){
+      var miss0=essentialsMissing();
+      if(miss0.length){alert('Still need: '+miss0.join(', ')+'.\n\nGet these first — if the call drops we can still call them back.');return;}
       if(!jobType){alert('Pick what kind of job this is.');return;}
       var jt=JOB_TYPES.filter(function(x){return x.k===jobType;})[0];
       if(jt.area&&!area){alert('Mechanical or bodywork?');return;}
       if(area==='mechanical'&&!mechCat){alert('Pick what part of the car.');return;}
     }
     if(curStep===1&&!custType&&needsCustomer()){alert('Pick who is paying.');return;}
+    if(curStep===3&&activeFlow().safety&&!fchk('f-safety-asked')){
+      alert('Read the safety list to the customer first, then tick "I\'ve read this list".');return;}
     if(curStep===2){
       if(!fval('f-reg')){alert('Registration is required.');return;}
       if(!fval('f-shape')||!fval('f-seats')||!fval('f-roof')||!fval('f-gvw')){
@@ -859,8 +970,10 @@ function go(n){
   document.getElementById('s'+n).classList.add('on');
   for(var i=0;i<5;i++){document.getElementById('sd'+i).className='sdot'+(i<=n?' on':'');}
   if(n===1&&!needsCustomer()){go(2);return;}
+  if(n===2){var rs=document.getElementById('veh-reg-show');if(rs)rs.textContent=fval('f-reg')||'—';}
   if(n===3)buildStep3();
   if(n===4)buildStep4();
+  updateNeeds();
   window.scrollTo(0,60);
 }
 function needsCustomer(){var jt=JOB_TYPES.filter(function(x){return x.k===jobType;})[0];return jt?jt.cust:true;}
@@ -879,13 +992,13 @@ function buildStep3(){
     var e=document.getElementById(id);if(e)e.onchange=deriveRecovery;});
 }
 function buildStep4(){
-  document.getElementById('contact-card').style.display=needsCustomer()?'block':'none';
+  document.getElementById('contact-card').style.display='block';
   var jt=JOB_TYPES.filter(function(x){return x.k===jobType;})[0]||{};
   var c=CUSTOMERS.filter(function(x){return x.k===custType;})[0]||{};
   var f=activeFlow();
   var rows=[['Job type',jt.n||'—'],
     ['Area',area?(area==='mechanical'?('Mechanical — '+(MECH[mechCat]?MECH[mechCat].label:'')):'Bodywork'):'n/a'],
-    ['Customer',needsCustomer()?(c.n||'—'):'Internal — our own stock'],
+    ['Customer',needsCustomer()?((fval('f-name')||'—')+' · '+(c.n||'—')):'Internal — our own stock'],
     ['Vehicle',(fval('f-reg')+' '+fval('f-make')+' '+fval('f-model')).trim()||'—'],
     ['Bodywork column',window._bodyCat||'—'],
     ['MOT class',window._motClass?(window._motClass==='ESCALATE'?'Logan':'Class '+window._motClass):'—'],
@@ -908,13 +1021,14 @@ function dupCheck(v){
       // with thousands of jobs; the exact match is checked below.
       var pat=v.replace(/[^A-Z0-9]/g,'').split('').join('*');
       var r=await fetch(SB_URL+'/rest/v1/'+JOBS_TABLE+
-        '?select=id,reg:data->>reg,name:data->>name,stage:data->>stage,merged:data->>mergedInto'+
+        '?select=id,reg:data->>reg,name:data->>name,stage:data->>stage,merged:data->>mergedInto,'+
+        'phone:data->>phone,make:data->>make,model:data->>model,year:data->>year,internal:data->>isInternal'+
         '&data->>reg=ilike.'+encodeURIComponent(pat)+'&order=updated_at.desc&limit=200',
         {headers:sbHdr()});
       if(!r.ok)return;
       var rows=await r.json();
       var act=(rows||[]).filter(function(j){
-        return j&&String(j.id).indexOf('__')!==0&&!j.merged&&
+        return j&&String(j.id).indexOf('__')!==0&&!j.merged&&j.internal!=='true'&&
           String(j.reg||'').replace(/\s/g,'').toUpperCase()===v&&CLOSED_STAGES.indexOf(j.stage)===-1;});
       var el=document.getElementById('dup-msg');
       if(act.length){el.style.display='block';
@@ -922,6 +1036,9 @@ function dupCheck(v){
           act.map(function(j){return j.id+' · '+(j.name||'')+' · '+j.stage;}).join('<br>')+
           '<br><br>If this is work coming back, go to the start and pick <b>Coming back</b>.';}
       else el.style.display='none';
+      var same=(rows||[]).filter(function(j){return j&&String(j.id).indexOf('__')!==0&&!j.merged&&
+        j.internal!=='true'&&String(j.reg||'').replace(/\s/g,'').toUpperCase()===v;});
+      showReturning(same[0]||null);
     }catch(e){}
   },800);
 }
@@ -943,6 +1060,10 @@ async function submitJob(){
     if(!fval('f-name')){alert('Customer name required.');return;}
     if(!fval('f-phone')){alert('Phone number required.');return;}
   }
+  var stillMissing=missingList();
+  var mustMissing=stillMissing.filter(function(x){return x.lvl==='must';}).map(function(x){return x.l;});
+  if(mustMissing.length&&!confirm('Still missing:\n• '+mustMissing.join('\n• ')+
+     '\n\nSubmit anyway? These will show on the job as MISSING so the next person chases them.'))return;
   btn.textContent='Submitting…';btn.disabled=true;
 
   var jt=JOB_TYPES.filter(function(x){return x.k===jobType;})[0]||{};
@@ -992,6 +1113,10 @@ async function submitJob(){
     diagnostic_override:diagOverride,
     escalations:escalations,
     customer_words:fval('f-words')||null,
+    channel:channel||null,
+    safety_list_read:fchk('f-safety-asked'),
+    photos_in_hand:area==='bodywork'?fchk('f-photos'):null,
+    missing_at_intake:stillMissing.map(function(x){return (x.lvl==='must'?'MUST: ':'ASK: ')+x.l;}),
     ai_triage:triageResult||null,
     captured_by:staffName, captured_at:new Date().toISOString()
   };
@@ -1010,6 +1135,11 @@ async function submitJob(){
     id:id,reg:reg,
     name:needsCustomer()?fval('f-name'):'INTERNAL — stock',
     phone:needsCustomer()?fval('f-phone'):'',
+    wa:needsCustomer()&&fval('f-haswa')!=='no',
+    waNumber:fval('f-haswa')==='diff'?fval('f-wa'):(fval('f-haswa')==='yes'?fval('f-phone'):''),
+    email:fval('f-email'),
+    sendEstimateBy:fval('f-haswa')!=='no'?'whatsapp':(fval('f-email')?'email':'sms/call'),
+    sendEstimateBy:!needsCustomer()?'':(fval('f-haswa')!=='no'?'whatsapp':(fval('f-email')?'email':'sms/call')),
     make:fval('f-make'),model:fval('f-model'),year:fval('f-year'),
     mileage:fval('f-mileage'),fuel:fval('f-fuel'),engineSize:fval('f-engine'),
     work:work,jobType:jobType,area:area,serviceType:mechCat||area||jobType,
@@ -1030,7 +1160,8 @@ async function submitJob(){
       (rampState.exempt?' · RAMP-EXEMPT':'')+(needsDiag?' · DIAGNOSTIC FIRST':'')+
       (warrantyState?' · warranty '+warrantyState.verdict:'')+
       (escalations.length?' · ESCALATE ('+escalations.length+')':'')+
-      (custType==='business'?' · BUSINESS — set Retail or Trade in the CRM':'')}],
+      (custType==='business'?' · BUSINESS — set Retail or Trade in the CRM':'')+
+      (mustMissing.length?' · MISSING: '+mustMissing.join(', '):'')}],
     createdAt:ts,pathway:2
   };
 
@@ -1051,7 +1182,9 @@ async function submitJob(){
     (warrantyState&&(warrantyState.verdict==='expired'||warrantyState.verdict==='chargeable')?'<span style="color:var(--amber)">Chargeable — outside warranty</span><br>':'')+
     (rampState.exempt?'<span style="color:var(--amber)">⚠ Ramp-exempt</span><br>':'')+
     (escalations.length?'<span style="color:var(--red)">⚠ '+escalations.length+' item(s) for Logan:<br>'+escalations.join('<br>')+'</span><br>':'')+
-    '<br>'+(saved?'<span style="color:var(--green)">✓ Saved to CRM</span>':'<span style="color:var(--amber)">⚠ Saved offline — will sync</span>');
+    (mustMissing.length?'<span style="color:var(--amber)">Still to chase: '+mustMissing.join(', ')+'</span><br>':'')+
+    '<br>'+(saved?'<span style="color:var(--green)">✓ Saved to CRM — Labour Estimate</span>':'<span style="color:var(--amber)">⚠ Saved offline — will sync</span>');
+  document.getElementById('suc-next').innerHTML=nextStepsFull(needsDiag,area);
   syncQueue();
 }
 function readQueue(){try{return JSON.parse(localStorage.getItem('kith_queue')||'[]');}catch(e){return[];}}
@@ -1105,7 +1238,15 @@ function resetForm(){
   ['f-reg','f-make','f-model','f-year','f-mileage','f-engine','f-name','f-phone','f-notes','f-words']
     .forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   ['f-shape','f-seats','f-roof','f-gvw','f-fuel'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
-  ['f-asap','f-custparts'].forEach(function(id){var e=document.getElementById(id);if(e)e.checked=false;});
+  ['f-asap','f-custparts','f-safety-asked'].forEach(function(id){var e=document.getElementById(id);if(e)e.checked=false;});
+  ['f-wa','f-email'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  var ne=document.getElementById('f-noemail');if(ne)ne.checked=false;
+  var hw=document.getElementById('f-haswa');if(hw)hw.value='yes';
+  document.getElementById('wa-diff-fg').style.display='none';
+  document.getElementById('back-msg').style.display='none';
+  channel=null;paintChannels();document.getElementById('opener').innerHTML='';
+  paintEmail();
+  pickQuick(null);
   document.querySelectorAll('.safety-box').forEach(function(b){b.classList.remove('on');b.textContent='';});
   document.getElementById('dup-msg').style.display='none';
   ['area-drill','cat-drill','cust-followup','ramp-result','cat-result','safety-result','custparts-warn','summary-card','comeback-card','guided-content','brain-out','check-out']
@@ -1115,7 +1256,8 @@ function resetForm(){
   document.querySelectorAll('.step').forEach(function(s){s.classList.remove('on');});
   document.getElementById('s0').classList.add('on');
   for(var i=0;i<5;i++){document.getElementById('sd'+i).className='sdot';}
-  window.scrollTo(0,0);syncQueue();
+  document.getElementById('suc-next').innerHTML='';
+  window.scrollTo(0,0);syncQueue();updateNeeds();
 }
 // =============================================================================
 // THE SERVICE ADVISER BRAIN
@@ -1124,7 +1266,7 @@ function resetForm(){
 // The brain may ADD a safety flag. It may never clear one.
 // =============================================================================
 function aiSettings(){
-  var u=prompt('AI endpoint (the Supabase function URL). Leave blank to work without it:',AI.url);
+  var u=prompt('Supabase AI function URL — only if you have deployed one. Leave blank to use the built-in KITH AI:',AI.url);
   if(u===null)return;
   var k=prompt('Shared secret:',AI.secret)||'';
   AI.url=u.trim();AI.secret=k.trim();
@@ -1133,18 +1275,132 @@ function aiSettings(){
 }
 function paintAIPill(){
   var el=document.getElementById('ai-pill');if(!el)return;
-  el.textContent=AI.url?'AI on':'AI off';
-  el.style.borderColor=AI.url?'var(--gold)':'#555';
-  el.style.color=AI.url?'var(--gold)':'#888';
+  el.textContent='AI on';
+  el.title=AI.url?'Using the Supabase function':'Using the KITH AI proxy (same one the CRM scanners use)';
+  el.style.borderColor='var(--gold)';
+  el.style.color='var(--gold)';
+}
+// -----------------------------------------------------------------------------
+// Where the brain lives.
+//   1. If someone has set a Supabase function in "AI" settings, use that.
+//   2. Otherwise use the KITH AI proxy — the Google Apps Script the CRM's invoice
+//      scanners already use. Nothing to set up; it works on every phone.
+// The rules the brain follows are written out below, so it answers to the SOP
+// and not to general car knowledge.
+// -----------------------------------------------------------------------------
+var AI_PROXY='https://script.google.com/macros/s/AKfycbyUGppzV1hOyq-9U4-k60lz68j9lpPloXw2am7j4iXDMhG4shbuVbbEd9crukVr_Nhj-A/exec';
+
+var BRAIN_RULES=[
+  'You are the service adviser brain for KITH Cars, an independent garage and bodyshop in Hackbridge, South London.',
+  'Staff type what a customer said. You help them route the job and know what to ask. The adviser decides — you only suggest.',
+  '',
+  'HARD RULES — never break these:',
+  '- NEVER give a price, a cost, a range or an estimate for a repair. Not even roughly. No £ signs in anything you write.',
+  '- NEVER say or imply a car is safe to drive. If in doubt, say it should be looked at before it is driven far.',
+  '- You may ADD safety items. You never clear them.',
+  '- Do not diagnose. Suggest where the job goes and what to ask.',
+  '- Plain, friendly UK English. Short sentences. Staff read your questions straight to the customer.',
+  '',
+  'SAFETY LIST — if the customer mentions ANY of these, list it in safety_items and set needs_diagnostic_first true:',
+  SAFETY.map(function(s,i){return (i+1)+'. '+s;}).join('\n'),
+  'If needs_diagnostic_first is true, the job goes in as a diagnostic and the repair is priced after the fault is found.',
+  '',
+  'JOB TYPES (job_type): new = customer wants work doing · comeback = we did this work before and it is back · sale = our own stock being prepped · recovery = collect or recover a vehicle.',
+  'AREA: mechanical or bodywork.',
+  'MECHANICAL CATEGORIES (mechanical_category, use the key exactly): '+
+    Object.keys(MECH).map(function(k){return k+' = '+MECH[k].label.replace(/^\S+\s/,'')+' ('+MECH[k].sub+')';}).join(' · '),
+  'Oil or coolant leaks with no other detail → diagnostic. Warning lights → diagnostic.',
+  '',
+  'WHAT WE DO NOT DO: air-con regas. If asked, set not_offered.',
+  '',
+  'GO TO LOGAN (put in escalations): head gasket, timing chain or wet belt jobs; engine replacement; insurance or accident claims; the customer wanting to supply their own parts; vehicles with 9 or more seats; recovery over 10 miles; warranty company jobs; anything you are unsure about.',
+  '',
+  'Things the adviser must always get: customer name, phone (WhatsApp if possible — estimates go on WhatsApp; email if no WhatsApp), reg, what they want. For bodywork: photos of the damage and the reg. For comebacks: original job date and mileage.',
+  'Deposits (only if asked about booking): mechanical work of £200 or more needs a 50% deposit; bodywork has no deposit.'
+].join('\n');
+
+var TRIAGE_SHAPE='{"understood":"one short line: what this probably is","confidence":"high|medium|low",'+
+  '"routing_reason":"why you routed it there","not_offered":"" ,'+
+  '"safety_items":[{"item":"wording from the safety list","heard":"the customer words that triggered it"}],'+
+  '"needs_diagnostic_first":false,"diagnostic_reason":"",'+
+  '"is_possible_comeback":false,"comeback_reason":"",'+
+  '"job_type":"new|comeback|sale|recovery","area":"mechanical|bodywork|null","mechanical_category":"one of the keys or null",'+
+  '"questions_to_ask":["3 to 6 short questions to ask the customer now"],'+
+  '"what_to_say":"one or two sentences the adviser can say right now — no prices, never safe to drive",'+
+  '"missing_info":["things still needed for this job"],"escalations":["anything for Logan"],"adviser_note":""}';
+
+var CHECK_SHAPE='{"verdict":"ok_to_submit|fix_before_submitting|do_not_submit","summary":"one line",'+
+  '"issues":[{"severity":"critical|warn|info","issue":"what is wrong or missing","fix":"what to do"}],'+
+  '"still_to_ask":["questions worth asking before they go"]}';
+
+function brainPrompt(action,payload){
+  if(action==='triage_intake')return BRAIN_RULES+'\n\n---\nTASK: triage this enquiry.\n'+
+    'Customer said: "'+String(payload.customerWords||'')+'"\n'+
+    'Vehicle: '+(payload.vehicleContext||'not stated')+'\n'+
+    'Customer type: '+(payload.customerType||'not picked yet')+'\n\n'+
+    'Reply with JSON only, exactly this shape:\n'+TRIAGE_SHAPE;
+  return BRAIN_RULES+'\n\n---\nTASK: check this intake before it is submitted. Look for anything missing, contradictory or against the rules '+
+    '(e.g. safety words in the customer’s words but no safety tick; bodywork with no photos; no WhatsApp and no email; a comeback with no warranty check).\n'+
+    'Customer said: "'+String(payload.customerWords||'')+'"\n'+
+    'Intake so far: '+JSON.stringify(payload.intake||{})+'\n\n'+
+    'Reply with JSON only, exactly this shape:\n'+CHECK_SHAPE;
+}
+function parseJSONLoose(txt){
+  txt=String(txt||'').replace(/```json|```/g,'').trim();
+  var a=txt.indexOf('{'),b=txt.lastIndexOf('}');
+  if(a<0||b<=a)throw new Error('The AI did not send back an answer we could read.');
+  return JSON.parse(txt.slice(a,b+1));
+}
+// Belt and braces: whatever the model says, no prices and no "safe to drive" reach the adviser.
+function scrubBrain(r){
+  var bad=/£\s?\d|\b\d+\s?(quid|pounds)\b|safe to drive|fine to drive|ok to drive|okay to drive/i;
+  function clean(s){return bad.test(String(s||''))?'':s;}
+  if(r.what_to_say&&bad.test(r.what_to_say))
+    r.what_to_say='Thanks for that. We’ll get it looked at properly and come back to you with a price — I won’t guess one over the phone.';
+  ['understood','routing_reason','diagnostic_reason','comeback_reason','adviser_note','summary'].forEach(function(k){if(r[k])r[k]=clean(r[k]);});
+  ['questions_to_ask','missing_info','escalations','still_to_ask'].forEach(function(k){
+    if(Array.isArray(r[k]))r[k]=r[k].filter(function(x){return !bad.test(String(x));});});
+  if(Array.isArray(r.issues))r.issues=r.issues.filter(function(i){return !bad.test(String(i.issue)+String(i.fix));});
+  if(Array.isArray(r.escalations))r.escalations=r.escalations.filter(function(x){return String(x).replace(/[^a-z]/gi,'').length>8;});
+  if(r.area==='null')r.area=null;
+  if(r.mechanical_category==='null'||(r.mechanical_category&&!MECH[r.mechanical_category]))r.mechanical_category=r.area==='mechanical'?'other':null;
+  if(r.verdict==='ok_to_submit')r.verdict='ok to submit';
+  return r;
+}
+async function callProxy(prompt){
+  // Claude via the proxy (what the accounts app sends) — tested working 29 Sep.
+  // Falls back to the plain {prompt} shape the CRM scanners use.
+  var tries=[
+    {body:{model:'claude-sonnet-4-6',max_tokens:1500,messages:[{role:'user',content:prompt}]},
+     read:function(d){return (d.content||[]).map(function(c){return c.text||'';}).join('');}},
+    {body:{prompt:prompt},read:function(d){return d.response||d.text||'';}}
+  ];
+  var lastErr=null;
+  for(var i=0;i<tries.length;i++){
+    try{
+      // no Content-Type header: keeps it a simple request, which Apps Script needs
+      var r=await fetch(AI_PROXY,{method:'POST',body:JSON.stringify(tries[i].body),redirect:'follow'});
+      if(!r.ok)throw new Error('The AI returned '+r.status);
+      var d=await r.json();
+      if(d&&d.error)throw new Error(d.error.message||d.error);
+      var txt=tries[i].read(d);
+      if(txt)return parseJSONLoose(txt);
+      throw new Error('Empty answer from the AI');
+    }catch(e){lastErr=e;}
+  }
+  throw lastErr||new Error('Could not reach the AI');
 }
 async function callAI(action,payload){
-  if(!AI.url)throw new Error('No AI endpoint set. Tap "AI off" at the top to add one, or just fill the form in yourself.');
-  var r=await fetch(AI.url,{method:'POST',
-    headers:{'Content-Type':'application/json','x-kith-secret':AI.secret},
-    body:JSON.stringify({action:action,payload:payload})});
-  var d=await r.json();
-  if(!r.ok||d.error)throw new Error(d.error||('The AI returned '+r.status));
-  return d.result;
+  if(AI.url){
+    var r=await fetch(AI.url,{method:'POST',
+      headers:{'Content-Type':'application/json','x-kith-secret':AI.secret},
+      body:JSON.stringify({action:action,payload:payload})});
+    var d=await r.json();
+    if(!r.ok||d.error)throw new Error(d.error||('The AI returned '+r.status));
+    return scrubBrain(d.result);
+  }
+  if(!navigator.onLine)throw new Error('No signal — the brain needs the internet.');
+  return scrubBrain(await callProxy(brainPrompt(action,payload)));
 }
 function vehicleCtx(){
   return [fval('f-year'),fval('f-make'),fval('f-model'),fval('f-engine'),fval('f-fuel'),fval('f-reg')]
@@ -1169,7 +1425,7 @@ async function runTriage(){
     triageResult=r;
     renderTriage(r);
   }catch(e){
-    out.innerHTML=note('n-amber','<strong>The brain is not available.</strong> '+esc(e.message)+
+    out.innerHTML=note('n-amber','<strong>The brain couldn\u2019t answer just now.</strong> '+esc(e.message)+
       '<br>Carry on and fill the form in yourself \u2014 nothing below depends on it.');
   }
   btn.disabled=false;btn.textContent='Work out where this goes';
@@ -1315,6 +1571,443 @@ async function runIntakeCheck(){
   }
   btn.disabled=false;btn.innerHTML='&#129504; Check this before I submit';
 }
+// =============================================================================
+// v2.4 — THE TOP OF THE FORM
+// How they got in touch → what to say → the four essentials. Then a live
+// "what's still needed" bar that follows the job type all the way down.
+// =============================================================================
+var channel=null,quickMode=null,returning=null;
+var CHANNELS=[
+  {k:'phone',   i:'📞',n:'Phone',       src:'Phone Call'},
+  {k:'whatsapp',i:'💬',n:'WhatsApp',    src:'WhatsApp'},
+  {k:'walkin',  i:'🚶',n:'Walk-in',     src:'Walk In'},
+  {k:'email',   i:'✉️',n:'Email',       src:'Email'},
+  {k:'social',  i:'📱',n:'Social / web',src:'Social media'}
+];
+function greet(){var h=new Date().getHours();return h<12?'Good morning':h<17?'Good afternoon':'Good evening';}
+function paintChannels(){
+  var g=document.getElementById('chan-grid');if(!g)return;
+  g.innerHTML=CHANNELS.map(function(c){
+    return '<button class="chan-btn'+(channel===c.k?' sel':'')+'" onclick="pickChannel(\''+c.k+'\')"><span class="ci">'+c.i+'</span>'+c.n+'</button>';}).join('');
+}
+function pickChannel(k){
+  channel=k;paintChannels();paintOpener();
+  var c=CHANNELS.filter(function(x){return x.k===k;})[0];
+  var src=document.getElementById('f-source');if(src&&c)src.value=c.src;
+  paintEmail();
+  updateNeeds();
+}
+function noWA(){return fval('f-haswa')==='no';}
+function paintEmail(){
+  var need=noWA();
+  document.getElementById('email-fg').style.display=(need||channel==='email')?'block':'none';
+  document.getElementById('email-req').style.display=need?'inline':'none';
+  document.getElementById('email-why').style.display=need?'block':'none';
+  document.getElementById('noemail-row').style.display=need?'flex':'none';
+  if(!need){var n=document.getElementById('f-noemail');if(n)n.checked=false;}
+}
+function emailOk(){return !noWA()||/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fval('f-email'))||fchk('f-noemail');}
+function paintOpener(){
+  var me=staffName||'[your name]',h='';
+  if(channel==='phone')h='<div class="say-lbl">Say this</div>“'+greet()+', KITH Cars, you’re speaking to '+esc(me)+'. Who am I speaking to?”<br>'+
+    '→ “And the best number to get you on — is that on WhatsApp?”<br>→ “What’s the reg of the car?”<br>→ “Lovely — what can we help with today?”';
+  else if(channel==='whatsapp')h='<div class="say-lbl">Do this</div>Copy their message <b>word for word</b> into “What do they want”. '+
+    'If they haven’t given a name or reg, reply:<br>“Thanks for getting in touch with KITH Cars! Could you send us your name and the reg of the car, and we’ll get that looked at for you.”'+
+    '<br><button class="btn btn-ghost" style="margin-top:8px;padding:8px;font-size:13px" onclick="copyText(\'Thanks for getting in touch with KITH Cars! Could you send us your name and the reg of the car, and we\\u2019ll get that looked at for you.\')">Copy that reply</button>';
+  else if(channel==='walkin')h='<div class="say-lbl">Do this</div>“'+greet()+', welcome to KITH Cars — I’m '+esc(me)+'.” Take their name and number, then <b>read the reg off the plate yourself</b>. '+
+    'While you’re outside, look at the car — you’ll need its shape, seats and roof later.';
+  else if(channel==='email')h='<div class="say-lbl">Do this</div>Put their email in, and look for a phone number in their signature. '+
+    'We send estimates on WhatsApp, so if there’s no number, reply asking for one and the reg.';
+  else if(channel==='social')h='<div class="say-lbl">Reply with this</div>“Thanks for your message! Send us a WhatsApp with your name and the car’s reg and we’ll get you sorted straight away.”'+
+    '<br><button class="btn btn-ghost" style="margin-top:8px;padding:8px;font-size:13px" onclick="copyText(\'Thanks for your message! Send us a WhatsApp with your name and the car\\u2019s reg and we\\u2019ll get you sorted straight away.\')">Copy that reply</button>';
+  document.getElementById('opener').innerHTML=h?'<div class="opener">'+h+'</div>':'';
+}
+function copyText(t){
+  try{navigator.clipboard.writeText(t);alert('Copied — paste it into the chat.');}
+  catch(e){prompt('Copy this:',t);}
+}
+document.getElementById('f-haswa').addEventListener('change',function(){
+  document.getElementById('wa-diff-fg').style.display=this.value==='diff'?'block':'none';paintEmail();updateNeeds();});
+
+// ---- returning customer: seen this reg before? ----
+function showReturning(j){
+  returning=j;
+  var el=document.getElementById('back-msg');if(!el)return;
+  if(!j){el.style.display='none';el.innerHTML='';return;}
+  var veh=[j.year,j.make,j.model].filter(Boolean).join(' ');
+  el.style.display='block';
+  el.innerHTML='<strong>↩ We’ve seen this car before.</strong><br>'+
+    esc(j.name||'No name')+(j.phone?' · '+esc(j.phone):'')+(veh?'<br>'+esc(veh):'')+
+    '<br><span style="font-size:11px">Last job '+esc(j.id)+' · '+esc(j.stage||'')+'</span>'+
+    '<button class="btn btn-ghost" onclick="useReturning()">Use these details</button>'+
+    '<div style="font-size:11px;margin-top:6px">Check with the customer — the car may have changed hands.</div>';
+}
+function useReturning(){
+  var j=returning;if(!j)return;
+  [['f-name',j.name],['f-phone',j.phone],['f-make',j.make],['f-model',j.model],['f-year',j.year]].forEach(function(p){
+    var e=document.getElementById(p[0]);if(e&&!e.value&&p[1])e.value=p[1];});
+  var src=document.getElementById('f-source');if(src&&channel!=='whatsapp'&&channel!=='email')src.value='Returning Customer';
+  updateNeeds();
+}
+
+// ---- the four essentials ----
+function essentialsMissing(){
+  var m=[];
+  if(jobType!=='sale'){
+    if(!fval('f-name'))m.push('customer name');
+    if(!fval('f-phone'))m.push('phone number');
+    if(!emailOk())m.push('email (no WhatsApp) — or tick "no email either"');
+  }
+  if(!fval('f-reg'))m.push('reg');
+  if(!fval('f-words')&&!mechCat&&area!=='bodywork'&&!jobType)m.push('what they want');
+  return m;
+}
+
+// =============================================================================
+// WHAT'S STILL NEEDED — one list, built from what has been picked so far.
+// must = the next person cannot do their job without it.
+// ask  = worth getting while the customer is on the line.
+// =============================================================================
+function needGroups(){
+  var G=[];
+  function it(l,done,lvl,why){return {l:l,done:!!done,lvl:lvl||'must',why:why||''};}
+  if(quickMode==='consumables'){
+    G.push({g:'Consumables order',items:[
+      it('At least one item and how many',quickItems().length,'must'),
+      it('When it’s needed by',fval('q-need'),'must','Parts order to this date'),
+      it('Preferred supplier',fval('q-sup'),'ask')]});
+    return G;
+  }
+  if(quickMode==='staffparts'){
+    var forCar=fval('q-for')==='car';
+    G.push({g:'Parts for staff',items:[
+      it('Who needs it',fval('q-who'),'must'),
+      it('For a car, or workshop kit',fval('q-for'),'must'),
+      forCar?it('Reg of the car',fval('q-reg'),'must','So Parts can find the right part'):null,
+      forCar?it('Job number, if it has one',fval('q-job'),'ask'):null,
+      it('At least one part and how many',quickItems().length,'must'),
+      it('When it’s needed by',fval('q-need'),'must')].filter(Boolean)});
+    return G;
+  }
+  var cust=jobType!=='sale';
+  G.push({g:'The four essentials',items:[
+    cust?it('Customer name',fval('f-name'),'must','Who we’re dealing with'):null,
+    cust?it('Phone number',fval('f-phone'),'must',noWA()?'We\u2019ll text or call on this':'The estimate goes to this number on WhatsApp'):null,
+    cust&&noWA()?it('Email address',emailOk(),'must','No WhatsApp — the estimate goes by email'):null,
+    it('Reg',fval('f-reg'),'must','Pulls up the car and any history'),
+    quickMode==='straight'?null:it('What they want — in their words',fval('f-words')||mechCat||area==='bodywork'||jobType==='recovery','must'),
+    it('How they got in touch',channel,'ask','Tells us where our work comes from')].filter(Boolean)});
+
+  if(quickMode==='straight'){
+    var sp=straightPick();
+    G.push({g:'Straight job',items:[
+      it('What they’re here for',sp,'must'),
+      sp&&sp.k==='diag'?it('Diagnostic tier',fval('q-diag'),'must'):null,
+      sp&&sp.k==='other'?it('What the job is and the agreed price',fval('q-other')&&fval('q-price'),'must','Only a price Logan has set'):null,
+      it('Make and model',fval('q-make')&&fval('q-model'),'ask'),
+      it('Booking date and time',fval('q-date'),'ask','Puts it on the mechanical calendar'),
+      sp&&sp.k.indexOf('remap')===0?it('Customer told a remap may affect insurance',fchk('q-remap-told'),'must'):null].filter(Boolean)});
+    return G;
+  }
+
+  var jt=JOB_TYPES.filter(function(x){return x.k===jobType;})[0];
+  var route=[it('Kind of job',jobType,'must')];
+  if(jt&&jt.area)route.push(it('Mechanical or bodywork',area,'must'));
+  if(area==='mechanical')route.push(it('Which part of the car',mechCat,'must'));
+  if(!jt||jt.cust)route.push(it('Who is paying',custType,'must','Decides the whole price'));
+  G.push({g:'Where it goes',items:route});
+  if(!jobType)return G;
+
+  var pay=[];
+  if(custType==='business')pay.push(it('Company name',fval('f-company'),'must','As it goes on the invoice'));
+  if(custType==='warranty'){pay.push(it('Warranty claim number',fval('f-war-ref'),'must'));
+    pay.push(it('Amount they’ve authorised',fval('f-war-total'),'ask','Our ceiling — go over it and we stop'));}
+  if(custType&&custType.indexOf('aa_')===0)pay.push(it('AA job reference',fval('f-aa-ref'),'must'));
+  if(pay.length)G.push({g:'Paying',items:pay});
+
+  var veh=[it('Vehicle shape — the 4 questions',fval('f-shape')&&fval('f-seats')&&fval('f-roof')&&fval('f-gvw'),'must','Sets the bodywork column, MOT class and ramp'),
+    it('Make and model',fval('f-make')&&fval('f-model'),'ask')];
+  veh.push(it('Mileage today',fval('f-mileage'),jobType==='comeback'?'must':'ask',jobType==='comeback'?'Needed for the warranty check':''));
+  G.push({g:'The car',items:veh});
+
+  var job=[];
+  var f=null;try{f=activeFlow();}catch(e){}
+  if(f&&f.safety)job.push(it('Safety list read to the customer',fchk('f-safety-asked'),'must','Any tick = diagnostic first'));
+  if(jobType==='comeback'){
+    job.push(it('Date and what the original work was',fval('f-cb-date')&&fval('f-cb-what'),'must'));
+    job.push(it('Warranty checked',warrantyState,'must','Press “Check the warranty”'));
+  }
+  if(jobType==='recovery')job.push(it('Pick-up, drop-off, does it drive, distance',
+    fval('f-rec-from')&&fval('f-rec-to')&&fval('f-rec-drives')&&fval('f-rec-dist'),'must'));
+  if(area==='bodywork'&&jobType!=='sale'){
+    job.push(it('Which panels',getChips('panels'),'must'));
+    job.push(it('Photos',fchk('f-photos'),'must','The estimator prices from photos'));
+    job.push(it('Insurance or private',fval('f-body-pay'),'ask'));
+  }
+  if(area==='mechanical'&&mechCat==='service')job.push(it('Type of service',fval('f-svc-type'),'must'));
+  if(area==='mechanical'&&mechCat==='tyres'){job.push(it('How many tyres',fval('f-tyre-qty'),'must'));
+    job.push(it('Tyre size',fval('f-tyre-size'),'ask','Printed on the side of the tyre'));}
+  if(area==='mechanical'&&mechCat==='diagnostic')job.push(it('Warning lights / what it’s doing',fval('f-diag-lights')||fval('f-diag-symptoms'),'must'));
+  if(area==='mechanical'&&mechCat==='clutch')job.push(it('Manual or automatic',fval('f-gearbox-type'),'must'));
+  if(jobType==='sale')job.push(it('What needs doing',fval('f-sale-work'),'must'));
+  if(job.length)G.push({g:'This job',items:job});
+  return G;
+}
+function missingList(){
+  var out=[];needGroups().forEach(function(g){g.items.forEach(function(x){if(!x.done)out.push(x);});});return out;
+}
+function updateNeeds(){
+  var bar=document.getElementById('need');if(!bar)return;
+  var onForm=document.getElementById('scr-form').style.display!=='none';
+  bar.style.display=onForm?'block':'none';
+  if(!onForm)return;
+  var hdr=document.querySelector('.hdr');if(hdr)bar.style.top=hdr.offsetHeight+'px';
+  var G=needGroups(),must=0,ask=0,next=null;
+  G.forEach(function(g){g.items.forEach(function(x){if(!x.done){if(x.lvl==='must'){must++;if(!next)next=x.l;}else ask++;}});});
+  var c=document.getElementById('need-count');
+  c.textContent=must?must:'✓';c.className='need-count'+(must?'':' ok');
+  document.getElementById('need-txt').innerHTML=must
+    ? 'Still needed<small>Next: '+esc(next)+(ask?' · '+ask+' worth asking':'')+'</small>'
+    : 'All the must-haves are in<small>'+(ask?ask+' more worth asking — tap to see':'Nothing else needed')+'</small>';
+  document.getElementById('need-body').innerHTML=G.map(function(g){
+    return '<div class="need-grp">'+esc(g.g)+'</div>'+g.items.map(function(x){
+      var cls=x.done?'done':x.lvl;
+      return '<div class="need-row '+cls+'"><div class="need-ic">'+(x.done?'✓':'')+'</div><div><span class="need-lbl">'+esc(x.l)+'</span>'+
+        (x.done?'':'<span class="need-tag">'+(x.lvl==='must'?'needed':'ask')+'</span>')+
+        (x.why&&!x.done?'<span class="need-why">'+esc(x.why)+'</span>':'')+'</div></div>';}).join('');}).join('');
+}
+var _nt=null;
+function queueNeeds(){clearTimeout(_nt);_nt=setTimeout(updateNeeds,60);}
+['input','change','click'].forEach(function(ev){document.addEventListener(ev,queueNeeds);});
+
+// ---- what happens next (success screen) ----
+function nextStepsFull(needsDiag,ar){
+  var li=[];
+  li.push(needsDiag
+    ? 'It’s booked for a <b>diagnostic first</b>. Only quote the diagnostic price — the repair gets priced once we’ve found the fault.'
+    : 'It’s gone to the estimator now. Logan signs the price off, then the adviser sends it on WhatsApp.');
+  li.push(fval('f-haswa')!=='no'?'Tell the customer: <b>“We’ll WhatsApp your estimate over — usually the same day.”</b>':
+    fval('f-email')?'Tell the customer: <b>“We’ll email your estimate to '+esc(fval('f-email'))+' — usually the same day.”</b>':
+    'No WhatsApp or email — the adviser will <b>text or call</b> them with the estimate.');
+  li.push(ar==='bodywork'
+    ? 'Bodywork is paid at the end — <b>no deposit</b> to book it in.'
+    : 'Mechanical work of £200 or more (inc VAT) needs a <b>50% deposit</b> and signed T&Cs to book. Fleet accounts are on terms.');
+  li.push('If they message again on WhatsApp, it goes on this job — don’t start a new one.');
+  return '<div class="next"><div class="sec">What happens next</div><ol>'+li.map(function(x){return '<li>'+x+'</li>';}).join('')+'</ol></div>';
+}
+
+// =============================================================================
+// QUICK ROUTES — no estimate. Each one still lands in the CRM.
+//   straight     → SOs to Raise (stage 'so'), on the mechanical calendar
+//   consumables  → POs to Raise (stage 'po'), internal, parts marked consumable
+//   staffparts   → POs to Raise (stage 'po'), internal
+// =============================================================================
+var STRAIGHT=[
+  {k:'mot4',  n:'MOT — Class 4',        s:'Cars and small vans',          inc:50,  vatFree:true, len:1},
+  {k:'mot7',  n:'MOT — Class 7',        s:'Vans 3,000–3,500 kg',          inc:58,  vatFree:true, len:1},
+  {k:'remap1',n:'Remap — Stage 1',      s:'Software only',                inc:240, len:2},
+  {k:'remap2',n:'Remap — Stage 2',      s:'Software only — hardware is quoted, not here', inc:360, len:2},
+  {k:'diag',  n:'Diagnostic',           s:'Pick the tier below',          inc:null,len:1},
+  {k:'tyrefit',n:'Tyre fit',            s:'£20 per tyre, labour only',    inc:20,  len:1},
+  {k:'other', n:'Other fixed-price job',s:'Only a price Logan has set',   inc:null,len:1}
+];
+var straightK=null;
+function straightPick(){return STRAIGHT.filter(function(x){return x.k===straightK;})[0]||null;}
+var CONSUMABLE_HINTS=['Engine oil 5W-30','Engine oil 5W-40','Engine oil 0W-20','Coolant / antifreeze','Screenwash','AdBlue',
+  'Brake fluid DOT 4','Brake cleaner','Gear oil','Power steering fluid','Nitrile gloves','Blue roll','Rags','Seat covers','Floor mats (paper)','Copper grease','WD-40'];
+
+function pickQuick(k){
+  quickMode=k;straightK=null;
+  ['straight','consumables','staffparts'].forEach(function(q){
+    var b=document.getElementById('qk-'+q);if(b)b.classList.toggle('sel',q===k);});
+  document.getElementById('quick-off').style.display=k?'block':'none';
+  document.getElementById('ess-card').style.display=(k==='consumables'||k==='staffparts')?'none':'block';
+  document.getElementById('words-box').style.display=k==='straight'?'none':'block';
+  document.getElementById('brain-out').style.display=k==='straight'?'none':'block';
+  document.getElementById('jt-card').style.display=k?'none':'block';
+  document.querySelector('.step-bar').style.display=k?'none':'flex';
+  var qp=document.getElementById('quick-panel');
+  if(!k){qp.innerHTML='';updateNeeds();return;}
+  if(k==='straight')qp.innerHTML=straightPanel();
+  if(k==='consumables')qp.innerHTML=consumablesPanel();
+  if(k==='staffparts')qp.innerHTML=staffPartsPanel();
+  if(k!=='straight')addItemRow();
+  updateNeeds();
+  if(k!=='straight')qp.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function needByField(){
+  return fld('Needed by <span class="req">*</span>','q-need','select',['Today — urgent','Tomorrow','This week','No rush']);
+}
+function straightPanel(){
+  return card('Straight job — what are they here for?',
+    note('n-gold','<strong>No estimate.</strong> The price is fixed, so it skips estimating and goes straight to <b>SOs to Raise</b> in the CRM. '+
+      'If anything else is found while it’s in, that goes through the full intake as additional work.')+
+    '<div id="st-grid">'+STRAIGHT.map(function(x){
+      return '<button class="big-btn" id="st-'+x.k+'" onclick="pickStraight(\''+x.k+'\')"><span>'+x.n+
+        '<span class="svc-sub">'+x.s+(x.inc?' — <b>£'+x.inc+(x.vatFree?' (no VAT)':' inc VAT')+'</b>':'')+'</span></span></button>';}).join('')+'</div>'+
+    '<div id="st-extra"></div>'+
+    '<div class="grid2"><div class="fg"><label class="fl">Make</label><input class="fi" id="q-make" placeholder="e.g. Ford"/></div>'+
+    '<div class="fg"><label class="fl">Model</label><input class="fi" id="q-model" placeholder="e.g. Transit"/></div></div>'+
+    '<div class="grid2"><div class="fg"><label class="fl">Booked for</label><input class="fi" id="q-date" type="date"/></div>'+
+    '<div class="fg"><label class="fl">Time</label><input class="fi" id="q-time" type="time" step="900"/></div></div>'+
+    fld('Is the car here now?','q-onsite','select',['Yes — it’s on site','No — coming in on the booking'])+
+    fld('Anything else to note','q-notes','textarea','e.g. customer waiting, keys in the office')+
+    '<div id="st-dep"></div>'+
+    '<button class="btn btn-gold" id="q-sub" onclick="submitQuick()">✓ Send to CRM — SOs to Raise</button>')+
+    '';
+}
+function pickStraight(k){
+  straightK=k;
+  STRAIGHT.forEach(function(x){var b=document.getElementById('st-'+x.k);if(b)b.classList.toggle('sel',x.k===k);});
+  var ex=document.getElementById('st-extra'),h='';
+  if(k==='diag')h=fld('Diagnostic tier','q-diag','select',Object.keys(PRICES.diagnostic).map(function(t){return t+' — £'+PRICES.diagnostic[t]+' + VAT';}))+
+    note('n-amber','If it has to go deeper, the customer pays for both tiers. Say that up front.');
+  if(k==='other')h=fld('What is the job?','q-other','text','e.g. Headlight bulb fit')+
+    fld('Agreed price, inc VAT (£)','q-price','text','e.g. 45')+
+    note('n-amber','Only use a price Logan has set. If you’re not sure, it needs an estimate — use the full intake.');
+  if(k==='remap1'||k==='remap2')h='<div class="tog-row" style="margin-bottom:10px"><label class="tog"><input type="checkbox" id="q-remap-told"><span class="tsl"></span></label>'+
+    '<div><div style="font-size:14px;font-weight:700">Told the customer to declare the remap to their insurer</div>'+
+    '<div style="font-size:11px;color:#888">Must be said before it’s booked</div></div></div>';
+  if(k==='tyrefit')h=fld('How many tyres','q-tyres','select',['1','2','3','4'])+
+    note('n-amber','Tyres we supply need pricing — that’s the full intake (Mechanical → Tyres), not this.');
+  ex.innerHTML=h;
+  paintDeposit();
+  var sel=ex.querySelectorAll('select,input');for(var i=0;i<sel.length;i++)sel[i].addEventListener('change',paintDeposit);
+}
+function straightPrice(){
+  var sp=straightPick();if(!sp)return null;
+  if(sp.k==='diag'){var t=fval('q-diag');if(!t)return null;var ex=PRICES.diagnostic[t.split(' — ')[0]];return ex?{inc:+(ex*1.2).toFixed(2),ex:ex,vatFree:false}:null;}
+  if(sp.k==='other'){var p=parseFloat(fval('q-price').replace(/[^0-9.]/g,''));return p?{inc:p,ex:+(p/1.2).toFixed(2),vatFree:false}:null;}
+  if(sp.k==='tyrefit'){var n=parseInt(fval('q-tyres'),10)||1;return {inc:sp.inc*n,ex:+(sp.inc*n/1.2).toFixed(2),vatFree:false};}
+  return {inc:sp.inc,ex:sp.vatFree?sp.inc:+(sp.inc/1.2).toFixed(2),vatFree:!!sp.vatFree};
+}
+function paintDeposit(){
+  var el=document.getElementById('st-dep');if(!el)return;
+  var pr=straightPrice();
+  if(!pr){el.innerHTML='';return;}
+  el.innerHTML=pr.inc>=200
+    ? note('n-amber','<strong>£'+pr.inc.toFixed(2)+' inc VAT — deposit needed.</strong> 50% up front (£'+(pr.inc/2).toFixed(2)+') and signed T&Cs before it’s booked. Accounts take the payment, not you.')
+    : note('n-green','<strong>£'+pr.inc.toFixed(2)+(pr.vatFree?' (no VAT)':' inc VAT')+'</strong> — under £200, so no deposit. Paid on collection.');
+}
+function consumablesPanel(){
+  return card('Consumables order',
+    note('n-blue','For stock we hold — oil, coolant, screenwash, AdBlue, cleaners, gloves, rags. It goes to <b>Parts</b> at <b>POs to Raise</b>; they check what’s in and raise the order. '+
+      'Oil for a <b>specific customer’s car</b> (e.g. from the dealer) goes on that job, not here.')+
+    '<datalist id="cons-list">'+CONSUMABLE_HINTS.map(function(x){return '<option value="'+esc(x)+'">';}).join('')+'</datalist>'+
+    '<label class="fl">What’s needed <span class="req">*</span></label><div id="q-items"></div>'+
+    '<button class="btn btn-ghost" style="padding:9px;font-size:13px;margin-bottom:14px" onclick="addItemRow()">+ Add another</button>'+
+    needByField()+
+    fld('Preferred supplier (if any)','q-sup','text','e.g. Euro Car Parts')+
+    fld('Notes','q-notes','textarea','e.g. we’re down to the last 5L of 5W-30')+
+    '<button class="btn btn-gold" id="q-sub" onclick="submitQuick()">✓ Send to CRM — POs to Raise</button>');
+}
+function staffPartsPanel(){
+  return card('Parts for staff',
+    note('n-blue','A technician needs a part, or the workshop needs kit. It goes to <b>Parts</b> at <b>POs to Raise</b>. '+
+      '<br><b>If the customer will pay for extra work</b>, that’s not this — use the full intake so it gets priced.')+
+    '<datalist id="staff-list-dl">'+STAFF.map(function(x){return '<option value="'+esc(x.n)+'">';}).join('')+'</datalist>'+
+    '<div class="fg"><label class="fl">Who needs it <span class="req">*</span></label>'+
+      '<input class="fi" id="q-who" list="staff-list-dl" value="'+esc(staffName||'')+'" placeholder="Name"/></div>'+
+    '<div class="fg"><label class="fl">What’s it for <span class="req">*</span></label>'+
+      '<select class="fi" id="q-for" onchange="document.getElementById(\'q-car\').style.display=this.value===\'car\'?\'block\':\'none\'">'+
+      '<option value="">— Select —</option><option value="car">A car that’s already in</option><option value="kit">Workshop kit, tools or equipment</option></select></div>'+
+    '<div id="q-car" style="display:none"><div class="grid2">'+
+      '<div class="fg"><label class="fl">Reg <span class="req">*</span></label><input class="fi fi-reg" id="q-reg" maxlength="8" placeholder="AB12CDE" style="font-size:16px" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,\'\')"/></div>'+
+      '<div class="fg"><label class="fl">Job number</label><input class="fi" id="q-job" placeholder="J123456"/></div></div></div>'+
+    '<label class="fl">Parts <span class="req">*</span></label><div id="q-items"></div>'+
+    '<button class="btn btn-ghost" style="padding:9px;font-size:13px;margin-bottom:14px" onclick="addItemRow()">+ Add another</button>'+
+    needByField()+
+    fld('Notes','q-notes','textarea','e.g. old one snapped on removal')+
+    '<button class="btn btn-gold" id="q-sub" onclick="submitQuick()">✓ Send to CRM — POs to Raise</button>');
+}
+function addItemRow(){
+  var box=document.getElementById('q-items');if(!box)return;
+  var isCons=quickMode==='consumables';
+  var d=document.createElement('div');d.className='q-item';
+  d.style.cssText='display:grid;grid-template-columns:'+(isCons?'1fr 80px':'1fr 90px 64px')+' 30px;gap:6px;margin-bottom:8px;align-items:center';
+  d.innerHTML='<input class="fi qi-name" placeholder="'+(isCons?'e.g. Engine oil 5W-30':'Part name')+'"'+(isCons?' list="cons-list"':'')+'/>'+
+    (isCons?'':'<input class="fi qi-num" placeholder="Part no."/>')+
+    '<input class="fi qi-qty" placeholder="'+(isCons?'Qty / 20L':'Qty')+'" value="1"/>'+
+    '<button onclick="this.parentNode.remove();updateNeeds()" style="border:none;background:none;font-size:18px;color:#aaa;cursor:pointer" aria-label="Remove">✕</button>';
+  box.appendChild(d);
+  var n=d.querySelector('.qi-name');if(box.children.length>1)n.focus();
+}
+function quickItems(){
+  return Array.from(document.querySelectorAll('#q-items .q-item')).map(function(r){
+    var g=function(c){var e=r.querySelector(c);return e?e.value.trim():'';};
+    return {name:g('.qi-name'),num:g('.qi-num'),qty:g('.qi-qty')||'1'};
+  }).filter(function(x){return x.name;});
+}
+async function submitQuick(){
+  var must=missingList().filter(function(x){return x.lvl==='must';}).map(function(x){return x.l;});
+  if(must.length){alert('Still need: '+must.join(', ')+'.');document.getElementById('need').classList.add('open');return;}
+  var btn=document.getElementById('q-sub');btn.disabled=true;btn.textContent='Sending…';
+  var ts=new Date().toLocaleString('en-GB'),now=new Date().toISOString(),job;
+  var base={id:newJobId(),intakeKey:newIntakeKey(),fromIntakeApp:true,fromForm:false,
+    by:staffName,createdAt:ts,stageAt:Date.now(),pathway:2,source:fval('f-source')||'',
+    notes:fval('q-notes'),asap:fval('q-need')==='Today — urgent',priority:fval('q-need')==='Today — urgent',
+    tmJob:'',tmPart:'',est:null,finalEst:null,finalNotes:'',make:'',model:'',year:'',mileage:''};
+
+  if(quickMode==='straight'){
+    var sp=straightPick(),pr=straightPrice();
+    var what=sp.k==='diag'?'Diagnostic — '+fval('q-diag'):sp.k==='other'?fval('q-other'):
+      sp.k==='tyrefit'?'Tyre fit ×'+(fval('q-tyres')||'1'):sp.n;
+    job=Object.assign(base,{
+      reg:fval('f-reg').toUpperCase(),name:fval('f-name'),phone:fval('f-phone'),
+      wa:fval('f-haswa')!=='no',waNumber:fval('f-haswa')==='diff'?fval('f-wa'):(fval('f-haswa')==='yes'?fval('f-phone'):''),
+      email:fval('f-email'),sendEstimateBy:fval('f-haswa')!=='no'?'whatsapp':(fval('f-email')?'email':'sms/call'),make:fval('q-make'),model:fval('q-model'),
+      work:'STRAIGHT — '+what,jobType:'straight',area:'mechanical',serviceType:'straight',serviceLabel:'⚡ Straight job',
+      isStraight:true,noEstimate:true,isInternal:false,custType:'Retail',
+      fixedPrice:pr?{label:what,incVat:pr.inc,exVat:pr.ex,vatFree:pr.vatFree,depositDue:pr.inc>=200?+(pr.inc/2).toFixed(2):0}:null,
+      finalNotes:'Fixed price: £'+(pr?pr.inc.toFixed(2):'?')+(pr&&pr.vatFree?' (no VAT)':' inc VAT')+' — '+what,
+      bookedFor:fval('q-date')||'',bookedTime:fval('q-time')||'',bookSide:'mechanical',bookLen:sp.len,bookUnit:'hours',
+      ramp:fval('q-onsite').indexOf('Yes')===0,parts:[],stage:'so',
+      judgement:{sop_version:SOP_VERSION,job_type:'straight',straight:sp.k,channel:channel,
+        remap_insurance_told:sp.k.indexOf('remap')===0?fchk('q-remap-told'):null,captured_by:staffName,captured_at:now}
+    });
+  } else {
+    var items=quickItems(),cons=quickMode==='consumables',forCar=fval('q-for')==='car';
+    job=Object.assign(base,{
+      reg:cons?'STOCK':(forCar?fval('q-reg').toUpperCase():'WORKSHOP'),
+      name:cons?'CONSUMABLES — shop stock':'STAFF PARTS — for '+fval('q-who'),phone:'',
+      work:(cons?'Consumables order: ':'Parts for '+fval('q-who')+': ')+
+        items.map(function(x){return x.name+(x.qty&&x.qty!=='1'?' ×'+x.qty:'');}).join(', '),
+      jobType:quickMode,area:null,serviceType:quickMode,serviceLabel:cons?'🛢 Consumables':'🔩 Parts for staff',
+      isInternal:true,custType:'Internal (stock)',linkedJob:forCar?fval('q-job'):'',
+      parts:items.map(function(x){var p={name:x.name,num:x.num||'',qty:x.qty,price:'',supplier:fval('q-sup')||'',status:'pending'};
+        if(cons){p.consumable='1';}return p;}),
+      stage:'po',neededBy:fval('q-need'),
+      judgement:{sop_version:SOP_VERSION,job_type:quickMode,needed_by:fval('q-need'),for:cons?'stock':fval('q-for'),
+        requested_by:cons?staffName:fval('q-who'),captured_by:staffName,captured_at:now}
+    });
+  }
+  job.log=[{t:ts,s:'Intake v'+INTAKE_BUILD+' by '+staffName+' — '+job.serviceLabel+' · straight to '+(job.stage==='so'?'SOs to Raise':'POs to Raise')}];
+
+  var saved=false;try{saved=await pushJob(job);}catch(e){}
+  if(!saved){var q=readQueue();q.push(job);writeQueue(q);}
+  btn.disabled=false;
+  document.getElementById('scr-form').style.display='none';
+  document.getElementById('scr-success').style.display='block';
+  updateNeeds();
+  document.getElementById('suc-msg').innerHTML='<strong style="font-family:monospace;font-size:18px">'+esc(job.id)+'</strong><br>'+
+    '<strong>'+esc(job.serviceLabel)+'</strong><br>'+esc(job.reg)+' · '+esc(job.name)+'<br>'+esc(job.work)+'<br><br>'+
+    (saved?'<span style="color:var(--green)">✓ Saved to CRM — '+(job.stage==='so'?'SOs to Raise':'POs to Raise')+'</span>':
+      '<span style="color:var(--amber)">⚠ Saved offline — will sync</span>');
+  var li=quickMode==='straight'
+    ? ['It’s in the CRM at <b>SOs to Raise</b>'+(job.bookedFor?' and on the mechanical calendar for '+esc(job.bookedFor)+(job.bookedTime?' at '+esc(job.bookedTime):''):' — <b>no date yet</b>, so add one in the CRM')+'.',
+       job.fixedPrice&&job.fixedPrice.depositDue?'Deposit of <b>£'+job.fixedPrice.depositDue.toFixed(2)+'</b> and signed T&Cs before it’s booked — accounts take it.':'No deposit — it’s paid on collection.',
+       'Anything else found while it’s in goes through the full intake as additional work.']
+    : ['It’s in the CRM at <b>POs to Raise</b> — Parts will check stock and raise the order.',
+       job.asap?'Marked <b>urgent</b> — tell Parts in person too.':'Parts work to the “needed by” date.'];
+  document.getElementById('suc-next').innerHTML='<div class="next"><div class="sec">What happens next</div><ol>'+
+    li.map(function(x){return '<li>'+x+'</li>';}).join('')+'</ol></div>';
+  syncQueue();
+}
+
+paintChannels();
+updateNeeds();
+window.addEventListener('resize',updateNeeds);
+
 paintAIPill();
 
 syncQueue();
