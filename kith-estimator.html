@@ -1812,7 +1812,26 @@ if('serviceWorker' in navigator){
 }
 $('btnAlerts').onclick=openAlerts;
 // New work turns up without anyone pressing Refresh
-setInterval(()=>{if(ME&&!$('scr-queue').hidden)loadQueue(true);},30000);
+// Egress saver (29 Sep 2026): only re-download the job list when something
+// actually changed, and never while the phone screen is off / tab hidden.
+let _qStamp=null;
+async function _queueChanged(){
+  try{
+    const r=await fetch(CRM.url.replace(/\/$/,'')+'/rest/v1/'+CRM.table+
+      '?select=updated_at&id=neq.__notifs__&order=updated_at.desc&limit=1',
+      {headers:{apikey:CRM.key,Authorization:'Bearer '+CRM.key}});
+    if(!r.ok)return true;
+    const a=await r.json();const st=(a&&a[0]&&a[0].updated_at)||'';
+    if(st===_qStamp)return false;
+    _qStamp=st;return true;
+  }catch(e){return true;}
+}
+async function _queueTick(){
+  if(document.hidden||!ME||$('scr-queue').hidden)return;
+  if(await _queueChanged())loadQueue(true);
+}
+setInterval(_queueTick,30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)_queueTick();});
 
 $('btnHideCust').onclick=()=>{$('card-customer').hidden=true;};
 $('btnDoneLabour').onclick=()=>finishSection('labour');
