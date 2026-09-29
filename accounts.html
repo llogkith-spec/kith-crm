@@ -1067,7 +1067,7 @@ function crmPayablesCard() {
 // anything in the CRM has changed; if so, reload CRM data and redraw.
 var _liveLast = null, _liveTimer = null, _livePending = false, _liveBusy = false, _liveAt = null;
 async function _liveStamp() {
-  var r = await fetch(SB+'/rest/v1/jobs?select=updated_at&order=updated_at.desc&limit=1', {headers:SH});
+  var r = await fetch(SB+'/rest/v1/jobs?select=updated_at&id=neq.__notifs__&order=updated_at.desc&limit=1', {headers:SH});
   if (!r.ok) throw new Error('HTTP '+r.status);
   var a = await r.json();
   return (a && a[0] && a[0].updated_at) || '';
