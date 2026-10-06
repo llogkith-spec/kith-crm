@@ -5363,12 +5363,20 @@ function estMismatch(j,d){
     return Math.abs(d.read.gross-q)>0.5?{pdf:d.read.gross,crm:q}:null;
   }catch(e){return null;}
 }
+// 6 Oct 2026: the PDF is now fetched wherever a Send button shows (the
+// Techman list too, not just the adviser box). Before, the 💬 Send next
+// to the PDF at sign-off had nothing cached, so a phone fell back to a
+// plain wa.me link with no attachment.
+var EST_FAILS={};   // url -> number of failed fetches
+var EST_WAIT={};    // url -> true while someone has tapped Send and is waiting
 function prefetchEstFile(j,d){
-  if(!d||EST_FILES[d.url]||waAuto())return;
+  if(!d||!d.url||EST_FILES[d.url]||waAuto())return;
   EST_FILES[d.url]='loading';
-  fetch(d.url).then(r=>{if(!r.ok)throw new Error(r.status);return r.blob();}).then(b=>{
-    EST_FILES[d.url]=new File([b],estDocName(j,d),{type:b.type||(estIsImage(d)?'image/jpeg':'application/pdf')});
-  }).catch(()=>{delete EST_FILES[d.url];});
+  fetch(d.url,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(r.status);return r.blob();}).then(b=>{
+    EST_FILES[d.url]=new File([b],estDocName(j,d),{type:(b.type&&b.type!=='application/octet-stream')?b.type:(estIsImage(d)?'image/jpeg':'application/pdf')});
+    delete EST_FAILS[d.url];
+    if(EST_WAIT[d.url]){delete EST_WAIT[d.url];try{estSetStatus(j,'✓ PDF ready — tap 💬 Send again to attach it.','var(--green)');}catch(e){}}
+  }).catch(()=>{delete EST_FILES[d.url];EST_FAILS[d.url]=(EST_FAILS[d.url]||0)+1;});
 }
 function estSetStatus(j,html,col){
   document.querySelectorAll('.est-send-st[data-id="'+j.id+'"]').forEach(el=>{el.innerHTML=html;el.style.color=col||'var(--dim)';});
@@ -5406,8 +5414,14 @@ function estManualSend(j,d,num,text,viaShare){
     });
     return 'share';
   }
-  if(d&&f==='loading'&&canShareFiles()&&(estIsPhone()||viaShare)){
-    estSetStatus(j,'Getting the PDF ready — tap again in a second.','var(--amber)');
+  // Phone, file not in hand yet: fetch it now and ask for a second tap,
+  // rather than opening WhatsApp with no attachment. Only after two
+  // failed downloads does it fall back to the link + saved PDF.
+  if(d&&(!f||f==='loading')&&canShareFiles()&&(estIsPhone()||viaShare)&&(EST_FAILS[d.url]||0)<2){
+    EST_WAIT[d.url]=true;
+    if(!f)prefetchEstFile(j,d);
+    estSetStatus(j,'Getting the PDF ready — tap 💬 Send again in a second.','var(--amber)');
+    if(typeof toast==='function')toast('Getting the PDF ready — tap Send again');
     return 'wait';
   }
   // Computer: open the chat with the message, and save the PDF under a
@@ -9773,6 +9787,7 @@ function refreshEstimateDocs(j){
 }
 function estimateDocsInner(j,readOnly){
   const docs=j.estimateDocs||[];
+  if(estPhone(j))docs.forEach(d=>{try{prefetchEstFile(j,d);}catch(e){}});
   const nag=(!docs.length&&!readOnly&&['financial','parts'].includes(j.stage))
     ? '<div style="background:rgba(160,120,20,.18);border:2px solid var(--amber);border-radius:var(--rs);padding:8px 10px;margin-bottom:8px;font-size:11px;color:var(--amber);font-weight:700">'+
       '\u26a0 Attach the Techman estimate before this goes to the adviser \u2014 they cannot quote the customer without it.</div>'
@@ -9789,7 +9804,8 @@ function estimateDocsInner(j,readOnly){
           '<a href="'+escHtml(d.url)+'" download target="_blank" class="btn btn-ghost btn-xs">Download</a>'+
           (estPhone(j)?'<button class="btn btn-xs" style="background:var(--green);color:#111;font-weight:700" onclick="sendEstimateWA(\''+j.id+'\','+i+')">💬 Send</button>':'')+
           (readOnly?'':'<button class="btn btn-ghost btn-xs" style="color:var(--red)" onclick="removeEstimateDoc(\''+j.id+'\','+i+')">\u00d7</button>')+
-        '</div>'+tmReadH(j,d,i,readOnly)).join('')
+        '</div>'+tmReadH(j,d,i,readOnly)).join('')+
+        (estPhone(j)?'<div class="est-send-st" data-id="'+escHtml(j.id)+'" style="font-size:11px;margin-top:5px;line-height:1.5"></div>':'')
       : '<div style="font-size:11px;color:var(--faint);margin-bottom:6px">'+(readOnly?'No estimate document attached yet.':'Attach the Techman estimate PDF so the adviser can send it straight to the customer.')+'</div>')+
     (readOnly?'':
       '<label class="btn btn-ghost btn-sm" style="display:inline-block;margin-top:6px;cursor:pointer">\ud83d\udcc4 Attach PDF / photo'+
