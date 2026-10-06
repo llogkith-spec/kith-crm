@@ -3255,12 +3255,38 @@ function signOff(id){
     alert('\u26d4 No phone number on '+(j.reg||'this job')+'.\n\nThe quote is sent to the customer the moment you approve it, so it needs a number.');
     return;
   }
+  // Phone, PDF not downloaded yet: get it first, so the share sheet can
+  // attach it on the next tap (iOS only allows it straight after a tap).
+  if(!waAuto()&&canShareFiles()&&estIsPhone()){
+    const d0=estDocFor(j), f0=d0&&EST_FILES[d0.url];
+    if(d0&&(!f0||f0==='loading')&&(EST_FAILS[d0.url]||0)<2){
+      EST_WAIT[d0.url]=true;
+      if(!f0)prefetchEstFile(j,d0);
+      if(typeof toast==='function')toast('Getting the PDF ready — tap Send again in a second');
+      return;
+    }
+  }
   const from=j.stage;
   let out;
   try{ out=KITHBot.approveAndSend(j,currentUser.name); }
   catch(e){ alert('\u26d4 '+e.message); return; }
   // copy the approved job back over the one on screen
   Object.keys(out.job).forEach(k=>{ j[k]=out.job[k]; });
+  // 6 Oct 2026: until the WhatsApp Business connection is on, the outbox
+  // can't send anything, so Approve opens WhatsApp itself in this same
+  // tap — message written, Techman PDF attached on a phone. Nothing to type.
+  let byHand='';
+  if(!waAuto()){
+    const d=estDocFor(j), num=estPhone(j);
+    if(num){
+      const text=d?estimateWAMsg(j):(out.message.text||estimateWAMsg(j));
+      byHand=estManualSend(j,d,num,text,false)||'';
+      if(byHand==='share'||byHand==='opened'){
+        out.message.status='sent';out.message.sentVia='whatsapp (from the CRM, by hand)';
+        j.msgOutbox=(j.msgOutbox||[]).map(m=>m&&m.id===out.message.id?out.message:m);
+      }
+    }
+  }
   save(j);
   queueOutbox(out.message);
   try{stampStage(j,'contacted');}catch(e){}
@@ -9719,19 +9745,27 @@ async function readTechmanDoc(id,i,quiet){
     const prep=isPdf?await pdfToPrep(await blob.arrayBuffer()):await prepImage(new File([blob],d.name||'estimate.jpg',{type:blob.type||'image/jpeg'}));
     const r=cleanTmRead(await aiScan(prep,TM_PROMPT));
     if(!r.labourHours&&!r.gross)throw new Error('No labour or total found on it');
-    d.read=Object.assign({state:'ok',at:ts(),by:currentUser?currentUser.name:''},r);
-    j.log=j.log||[];
-    j.log.push({t:ts(),s:'🔍 Read '+(d.name||'estimate')+': '+r.labourHours+'h labour'+(r.gross?', total £'+r.gross.toFixed(2):'')});
-    save(j);
-    const diffs=tmDiffs(j,r);
-    if(diffs.length&&typeof notify==='function')notify('🔍 '+escHtml(j.reg||'')+' — the Techman estimate differs from the CRM<div style="font-size:11px;font-weight:500;margin-top:2px">'+diffs.map(x=>escHtml(x.t)).join('<br>')+'</div>','warn');
+    // 6 Oct 2026: the read takes a while; the job may have been approved and
+    // moved on meanwhile. Write onto the job as it is NOW, never the copy
+    // from before the read, or it drags the stage back to sign-off.
+    const jn=jobs.find(x=>x.id===id)||j;
+    const dn=(jn.estimateDocs||[]).find(x=>x&&x.url===d.url)||d;
+    dn.read=Object.assign({state:'ok',at:ts(),by:currentUser?currentUser.name:''},r);
+    jn.log=jn.log||[];
+    jn.log.push({t:ts(),s:'🔍 Read '+(d.name||'estimate')+': '+r.labourHours+'h labour'+(r.gross?', total £'+r.gross.toFixed(2):'')});
+    save(jn);
+    const j2=jn;
+    const diffs=tmDiffs(j2,r);
+    if(diffs.length&&typeof notify==='function')notify('🔍 '+escHtml(j2.reg||'')+' — the Techman estimate differs from the CRM<div style="font-size:11px;font-weight:500;margin-top:2px">'+diffs.map(x=>escHtml(x.t)).join('<br>')+'</div>','warn');
   }catch(e){
     console.warn('Techman read:',e);
-    d.read={state:'err',at:ts(),error:String(e&&e.message||e).slice(0,120)};
-    save(j);
-    if(!quiet&&typeof notify==='function')notify('⚠ Could not read '+escHtml(d.name||'the estimate')+' — '+escHtml(d.read.error),'err');
+    const jn=jobs.find(x=>x.id===id)||j;
+    const dn=(jn.estimateDocs||[]).find(x=>x&&x.url===d.url)||d;
+    dn.read={state:'err',at:ts(),error:String(e&&e.message||e).slice(0,120)};
+    save(jn);
+    if(!quiet&&typeof notify==='function')notify('⚠ Could not read '+escHtml(d.name||'the estimate')+' — '+escHtml(dn.read.error),'err');
   }
-  refreshEstimateDocs(j);
+  refreshEstimateDocs(jobs.find(x=>x.id===id)||j);
 }
 function applyTechmanRead(id,i){
   const j=jobs.find(x=>x.id===id);if(!j||!j.estimateDocs||!j.estimateDocs[i])return;
