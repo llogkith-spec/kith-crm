@@ -510,7 +510,8 @@ function saveSales() {
 }
 
 function showTab(tab) {
-  ['dash','pos','ro','sos','ap','ar','expenses','recurring','bank','payroll','reports','search','cash','sales'].forEach(function(t){
+  var _onEl = document.querySelector('.tab.on'); var _tabWas = _onEl ? _onEl.id.replace(/^tab-/,'') : '';
+  ['dash','pos','ro','sos','ap','ar','expenses','recurring','bank','payroll','reports','search','cash','cashbook','sales'].forEach(function(t){
     var el = document.getElementById('v-'+t);
     if (el) el.style.display = t===tab?'block':'none';
   });
@@ -529,7 +530,8 @@ function showTab(tab) {
   if(tab==='payroll') rPayroll();
   if(tab==='reports') rReports();
   if(tab==='search') rSearch();
-  if(tab==='cash') rCashFlow();
+  if(tab==='cash') rCashFlow(_tabWas === 'cash');
+  if(tab==='cashbook') rCashBook(_tabWas === 'cashbook');
   if(tab==='sales') rSales();
 }
 
@@ -1688,216 +1690,7 @@ function chaseSaleById(id) {
   setTimeout(rAR, 500);
 }
 
-// ========== PAYROLL ==========
-// Reads clock-in shifts from kith_shifts + kith_staff, groups by month,
-// multiplies by hourly rate, tracks paid status per person per month.
-var currentPayrollMonth = (function(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");})(new Date());  // "YYYY-MM"
-
-async function fetchStaff() {
-  try {
-    var r = await fetch(SB+'/rest/v1/kith_staff?select=*&order=name.asc', {headers:SH});
-    return await r.json() || [];
-  } catch(e) { console.warn('fetchStaff:',e); return []; }
-}
-async function fetchShifts(month) {
-  try {
-    // Exact instants for UK midnight at each end. The old version lost the
-    // last day of the month to the summer-time hour.
-    var s0 = new Date(month + '-01T00:00:00');
-    var e0 = new Date(s0); e0.setMonth(e0.getMonth()+1);
-    var url = SB+'/rest/v1/kith_shifts?clock_in=gte.'+encodeURIComponent(s0.toISOString())+
-              '&clock_in=lt.'+encodeURIComponent(e0.toISOString())+'&select=*';
-    var r = await fetch(url, {headers:SH});
-    return await r.json() || [];
-  } catch(e) { console.warn('fetchShifts:',e); return []; }
-}
-async function fetchPayrollPaid(month) {
-  try {
-    var r = await fetch(SB+'/rest/v1/kith_payroll?month=eq.'+encodeURIComponent(month)+'&select=*', {headers:SH});
-    return await r.json() || [];
-  } catch(e) { return []; }
-}
-function shiftMonth(ym, delta) {
-  var parts = ym.split('-');
-  var d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, 1);
-  d.setMonth(d.getMonth()+delta);
-  // Local, not toISOString: in UK summer time midnight on the 1st is still
-  // the previous month in UTC, which sent the arrows one month short.
-  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-}
-function setPayrollMonth(ym) { currentPayrollMonth = ym; rPayroll(); }
-
-async function rPayroll() {
-  var el = document.getElementById('v-payroll');
-  el.innerHTML = '<div style="padding:40px;text-align:center;color:#888">Loading payroll…</div>';
-
-  var staff = await fetchStaff();
-  var shifts = await fetchShifts(currentPayrollMonth);
-  var paidRecs = await fetchPayrollPaid(currentPayrollMonth);
-
-  if (!staff.length) {
-    el.innerHTML =
-      '<h2 style="font-size:20px;font-weight:800">💷 Payroll</h2>'+
-      '<div style="'+cardStyle()+'color:#888;text-align:center;padding:30px;margin-top:14px">'+
-        'No staff set up yet. Run <strong>kith-timesheets-schema.sql</strong> in Supabase to seed your team.'+
-      '</div>';
-    return;
-  }
-
-  // Aggregate minutes worked per staff for this month
-  var byStaff = {};
-  staff.forEach(function(s){
-    byStaff[s.id] = {
-      id:s.id, name:s.name, role:s.role||'', rate:parseFloat(s.hourly_rate)||0,
-      mins:0, shifts:0, paid:false, paidAt:null
-    };
-  });
-  shifts.forEach(function(sh){
-    var b = byStaff[sh.staff_id];
-    if (!b) return;
-    if (!sh.clock_out) return;  // still open — skip
-    var mins = Math.max(0, Math.floor((new Date(sh.clock_out) - new Date(sh.clock_in)) / 60000));
-    b.mins += mins; b.shifts += 1;
-  });
-  paidRecs.forEach(function(rec){
-    if (byStaff[rec.staff_id]) {
-      byStaff[rec.staff_id].paid = !!rec.paid;
-      byStaff[rec.staff_id].paidAt = rec.paid_at;
-    }
-  });
-
-  var list = Object.keys(byStaff).map(function(k){return byStaff[k];});
-  list.forEach(function(p){ p.hours = p.mins/60; p.gross = p.hours * p.rate; });
-
-  var totalHours = list.reduce(function(s,x){return s+x.hours;},0);
-  var totalGross = list.reduce(function(s,x){return s+x.gross;},0);
-  var paidTotal   = list.filter(function(x){return x.paid;}).reduce(function(s,x){return s+x.gross;},0);
-  var unpaidTotal = totalGross - paidTotal;
-
-  var prev = shiftMonth(currentPayrollMonth,-1);
-  var next = shiftMonth(currentPayrollMonth,+1);
-
-  el.innerHTML =
-    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
-      '<div>'+
-        '<h2 style="font-size:20px;font-weight:800">💷 Payroll</h2>'+
-        '<div style="font-size:12px;color:#888;margin-top:2px">Hours from clock-in ×  hourly rate</div>'+
-      '</div>'+
-      '<button onclick="expPayrollCSV()" style="'+btnStyle('#fff','#1a1a2e',true)+'">⬇ CSV</button>'+
-    '</div>'+
-
-    // Month picker
-    '<div style="display:flex;justify-content:center;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">'+
-      '<button onclick="setPayrollMonth(\''+prev+'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:8px 14px;font-size:12px">←</button>'+
-      '<div style="font-size:18px;font-weight:800;padding:0 12px;min-width:180px;text-align:center">'+monthLabel(currentPayrollMonth)+'</div>'+
-      '<button onclick="setPayrollMonth(\''+next+'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:8px 14px;font-size:12px">→</button>'+
-    '</div>'+
-
-    // Summary tiles
-    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">'+
-      sc('Total Hours', totalHours.toFixed(1),  '#1565c0')+
-      sc('Total Gross', '£'+totalGross.toFixed(2),  '#1a1a2e')+
-      sc('Paid',   '£'+paidTotal.toFixed(2),  '#2e7d32')+
-      sc('Unpaid', '£'+unpaidTotal.toFixed(2),'#c62828')+
-    '</div>'+
-
-    '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
-    '<table style="width:100%;border-collapse:collapse">'+
-    th(['Name','Role','Shifts','Hours','Rate £/h','Gross','Status',''])+
-    '<tbody>'+list.map(function(p){
-      var h = Math.floor(p.mins/60), m = p.mins%60;
-      var noRate = !p.rate;
-      var noWork = p.mins === 0;
-      return '<tr style="'+(noRate && !noWork?'background:#fff5f5':'')+'">'+
-        td('<strong>'+escapeHtml(p.name)+'</strong>')+
-        td('<span style="font-size:12px;color:#888">'+escapeHtml(p.role)+'</span>')+
-        td(p.shifts||'—')+
-        td(noWork?'<span style="color:#ccc">—</span>':('<strong>'+h+'h '+m+'m</strong>'))+
-        td('<span onclick="editRate(\''+p.id+'\')" style="cursor:pointer;color:'+(noRate?'#c62828':'#1565c0')+';text-decoration:underline">'+(noRate?'Set rate':'£'+p.rate.toFixed(2))+'</span>')+
-        td(noRate||noWork?'<span style="color:#ccc">—</span>':('<strong style="color:#1565c0">£'+p.gross.toFixed(2)+'</strong>'))+
-        td(p.paid
-           ? '<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700">PAID</span>'
-           : (noWork?'<span style="color:#ccc;font-size:11px">—</span>':'<span style="color:#c62828;font-size:11px;font-weight:700">Unpaid</span>'))+
-        td(noWork
-           ? ''
-           : p.paid
-             ? '<button onclick="markPayrollUnpaid(\''+p.id+'\')" style="'+btnStyle('#fff','#888',true)+'padding:3px 8px;font-size:10px">Undo</button>'
-             : (noRate ? '<span style="font-size:10px;color:#c62828">Set rate first</span>'
-                        : '<button onclick="markPayrollPaid(\''+p.id+'\','+p.mins+','+p.rate+')" style="'+btnStyle('#2e7d32','#fff')+'padding:4px 10px;font-size:11px">✓ Paid</button>'))+
-      '</tr>';
-    }).join('')+'</tbody></table></div>'+
-    '<p style="margin-top:12px;font-size:12px;color:#888">Tap the rate to set/edit it. Tap ✓ Paid once you\'ve settled with the person — the figure locks against that month.</p>';
-}
-
-async function editRate(staffId) {
-  var r = prompt('Hourly rate (£) — enter as a number, e.g. 12.50');
-  if (r === null) return;
-  var n = parseFloat(r);
-  if (isNaN(n) || n < 0) { alert('Not a valid number.'); return; }
-  try {
-    var resp = await fetch(SB+'/rest/v1/kith_staff?id=eq.'+encodeURIComponent(staffId), {
-      method:'PATCH', headers:SH,
-      body: JSON.stringify({hourly_rate: n})
-    });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-  } catch(e) { alert('Save failed: '+e.message); return; }
-  rPayroll();
-}
-
-async function markPayrollPaid(staffId, mins, rate) {
-  var hours = mins/60;
-  var gross = hours * rate;
-  var body = {
-    id: staffId + '_' + currentPayrollMonth,
-    staff_id: staffId, month: currentPayrollMonth,
-    hours: hours, rate: rate, gross: gross,
-    paid: true, paid_at: new Date().toISOString(), paid_by: user
-  };
-  try {
-    await fetch(SB+'/rest/v1/kith_payroll', {
-      method:'POST', headers:SH,
-      body: JSON.stringify(body)
-    });
-  } catch(e) { alert('Save failed: '+e.message); return; }
-  rPayroll();
-}
-async function markPayrollUnpaid(staffId) {
-  try {
-    await fetch(SB+'/rest/v1/kith_payroll?id=eq.'+encodeURIComponent(staffId+'_'+currentPayrollMonth), {
-      method:'DELETE', headers:SH
-    });
-  } catch(e) {}
-  rPayroll();
-}
-
-function expPayrollCSV() {
-  // Re-render then export whatever the table currently shows
-  fetchStaff().then(function(staff){
-    fetchShifts(currentPayrollMonth).then(function(shifts){
-      fetchPayrollPaid(currentPayrollMonth).then(function(paidRecs){
-        var byStaff = {};
-        staff.forEach(function(s){ byStaff[s.id] = {name:s.name, role:s.role||'', rate:parseFloat(s.hourly_rate)||0, mins:0, shifts:0}; });
-        shifts.forEach(function(sh){
-          var b=byStaff[sh.staff_id]; if(!b||!sh.clock_out) return;
-          b.mins += Math.max(0, Math.floor((new Date(sh.clock_out)-new Date(sh.clock_in))/60000));
-          b.shifts += 1;
-        });
-        var rows = [['Name','Role','Shifts','Hours','Rate £/h','Gross £','Status','Paid At']];
-        Object.keys(byStaff).forEach(function(id){
-          var p = byStaff[id];
-          var rec = paidRecs.find(function(x){return x.staff_id===id;});
-          rows.push([
-            p.name, p.role, p.shifts, (p.mins/60).toFixed(2),
-            p.rate.toFixed(2), (p.mins/60*p.rate).toFixed(2),
-            rec&&rec.paid?'PAID':'Unpaid',
-            rec&&rec.paid_at?rec.paid_at.slice(0,10):''
-          ]);
-        });
-        dl(rows, 'KITH-Payroll-'+currentPayrollMonth);
-      });
-    });
-  });
-}
+// (payroll moved to the cash / money module near the end of the script)
 
 // ========== GLOBAL SEARCH ==========
 var searchTerm = '';
@@ -2042,72 +1835,6 @@ function _cashPeriodLabel(k) {
     return 'Week of ' + s.toLocaleDateString('en-GB',{day:'numeric',month:'short'}) + ' – ' + e.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
   }
   return monthLabel(k);
-}
-
-function rCashFlow() {
-  var el = document.getElementById('v-cash');
-
-  // Aggregate paid outgoings and incomings
-  var groups = {};
-  invs.filter(function(i){return i.status==='paid';}).forEach(function(i){
-    var d = normDate(i.paidAt || i.date || i.createdAt);
-    if (!d) return;
-    var k = _cashPeriodKey(d);
-    if (!groups[k]) groups[k] = {key:k, out:0, in:0, outCount:0, inCount:0};
-    groups[k].out += (parseFloat(i.net)||0) + (parseFloat(i.vat)||0);
-    groups[k].outCount++;
-  });
-  sales.filter(function(s){return s.paid;}).forEach(function(s){
-    var d = normDate(s.paidAt || s.date);
-    if (!d) return;
-    var k = _cashPeriodKey(d);
-    if (!groups[k]) groups[k] = {key:k, out:0, in:0, outCount:0, inCount:0};
-    groups[k].in += parseFloat(s.amount)||0;
-    groups[k].inCount++;
-  });
-
-  var keys = Object.keys(groups).sort().reverse();  // most recent first
-  var totalOut = keys.reduce(function(s,k){return s + groups[k].out;},0);
-  var totalIn  = keys.reduce(function(s,k){return s + groups[k].in;},0);
-  var totalNet = totalIn - totalOut;
-
-  el.innerHTML =
-    '<h2 style="font-size:20px;font-weight:800;margin-bottom:6px">📊 Cash Flow</h2>'+
-    '<div style="font-size:12px;color:#888;margin-bottom:14px">Money OUT (bills paid) vs money IN (customer payments received)</div>'+
-
-    // Period toggle
-    '<div style="'+cardStyle()+'margin-bottom:14px;padding:12px 14px">'+
-      '<div style="'+stitle()+'margin-bottom:8px">Group by</div>'+
-      '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
-        cashChip('day','Day') +
-        cashChip('week','Week') +
-        cashChip('month','Month') +
-      '</div>'+
-    '</div>'+
-
-    // Summary tiles
-    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">'+
-      sc('Money OUT (total)', '£'+totalOut.toFixed(2), '#c62828')+
-      sc('Money IN (total)',  '£'+totalIn.toFixed(2),  '#2e7d32')+
-      sc('Net', (totalNet>=0?'+':'')+'£'+totalNet.toFixed(2), totalNet>=0?'#2e7d32':'#c62828')+
-    '</div>'+
-
-    // Table
-    (keys.length
-      ? '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
-        '<table style="width:100%;border-collapse:collapse">'+
-          th(['Period','Money OUT','Money IN','Net'])+
-          '<tbody>'+keys.map(function(k){
-            var g = groups[k], net = g.in - g.out;
-            return '<tr>'+
-              td('<strong>'+escapeHtml(_cashPeriodLabel(k))+'</strong>')+
-              td(g.out>0 ? '<span style="color:#c62828;font-weight:700">£'+g.out.toFixed(2)+'</span><div style="font-size:10px;color:#888">'+g.outCount+' bill'+(g.outCount===1?'':'s')+'</div>' : '<span style="color:#ccc">—</span>')+
-              td(g.in>0 ? '<span style="color:#2e7d32;font-weight:700">£'+g.in.toFixed(2)+'</span><div style="font-size:10px;color:#888">'+g.inCount+' payment'+(g.inCount===1?'':'s')+'</div>' : '<span style="color:#ccc">—</span>')+
-              td('<strong style="color:'+(net>=0?'#2e7d32':'#c62828')+';font-size:15px">'+(net>=0?'+':'')+'£'+net.toFixed(2)+'</strong>')+
-            '</tr>';
-          }).join('')+
-        '</tbody></table></div>'
-      : '<div style="'+cardStyle()+'color:#888;text-align:center;padding:40px">Nothing to show yet. Paid bills and paid customer invoices will appear here as they happen.</div>');
 }
 
 function cashChip(period, label) {
@@ -4047,8 +3774,15 @@ var bankStaff = [];
 var bankLastMsg = '';       // result of the last upload, kept across redraws
 
 // Transaction categories: everything a bill can be, plus the bank-only ones
-var BANK_OUT_CATS = ['Wages'].concat(BILL_CATS).concat(['Transfer (own account)','Director / personal']);
-var BANK_IN_CATS  = ['Customer payment','Card machine payout','Insurance / fleet payment','Refund received','Transfer (own account)','Director loan in','Other income'];
+// Cash moving between the bank and the cash tin is neither spending nor
+// income: the cash book counts it when it is taken or spent, so these two are
+// treated like own-account transfers everywhere money is totalled.
+var CAT_CASH_BANKED = 'Cash banked (from tin)';
+var CAT_CASH_DRAWN  = 'Cash withdrawn (to tin)';
+var BANK_OUT_CATS = ['Wages'].concat(BILL_CATS).concat(['Transfer (own account)', CAT_CASH_DRAWN, 'Director / personal']);
+var BANK_IN_CATS  = ['Customer payment','Card machine payout','Insurance / fleet payment','Refund received','Transfer (own account)', CAT_CASH_BANKED,'Director loan in','Other income'];
+var BANK_CASH_IN_RE  = /^cash\b|\bcash (deposit|paid in|credit|lodge?ment)|counter credit|paid in at|lodge?ment|\bcdm\b|deposit machine|post office.*(deposit|cash)/i;
+var BANK_CASH_OUT_RE = /\batm\b|cash withdrawal|cash wdl|cashpoint|\bcash machine\b|^cash\b/i;
 var BANK_IN_RULES = [
   [/sumup|dojo|worldpay|zettle|square|stripe|paypal|teya|takepayments|elavon|barclaycard|lloyds cardnet|payment ?sense/i, 'Card machine payout'],
   [/insurance|direct line|admiral|aviva|axa|lv=|\blv\b|churchill|hastings|allianz|\baa\b|\brac\b|green flag|pga|warranty/i, 'Insurance / fleet payment']
@@ -4402,6 +4136,9 @@ function classifyBankTx(t) {
   else if (t.dir === 'out' && (/\bwages?\b|salary|payroll/i.test(sp.ref) || _staffMatch(sp.payee))) {
     t.cat = 'Wages'; t.status = 'auto'; var st = _staffMatch(sp.payee); t.how = st ? 'staff: ' + st.name : 'reference says wages';
   }
+  // cash going between the bank and the tin
+  else if (t.dir === 'in' && BANK_CASH_IN_RE.test(t.desc || '')) { t.cat = CAT_CASH_BANKED; t.status = 'auto'; t.how = 'cash paid in'; }
+  else if (t.dir === 'out' && (t.type === 'ATM' || BANK_CASH_OUT_RE.test(t.desc || ''))) { t.cat = CAT_CASH_DRAWN; t.status = 'auto'; t.how = 'cash withdrawal'; }
   else if (t.dir === 'out' && /refund/i.test(sp.ref)) { t.cat = 'Customer refunds'; t.status = 'auto'; t.how = 'reference says refund'; }
   else if (t.dir === 'in' && /^refund from|refund/i.test(t.desc)) { t.cat = 'Refund received'; t.status = 'auto'; t.how = 'refund'; }
   else if (t.dir === 'in' && BANK_IN_RULES.some(function(r){ if (r[0].test(sp.payee + ' ' + sp.ref)) { t.cat = r[1]; return true; } return false; })) { t.status = 'auto'; t.how = 'known payer'; }
@@ -4412,13 +4149,13 @@ function classifyBankTx(t) {
     }
   }
   // 5. a bill it pays — suggested, never matched without you confirming
-  if (t.dir === 'out' && t.cat !== 'Transfer (own account)' && t.cat !== 'Wages') {
+  if (t.dir === 'out' && !_isTransfer(t) && t.cat !== 'Wages') {
     var c = _billCandidates(t);
     if (c.length === 1) t.suggestBill = c[0].id;
   }
   // money in: which job is it paying?
   t.suggestJob = null;
-  if (t.dir === 'in' && t.cat !== 'Transfer (own account)' && t.cat !== 'Card machine payout' && !t.jobId) {
+  if (t.dir === 'in' && !_isTransfer(t) && t.cat !== 'Card machine payout' && !t.jobId) {
     var jc = _jobCandidates(t);
     if (jc.length === 1) { t.suggestJob = jc[0].id; if (!t.cat) { t.cat = 'Customer payment'; t.status = 'auto'; t.how = 'matches a job'; } }
   }
@@ -4492,7 +4229,8 @@ function rejectJobMatch(id) {
 }
 function noJobOk(id) { var t = _bankTxById(id); if (!t) return; t.noJobOk = true; t.confirmed = true; persistBankTx(t); rBank(); }
 
-function _isTransfer(t) { return t.cat === 'Transfer (own account)'; }
+function _isTransfer(t) { return t.cat === 'Transfer (own account)' || t.cat === CAT_CASH_BANKED || t.cat === CAT_CASH_DRAWN; }
+function _isCashMove(t) { return t.cat === CAT_CASH_BANKED || t.cat === CAT_CASH_DRAWN; }
 // What a transaction needs from you, if anything
 function bankNeed(t) {
   if (_isTransfer(t)) return '';
@@ -4574,7 +4312,7 @@ function _bankTxById(id) { return bankTx.filter(function(t){ return t.id === id;
 function setBankCat(id, cat) {
   var t = _bankTxById(id); if (!t || !cat) return;
   t.cat = cat; t.status = 'set'; t.confirmed = true; t.how = 'set by ' + (user||'');
-  if (cat === 'Transfer (own account)' || cat === 'Wages') t.suggestBill = null;
+  if (cat === 'Transfer (own account)' || cat === 'Wages' || cat === CAT_CASH_BANKED || cat === CAT_CASH_DRAWN) { t.suggestBill = null; t.suggestJob = null; }
   persistBankTx(t);
   // remember it for this payee, and apply to the others still undecided
   var key = _payeeKey(t.payee);
@@ -4702,7 +4440,9 @@ async function rBank(skipLoad, keepFocus) {
   var noRec = out.filter(function(t){return bankNeed(t)==='receipt';});
   var noCat = monthTx.filter(function(t){return bankNeed(t)==='category';});
   var toConfirm = monthTx.filter(function(t){return bankNeed(t)==='confirm' || bankNeed(t)==='confirmjob';});
-  var transfersIn = monthTx.filter(function(t){return _isTransfer(t) && t.dir==='in';}).reduce(function(s,t){return s+t.amount;},0);
+  var transfersIn = monthTx.filter(function(t){return _isTransfer(t) && !_isCashMove(t) && t.dir==='in';}).reduce(function(s,t){return s+t.amount;},0);
+  var cashPaidIn = monthTx.filter(function(t){return t.cat===CAT_CASH_BANKED && t.dir==='in';}).reduce(function(s,t){return s+t.amount;},0);
+  var cashDrawn  = monthTx.filter(function(t){return t.cat===CAT_CASH_DRAWN && t.dir==='out';}).reduce(function(s,t){return s+t.amount;},0);
   var realIn = monthTx.filter(function(t){return t.dir==='in' && !_isTransfer(t);}).reduce(function(s,t){return s+t.amount;},0);
   var fees = monthTx.reduce(function(s,t){return s+(t.fee||0);},0);
 
@@ -4794,6 +4534,8 @@ async function rBank(skipLoad, keepFocus) {
       sc('⚠ No bill / receipt ('+noRec.length+')', _gbp(noRec.reduce(function(s,t){return s+t.amount;},0)), '#e65100')+
       sc('Money in (not transfers)', _gbp(realIn), '#2e7d32')+
       sc('Top-ups / transfers in', _gbp(transfersIn), '#888')+
+      (cashPaidIn ? sc('💵 Cash paid in from the tin', _gbp(cashPaidIn), '#888') : '')+
+      (cashDrawn ? sc('💵 Cash taken out to the tin', _gbp(cashDrawn), '#888') : '')+
       sc('Bank transfer fees', _gbp(fees), '#888')+
     '</div>'+
 
@@ -5114,6 +4856,954 @@ function delSale(i){if(!confirm('Delete?'))return;sales.splice(i,1);saveSales();
 function expSales(){dl([['Date','Job#','Reg','Customer','Description','Amount','Source']].concat(sales.map(function(s){return[s.date,s.ref,s.reg,s.customer,s.desc,(+s.amount).toFixed(2),s.source];})),'KITH-Sales');}
 function expCSV(){dl([['PO#','Reg','Part(s)','Supplier','ex-VAT','VAT','inc-VAT','ETA','Paid']].concat(POs.map(function(p){var n=+p.price||0;return[p.id,p.jobReg||'',p.partName,p.supplier,n.toFixed(2),(+p.vat||0).toFixed(2),(+p.gross||0).toFixed(2),p.eta||'',p.paid?'Yes':'No'];})),'KITH-POs');}
 function dl(rows,name){var csv=rows.map(function(r){return r.map(function(v){return'"'+String(v||'').replace(/"/g,'""')+'"';}).join(',');}).join('\n');var blob=new Blob(['\uFEFF'+csv],{type:'text/csv'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=name+'-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);}
+
+// ========== CASH TIN (cash book) ==========
+// Cash customers hand over goes into the tin. From there it is spent, paid
+// to staff, taken by the director or paid into the bank. Nothing tracked
+// that before, so cash simply vanished from the books. Every movement is
+// recorded here and the tin is counted, so "what should be in it" can be
+// checked against "what is in it".
+//
+// Stored in kith_bank_tx (rows with id CASH-…, data.kind = 'cash'), so no new
+// table is needed. The bank loader ignores these rows.
+//
+// Cash taken from customers is NOT typed in here: it is read from the
+// payments on CRM jobs whose method is Cash, so it can't be missed or
+// counted twice. Cash paid into / drawn out of the bank is matched against
+// the bank statement automatically.
+
+var cashEntries = [];
+var cashLoaded = false;
+var cashMonth = '';
+var cashStaff = [];
+
+var CASH_TYPES = {
+  job:      {label:'Taken from customer', sign:+1, col:'#2e7d32', icon:'🚗'},
+  otherin:  {label:'Other cash in',       sign:+1, col:'#2e7d32', icon:'➕'},
+  topup:    {label:'Cash added to tin',   sign:+1, col:'#1565c0', icon:'⬆'},
+  spent:    {label:'Spent',               sign:-1, col:'#c62828', icon:'🧾'},
+  wages:    {label:'Wages paid in cash',  sign:-1, col:'#e65100', icon:'💷'},
+  advance:  {label:'Staff advance',       sign:-1, col:'#e65100', icon:'💷'},
+  drawings: {label:'Taken by director',   sign:-1, col:'#6a1b9a', icon:'👤'},
+  banked:   {label:'Paid into bank',      sign:-1, col:'#1565c0', icon:'🏦'},
+  count:    {label:'Tin counted',         sign:0,  col:'#1a1a2e', icon:'🧮'}
+};
+
+function _cashToday() { return _ymdL(new Date()); }
+function _cashT(date, when) {
+  // ordering inside a day: today's entries at the moment they're made,
+  // back-dated ones at midday, counts at the end of their day
+  if (date === _cashToday()) return Date.now();
+  return new Date(date + (when === 'end' ? 'T23:59:00' : 'T12:00:00')).getTime();
+}
+
+async function loadCash() {
+  var rows = [];
+  try {
+    for (var off = 0; off < 20000; off += 1000) {
+      var r = await fetch(SB+'/rest/v1/kith_bank_tx?select=id,data&id=like.CASH-*&order=id.asc&limit=1000&offset='+off, {headers:SH});
+      if (!r.ok) throw new Error('HTTP '+r.status);
+      var page = await r.json();
+      rows = rows.concat(page || []);
+      if (!page || page.length < 1000) break;
+    }
+    cashEntries = rows.map(function(r){ return r.data; }).filter(function(d){ return d && d.kind === 'cash'; });
+    cashLoaded = true;
+  } catch(e) { console.warn('loadCash', e); }
+  try { if (!cashStaff.length) { cashStaff = await fetchStaff(); if (!Array.isArray(cashStaff)) cashStaff = []; } } catch(e) { cashStaff = []; }
+  return cashEntries;
+}
+function persistCash(e) { sbUp('kith_bank_tx', {id: e.id, data: e, updated_at: new Date().toISOString()}); }
+
+// Cash payments taken on CRM jobs (refunds given in cash come through negative)
+function _cashFromJobs() {
+  var out = [];
+  (sales || []).forEach(function(s){
+    if (!s._crm) return;
+    (s.payments || []).forEach(function(p, i){
+      if (p.writeOff || !/cash/i.test(p.method || '')) return;
+      var amt = parseFloat(p.amount) || 0;
+      if (!amt) return;
+      var day = _bkDay(p.ts || p.at);
+      if (!day) return;
+      out.push({id:'JOB-'+s.id+'-'+i, type:'job', derived:true, date:day,
+        t: typeof p.ts === 'number' ? p.ts : new Date(day+'T12:00:00').getTime(),
+        amount: amt, jobId: s.id, reg: s.reg || '', customer: s.customer || '',
+        note: (amt < 0 ? 'Cash refund' : (/deposit/i.test(p.ref||'') ? 'Deposit' : 'Payment')) + (p.by ? ' · taken by ' + p.by : ''),
+        refund: amt < 0});
+    });
+  });
+  return out;
+}
+
+// Bank lines for cash going in/out of the bank. Each one is matched to the
+// entry someone typed in the cash book (same amount, within 7 days); any
+// left over is added from the statement so the tin balance stays right.
+function _cashFromBank(manual) {
+  var out = [];
+  var tx = (typeof bankTx !== 'undefined' ? bankTx : []);
+  manual.forEach(function(e){ delete e._onStmt; });
+  tx.forEach(function(t){
+    var type = t.cat === CAT_CASH_BANKED && t.dir === 'in' ? 'banked'
+             : t.cat === CAT_CASH_DRAWN && t.dir === 'out' ? 'topup' : '';
+    if (!type) return;
+    var hit = manual.filter(function(e){
+      return e.type === type && !e._onStmt && (type !== 'topup' || e.source !== 'owner') &&
+             Math.abs((+e.amount||0) - t.amount) < 0.011 && Math.abs(daysBetween(e.date, t.date)) <= 7;
+    })[0];
+    if (hit) { hit._onStmt = t; return; }
+    out.push({id:'BANK-'+t.id, type:type, derived:true, fromBank:true, date:t.date,
+      t:new Date(t.date+'T12:00:00').getTime(), amount:t.amount, bankTxId:t.id,
+      note:(type==='banked'?'Paid in — ':'Withdrawn — ') + (t.acct||'') + ' statement'});
+  });
+  return out;
+}
+
+// Everything in order, with the running "should be in the tin" balance.
+// A count resets the balance to what was actually there and records the
+// difference.
+function cashLedger() {
+  var manual = cashEntries.slice();
+  var all = manual.concat(_cashFromJobs()).concat(_cashFromBank(manual));
+  all.sort(function(a,b){ return (a.date||'').localeCompare(b.date||'') || (a.t||0) - (b.t||0); });
+  var bal = 0, started = false, lastCount = null, sinceCount = {in:0, out:0};
+  all.forEach(function(e){
+    var ty = CASH_TYPES[e.type] || {sign:0};
+    if (e.type === 'count') {
+      e._expected = started ? +bal.toFixed(2) : null;
+      e._diff = started ? +((+e.counted||0) - bal).toFixed(2) : null;
+      bal = +e.counted || 0; started = true; lastCount = e;
+      sinceCount = {in:0, out:0};
+    } else {
+      var v = ty.sign * (+e.amount || 0);
+      bal += v;
+      if (v >= 0) sinceCount.in += v; else sinceCount.out -= v;
+    }
+    e._bal = +bal.toFixed(2);
+  });
+  return {all:all, balance:+bal.toFixed(2), started:started, lastCount:lastCount, sinceCount:sinceCount};
+}
+
+function _cashBadge(type) {
+  var ty = CASH_TYPES[type] || {label:type, col:'#888', icon:''};
+  return '<span style="background:'+ty.col+'15;color:'+ty.col+';padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;white-space:nowrap">'+ty.icon+' '+escapeHtml(ty.label)+'</span>';
+}
+
+function setCashMonth(m) { cashMonth = m; rCashBook(true); }
+
+async function rCashBook(skipLoad) {
+  var el = document.getElementById('v-cashbook'); if (!el) return;
+  if (!skipLoad || !cashLoaded) {
+    if (!cashLoaded) el.innerHTML = '<div style="padding:40px;text-align:center;color:#888">Loading the cash book…</div>';
+    await Promise.all([loadCash(), (typeof bankLoaded !== 'undefined' && !bankLoaded) ? loadBank() : null]);
+  }
+  var L = cashLedger();
+  var months = {}; months[_cashToday().slice(0,7)] = true;
+  L.all.forEach(function(e){ if (e.date) months[e.date.slice(0,7)] = true; });
+  var mKeys = Object.keys(months).sort().reverse();
+  if (!cashMonth || !months[cashMonth]) cashMonth = mKeys[0];
+
+  var inM = L.all.filter(function(e){ return (e.date||'').slice(0,7) === cashMonth; });
+  var sum = function(types){ return inM.filter(function(e){ return types.indexOf(e.type) >= 0; }).reduce(function(s,e){ return s + (+e.amount||0); }, 0); };
+  var taken = sum(['job']), otherIn = sum(['otherin','topup']), spent = sum(['spent']),
+      wages = sum(['wages','advance']), banked = sum(['banked']), drawn = sum(['drawings']);
+  var lc = L.lastCount;
+  var countAge = lc ? daysBetween(lc.date, _cashToday()) : null;
+
+  var rows = inM.slice().reverse().map(function(e){
+    var ty = CASH_TYPES[e.type] || {sign:0};
+    var signed = ty.sign * (+e.amount||0);
+    var what = '';
+    if (e.type === 'job') what = (e.jobId ? jobLink(e.jobId, (e.reg||'') + ' ' + (e.customer||'')) : '') + '<div style="font-size:11px;color:#888">'+escapeHtml(e.note||'')+'</div>';
+    else if (e.type === 'count') what = '<strong>Counted '+_gbp(e.counted)+'</strong>' +
+        (e._diff === null ? '<div style="font-size:11px;color:#888">Starting point</div>'
+          : Math.abs(e._diff) < 0.01 ? '<div style="font-size:11px;color:#2e7d32;font-weight:700">✓ Matches — expected '+_gbp(e._expected)+'</div>'
+          : '<div style="font-size:11px;color:#c62828;font-weight:700">'+(e._diff<0?'SHORT ':'OVER ')+_gbp(Math.abs(e._diff))+' — expected '+_gbp(e._expected)+'</div>') +
+        (e.note ? '<div style="font-size:11px;color:#888">'+escapeHtml(e.note)+'</div>' : '');
+    else {
+      var head = e.type === 'spent' ? (escapeHtml(e.payee||'') + (e.cat ? ' <span style="font-size:11px;color:#888">· '+escapeHtml(e.cat)+'</span>' : ''))
+               : (e.type === 'wages' || e.type === 'advance') ? '<strong>'+escapeHtml(e.staffName||'')+'</strong>'
+               : '';
+      var bill = e.billId ? invs.filter(function(i){ return i.id === e.billId; })[0] : null;
+      what = (head ? '<div style="font-weight:600">'+head+'</div>' : '') +
+        (e.note ? '<div style="font-size:11px;color:#888">'+escapeHtml(e.note)+'</div>' : '') +
+        (bill ? '<div style="font-size:11px;color:#2e7d32">✓ pays bill '+escapeHtml(bill.supplier||'')+' '+escapeHtml(bill.num||'')+'</div>' : '') +
+        (e.docPath ? '<a onclick="openCashReceipt(\''+e.id+'\')" style="font-size:11px;color:#1565c0;cursor:pointer;text-decoration:underline">📎 receipt</a>' : (e.type === 'spent' ? '<span style="font-size:10px;color:#e65100">no receipt</span>' : '')) +
+        ((e.type === 'banked' || (e.type === 'topup' && e.source !== 'owner')) && !e.derived
+          ? (e._onStmt ? ' <span style="font-size:10px;color:#2e7d32">✓ on '+escapeHtml(e._onStmt.acct||'bank')+' statement</span>' : ' <span style="font-size:10px;color:#888">waiting for the bank statement</span>') : '') +
+        (e.fromBank ? '<div style="font-size:10px;color:#888">from the bank statement — nobody logged it in the tin</div>' : '');
+    }
+    var by = e.by ? '<div style="font-size:10px;color:#bbb">'+escapeHtml(e.by)+'</div>' : '';
+    var del = (!e.derived && e.type !== 'wages') ? '<a onclick="deleteCashEntry(\''+e.id+'\')" style="font-size:10px;color:#bbb;cursor:pointer" title="Delete">✕</a>' : '';
+    return '<tr>'+
+      td('<span style="font-size:12px;color:#888;white-space:nowrap">'+escapeHtml(e.date)+'</span>'+by)+
+      td(_cashBadge(e.type))+
+      td(what)+
+      td(e.type === 'count' ? '' : '<strong style="color:'+(signed>=0?'#2e7d32':'#c62828')+';white-space:nowrap">'+(signed>=0?'+':'−')+_gbp(Math.abs(signed))+'</strong>')+
+      td('<span style="white-space:nowrap;color:#555">'+_gbp(e._bal)+'</span>')+
+      td(del)+
+    '</tr>';
+  }).join('');
+
+  var btn = function(type, label, bg, col){ return '<button onclick="openCashForm(\''+type+'\')" style="'+btnStyle(bg, col, bg==='#fff')+'padding:9px 14px">'+label+'</button>'; };
+
+  el.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">'+
+      '<h2 style="font-size:20px;font-weight:800">💵 Cash Tin</h2>'+
+      '<div style="display:flex;gap:8px;align-items:center">'+
+        '<select onchange="setCashMonth(this.value)" style="padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;background:#fff">'+
+          mKeys.map(function(m){ return '<option value="'+m+'"'+(m===cashMonth?' selected':'')+'>'+monthLabel(m)+'</option>'; }).join('')+'</select>'+
+        '<button onclick="expCashCSV()" style="'+btnStyle('#fff','#1a1a2e',true)+'">⬇ CSV</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="font-size:12px;color:#888;margin-bottom:14px">Cash taken on jobs comes in automatically from the CRM. Log everything that leaves the tin, and count it at the end of each week.</div>'+
+
+    (!L.started
+      ? '<div style="background:#fff3e0;border:1px solid #ffcc80;color:#e65100;border-radius:10px;padding:12px 14px;font-size:13px;margin-bottom:14px;line-height:1.5">'+
+          '<strong>Count the tin to get started.</strong> Until the first count there is no starting point, so the system can\'t say what should be in it. '+
+          '<button onclick="openCashForm(\'count\')" style="'+btnStyle('#e65100','#fff')+'padding:5px 12px;font-size:12px;margin-left:6px">🧮 Count now</button></div>'
+      : (countAge !== null && countAge > 7
+          ? '<div style="background:#fff3e0;border:1px solid #ffcc80;color:#e65100;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:14px">Last count was '+countAge+' days ago. Count it weekly so a shortfall shows up while people still remember why.</div>' : '')) +
+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px">'+
+      sc('Should be in the tin now', L.started ? _gbp(L.balance) : '—', '#1a1a2e')+
+      sc('Last count', lc ? (Math.abs(lc._diff||0) < 0.01 ? '✓ OK' : (lc._diff<0?'Short ':'Over ')+_gbp(Math.abs(lc._diff))) : 'Not counted', lc && Math.abs(lc._diff||0) >= 0.01 ? '#c62828' : '#2e7d32')+
+      sc('Taken from customers', _gbp(taken), '#2e7d32')+
+      sc('Spent from the tin', _gbp(spent), '#c62828')+
+      sc('Wages & advances', _gbp(wages), '#e65100')+
+      sc('Paid into the bank', _gbp(banked), '#1565c0')+
+      (drawn ? sc('Taken by director', _gbp(drawn), '#6a1b9a') : '')+
+      (otherIn ? sc('Other cash added', _gbp(otherIn), '#1565c0') : '')+
+    '</div>'+
+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'+
+      btn('spent','🧾 Cash spent','#c62828','#fff')+
+      btn('banked','🏦 Paid into bank','#1565c0','#fff')+
+      btn('advance','💷 Staff advance','#e65100','#fff')+
+      btn('drawings','👤 Taken by director','#fff','#6a1b9a')+
+      btn('topup','⬆ Cash added','#fff','#1565c0')+
+      btn('otherin','➕ Other cash in','#fff','#2e7d32')+
+      btn('count','🧮 Count the tin','#1a1a2e','#fff')+
+    '</div>'+
+
+    '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
+      (rows ? '<table style="width:100%;border-collapse:collapse">'+th(['Date','What','Detail','Amount','Tin after',''])+'<tbody>'+rows+'</tbody></table>'
+            : '<div style="padding:30px;text-align:center;color:#888">No cash movements in '+monthLabel(cashMonth)+'.</div>')+
+    '</div>'+
+    '<p style="margin-top:10px;font-size:12px;color:#888;line-height:1.5">Cash wages are recorded from the Payroll tab when you mark someone paid. Advances logged here are taken off that person\'s wages for the month. '+
+    'Cash paid into Metro is matched to the statement automatically once it\'s uploaded in the Bank tab.</p>';
+}
+
+// ---- Entry form ----
+function _cashModal(html) {
+  var ov = document.getElementById('ov-cash');
+  if (!ov) {
+    ov = document.createElement('div'); ov.id = 'ov-cash';
+    ov.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:600;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 12px';
+    ov.addEventListener('click', function(ev){ if (ev.target === ov) closeCashForm(); });
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.3)">'+html+'</div>';
+  ov.style.display = 'flex';
+}
+function closeCashForm() { var ov = document.getElementById('ov-cash'); if (ov) ov.style.display = 'none'; }
+function _fLabel(t) { return '<label style="display:block;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.05em;margin:12px 0 4px">'+t+'</label>'; }
+var _fIn = 'width:100%;padding:10px;border:1.5px solid #ddd;border-radius:8px;font-size:15px;box-sizing:border-box;background:#fff';
+
+async function openCashForm(type) {
+  var ty = CASH_TYPES[type];
+  if ((type === 'advance') && !cashStaff.length) { try { cashStaff = await fetchStaff(); } catch(e){} }
+  var L = cashLedger();
+  var h = '<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">'+ty.icon+' '+ty.label+'</h3>'+
+          '<button onclick="closeCashForm()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">✕</button></div>';
+  if (type === 'count') {
+    h += '<div style="font-size:13px;color:#555;margin-top:6px;line-height:1.5">Count every note and coin in the tin. Don\'t look at the expected figure first.</div>'+
+         _fLabel('Counted (£)') + '<input id="cf-amt" inputmode="decimal" style="'+_fIn+'" placeholder="0.00">';
+  } else {
+    h += _fLabel('Amount (£)') + '<input id="cf-amt" inputmode="decimal" style="'+_fIn+'" placeholder="0.00">';
+  }
+  h += _fLabel('Date') + '<input id="cf-date" type="date" value="'+_cashToday()+'" style="'+_fIn+'">';
+  if (type === 'spent') {
+    var unpaid = invs.filter(function(i){ return i.status !== 'paid'; })
+      .sort(function(a,b){ return String(b.date||'').localeCompare(String(a.date||'')); }).slice(0, 150);
+    h += _fLabel('Paid to') + '<input id="cf-payee" style="'+_fIn+'" placeholder="e.g. Euro Car Parts, fuel, window cleaner">'+
+         _fLabel('Category') + '<select id="cf-cat" style="'+_fIn+'"><option value="">— choose —</option>'+BILL_CATS.map(function(c){ return '<option>'+escapeHtml(c)+'</option>'; }).join('')+'</select>'+
+         (unpaid.length ? _fLabel('Pays a bill already in the system? (optional)') + '<select id="cf-bill" style="'+_fIn+'"><option value="">— no —</option>'+
+           unpaid.map(function(i){ var tot = (parseFloat(i.net)||0)+(parseFloat(i.vat)||0); return '<option value="'+escapeHtml(i.id)+'">'+escapeHtml((i.supplier||'?')+' · '+(i.num||'')+' · '+_gbp(tot)+(i.date?' · '+i.date:''))+'</option>'; }).join('')+'</select>' : '')+
+         _fLabel('Receipt photo') + '<input id="cf-file" type="file" accept="image/*,application/pdf" style="font-size:13px">';
+  }
+  if (type === 'advance') {
+    h += _fLabel('Who') + '<select id="cf-staff" style="'+_fIn+'"><option value="">— choose —</option>'+
+         cashStaff.filter(function(s){ return s.active !== false; }).map(function(s){ return '<option value="'+escapeHtml(s.id)+'">'+escapeHtml(s.name)+'</option>'; }).join('')+'</select>'+
+         '<div style="font-size:11px;color:#888;margin-top:4px">Taken off their wages for this month in Payroll.</div>';
+  }
+  if (type === 'topup') {
+    h += _fLabel('Where did it come from?') + '<select id="cf-source" style="'+_fIn+'"><option value="bank">Withdrawn from the business bank</option><option value="owner">Put in by the director / float from outside</option></select>';
+  }
+  if (type === 'banked') {
+    h += '<div style="font-size:11px;color:#888;margin-top:4px">Matched to the Metro statement automatically when it\'s uploaded.</div>';
+  }
+  h += _fLabel('Note') + '<input id="cf-note" style="'+_fIn+'" placeholder="'+(type==='otherin'?'e.g. scrap metal, sold old tyres':'optional')+'">';
+  h += '<div id="cf-err" style="color:#c62828;font-size:13px;margin-top:10px"></div>'+
+       '<button id="cf-save" onclick="saveCashForm(\''+type+'\')" style="'+btnStyle('#1a1a2e','#fff')+'width:100%;margin-top:14px;padding:12px;font-size:15px">Save</button>';
+  _cashModal(h);
+  setTimeout(function(){ var a = document.getElementById('cf-amt'); if (a) a.focus(); }, 50);
+}
+
+async function saveCashForm(type) {
+  var v = function(id){ var el = document.getElementById(id); return el ? el.value : ''; };
+  var err = function(m){ document.getElementById('cf-err').textContent = m; };
+  var amt = parseMoney(v('cf-amt'));
+  if (isNaN(amt) || amt < 0 || (type !== 'count' && amt === 0)) return err('Enter the amount.');
+  var date = v('cf-date') || _cashToday();
+  if (date > _cashToday()) return err('That date is in the future.');
+  var e = {kind:'cash', id:'CASH-' + Date.now() + '-' + Math.floor(Math.random()*10000), type:type, date:date,
+           t:_cashT(date, type === 'count' ? 'end' : ''), amount:+amt.toFixed(2), note:v('cf-note').trim(),
+           by:user || '', at:ts()};
+  if (type === 'count') { e.counted = e.amount; e.amount = 0; }
+  if (type === 'spent') {
+    e.payee = v('cf-payee').trim(); e.cat = v('cf-cat');
+    if (!e.payee) return err('Who was it paid to?');
+    if (!e.cat) return err('Pick a category — it\'s how you see where the money goes.');
+    var bid = v('cf-bill');
+    if (bid) e.billId = bid;
+  }
+  if (type === 'advance') {
+    var sid = v('cf-staff'); if (!sid) return err('Who took the advance?');
+    var st = cashStaff.filter(function(s){ return String(s.id) === String(sid); })[0];
+    e.staffId = sid; e.staffName = st ? st.name : ''; e.month = date.slice(0,7);
+  }
+  if (type === 'topup') e.source = v('cf-source') || 'bank';
+  var saveBtn = document.getElementById('cf-save'); if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+
+  var fileEl = document.getElementById('cf-file');
+  if (fileEl && fileEl.files && fileEl.files[0]) {
+    var path = await sbUploadDoc(fileEl.files[0], 'cash');
+    if (path) e.docPath = path;
+  }
+  if (e.billId) {
+    var bill = invs.filter(function(i){ return i.id === e.billId; })[0];
+    if (bill) { bill.status = 'paid'; bill.paidAt = date; bill.paidVia = 'Cash'; bill.cashEntryId = e.id; persistInv(bill); }
+  }
+  if (type === 'count') {
+    var L = cashLedger();
+    // expected at the moment of counting, for the record
+    var before = L.all.filter(function(x){ return (x.date||'') < date || ((x.date||'') === date && (x.t||0) <= e.t); });
+    e.expected = L.started && before.length ? before[before.length-1]._bal : null;
+  }
+  cashEntries.push(e); persistCash(e);
+  closeCashForm();
+  rCashBook(true);
+  if (type === 'count') {
+    var Lc = cashLedger(); var me = Lc.all.filter(function(x){ return x.id === e.id; })[0];
+    if (me && me._diff !== null && Math.abs(me._diff) >= 0.01)
+      setTimeout(function(){ alert('The tin is ' + (me._diff < 0 ? 'SHORT by ' : 'OVER by ') + _gbp(Math.abs(me._diff)) + '.\n\nExpected ' + _gbp(me._expected) + ', counted ' + _gbp(me.counted) + '.\n\nCheck for cash spent or banked that nobody logged.'); }, 100);
+  }
+}
+
+async function deleteCashEntry(id) {
+  var e = cashEntries.filter(function(x){ return x.id === id; })[0]; if (!e) return;
+  if (!confirm('Delete this ' + (CASH_TYPES[e.type]||{}).label.toLowerCase() + ' entry of ' + _gbp(e.type==='count'?e.counted:e.amount) + '?')) return;
+  if (e.billId) {
+    var bill = invs.filter(function(i){ return i.id === e.billId; })[0];
+    if (bill && bill.cashEntryId === e.id) { bill.status = 'unpaid'; delete bill.paidAt; delete bill.paidVia; delete bill.cashEntryId; persistInv(bill); }
+  }
+  cashEntries = cashEntries.filter(function(x){ return x.id !== id; });
+  await sbDel('kith_bank_tx', id);
+  rCashBook(true);
+}
+
+async function openCashReceipt(id) {
+  var e = cashEntries.filter(function(x){ return x.id === id; })[0]; if (!e || !e.docPath) return;
+  var url = await sbSignedUrl(e.docPath, 3600);
+  if (url) window.open(url, '_blank'); else alert('Could not open the receipt.');
+}
+
+function expCashCSV() {
+  var L = cashLedger();
+  var rows = [['Date','Type','Detail','Category','Staff','In','Out','Counted','Difference','Tin after','By']];
+  L.all.forEach(function(e){
+    var ty = CASH_TYPES[e.type] || {sign:0, label:e.type};
+    var v = ty.sign * (+e.amount||0);
+    rows.push([e.date, ty.label, (e.reg ? e.reg+' '+(e.customer||'')+' ' : '') + (e.payee||'') + (e.note?' '+e.note:''), e.cat||'', e.staffName||'',
+      v > 0 ? v.toFixed(2) : '', v < 0 ? (-v).toFixed(2) : '', e.type==='count' ? (+e.counted).toFixed(2) : '',
+      e.type==='count' && e._diff !== null ? e._diff.toFixed(2) : '', e._bal.toFixed(2), e.by||'']);
+  });
+  dl(rows, 'KITH-Cash-Tin');
+}
+
+
+// ========== MONEY IN / MONEY OUT ==========
+// One place that answers "where did the money come from and where did it go".
+//   IN  = every payment taken on a job, on the day it was taken, by method
+//         (cash, card, bank…) + other money that landed in the bank
+//   OUT = every payment on the bank statements by category
+//         + everything spent out of the cash tin
+// Transfers between your own accounts and cash moving between the bank and
+// the tin are left out, so nothing is counted twice.
+
+var mnPeriod = 'month';
+var mnAnchor = null;
+function mnSetPeriod(p) { mnPeriod = p; rCashFlow(true); }
+function mnShift(d) {
+  var a = new Date((mnAnchor || _bkToday()) + 'T00:00:00');
+  if (mnPeriod === 'week') a.setDate(a.getDate() + 7*d); else a = new Date(a.getFullYear(), a.getMonth() + d, 1);
+  mnAnchor = _ymdL(a); rCashFlow(true);
+}
+function mnToday() { mnAnchor = null; rCashFlow(true); }
+function _mnRange(anchor, period) {
+  var d = new Date((anchor || _bkToday()) + 'T00:00:00'), s, e, label;
+  if (period === 'week') {
+    var mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay()+6) % 7));
+    var sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    s = _ymdL(mon); e = _ymdL(sun);
+    label = 'Week ' + mon.toLocaleDateString('en-GB',{day:'numeric',month:'short'}) + ' – ' + sun.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+  } else {
+    s = _ymdL(new Date(d.getFullYear(), d.getMonth(), 1)); e = _ymdL(new Date(d.getFullYear(), d.getMonth()+1, 0));
+    label = monthLabel(s.slice(0,7));
+  }
+  return {start:s, end:e, label:label};
+}
+
+function _payMethodName(m) {
+  m = String(m || 'Other');
+  return /refund/i.test(m) ? 'Refunds given'
+    : /cash/i.test(m) ? 'Cash'
+    : /card|pdq|sumup|dojo|zettle/i.test(m) ? 'Card'
+    : /bank|transfer|bacs|faster/i.test(m) ? 'Bank transfer'
+    : /finance/i.test(m) ? 'Finance'
+    : /insur/i.test(m) ? 'Insurance'
+    : /account/i.test(m) ? 'On account'
+    : /deposit/i.test(m) ? 'Deposit (method not recorded)'
+    : m;
+}
+
+function _moneyFor(R, ledger) {
+  var inR = function(day){ return day && day >= R.start && day <= R.end; };
+  var M = {inMethods:{}, otherIn:{}, unmatchedIn:[], cardPayouts:0, out:{}, payees:{}, totIn:0, totOut:0,
+           cashTaken:0, cashBanked:0, paidBillsNoTrace:[], uncatOut:0, uncatOutN:0};
+  // money in from jobs
+  (sales || []).forEach(function(s){
+    (s.payments || []).forEach(function(p){
+      if (p.writeOff || /write-?off/i.test(p.method||'')) return;
+      if (!inR(_bkDay(p.ts || p.at))) return;
+      var amt = parseFloat(p.amount) || 0, m = _payMethodName(p.method);
+      if (!M.inMethods[m]) M.inMethods[m] = {n:0, amt:0};
+      M.inMethods[m].n++; M.inMethods[m].amt += amt; M.totIn += amt;
+    });
+  });
+  // bank
+  var tx = (typeof bankTx !== 'undefined' ? bankTx : []);
+  tx.forEach(function(t){
+    if (!inR(t.date)) return;
+    if (t.cat === CAT_CASH_BANKED) { M.cashBanked += t.amount; return; }
+    if (_isTransfer(t)) return;
+    if (t.dir === 'in') {
+      if (t.cat === 'Card machine payout') { M.cardPayouts += t.amount; return; }
+      if (t.jobId) return;                                   // already on the job
+      if (!t.cat || t.cat === 'Customer payment' || t.cat === 'Insurance / fleet payment') {
+        if (t.noJobOk && t.cat) { var k0 = t.cat; M.otherIn[k0] = (M.otherIn[k0]||0) + t.amount; M.totIn += t.amount; }
+        else M.unmatchedIn.push(t);
+        return;
+      }
+      M.otherIn[t.cat] = (M.otherIn[t.cat]||0) + t.amount; M.totIn += t.amount;
+      return;
+    }
+    var c = t.cat || 'Not categorised';
+    if (!t.cat) { M.uncatOut += t.amount; M.uncatOutN++; }
+    if (!M.out[c]) M.out[c] = {bank:0, cash:0, n:0};
+    M.out[c].bank += t.amount; M.out[c].n++; M.totOut += t.amount;
+    var pk = (t.cat === 'Wages' ? '👷 ' : '') + (t.payee || t.desc || '?');
+    if (!M.payees[pk]) M.payees[pk] = {amt:0, n:0, cat:c};
+    M.payees[pk].amt += t.amount; M.payees[pk].n++;
+  });
+  // cash tin
+  (ledger ? ledger.all : []).forEach(function(e){
+    if (!inR(e.date)) return;
+    if (e.type === 'job') { M.cashTaken += +e.amount||0; return; }
+    if (e.type === 'otherin' || (e.type === 'topup' && e.source === 'owner')) {
+      var k = e.type === 'otherin' ? 'Other cash in' : 'Director loan in (cash)';
+      M.otherIn[k] = (M.otherIn[k]||0) + (+e.amount||0); M.totIn += +e.amount||0; return;
+    }
+    var cat = e.type === 'spent' ? (e.cat || 'Not categorised')
+            : (e.type === 'wages' || e.type === 'advance') ? 'Wages'
+            : e.type === 'drawings' ? 'Director / personal' : null;
+    if (!cat) return;
+    if (!M.out[cat]) M.out[cat] = {bank:0, cash:0, n:0};
+    M.out[cat].cash += +e.amount||0; M.out[cat].n++; M.totOut += +e.amount||0;
+    var pk = (cat === 'Wages' ? '👷 ' : '') + (e.payee || e.staffName || (e.type === 'drawings' ? 'Director' : e.note) || cat);
+    if (!M.payees[pk]) M.payees[pk] = {amt:0, n:0, cat:cat};
+    M.payees[pk].amt += +e.amount||0; M.payees[pk].n++;
+  });
+  // bills marked paid in this period with no bank line or cash entry behind them
+  (invs || []).forEach(function(b){
+    if (b.status !== 'paid' || b.bankTxId || b.cashEntryId || /cash/i.test(b.paidVia||'')) return;
+    var d = _bkDay(b.paidAt || b.date);
+    if (!inR(d)) return;
+    M.paidBillsNoTrace.push(b);
+  });
+  return M;
+}
+
+// Latest date each account's statements reach
+function _stmtCoverage() {
+  var acc = {};
+  (typeof bankStmts !== 'undefined' ? bankStmts : []).forEach(function(s){
+    if (!acc[s.acct] || String(s.to) > acc[s.acct]) acc[s.acct] = String(s.to);
+  });
+  (typeof bankTx !== 'undefined' ? bankTx : []).forEach(function(t){
+    if (!acc[t.acct] || t.date > acc[t.acct]) acc[t.acct] = t.date;
+  });
+  return acc;
+}
+
+var _mnLast = null;
+async function rCashFlow(skipLoad) {
+  var el = document.getElementById('v-cash'); if (!el) return;
+  if (!skipLoad || !bankLoaded || !cashLoaded) {
+    if (!bankLoaded || !cashLoaded) el.innerHTML = '<div style="padding:40px;text-align:center;color:#888">Loading bank statements and the cash tin…</div>';
+    await Promise.all([bankLoaded ? null : loadBank(), loadCash()]);
+    bankTx.forEach(function(t){ if (!t.confirmed) classifyBankTx(t); });
+  }
+  var R = _mnRange(mnAnchor, mnPeriod);
+  var L = cashLedger();
+  var M = _moneyFor(R, L);
+  _mnLast = {R:R, M:M};
+  var net = M.totIn - M.totOut;
+
+  // statements coverage
+  var cov = _stmtCoverage(), accts = Object.keys(cov).sort();
+  var today = _bkToday(), upTo = R.end < today ? R.end : today;
+  var behind = accts.filter(function(a){ return cov[a] < upTo; });
+  var covHtml = !accts.length
+    ? '<div style="background:#ffebee;border:1px solid #ef9a9a;color:#c62828;border-radius:10px;padding:12px 14px;font-size:13px;margin-bottom:14px;line-height:1.5"><strong>No bank statements uploaded.</strong> Money out comes from the Revolut and Metro statements — upload them in the 🏦 Bank tab, or this page can only show cash.</div>'
+    : behind.length
+      ? '<div style="background:#fff3e0;border:1px solid #ffcc80;color:#e65100;border-radius:10px;padding:12px 14px;font-size:13px;margin-bottom:14px;line-height:1.5"><strong>Not the full picture yet.</strong> '+
+          behind.map(function(a){ return escapeHtml(a)+' statements only go up to '+escapeHtml(prettyYmd(cov[a])); }).join('; ')+
+          '. Anything paid after that isn\'t counted. Upload the latest statement in the 🏦 Bank tab.</div>'
+      : '';
+
+  // money in table
+  var inKeys = Object.keys(M.inMethods).sort(function(a,b){ return M.inMethods[b].amt - M.inMethods[a].amt; });
+  var otherKeys = Object.keys(M.otherIn).sort(function(a,b){ return M.otherIn[b] - M.otherIn[a]; });
+  var inMax = Math.max.apply(null, [1].concat(inKeys.map(function(k){ return Math.abs(M.inMethods[k].amt); })).concat(otherKeys.map(function(k){ return M.otherIn[k]; })));
+  var inRows = inKeys.map(function(k){
+    var m = M.inMethods[k];
+    return [escapeHtml(k)+' <span style="font-size:11px;color:#888">('+m.n+')</span>', _gbp(m.amt), _bkBar(m.amt, inMax, k==='Cash'?'#f9a825':'#2e7d32')];
+  }).concat(otherKeys.map(function(k){
+    return [escapeHtml(k)+' <span style="font-size:11px;color:#888">(not from a job)</span>', _gbp(M.otherIn[k]), _bkBar(M.otherIn[k], inMax, '#81c784')];
+  }));
+
+  // money out table
+  var outKeys = Object.keys(M.out).sort(function(a,b){ return (M.out[b].bank+M.out[b].cash) - (M.out[a].bank+M.out[a].cash); });
+  var outMax = outKeys.length ? M.out[outKeys[0]].bank + M.out[outKeys[0]].cash : 0;
+  var totBank = outKeys.reduce(function(s,k){ return s + M.out[k].bank; }, 0);
+  var totCash = outKeys.reduce(function(s,k){ return s + M.out[k].cash; }, 0);
+  var outRows = outKeys.map(function(k){
+    var o = M.out[k], t = o.bank + o.cash;
+    return [(k==='Not categorised'?'<span style="color:#e65100;font-weight:700">⚠ Not categorised</span>':escapeHtml(k)),
+      o.bank ? _gbp(o.bank) : '<span style="color:#ccc">—</span>', o.cash ? _gbp(o.cash) : '<span style="color:#ccc">—</span>',
+      '<strong>'+_gbp(t)+'</strong>', (M.totOut ? Math.round(t/M.totOut*100) : 0)+'%', _bkBar(t, outMax, '#c62828')];
+  });
+
+  // top payees
+  var pKeys = Object.keys(M.payees).sort(function(a,b){ return M.payees[b].amt - M.payees[a].amt; }).slice(0, 15);
+  var payeeRows = pKeys.map(function(k){ var p = M.payees[k];
+    return [escapeHtml(k), '<span style="font-size:11px;color:#888">'+escapeHtml(p.cat)+'</span>', String(p.n), '<strong>'+_gbp(p.amt)+'</strong>']; });
+
+  // checks
+  var cardTaken = M.inMethods['Card'] ? M.inMethods['Card'].amt : 0;
+  var cashTaken = M.cashTaken;
+  var unmatchedTot = M.unmatchedIn.reduce(function(s,t){ return s + t.amount; }, 0);
+  var noTraceTot = M.paidBillsNoTrace.reduce(function(s,b){ return s + (parseFloat(b.net)||0) + (parseFloat(b.vat)||0); }, 0);
+  var checks = [];
+  if (M.uncatOutN) checks.push(['⚠ '+M.uncatOutN+' bank payment'+(M.uncatOutN>1?'s':'')+' with no category', _gbp(M.uncatOut), 'Pick a category in the 🏦 Bank tab so they show up under the right heading.']);
+  if (cardTaken || M.cardPayouts) checks.push(['Card taken on jobs vs card machine payouts into the bank', _gbp(cardTaken)+' / '+_gbp(M.cardPayouts),
+    'These should be close (payouts lag a day or two and the provider takes a fee). A big gap means card takings are missing.']);
+  if (cashTaken || M.cashBanked) checks.push(['Cash taken on jobs vs cash paid into the bank', _gbp(cashTaken)+' / '+_gbp(M.cashBanked),
+    'The difference should be what was spent from the tin or is still in it — see the 💵 Cash Tin tab.']);
+  if (L.started) checks.push(['Should be in the cash tin right now', _gbp(L.balance), L.lastCount ? 'Last counted '+escapeHtml(prettyYmd(L.lastCount.date))+(Math.abs(L.lastCount._diff||0)>=0.01?' — it was '+(L.lastCount._diff<0?'short ':'over ')+_gbp(Math.abs(L.lastCount._diff)):'')+'.' : '']);
+  if (M.unmatchedIn.length) checks.push(['Money into the bank not linked to a job ('+M.unmatchedIn.length+')', _gbp(unmatchedTot),
+    'Not added to money in above in case staff already recorded it on the job. Link them in the 🏦 Bank tab.']);
+  if (M.paidBillsNoTrace.length) checks.push(['Bills marked paid that aren\'t on a statement or in the cash tin ('+M.paidBillsNoTrace.length+')', _gbp(noTraceTot),
+    'Paid from another card or account? If so, that account isn\'t being tracked.']);
+
+  // last 6 months
+  var trend = [];
+  for (var i = 5; i >= 0; i--) {
+    var d = new Date(); d = new Date(d.getFullYear(), d.getMonth() - i, 1);
+    var Rm = _mnRange(_ymdL(d), 'month'); var Mm = _moneyFor(Rm, L);
+    trend.push({label:Rm.label, in:Mm.totIn, out:Mm.totOut});
+  }
+  var tMax = Math.max.apply(null, [1].concat(trend.map(function(t){ return Math.max(t.in, t.out); })));
+
+  var pchip = function(p, l){ var on = mnPeriod === p;
+    return '<button onclick="mnSetPeriod(\''+p+'\')" style="border:1.5px solid #1a1a2e;background:'+(on?'#1a1a2e':'#fff')+';color:'+(on?'#fff':'#1a1a2e')+';padding:6px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">'+l+'</button>'; };
+
+  el.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">'+
+      '<h2 style="font-size:20px;font-weight:800">💷 Money In / Out</h2>'+
+      '<button onclick="expMoneyCSV()" style="'+btnStyle('#fff','#1a1a2e',true)+'">⬇ CSV</button>'+
+    '</div>'+
+    '<div style="font-size:12px;color:#888;margin-bottom:14px">Money actually received and actually paid out — from jobs, both bank accounts and the cash tin. Transfers between your own accounts are left out.</div>'+
+
+    '<div style="display:flex;justify-content:center;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">'+
+      pchip('week','Week')+pchip('month','Month')+
+      '<span style="width:10px"></span>'+
+      '<button onclick="mnShift(-1)" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:7px 13px">←</button>'+
+      '<div style="font-size:17px;font-weight:800;min-width:190px;text-align:center">'+escapeHtml(R.label)+'</div>'+
+      '<button onclick="mnShift(1)" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:7px 13px">→</button>'+
+      (mnAnchor ? '<button onclick="mnToday()" style="'+btnStyle('#fff','#888',true)+'padding:7px 12px;font-size:12px">Now</button>' : '')+
+    '</div>'+
+
+    covHtml+
+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">'+
+      sc('Money IN', _gbp(M.totIn), '#2e7d32')+
+      sc('Money OUT', _gbp(M.totOut), '#c62828')+
+      sc('Net', (net>=0?'+':'')+_gbp(net), net>=0?'#2e7d32':'#c62828')+
+      sc('Cash taken (after cash refunds)', _gbp(cashTaken), '#f9a825')+
+      sc('Cash tin now', L.started ? _gbp(L.balance) : 'not counted', '#1a1a2e')+
+    '</div>'+
+
+    _bkTable('💰 Where the money came from', 'Customer payments on the day they were taken, by how they paid',
+      [['Source'],['Amount','right'],['']], inRows, inRows.length?['Total', '<strong>'+_gbp(M.totIn)+'</strong>', '']:null, 'No money received in this period.')+
+
+    _bkTable('💸 Where the money went', 'Bank statements (Revolut + Metro) and cash out of the tin',
+      [['Category'],['From bank','right'],['From cash','right'],['Total','right'],['Share','right'],['']], outRows,
+      outRows.length?['Total', _gbp(totBank), _gbp(totCash), '<strong>'+_gbp(M.totOut)+'</strong>', '100%', '']:null, 'Nothing paid out in this period.')+
+
+    _bkTable('🔝 Biggest payments out', 'Who the money went to, largest first',
+      [['Paid to'],['Category'],['Payments','right'],['Total','right']], payeeRows, null, 'Nothing paid out in this period.')+
+
+    (checks.length ? '<div style="'+cardStyle()+'margin-bottom:14px"><div style="'+stitle()+'">🔎 Checks</div>'+
+      checks.map(function(c){ return '<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #f5f5f5;flex-wrap:wrap">'+
+        '<div style="flex:1;min-width:200px"><div style="font-weight:600;font-size:13px">'+c[0]+'</div>'+(c[2]?'<div style="font-size:11px;color:#888;margin-top:2px">'+c[2]+'</div>':'')+'</div>'+
+        '<div style="font-weight:800;font-size:14px;white-space:nowrap">'+c[1]+'</div></div>'; }).join('')+'</div>' : '')+
+
+    _bkTable('📅 Last 6 months', 'Money in vs money out each month',
+      [['Month'],['In','right'],['Out','right'],['Net','right'],['']],
+      trend.map(function(t){ var n = t.in - t.out;
+        return [escapeHtml(t.label), _gbp(t.in), _gbp(t.out), '<strong style="color:'+(n>=0?'#2e7d32':'#c62828')+'">'+(n>=0?'+':'')+_gbp(n)+'</strong>',
+          (t.in||t.out ? '<div style="min-width:120px">'+_bkBar(t.in, tMax, '#2e7d32')+'<div style="height:3px"></div>'+_bkBar(t.out, tMax, '#c62828')+'</div>' : '')]; }),
+      null, '');
+}
+
+function expMoneyCSV() {
+  if (!_mnLast) return;
+  var R = _mnLast.R, M = _mnLast.M, f = function(n){ return (+n||0).toFixed(2); };
+  var rows = [['KITH Cars — Money In / Out', R.label], [], ['MONEY IN'], ['Source','Payments','Amount']];
+  Object.keys(M.inMethods).forEach(function(k){ rows.push([k, M.inMethods[k].n, f(M.inMethods[k].amt)]); });
+  Object.keys(M.otherIn).forEach(function(k){ rows.push([k + ' (not from a job)', '', f(M.otherIn[k])]); });
+  rows.push(['Total', '', f(M.totIn)], [], ['MONEY OUT'], ['Category','From bank','From cash','Total']);
+  Object.keys(M.out).forEach(function(k){ var o = M.out[k]; rows.push([k, f(o.bank), f(o.cash), f(o.bank+o.cash)]); });
+  rows.push(['Total', '', '', f(M.totOut)], [], ['Net', '', '', f(M.totIn - M.totOut)], [], ['PAID TO'], ['Payee','Category','Payments','Total']);
+  Object.keys(M.payees).sort(function(a,b){ return M.payees[b].amt - M.payees[a].amt; }).forEach(function(k){ var p = M.payees[k]; rows.push([k.replace('👷 ',''), p.cat, p.n, f(p.amt)]); });
+  dl(rows, 'KITH-Money-' + R.start);
+}
+
+
+// ========== PAYROLL ==========
+// Hours from clock-in × rate gives what each person earned. Then:
+//   - cash advances taken from the tin that month come off it
+//   - when you mark them paid you say how much went by bank and how much in
+//     cash; the cash part comes out of the tin automatically
+//   - wages seen on the bank statements are shown beside each person so you
+//     can check they were actually paid what the sheet says
+//   - once paid, the figure is locked; if hours change afterwards it says so
+// Payment details are kept in kith_bank_tx (id WAGE-<staff>_<month>) so the
+// kith_payroll table doesn't need new columns.
+
+var currentPayrollMonth = (function(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");})(new Date());  // "YYYY-MM"
+var _payrollList = [];
+
+async function fetchStaff() {
+  try {
+    var r = await fetch(SB+'/rest/v1/kith_staff?select=*&order=name.asc', {headers:SH});
+    return await r.json() || [];
+  } catch(e) { console.warn('fetchStaff:',e); return []; }
+}
+async function fetchShifts(month) {
+  try {
+    var s0 = new Date(month + '-01T00:00:00');
+    var e0 = new Date(s0); e0.setMonth(e0.getMonth()+1);
+    var url = SB+'/rest/v1/kith_shifts?clock_in=gte.'+encodeURIComponent(s0.toISOString())+
+              '&clock_in=lt.'+encodeURIComponent(e0.toISOString())+'&select=*';
+    var r = await fetch(url, {headers:SH});
+    return await r.json() || [];
+  } catch(e) { console.warn('fetchShifts:',e); return []; }
+}
+async function fetchPayrollPaid(month) {
+  try {
+    var r = await fetch(SB+'/rest/v1/kith_payroll?month=eq.'+encodeURIComponent(month)+'&select=*', {headers:SH});
+    return await r.json() || [];
+  } catch(e) { return []; }
+}
+async function fetchWagePays(month) {
+  try {
+    var r = await fetch(SB+'/rest/v1/kith_bank_tx?select=id,data&id=like.WAGE-*', {headers:SH});
+    var rows = await r.json() || [];
+    return rows.map(function(x){ return x.data; }).filter(function(d){ return d && d.kind === 'wagepay' && d.month === month; });
+  } catch(e) { return []; }
+}
+function shiftMonth(ym, delta) {
+  var parts = ym.split('-');
+  var d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, 1);
+  d.setMonth(d.getMonth()+delta);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+function setPayrollMonth(ym) { currentPayrollMonth = ym; rPayroll(); }
+
+// Wages on the bank statements for this person: dated in the month or the
+// first 10 days of the next (wages for October are often paid early November)
+function _bankWagesFor(staff, month) {
+  var tx = (typeof bankTx !== 'undefined' ? bankTx : []);
+  var start = month + '-01', next = shiftMonth(month, 1), end = next + '-10';
+  var saved = bankStaff; bankStaff = [staff];
+  var hits = tx.filter(function(t){
+    if (t.dir !== 'out' || t.cat !== 'Wages' || t.date < start || t.date > end) return false;
+    return !!_staffMatch(t.payee || t.desc);
+  });
+  bankStaff = saved;
+  return hits;
+}
+
+async function _payrollData(month) {
+  var got = await Promise.all([fetchStaff(), fetchShifts(month), fetchPayrollPaid(month), fetchWagePays(month),
+                               loadCash(), bankLoaded ? null : loadBank()]);
+  var staff = got[0] || [], shifts = got[1] || [], paidRecs = got[2] || [], wagePays = got[3] || [];
+  var byStaff = {};
+  staff.forEach(function(s){
+    byStaff[s.id] = {id:s.id, name:s.name, role:s.role||'', rate:parseFloat(s.hourly_rate)||0, active:s.active !== false,
+      mins:0, shifts:0, open:0, paid:false, paidAt:null, lockedGross:null, advances:0, advList:[], pay:null, bankSeen:0, bankList:[], _staff:s};
+  });
+  shifts.forEach(function(sh){
+    var b = byStaff[sh.staff_id]; if (!b) return;
+    if (!sh.clock_out) { b.open++; return; }
+    b.mins += Math.max(0, Math.floor((new Date(sh.clock_out) - new Date(sh.clock_in)) / 60000));
+    b.shifts += 1;
+  });
+  paidRecs.forEach(function(rec){
+    var b = byStaff[rec.staff_id]; if (!b) return;
+    b.paid = !!rec.paid; b.paidAt = rec.paid_at;
+    if (rec.gross !== null && rec.gross !== undefined) b.lockedGross = parseFloat(rec.gross);
+  });
+  wagePays.forEach(function(w){ var b = byStaff[w.staffId]; if (b) b.pay = w; });
+  cashEntries.forEach(function(e){
+    if (e.type !== 'advance' || (e.month || (e.date||'').slice(0,7)) !== month) return;
+    var b = byStaff[e.staffId]; if (!b) return;
+    b.advances += +e.amount || 0; b.advList.push(e);
+  });
+  var list = Object.keys(byStaff).map(function(k){ return byStaff[k]; });
+  list.forEach(function(p){
+    p.hours = p.mins/60;
+    p.calcGross = +(p.hours * p.rate).toFixed(2);
+    p.gross = p.paid && p.lockedGross !== null ? p.lockedGross : p.calcGross;
+    p.changed = p.paid && p.lockedGross !== null && Math.abs(p.calcGross - p.lockedGross) >= 0.01;
+    p.toPay = +(p.gross - p.advances).toFixed(2);
+    p.bankList = _bankWagesFor(p._staff, month);
+    p.bankSeen = p.bankList.reduce(function(s,t){ return s + t.amount; }, 0);
+  });
+  // people with nothing this month go to the bottom
+  list.sort(function(a,b){ return ((b.mins||b.advances||b.paid)?1:0) - ((a.mins||a.advances||a.paid)?1:0) || String(a.name).localeCompare(String(b.name)); });
+  return list;
+}
+
+async function rPayroll() {
+  var el = document.getElementById('v-payroll');
+  el.innerHTML = '<div style="padding:40px;text-align:center;color:#888">Loading payroll…</div>';
+  var month = currentPayrollMonth;
+  var list = await _payrollData(month);
+  if (month !== currentPayrollMonth) return;   // moved on while loading
+  _payrollList = list;
+
+  if (!list.length) {
+    el.innerHTML =
+      '<h2 style="font-size:20px;font-weight:800">💷 Payroll</h2>'+
+      '<div style="'+cardStyle()+'color:#888;text-align:center;padding:30px;margin-top:14px">'+
+        'No staff set up yet. Run <strong>kith-timesheets-schema.sql</strong> in Supabase to seed your team.'+
+      '</div>';
+    return;
+  }
+
+  var tot = function(fn){ return list.reduce(function(s,x){ return s + (fn(x)||0); }, 0); };
+  var totalHours = tot(function(x){ return x.hours; });
+  var totalGross = tot(function(x){ return x.gross; });
+  var totalAdv   = tot(function(x){ return x.advances; });
+  var paidBank   = tot(function(x){ return x.paid && x.pay ? +x.pay.bank : 0; });
+  var paidCash   = tot(function(x){ return x.paid && x.pay ? +x.pay.cash : 0; });
+  var paidOld    = tot(function(x){ return x.paid && !x.pay ? x.toPay : 0; });   // marked paid before methods were recorded
+  var stillToPay = tot(function(x){ return !x.paid && x.rate ? Math.max(0, x.toPay) : 0; });
+  var bankSeen   = tot(function(x){ return x.bankSeen; });
+  var openShifts = tot(function(x){ return x.open; });
+
+  var prev = shiftMonth(month,-1), next = shiftMonth(month,+1);
+
+  var rows = list.map(function(p){
+    var h = Math.floor(p.mins/60), m = p.mins%60;
+    var noRate = !p.rate, noWork = p.mins === 0 && !p.advances && !p.paid;
+    var paidCell = '';
+    if (p.paid) {
+      paidCell = '<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700">PAID</span>'+
+        (p.pay ? '<div style="font-size:11px;color:#555;margin-top:3px;white-space:nowrap">'+(p.pay.bank?'🏦 '+_gbp(p.pay.bank):'')+(p.pay.bank&&p.pay.cash?' · ':'')+(p.pay.cash?'💵 '+_gbp(p.pay.cash):'')+'</div>' : '<div style="font-size:10px;color:#aaa">method not recorded</div>')+
+        (p.changed ? '<div style="font-size:10px;color:#c62828;font-weight:700;margin-top:2px">Hours changed since — now '+_gbp(p.calcGross)+'</div>' : '');
+    } else if (!noWork) {
+      paidCell = '<span style="color:#c62828;font-size:11px;font-weight:700">Unpaid</span>';
+    }
+    var bankCell = p.bankList.length
+      ? '<span style="color:#1565c0;font-weight:700" title="'+escapeHtml(p.bankList.map(function(t){ return t.date+' '+_gbp(t.amount)+' '+(t.acct||''); }).join('\n'))+'">'+_gbp(p.bankSeen)+'</span><div style="font-size:10px;color:#888">'+p.bankList.length+' payment'+(p.bankList.length>1?'s':'')+'</div>'
+      : '<span style="color:#ccc">—</span>';
+    var paidTotal = p.pay ? (+p.pay.bank||0) + (+p.pay.cash||0) : null;
+    var mismatch = p.paid && p.pay && p.pay.bank > 0 && p.bankList.length && Math.abs(p.bankSeen - p.pay.bank) >= 0.01;
+    var action = noWork ? ''
+      : p.paid ? '<button onclick="markPayrollUnpaid(\''+p.id+'\')" style="'+btnStyle('#fff','#888',true)+'padding:3px 8px;font-size:10px">Undo</button>'
+      : noRate ? '<span style="font-size:10px;color:#c62828">Set rate first</span>'
+      : '<button onclick="openPayrollPay(\''+p.id+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:4px 10px;font-size:11px">✓ Pay</button>';
+    return '<tr style="'+(noRate && p.mins?'background:#fff5f5':'')+(noWork?'opacity:.55':'')+'">'+
+      td('<strong>'+escapeHtml(p.name)+'</strong><div style="font-size:11px;color:#888">'+escapeHtml(p.role)+'</div>'+(p.open?'<div style="font-size:10px;color:#e65100">'+p.open+' shift still clocked in</div>':''))+
+      td(p.mins?('<strong>'+h+'h '+m+'m</strong><div style="font-size:10px;color:#888">'+p.shifts+' shift'+(p.shifts>1?'s':'')+'</div>'):'<span style="color:#ccc">—</span>')+
+      td('<span onclick="editRate(\''+p.id+'\')" style="cursor:pointer;color:'+(noRate?'#c62828':'#1565c0')+';text-decoration:underline">'+(noRate?'Set rate':'£'+p.rate.toFixed(2))+'</span>')+
+      td(noRate||!p.mins&&!p.paid?'<span style="color:#ccc">—</span>':('<strong>'+_gbp(p.gross)+'</strong>'))+
+      td(p.advances?('<span style="color:#e65100;font-weight:700" title="'+escapeHtml(p.advList.map(function(e){ return e.date+' '+_gbp(e.amount)+(e.note?' '+e.note:''); }).join('\n'))+'">−'+_gbp(p.advances)+'</span>'):'<span style="color:#ccc">—</span>')+
+      td(noRate||(!p.mins&&!p.advances)?'<span style="color:#ccc">—</span>':('<strong style="color:'+(p.toPay<0?'#c62828':'#1565c0')+'">'+_gbp(p.toPay)+'</strong>'+(p.toPay<0?'<div style="font-size:10px;color:#c62828">advances more than earned</div>':'')))+
+      td(paidCell)+
+      td(bankCell + (mismatch ? '<div style="font-size:10px;color:#c62828;font-weight:700">≠ '+_gbp(p.pay.bank)+' recorded</div>' : ''))+
+      td(action)+
+    '</tr>';
+  }).join('');
+
+  el.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
+      '<div>'+
+        '<h2 style="font-size:20px;font-weight:800">💷 Payroll</h2>'+
+        '<div style="font-size:12px;color:#888;margin-top:2px">Hours from clock-in × hourly rate, less cash advances. Bookkeeping only — tax, NI and pension stay in your payroll software.</div>'+
+      '</div>'+
+      '<button onclick="expPayrollCSV()" style="'+btnStyle('#fff','#1a1a2e',true)+'">⬇ CSV</button>'+
+    '</div>'+
+
+    '<div style="display:flex;justify-content:center;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">'+
+      '<button onclick="setPayrollMonth(\''+prev+'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:8px 14px;font-size:12px">←</button>'+
+      '<div style="font-size:18px;font-weight:800;padding:0 12px;min-width:180px;text-align:center">'+monthLabel(month)+'</div>'+
+      '<button onclick="setPayrollMonth(\''+next+'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:8px 14px;font-size:12px">→</button>'+
+    '</div>'+
+
+    (openShifts ? '<div style="background:#fff3e0;border:1px solid #ffcc80;color:#e65100;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:14px">'+openShifts+' shift'+(openShifts>1?'s are':' is')+' still clocked in and not counted yet. Close '+(openShifts>1?'them':'it')+' before paying.</div>' : '')+
+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px">'+
+      sc('Hours', totalHours.toFixed(1), '#1565c0')+
+      sc('Earned (gross)', _gbp(totalGross), '#1a1a2e')+
+      sc('Advances taken', _gbp(totalAdv), '#e65100')+
+      sc('Paid by bank', _gbp(paidBank), '#2e7d32')+
+      sc('Paid in cash', _gbp(paidCash), '#2e7d32')+
+      (paidOld ? sc('Paid (method not recorded)', _gbp(paidOld), '#888') : '')+
+      sc('Still to pay', _gbp(stillToPay), stillToPay > 0.005 ? '#c62828' : '#2e7d32')+
+      sc('Wages on bank statements', _gbp(bankSeen), '#1565c0')+
+    '</div>'+
+
+    '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
+    '<table style="width:100%;border-collapse:collapse">'+
+    th(['Name','Hours','Rate £/h','Earned','Advances','To pay','Paid','On bank statement',''])+
+    '<tbody>'+rows+'</tbody></table></div>'+
+    '<p style="margin-top:12px;font-size:12px;color:#888;line-height:1.5">Tap the rate to change it. ✓ Pay asks how much went by bank and how much in cash — the cash part comes out of the 💵 Cash Tin. '+
+    'Advances are logged in the Cash Tin and taken off here. "On bank statement" shows wages to that person found on the statements for the month (and the first 10 days after).</p>';
+}
+
+async function editRate(staffId) {
+  var r = prompt('Hourly rate (£) — enter as a number, e.g. 12.50');
+  if (r === null) return;
+  var n = parseFloat(r);
+  if (isNaN(n) || n < 0) { alert('Not a valid number.'); return; }
+  try {
+    var resp = await fetch(SB+'/rest/v1/kith_staff?id=eq.'+encodeURIComponent(staffId), {
+      method:'PATCH', headers:SH,
+      body: JSON.stringify({hourly_rate: n})
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  } catch(e) { alert('Save failed: '+e.message); return; }
+  rPayroll();
+}
+
+function openPayrollPay(staffId) {
+  var p = _payrollList.filter(function(x){ return String(x.id) === String(staffId); })[0]; if (!p) return;
+  var bankDefault = p.bankSeen > 0 ? +Math.min(p.bankSeen, Math.max(0, p.toPay)).toFixed(2) : Math.max(0, p.toPay);
+  var cashDefault = +Math.max(0, p.toPay - bankDefault).toFixed(2);
+  var line = function(l, v, c){ return '<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:14px'+(c?';color:'+c:'')+'"><span>'+l+'</span><strong>'+v+'</strong></div>'; };
+  var h = '<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">💷 Pay '+escapeHtml(p.name)+' — '+monthLabel(currentPayrollMonth)+'</h3>'+
+          '<button onclick="closeCashForm()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">✕</button></div>'+
+          '<div style="background:#f7f7f9;border-radius:10px;padding:10px 14px;margin-top:10px">'+
+            line('Earned ('+Math.floor(p.mins/60)+'h '+(p.mins%60)+'m × £'+p.rate.toFixed(2)+')', _gbp(p.gross))+
+            (p.advances ? line('Cash advances already taken', '−'+_gbp(p.advances), '#e65100') : '')+
+            '<div style="border-top:1px solid #ddd;margin:4px 0"></div>'+
+            line('To pay', _gbp(p.toPay), '#1565c0')+
+          '</div>'+
+          (p.bankSeen ? '<div style="font-size:12px;color:#1565c0;margin-top:8px">Found on the bank statement: '+_gbp(p.bankSeen)+' ('+p.bankList.map(function(t){ return escapeHtml(prettyYmd(t.date)); }).join(', ')+')</div>' : '')+
+          _fLabel('Paid by bank (£)') + '<input id="pp-bank" inputmode="decimal" value="'+bankDefault.toFixed(2)+'" style="'+_fIn+'">'+
+          _fLabel('Paid in cash from the tin (£)') + '<input id="pp-cash" inputmode="decimal" value="'+cashDefault.toFixed(2)+'" style="'+_fIn+'">'+
+          _fLabel('Note') + '<input id="pp-note" style="'+_fIn+'" placeholder="optional">'+
+          '<div id="pp-err" style="color:#c62828;font-size:13px;margin-top:10px"></div>'+
+          '<button id="pp-save" onclick="savePayrollPay(\''+p.id+'\')" style="'+btnStyle('#2e7d32','#fff')+'width:100%;margin-top:14px;padding:12px;font-size:15px">✓ Mark paid</button>';
+  _cashModal(h);
+}
+
+async function savePayrollPay(staffId) {
+  var p = _payrollList.filter(function(x){ return String(x.id) === String(staffId); })[0]; if (!p) return;
+  var bank = parseMoney(document.getElementById('pp-bank').value || '0');
+  var cash = parseMoney(document.getElementById('pp-cash').value || '0');
+  var note = (document.getElementById('pp-note').value || '').trim();
+  var err = function(m){ document.getElementById('pp-err').textContent = m; };
+  if (isNaN(bank) || isNaN(cash) || bank < 0 || cash < 0) return err('Enter the amounts as numbers, e.g. 450 or 0.');
+  if (bank + cash <= 0) return err('Enter how much was paid.');
+  var diff = +(bank + cash - p.toPay).toFixed(2);
+  if (Math.abs(diff) >= 0.01 && !confirm('That adds up to ' + _gbp(bank + cash) + ' but the sheet says ' + _gbp(p.toPay) + ' (' + (diff>0?'over':'under') + ' by ' + _gbp(Math.abs(diff)) + ').\n\nSave anyway?')) return;
+  var btn = document.getElementById('pp-save'); if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  var month = currentPayrollMonth, key = staffId + '_' + month, now = new Date().toISOString();
+  var body = {id: key, staff_id: staffId, month: month, hours: p.hours, rate: p.rate, gross: p.calcGross,
+              paid: true, paid_at: now, paid_by: user};
+  try {
+    var r = await fetch(SB+'/rest/v1/kith_payroll', {method:'POST', headers:SH, body: JSON.stringify(body)});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch(e) { err('Save failed: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = '✓ Mark paid'; } return; }
+  var wp = {kind:'wagepay', id:'WAGE-' + key, staffId: staffId, name: p.name, month: month, gross: p.calcGross,
+            advances: +p.advances.toFixed(2), bank: +bank.toFixed(2), cash: +cash.toFixed(2), note: note, at: ts(), by: user || ''};
+  await sbUp('kith_bank_tx', {id: wp.id, data: wp, updated_at: now});
+  if (cash > 0) {
+    var day = _cashToday();
+    var ce = {kind:'cash', id:'CASH-WAGE-' + key, type:'wages', date: day, t: Date.now(), amount: +cash.toFixed(2),
+              staffId: staffId, staffName: p.name, month: month, note: 'Wages for ' + monthLabel(month) + (note ? ' — ' + note : ''),
+              by: user || '', at: ts(), auto: true};
+    cashEntries = cashEntries.filter(function(x){ return x.id !== ce.id; }).concat([ce]);
+    persistCash(ce);
+  }
+  closeCashForm();
+  rPayroll();
+}
+
+// kept for anything still calling the old one-tap version: all by bank
+async function markPayrollPaid(staffId) { openPayrollPay(staffId); }
+
+async function markPayrollUnpaid(staffId) {
+  if (!confirm('Undo this payment? It goes back to unpaid, and any cash wages are put back in the tin.')) return;
+  var key = staffId + '_' + currentPayrollMonth;
+  try {
+    await fetch(SB+'/rest/v1/kith_payroll?id=eq.'+encodeURIComponent(key), {method:'DELETE', headers:SH});
+  } catch(e) {}
+  await sbDel('kith_bank_tx', 'WAGE-' + key);
+  await sbDel('kith_bank_tx', 'CASH-WAGE-' + key);
+  cashEntries = cashEntries.filter(function(x){ return x.id !== 'CASH-WAGE-' + key; });
+  rPayroll();
+}
+
+async function expPayrollCSV() {
+  var list = await _payrollData(currentPayrollMonth);
+  var rows = [['Name','Role','Shifts','Hours','Rate £/h','Earned £','Advances £','To pay £','Status','Paid by bank £','Paid in cash £','On bank statement £','Paid at']];
+  list.forEach(function(p){
+    rows.push([p.name, p.role, p.shifts, p.hours.toFixed(2), p.rate.toFixed(2), p.gross.toFixed(2), p.advances.toFixed(2), p.toPay.toFixed(2),
+      p.paid ? 'PAID' : 'Unpaid', p.pay ? (+p.pay.bank).toFixed(2) : '', p.pay ? (+p.pay.cash).toFixed(2) : '', p.bankSeen.toFixed(2),
+      p.paidAt ? String(p.paidAt).slice(0,10) : '']);
+  });
+  dl(rows, 'KITH-Payroll-' + currentPayrollMonth);
+}
+
 </script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -5189,6 +5879,8 @@ body{background:#f0f2f5;color:#1a1a2e;font-family:-apple-system,BlinkMacSystemFo
   </div>
   <div style="background:#fff;border-bottom:2px solid #e0e0e0;padding:0 20px;display:flex;overflow-x:auto">
     <button class="tab on" id="tab-dash" onclick="showTab('dash')">📊 Dashboard</button>
+    <button class="tab" id="tab-cash" onclick="showTab('cash')">💷 Money In/Out</button>
+    <button class="tab" id="tab-cashbook" onclick="showTab('cashbook')">💵 Cash Tin</button>
     <button class="tab" id="tab-pos" onclick="showTab('pos')">📦 Purchase Orders</button>
     <button class="tab" id="tab-ro" onclick="showTab('ro')">↩ Return Orders</button>
     <button class="tab" id="tab-sos" onclick="showTab('sos')">🔧 SOs</button>
@@ -5200,7 +5892,6 @@ body{background:#f0f2f5;color:#1a1a2e;font-family:-apple-system,BlinkMacSystemFo
     <button class="tab" id="tab-payroll" onclick="showTab('payroll')">💷 Payroll</button>
     <button class="tab" id="tab-reports" onclick="showTab('reports')">📊 Reports</button>
     <button class="tab" id="tab-search" onclick="showTab('search')">🔍 Search</button>
-    <button class="tab" id="tab-cash" onclick="showTab('cash')">📊 Cash Flow</button>
     <button class="tab" id="tab-sales" onclick="showTab('sales')">📈 Sales</button>
   </div>
   <div style="padding:20px;max-width:1300px;margin:0 auto">
@@ -5217,6 +5908,7 @@ body{background:#f0f2f5;color:#1a1a2e;font-family:-apple-system,BlinkMacSystemFo
     <div id="v-reports" style="display:none"></div>
     <div id="v-search" style="display:none"></div>
     <div id="v-cash" style="display:none"></div>
+    <div id="v-cashbook" style="display:none"></div>
     <div id="v-sales" style="display:none"></div>
   </div>
 </div>
