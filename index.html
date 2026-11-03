@@ -70,6 +70,10 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 .s-intake .col-head{border-top:3px solid var(--dim)}
 .s-estimating .col-head{border-top:3px solid var(--blue)}
 .s-labour .col-head{border-top:3px solid var(--blue)}
+.s-range .col-head{border-top:3px solid var(--gold)}
+.b-range{background:rgba(201,168,76,.15);color:var(--gold)}
+.dept-sep{flex:0 0 26px;display:flex;align-items:flex-start;justify-content:center;padding-top:6px}
+.dept-sep span{writing-mode:vertical-rl;transform:rotate(180deg);font-size:11px;font-weight:900;letter-spacing:2px;text-transform:uppercase;padding:8px 3px;border-radius:6px}
 .s-parts .col-head{border-top:3px solid var(--amber)}
 .s-financial .col-head{border-top:3px solid var(--teal)}
 .s-contact .col-head{border-top:3px solid var(--gold)}
@@ -393,17 +397,19 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <div class="overlay" id="ov-week">
   <div class="panel" style="max-width:100%;width:100%;border-radius:0;height:100vh;overflow:hidden;display:flex;flex-direction:column">
     <div class="pb" style="flex-shrink:0">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="font-weight:800;font-size:16px"><span id="week-title">📅 Week</span> &nbsp;<span id="week-label" style="font-weight:400;font-size:12px;color:var(--dim)"></span></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div style="font-weight:800;font-size:16px;flex:1 1 220px"><span id="week-title">📅 Week</span> &nbsp;<span id="week-label" style="font-weight:400;font-size:12px;color:var(--dim)"></span></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn btn-sm" id="wk-side-mechanical" onclick="setWeekSide('mechanical')">🔧 Mechanical</button>
           <button class="btn btn-sm" id="wk-side-bodywork" onclick="setWeekSide('bodywork')">🎨 Bodywork</button>
+          <button class="btn btn-sm" id="wk-mode-month" onclick="setCalMode('month')">🗓 Month</button>
+          <button class="btn btn-sm" id="wk-mode-week" onclick="setCalMode('week')">Week</button>
           <button class="btn btn-ghost btn-sm" onclick="editSchedCap()">⚙ Capacity</button>
           <button class="btn btn-ghost btn-sm" onclick="weekNav(-1)">◀</button>
           <button class="btn btn-ghost btn-sm" onclick="weekToday()">Today</button>
           <button class="btn btn-ghost btn-sm" onclick="weekNav(1)">▶</button>
           <button class="btn btn-gold btn-sm" onclick="addMechanic()">+ Mechanic</button>
-          <button class="btn btn-ghost btn-sm" onclick="cx('ov-week')">✕</button>
+          <button class="btn btn-ghost btn-sm" onclick="calPick?calCancelPick():cx('ov-week')">✕</button>
         </div>
       </div>
     </div>
@@ -974,6 +980,7 @@ function initLogin(){
 // ── STAGES ──────────────────────────────────────────────
 const STAGES=[
   {id:'intake',    label:'1 · Intake',             cls:'s-intake',    badge:'b-intake',    owner:''},
+  {id:'range',     label:'1b · Price Range',       cls:'s-range',     badge:'b-range',     owner:'Estimator'},
   {id:'labour',    label:'2 · Labour Estimate',    cls:'s-labour',    badge:'b-labour',    owner:'Estimator'},
   {id:'parts',     label:'3 · Parts Estimate',     cls:'s-parts',     badge:'b-parts',     owner:'Parts'},
   {id:'financial', label:'4 · Final Estimate', cls:'s-financial', badge:'b-financial', owner:'Estimator'},
@@ -1002,6 +1009,17 @@ const STAGES=[
 
 // Stages a job can be waiting in when the car physically turns up.
 const ARRIVAL_FROM=['booked','po','raised','so','soraised'];
+// ── DEPARTMENTS (Nov 2026) ─────────────────────────────────────────
+// Sales runs from the enquiry to the customer saying yes and paying;
+// Booked is where Operations takes over. The board shows a divider and
+// a label at the start of each department.
+const DEPTS=[
+  {id:'sales',      label:'Sales',      col:'var(--gold)',  stages:['intake','range','labour','parts','financial','signoff','disapproved','contact','contacted','waiting','waiting2','ready']},
+  {id:'operations', label:'Operations', col:'var(--blue)',  stages:['booked','po','raised','so','soraised','checkin','authwait','inprog','done']},
+  {id:'accounts',   label:'Accounts',   col:'var(--green)', stages:['accounts','receivable']},
+  {id:'aftercare',  label:'Aftercare',  col:'var(--teal)',  stages:['review','followup']},
+];
+function deptOf(stage){return DEPTS.find(d=>d.stages.includes(stage))||null;}
 function stg(id){return STAGES.find(s=>s.id===id)||{id,label:id,col:'var(--dim)',cls:'',badge:'',owner:''};}
 
 // ── SUPABASE REST API (no external library needed) ───────
@@ -1293,7 +1311,7 @@ function save(jobToSave){
     j.log.push({t:ts(),s:'\u25b6 '+j.assignedEstimator+' started (job number '+j.tmJob+' entered)'});
   }
   // A job leaving Intake/Labour frees its estimator — hand out the next one
-  if(j.stage&&!['intake','labour'].includes(j.stage)&&j.assignedEstimator){
+  if(j.stage&&!estBusyOn(j)&&j.assignedEstimator){
     // one hand-out pass for a burst of saves, not one per save
     if(!window._sweepT)window._sweepT=setTimeout(()=>{window._sweepT=null;try{sweepAssign(true);}catch(e){}},2500);
   }
@@ -2166,7 +2184,7 @@ function fil(){
     list=list.filter(j=>{
       // Intake is the estimator's too — that's where jobs land waiting
       // to be picked up, and they were invisible on this tab.
-      if(!['intake','labour','financial'].includes(j.stage))return false;
+      if(!['intake','range','labour','financial'].includes(j.stage))return false;
       if(myName&&myName!=='Logkith'&&hasRole(currentUser,'estimator')){
         return!j.assignedEstimator||j.assignedEstimator===myName;
       }
@@ -2212,8 +2230,16 @@ function renderBoard(){
   const _F=fil();
   const _ownIdx=!_dupeIdx; if(_ownIdx)_dupeIdx=buildDupeIdx();
   try{
+  let _lastDept=null;
   STAGES.forEach(s=>{
     if(onCheckinTab&&!ARRIVAL_FROM.concat(['checkin']).includes(s.id))return;
+    const _d=deptOf(s.id);
+    if(_d&&_d!==_lastDept&&!onCheckinTab){
+      const sep=document.createElement('div');sep.className='dept-sep';
+      sep.innerHTML='<span style="color:'+_d.col+';border:1px solid '+_d.col+'">'+_d.label+'</span>';
+      board.appendChild(sep);
+    }
+    if(_d)_lastDept=_d;
     let sj=_F.filter(j=>j.stage===s.id);
     if(onCheckinTab)sj=sj.sort((a,b)=>arrivalKey(a)-arrivalKey(b));
     const col=document.createElement('div');
@@ -3125,14 +3151,82 @@ function slotsMsg(j,slots){
     slots.slice(0,3).map(s=>'\u2022 '+s.label).join('\n')+
     '\n\nThe earliest is filling up fastest \u2014 reply with the day that suits and we will lock it in for you.\n\n\u2014 KITH Cars';
 }
-function pickSlot(ds){
+function pickSlot(ds,id){
   const d=document.getElementById('bk-date');if(d)d.value=ds;
   document.querySelectorAll('.bk-slot').forEach(b=>{
     const on=b.getAttribute('data-ds')===ds;
-    b.style.background=on?'var(--gold)':'transparent';
-    b.style.color=on?'#111':'var(--fg)';
+    b.classList.toggle('bk-on',on);
   });
   const pb=document.getElementById('bk-probs');if(pb)pb.innerHTML='';
+  if(id){try{checkBkDate(id);}catch(e){} try{bookPlanRefresh(id);}catch(e){}}
+}
+// ── SCROLLABLE DATE STRIP (12 Oct 2026) ─────────────────────────────
+// Every day for the next ~3 months, swipe sideways. Free days are tappable,
+// full / closed / before-parts days are greyed but still shown so the
+// adviser can see the whole picture and book any day (e.g. the 26th).
+var BK_STRIP_DAYS=92;
+function dayStripCells(j,selDs){
+  const side=schedSide(j), rule=allowedDays(j), cap=SCHED_CAP[side]||99, len=jobLenDays(j);
+  const pr=partsReadyDate(j);
+  const start=new Date();start.setHours(0,0,0,0);
+  if(new Date().getHours()>=15)start.setDate(start.getDate()+1);
+  let days=window._bkStripDays||BK_STRIP_DAYS;
+  if(selDs){const sd=new Date(selDs+'T00:00:00');const diff=Math.ceil((sd-start)/864e5)+14;if(diff>days)days=diff;}
+  const out=[];let best=null;
+  for(let i=0;i<days;i++){
+    const d=new Date(start);d.setDate(d.getDate()+i);
+    const ds=dstr(d), wd=d.getDay();
+    let state='free', note='';
+    if(rule.days.indexOf(wd)<0){state='closed';note='closed';}
+    else if(pr&&d<pr){state='parts';note='parts';}
+    else{
+      const n=bookedCountFor(side,ds,j.id);
+      if(fullDaysFor(j,ds,side,len).length){state='full';note=n>=cap?'full':'clash';}
+      else note=(cap-n)+' left';
+    }
+    if(state==='free'&&!best)best=ds;
+    out.push({ds,d,wd,state,note,first:d.getDate()===1||i===0});
+  }
+  return {cells:out,best};
+}
+function dayStripH(j,selDs){
+  const r=dayStripCells(j,selDs);
+  const WD=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return r.cells.map(c=>{
+    const off=c.state!=='free';
+    const cls='bk-slot bk-day'+(off?' bk-off':'')+(c.ds===r.best?' bk-best':'')+(c.ds===selDs?' bk-on':'');
+    return (c.first?'<div class="bk-mo">'+MO[c.d.getMonth()]+'</div>':'')+
+      '<button type="button" class="'+cls+'" data-ds="'+c.ds+'" onclick="pickSlot(\''+c.ds+'\',\''+j.id+'\')">'+
+        '<span class="bk-wd">'+(c.ds===r.best?'\u2605 ':'')+WD[c.wd]+'</span>'+
+        '<span class="bk-dn">'+c.d.getDate()+'</span>'+
+        '<span class="bk-nt">'+escHtml(c.note)+'</span></button>';
+  }).join('')+
+  '<button type="button" class="bk-day bk-more" onclick="bkStripMore(\''+j.id+'\')"><span class="bk-wd">More</span><span class="bk-dn">\u203a</span><span class="bk-nt">+2 months</span></button>';
+}
+function openBookCal(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const d=document.getElementById('bk-date');
+  const bm=window._bkModal;if(bm)bm.style.display='none';
+  openWeekView(schedSide(j),{pick:id,mode:'month',focus:(d&&d.value)||j.bookedFor||''});
+}
+function bkStripMore(id){
+  window._bkStripDays=(window._bkStripDays||BK_STRIP_DAYS)+61;
+  bkStripRefresh(id,true);
+}
+function bkStripRefresh(id,keepScroll){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const el=document.getElementById('bk-strip');if(!el)return;
+  const dj=(typeof _bkDraft==='function')?_bkDraft(j):j;
+  const sl=el.scrollLeft;
+  el.innerHTML=dayStripH(dj,dj.bookedFor||'');
+  if(keepScroll)el.scrollLeft=sl;
+}
+function bkStripJump(id){
+  const el=document.getElementById('bk-strip');if(!el)return;
+  const d=document.getElementById('bk-date');
+  const on=el.querySelector('.bk-on')||el.querySelector('.bk-best');
+  if(on)el.scrollLeft=Math.max(0,on.offsetLeft-el.offsetLeft-40);
 }
 function checkBkDate(id){
   const j=jobs.find(x=>x.id===id);if(!j)return;
@@ -3154,13 +3248,23 @@ function smartSlotsH(j){
     '<div style="font-size:10px;color:var(--dim);margin-bottom:8px">'+escHtml(o.ruleLabel)+
       (o.earliest?' \u00b7 parts ready '+escHtml(fmtBookDate(o.earliest)):' \u00b7 no parts wait')+
       ' \u00b7 '+(SCHED_CAP[o.side]||'?')+' a day</div>'+
+    '<style>'+
+      '#bk-strip{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;padding:2px 2px 8px;margin:0 -2px}'+
+      '#bk-strip::-webkit-scrollbar{height:4px}#bk-strip::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}'+
+      '.bk-day{flex:0 0 auto;width:58px;scroll-snap-align:start;display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 2px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--fg);cursor:pointer;font-family:inherit}'+
+      '.bk-wd{font-size:10px;font-weight:700;color:var(--dim)}.bk-dn{font-size:19px;font-weight:800;line-height:1.1}.bk-nt{font-size:9px;color:var(--faint);white-space:nowrap}'+
+      '.bk-best{border-color:var(--gold)}.bk-best .bk-wd{color:var(--gold)}'+
+      '.bk-off{opacity:.38;border-style:dashed}'+
+      '.bk-on{background:var(--gold)!important;border-color:var(--gold)!important;color:#111!important;opacity:1}.bk-on .bk-wd,.bk-on .bk-nt{color:#111!important}'+
+      '.bk-mo{flex:0 0 auto;writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;font-weight:800;color:var(--gold);letter-spacing:1px;text-transform:uppercase;align-self:center;padding:0 1px}'+
+      '.bk-more{border-style:dashed;color:var(--gold)}'+
+    '</style>'+
+    '<div id="bk-strip">'+dayStripH(j,j.bookedFor||'')+'</div>'+
+    '<button type="button" class="btn btn-ghost btn-sm btn-full" style="margin-top:6px;border-color:'+(o.side==='bodywork'?'var(--blue)':'var(--gold)')+';color:'+(o.side==='bodywork'?'var(--blue)':'var(--gold)')+'" onclick="openBookCal(\''+j.id+'\')">\ud83d\uddd3 See the full '+(o.side==='bodywork'?'bodywork':'mechanical')+' calendar</button>'+
+    '<div style="font-size:10px;color:var(--faint);margin-top:2px">Swipe for more days \u00b7 \u2605 = best \u00b7 greyed = full, closed or before parts arrive (still tappable)</div>'+
     (o.slots.length
-      ? '<div style="display:flex;flex-wrap:wrap;gap:5px">'+o.slots.map((sl,i)=>
-          '<button class="btn btn-sm bk-slot" data-ds="'+sl.date+'" style="background:transparent;border:1px solid '+(i===0?'var(--gold)':'var(--border)')+';color:var(--fg)" onclick="pickSlot(\''+sl.date+'\')">'+
-            (i===0?'\u2605 ':'')+escHtml(sl.label)+
-            '<span style="font-size:9px;color:var(--faint);margin-left:4px">'+(SCHED_CAP[o.side]-bookedCountFor(o.side,sl.date,j.id))+' left</span></button>').join('')+'</div>'+
-        (num?'<a href="'+waLink(num,slotsMsg(j,o.slots))+'" target="_blank" class="btn btn-green btn-xs" style="margin-top:8px">\ud83d\udcac Offer the first 3 to the customer</a>':'')
-      : '<div style="font-size:11px;color:var(--red)">No free slot in the next 3 weeks for this kind of job. Check capacity or the parts date.</div>')+
+      ? (num?'<a href="'+waLink(num,slotsMsg(j,o.slots))+'" target="_blank" class="btn btn-green btn-xs" style="margin-top:8px">\ud83d\udcac Offer the first 3 to the customer</a>':'')
+      : '<div style="font-size:11px;color:var(--red);margin-top:6px">No free slot in the next 3 weeks for this kind of job. Swipe on, or check capacity or the parts date.</div>')+
   '</div>';
 }
 
@@ -3170,6 +3274,7 @@ function smartSlotsH(j){
 // PO then comes back with an ETA after the booking, the adviser is told
 // to rebook, with the earliest slot the parts allow.
 function partsToOrder(j){
+  if(skipsOrders(j))return [];
   return (typeof realParts==='function'?realParts(j):(j.parts||[]))
     .filter(p=>!p.poNum&&p.stockStatus!=='stock');
 }
@@ -3670,8 +3775,17 @@ function sendBackMsg(j,why,to){
 // Who worked on this job and can be told
 function sendBackPeople(j,estimatorWas){
   const out=[],seen={};
-  const add=(n,role,tick)=>{const s=staffByName(n);if(!s||seen[s.name]||s.name==='Logkith')return;seen[s.name]=1;out.push({name:s.name,wa:s.wa||'',role,tick});};
-  add(estimatorWas||j.assignedEstimator,'estimator who priced it',true);
+  const add=(n,role,tick,extra)=>{const s=staffByName(n);if(!s||seen[s.name]||s.name==='Logkith')return;seen[s.name]=1;out.push(Object.assign({name:s.name,wa:s.wa||'',role,tick},extra||{}));};
+  // Every estimator on the rota (13 Oct 2026) — whoever priced it first,
+  // then the rest. On-shift estimators are flagged and ticked so the
+  // reason reaches whoever is online right now.
+  let ests=[];try{ests=getOnShiftEstimators();}catch(e){}
+  const shiftTag=e=>e?(e.onShift?' \u00b7 \ud83d\udfe2 on shift now':(e.hours?' \u00b7 off shift ('+e.hours+')':'')):'';
+  const pricedBy=staffByName(estimatorWas||j.assignedEstimator);
+  if(pricedBy){const e=ests.find(x=>x.name===pricedBy.name);add(pricedBy.name,'estimator who priced it'+shiftTag(e),true,{est:true,onShift:!!(e&&e.onShift)});}
+  ests.filter(e=>e.hours||e.onShift)   // only estimators still on the rota
+    .sort((a,b)=>(b.onShift?1:0)-(a.onShift?1:0))
+    .forEach(e=>add(e.name,'estimator'+shiftTag(e),!!e.onShift,{est:true,onShift:!!e.onShift}));
   add(j.partsBy,'parts',false);
   add(j.by,'took the intake',false);
   (typeof STAFF!=='undefined'?STAFF:[]).filter(s=>s.filter==='adviser').forEach(s=>add(s.name,'service adviser',false));
@@ -3692,7 +3806,17 @@ function openSendBack(id){
     '<div style="display:flex;flex-wrap:wrap;gap:5px;margin:4px 0 6px">'+SB_CHIPS.map(c=>
       '<button class="btn btn-ghost btn-xs" onclick="sbChip(this)">'+escHtml(c)+'</button>').join('')+'</div>'+
     '<textarea class="fta" id="sb-why" style="min-height:90px" placeholder="e.g. Labour too high — cap at 13 hours">'+escHtml(j.signOffNote&&!/^Disapproved:/.test(j.signOffNote)?'':'')+'</textarea>'+
+    (function(){
+      const est=ppl.filter(p=>p.est);if(!est.length)return '';
+      const cur=(sendBackPeople(j)[0]||{}).est?ppl[0].name:'';
+      return '<label class="fl2" style="margin-top:10px;display:block">Who fixes it?</label>'+
+        '<select id="sb-assign" class="fi2" style="width:100%" onchange="sbAssignTick(this.value)">'+
+        est.map(p=>'<option value="'+escHtml(p.name)+'"'+(p.name===cur?' selected':'')+'>'+escHtml(p.name)+(p.onShift?' \u2014 on shift now':' \u2014 off shift')+(p.name===cur?' (priced it)':'')+'</option>').join('')+
+        '</select>';
+    })()+
     '<label class="fl2" style="margin-top:10px;display:block">WhatsApp the reason to</label>'+
+    '<div style="display:flex;gap:5px;margin:4px 0 4px"><button type="button" class="btn btn-ghost btn-xs" onclick="sbTick(\'on\')">Tick on-shift estimators</button>'+
+      '<button type="button" class="btn btn-ghost btn-xs" onclick="sbTick(\'est\')">Tick all estimators</button></div>'+
     (ppl.length?ppl.map((p,i)=>'<label style="display:flex;gap:8px;align-items:center;font-size:13px;padding:4px 0">'+
         '<input type="checkbox" class="sb-to" data-i="'+i+'"'+(p.tick&&p.wa?' checked':'')+(p.wa?'':' disabled')+'> '+
         '<strong>'+escHtml(p.name)+'</strong> <span style="color:var(--faint);font-size:11px">'+escHtml(p.role)+(p.wa?'':' · no WhatsApp number')+'</span></label>').join('')
@@ -3703,6 +3827,19 @@ function openSendBack(id){
   document.body.appendChild(w);
   w._people=ppl;
   setTimeout(()=>{const t=document.getElementById('sb-why');if(t)t.focus();},50);
+}
+function sbTick(mode){
+  const w=document.getElementById('sb-modal');const ppl=(w&&w._people)||[];
+  document.querySelectorAll('#sb-modal .sb-to').forEach(c=>{
+    const p=ppl[+c.getAttribute('data-i')];if(!p||c.disabled)return;
+    if(p.est)c.checked=mode==='est'?true:!!p.onShift;
+  });
+}
+function sbAssignTick(name){
+  const w=document.getElementById('sb-modal');const ppl=(w&&w._people)||[];
+  document.querySelectorAll('#sb-modal .sb-to').forEach(c=>{
+    const p=ppl[+c.getAttribute('data-i')];if(p&&p.name===name&&!c.disabled)c.checked=true;
+  });
 }
 function sbChip(b){
   const t=document.getElementById('sb-why');if(!t)return;
@@ -3717,8 +3854,13 @@ function doSendBack(id){
   const ppl=(w&&w._people)||[];
   const to=[...document.querySelectorAll('#sb-modal .sb-to')].filter(c=>c.checked).map(c=>ppl[+c.getAttribute('data-i')]).filter(p=>p&&p.wa);
   const estWas=j.assignedEstimator;
+  const pick=((document.getElementById('sb-assign')||{}).value||'')||estWas;
   sendBackToEstimator(id,why);
-  if(estWas&&j.assignedEstimator!==estWas){j.assignedEstimator=estWas;save(j);}   // back to whoever priced it
+  if(pick&&j.assignedEstimator!==pick){
+    j.assignedEstimator=pick;
+    if(estWas&&pick!==estWas){j.log=j.log||[];j.log.push({t:ts(),s:'\ud83d\udccb Sent back to '+pick+' (was '+estWas+')'+(currentUser?' ['+currentUser.name+']':'')});}
+    save(j);
+  }
   notifySendBack(j,why,to,true);
 }
 // Message each person. Without the WhatsApp relay only one window can
@@ -4005,6 +4147,8 @@ function cardH(j){
     (jobBalance(j)<-0.005?'<div style="font-size:9px;font-weight:800;color:var(--red);margin-bottom:4px">\u26a0 OVERPAID \u00a3'+Math.abs(jobBalance(j)).toFixed(2)+'</div>':'')+
     (realParts(j).some(p=>p.returnedFrom&&!p.poNum)?'<div style="font-size:9px;font-weight:800;color:var(--amber);margin-bottom:4px">\u21a9 PART SENT BACK \u2014 REORDER</div>':'')+
     (j.additionalWork?'<div style="font-size:9px;font-weight:800;color:var(--blue);margin-bottom:4px">\u2795 ADDITIONAL WORK</div>':'')+
+    (j.stage==='range'?(j.rangeSentAt?'<div style="font-size:9px;font-weight:800;color:var(--green);margin-bottom:4px">\ud83d\udcb7 \u00a3'+j.rangeLow+'\u2013\u00a3'+j.rangeHigh+' SENT \u00b7 WAITING</div>':'<div style="font-size:9px;font-weight:800;color:var(--gold);margin-bottom:4px">\ud83d\udcb7 RANGE TO SEND</div>'):'')+
+    (j.skipOrders&&['signoff','contact','contacted','waiting','waiting2','ready','booked'].includes(j.stage)?'<div style="font-size:9px;font-weight:800;color:var(--gold);margin-bottom:4px">\u23ed NO PO / SO</div>':'')+
     (['booked','po','so','raised','soraised'].includes(j.stage)&&jobNeedsSO(j)&&!soRaised(j)?'<div style="font-size:9px;font-weight:800;color:var(--teal);margin-bottom:4px">\ud83d\udd27 SO NEEDED</div>':'')+
     (j.declined&&!j.declined.closed?'<div style="font-size:9px;font-weight:800;color:var(--red);margin-bottom:4px">\ud83d\udeab WE CAN\u2019T DO IT \u2014 TELL THE CUSTOMER</div>':'')+
     (j.twoPrice?'<div style="font-size:9px;font-weight:800;color:var(--gold);margin-bottom:4px">\u2696 '+(j.twoPriceChoice?TWO_OPT[j.twoPriceChoice].short.toUpperCase()+' CHOSEN':'2 PRICES \u2014 MAIN DEALER / NON-DEALER')+'</div>':'')+
@@ -4175,7 +4319,7 @@ function cleanupGroups(){
   const past=d=>{if(!d)return false;const t=new Date(d+'T00:00:00').getTime();return !isNaN(t)&&Date.now()-t>30*864e5;};
   const D=live.filter(j=>!used.has(j.id)&&['booked','po','so','raised','soraised','checkin','ready'].includes(j.stage)&&past(j.bookedFor)&&quietDays(j)>=30);
   D.forEach(j=>used.add(j.id));
-  const E=live.filter(j=>!used.has(j.id)&&['intake','labour','parts','financial','signoff','disapproved','contact','contacted','waiting','waiting2'].includes(j.stage)&&quietDays(j)>=30);
+  const E=live.filter(j=>!used.has(j.id)&&['intake','range','labour','parts','financial','signoff','disapproved','contact','contacted','waiting','waiting2'].includes(j.stage)&&quietDays(j)>=30);
   return [
     {k:'A',title:'Finished on 3 Aug under the old system',why:'"All orders raised" — in the old pipeline that was the last step',list:A,tick:true,act:'finished'},
     {k:'B',title:'Moved to POs on 3 Aug with no "complete" line',why:'Same afternoon as the ones above — probably finished, check them',list:B,tick:false,act:'finished'},
@@ -5018,7 +5162,7 @@ function myWork(){
   const add=(j,why)=>out.push({kind:'job',id:j.id,reg:j.reg||'',name:j.name||'',why,since:j.stageAt||0});
   if(boss)live.filter(j=>j.stage==='signoff').forEach(j=>add(j,'Waiting on your sign-off'));
   if(boss)live.filter(j=>j.stage==='disapproved').forEach(j=>add(j,'Disapproved \u2014 write why and fix it'));
-  if(has('estimator'))live.filter(j=>['intake','labour','financial'].includes(j.stage)&&(boss?true:j.assignedEstimator===u.name))
+  if(has('estimator'))live.filter(j=>(['intake','labour','financial'].includes(j.stage)||(j.stage==='range'&&!j.rangeSentAt))&&(boss?true:j.assignedEstimator===u.name))
     .forEach(j=>add(j,j.stage==='financial'?'Final estimate to confirm':(j.tmJob?'Pricing in progress':'Start pricing')));
   if(has('parts'))live.filter(j=>['parts','po','so'].includes(j.stage))
     .forEach(j=>add(j,j.stage==='parts'?'Price the parts':'Raise the orders'));
@@ -5647,9 +5791,17 @@ function actH(j){
               '<div style="font-size:12px;font-weight:800;color:var(--amber)">\ud83d\udce3 Assigned to '+escHtml(j.assignedEstimator)+' \u2014 not told yet</div>'+
               '<button class="btn btn-green btn-sm btn-full" style="margin-top:6px" onclick="sendAssignNotice(\''+j.id+'\')">\ud83d\udcac Send them the job</button></div>'
             : (j.notifiedAt?'<div style="font-size:11px;color:var(--green);margin-bottom:8px">\u2713 '+escHtml(j.assignedEstimator||'')+' told '+escHtml(j.notifiedAt)+'</div>':''))+
-        '<div class="notice n-blue" style="margin-bottom:12px">New job in. Move to Estimator to begin labour estimate.</div>'+
-        '<button class="btn btn-gold btn-full" onclick="mv(\'labour\',\'Assigned to Estimator\')">Start Labour Estimate →</button>'+
+        (photoStripH(j,true)||'<div style="background:var(--surface2);border:1px dashed var(--border);border-radius:var(--r);padding:9px 11px;margin-bottom:10px;font-size:11px;color:var(--dim)">\ud83d\udcf8 No photos yet. '+photoAddBtnH(j)+'</div>')+
+        (skipsRange(j)
+          ?'<div class="notice n-blue" style="margin-bottom:12px">New job in. '+escHtml(skipsRange(j))+' \u2014 no price range, straight to the full estimate.</div>'+
+           '<button class="btn btn-gold btn-full" onclick="mv(\'labour\',\'Assigned to Estimator\')">Start Labour Estimate →</button>'
+          :'<div class="notice n-blue" style="margin-bottom:12px">New job in. First step is a quick price range from the estimator brain.</div>'+
+           '<button class="btn btn-gold btn-full" onclick="mv(\'range\',\'To Price Range\')">Give a price range →</button>'+
+           '<button class="btn btn-ghost btn-sm btn-full" style="margin-top:6px" onclick="skipRange(\''+j.id+'\')">Skip the range \u2014 straight to full estimate</button>')+
         '<div style="margin-top:8px">'+notifyRole('estimator','New job — '+j.reg+' '+j.make+' '+j.model+'. Please start labour estimate.')+'</div>';
+      break;
+    case 'range':
+      h+=rangePanelH(j);
       break;
     case 'labour':
       h+=photoStripH(j,true)+estimateSummaryH(j)+estimateDocsH(j,false);
@@ -6016,17 +6168,18 @@ function photosH(j){
           const id=getDriveId(url);
           const thumb=id?'https://drive.google.com/thumbnail?id='+id+'&sz=w200':'';
           const preview=id?'https://drive.google.com/file/d/'+id+'/view':url;
-          return'<a href="'+preview+'" target="_blank" style="display:block;border-radius:var(--rs);overflow:hidden;border:1px solid var(--border);background:var(--surface3);aspect-ratio:4/3;position:relative">'+
-            (id?driveImgH(id,400):'')+
-            '<div style="display:'+(id?'none':'flex')+';align-items:center;justify-content:center;height:100%;font-size:11px;color:var(--dim);padding:8px;text-align:center">📷 Open Photo</div>'+
+          const th=anyPhotoThumbH(url,400);
+          return'<a href="'+escHtml(preview)+'" target="_blank" style="display:block;border-radius:var(--rs);overflow:hidden;border:1px solid var(--border);background:var(--surface3);aspect-ratio:4/3;position:relative">'+
+            th+
+            '<div style="display:'+(th?'none':'flex')+';align-items:center;justify-content:center;height:100%;font-size:11px;color:var(--dim);padding:8px;text-align:center">📷 Open Photo</div>'+
           '</a>';
         }).join('')+
       '</div>':
       '<a href="'+raw+'" target="_blank" class="btn btn-blue btn-sm">📷 Open Photos in Google Drive ↗</a>'
     )+
     '<div style="font-size:11px;color:var(--dim);margin-top:4px">Tap any photo to open full size.</div>'+
-    '<div style="font-size:10px;color:var(--amber);margin-top:4px;line-height:1.4">Photo not loading? Google Form uploads are private by default. In Drive, open the form\'s upload folder \u2192 Share \u2192 <strong>Anyone with the link \u2192 Viewer</strong>. Then everyone can see them without signing in.</div>'+
-    '<button class="btn btn-ghost btn-xs" style="margin-top:6px" onclick="copyPhotoLinks(\''+j.id+'\')">\ud83d\udd17 Copy photo links</button>'+
+    (allLinks.some(u=>/drive\.google/.test(u))?'<div style="font-size:10px;color:var(--amber);margin-top:4px;line-height:1.4">Photo not loading? Google Form uploads are private by default. In Drive, open the form\'s upload folder \u2192 Share \u2192 <strong>Anyone with the link \u2192 Viewer</strong>. Then everyone can see them without signing in.</div>':'')+
+    '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px"><button class="btn btn-ghost btn-xs" onclick="copyPhotoLinks(\''+j.id+'\')">\ud83d\udd17 Copy photo links</button>'+photoAddBtnH(j)+'</div>'+
   '</div>';
 }
 
@@ -6043,6 +6196,46 @@ function photosH(j){
 const PHOTO_PROXY='';      // paste the kith-photos Apps Script /exec URL here
 const PHOTO_KEY='KITHCARS';
 const _photoCache={};
+// Any photo link -> thumbnail. Drive links go through driveImgH (with its
+// fallbacks); our own uploads (Supabase storage) and plain image links
+// show directly.
+function isImgUrl(u){return /\/storage\/v1\/object\/public\//.test(u)||/\.(jpe?g|png|webp|gif|heic)(\?|$)/i.test(u)||/^data:image\//.test(u);}
+function anyPhotoThumbH(u,sz){
+  const m=String(u).match(/drive\.google\.com\/(?:file\/d\/|open\?id=|thumbnail\?id=|uc\?id=)([\w-]+)/)||String(u).match(/\/d\/([\w-]+)/);
+  if(m)return driveImgH(m[1],sz);
+  if(isImgUrl(u))return '<img src="'+escHtml(u)+'" loading="lazy" style="width:100%;height:100%;object-fit:cover"/>';
+  return '';
+}
+function photoAddBtnH(j){
+  return '<label class="btn btn-ghost btn-xs" style="cursor:pointer">\ud83d\udcf7 Add photos'+
+    '<input type="file" accept="image/*" multiple style="display:none" onchange="addJobPhotos(\''+j.id+'\',this)"/></label>'+
+    '<span class="ph-st" data-id="'+escHtml(j.id)+'" style="font-size:11px;color:var(--dim);margin-left:6px"></span>';
+}
+async function addJobPhotos(id,input){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const files=[...(input.files||[])];input.value='';
+  const st=t=>document.querySelectorAll('.ph-st[data-id="'+id+'"]').forEach(e=>e.textContent=t);
+  let ok=0;
+  for(let k=0;k<files.length;k++){
+    st('Uploading '+(k+1)+' of '+files.length+'\u2026');
+    try{
+      const prep=await prepImage(files[k],1800);
+      const body=Uint8Array.from(atob(prep.base64),c=>c.charCodeAt(0));
+      const path='photos/'+String(j.reg||j.id).replace(/[^A-Z0-9]/gi,'')+'-'+Date.now()+'-'+k+'.jpg';
+      const res=await fetch(SB_URL+'/storage/v1/object/'+SHEET_BUCKET+'/'+path,{method:'POST',headers:{...SB_HDR,'Content-Type':'image/jpeg','x-upsert':'true'},body});
+      if(!res.ok)throw new Error('Upload refused ('+res.status+')');
+      j.photoLinks=j.photoLinks||[];
+      j.photoLinks.push(SB_URL+'/storage/v1/object/public/'+SHEET_BUCKET+'/'+path);
+      ok++;
+    }catch(e){console.warn('job photo',e);st('\u26a0 '+(e.message||'Upload failed'));}
+  }
+  if(ok){
+    j.log=j.log||[];
+    j.log.push({t:ts(),s:'\ud83d\udcf8 '+ok+' photo'+(ok===1?'':'s')+' added'+(currentUser?' by '+currentUser.name:'')});
+    save(j);renderDetail();renderAll();
+    if(typeof toast==='function')toast('\ud83d\udcf8 '+ok+' photo'+(ok===1?'':'s')+' added');
+  }
+}
 function driveImgH(id,sz){
   const s=parseInt(sz)||300;
   return '<img src="https://drive.google.com/thumbnail?id='+encodeURIComponent(id)+'&sz=w'+s+'" data-id="'+escHtml(id)+'" data-sz="'+s+'" data-try="0" loading="lazy" referrerpolicy="no-referrer" '+
@@ -6092,16 +6285,18 @@ function photoStripH(j,big){
       links.map(u=>{const d=id(u);
         const thumb=d?'https://drive.google.com/thumbnail?id='+d+'&sz=w300':'';
         const open=d?'https://drive.google.com/file/d/'+d+'/view':u;
+        const th=anyPhotoThumbH(u,400);
         return '<a href="'+escHtml(open)+'" target="_blank" style="display:block;border:1px solid var(--border);border-radius:var(--rs);overflow:hidden;background:var(--surface3);aspect-ratio:4/3;position:relative">'+
-          (d?driveImgH(d,400):'')+
-          '<div style="display:'+(d?'none':'flex')+';align-items:center;justify-content:center;height:100%;font-size:10px;color:var(--dim)">\ud83d\udcf7 open</div></a>';
+          th+
+          '<div style="display:'+(th?'none':'flex')+';align-items:center;justify-content:center;height:100%;font-size:10px;color:var(--dim)">\ud83d\udcf7 open</div></a>';
       }).join('')+
     '</div>'+
-    '<div style="display:flex;gap:6px;margin-top:6px">'+
+    '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center">'+
       '<button class="btn btn-ghost btn-xs" onclick="copyPhotoLinks(\''+j.id+'\')">\ud83d\udd17 Copy links</button>'+
       ((j.phone)?'<a href="'+waLink(String(j.phone).replace(/^0/,'44').replace(/\D/g,''),
         'Hi '+firstName(j)+', just confirming the photos we have for your '+vehDesc(j)+':\n\n'+links.join('\n'))+
         '" target="_blank" class="btn btn-ghost btn-xs">\ud83d\udcac Send to customer</a>':'')+
+      photoAddBtnH(j)+
     '</div></div>';
 }
 
@@ -6849,7 +7044,7 @@ function tlH(j){
 
 // ── BROWSER NOTIFICATIONS ────────────────────────────────
 const ROLE_STAGES={
-  estimator:['intake','labour','financial'],
+  estimator:['intake','range','labour','financial'],
   parts:['parts'],
   adviser:['contact','contacted','waiting','waiting2','ready','booked','authwait'],
   onsite:['checkin'],
@@ -6900,7 +7095,7 @@ function canMove(target){
   // first match — Ali is adviser AND parts, and the old order-of-checks
   // meant the parts rule fired first and locked him out of his own stages.
   const byRole={
-    estimator:['intake','labour','financial','signoff'],
+    estimator:['intake','range','labour','financial','signoff'],
     parts:['parts','po','so','raised','soraised'],
     adviser:['contact','contacted','waiting','waiting2','ready','booked','authwait'],
     accounts:['accounts','receivable','review','followup'],
@@ -6908,7 +7103,7 @@ function canMove(target){
   };
   let allowed=[];
   Object.keys(byRole).forEach(r=>{ if(hasRole(currentUser,r)) allowed=allowed.concat(byRole[r]); });
-  if(currentUser.name==='Harith') allowed=allowed.concat(['intake','labour','financial','parts']);
+  if(currentUser.name==='Harith') allowed=allowed.concat(['intake','range','labour','financial','parts']);
   return allowed.includes(stage);
 }
 
@@ -7189,10 +7384,10 @@ function openBookingModal(id){
           '<span style="color:var(--dim)">The slot is yours to give \u2014 this just stays flagged on the job until it is cleared.</span></div>':'';})()+
       (function(){try{return smartSlotsH(j);}catch(e){console.warn('slots',e);return '';}})()+
       '<div style="display:flex;gap:10px;margin-bottom:14px">'+
-        '<div style="flex:1"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin-bottom:4px">Date in</div>'+
-          '<input type="date" id="bk-date" class="fi2" value="'+(j.bookedFor||'')+'" style="width:100%" onchange="checkBkDate(\''+j.id+'\');bookPlanRefresh(\''+j.id+'\')"/></div>'+
-        '<div style="flex:1"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin-bottom:4px">Time</div>'+
-          '<input type="time" id="bk-time" class="fi2" value="'+(j.bookedTime||'09:00')+'" style="width:100%"/></div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin-bottom:4px">Date in</div>'+
+          '<input type="date" id="bk-date" class="fi2" value="'+(j.bookedFor||'')+'" style="width:100%;min-width:0;box-sizing:border-box;-webkit-appearance:none;min-height:42px" onchange="checkBkDate(\''+j.id+'\');bookPlanRefresh(\''+j.id+'\');bkStripRefresh(\''+j.id+'\');setTimeout(bkStripJump,0)"/></div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin-bottom:4px">Time</div>'+
+          '<input type="time" id="bk-time" class="fi2" value="'+(j.bookedTime||'09:00')+'" style="width:100%;min-width:0;box-sizing:border-box;-webkit-appearance:none;min-height:42px"/></div>'+
       '</div>'+
       '<div id="bk-probs"></div>'+
       bookPlanH(j)+
@@ -7213,11 +7408,11 @@ function openBookingModal(id){
         :'<div style="font-size:11px;color:var(--faint);text-align:center">Set a date to send the confirmation.</div>')+
     '</div>';
   };
-  window._bkSide=schedSide(j);
-  wrap._draw=()=>{draw();setTimeout(()=>bookPlanRefresh(j.id),0);};
+  window._bkSide=schedSide(j);window._bkStripDays=0;
+  wrap._draw=()=>{draw();setTimeout(()=>{bookPlanRefresh(j.id);bkStripJump();},0);};
   draw();
   wrap.addEventListener('click',e=>{if(e.target===wrap)wrap.remove();});
-  setTimeout(()=>bookPlanRefresh(j.id),0);
+  setTimeout(()=>{bookPlanRefresh(j.id);bkStripJump();},0);
   document.body.appendChild(wrap);
   window._bkModal=wrap;
 }
@@ -7235,8 +7430,8 @@ function bookPlanH(j){
   const srt=parseFloat(j.srtCharged)||parseFloat(j.srt)||0;
   return '<div style="margin-bottom:14px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin-bottom:4px">How long will it take?</div>'+
     '<div style="display:flex;gap:6px">'+
-      '<input type="number" id="bk-len" class="fi2" min="0.5" step="0.5" placeholder="e.g. '+(side==='bodywork'?'3':'2.5')+'" value="'+len+'" style="flex:1" oninput="bookPlanRefresh(\''+j.id+'\')"/>'+
-      '<select id="bk-unit" class="fi2" style="width:110px" onchange="bookPlanRefresh(\''+j.id+'\')">'+
+      '<input type="number" id="bk-len" class="fi2" min="0.5" step="0.5" placeholder="e.g. '+(side==='bodywork'?'3':'2.5')+'" value="'+len+'" style="flex:1" oninput="bookPlanRefresh(\''+j.id+'\');bkStripRefresh(\''+j.id+'\',true)"/>'+
+      '<select id="bk-unit" class="fi2" style="width:110px" onchange="bookPlanRefresh(\''+j.id+'\');bkStripRefresh(\''+j.id+'\',true)">'+
         '<option value="hours"'+(unit==='hours'?' selected':'')+'>hours</option>'+
         '<option value="days"'+(unit==='days'?' selected':'')+'>days</option></select></div>'+
     (srt?'<button type="button" class="btn btn-ghost btn-xs" style="margin-top:5px" onclick="useSrtLen(\''+j.id+'\','+srt+')">Use estimate: '+srt.toFixed(1)+'h</button>':'')+
@@ -7275,7 +7470,7 @@ function bookPlanRefresh(id){
     }catch(e){sl.innerHTML='';}
   }
 }
-function pickBookDate(id,ds){const d=document.getElementById('bk-date');if(d)d.value=ds;bookPlanRefresh(id);}
+function pickBookDate(id,ds){const d=document.getElementById('bk-date');if(d)d.value=ds;bookPlanRefresh(id);bkStripRefresh(id,true);setTimeout(bkStripJump,0);}
 function useSrtLen(id,h){
   const l=document.getElementById('bk-len'),u=document.getElementById('bk-unit');
   if(l)l.value=h;if(u)u.value='hours';bookPlanRefresh(id);
@@ -7397,18 +7592,122 @@ function setMechanic(id,val){
   save(j);renderWeek();renderAll();
 }
 let weekSide='mechanical';
-function openWeekView(side){
-  weekOffset=0;
+// Month view (17 Oct 2026): the big calendar. Opens by default; Week is
+// the detailed per-mechanic view. calPick = job id when opened from the
+// booking screen — tapping a day then books that date.
+let calMode='month', monthOffset=0, calPick=null, calSel=null;
+function openWeekView(side,opts){
+  opts=opts||{};
+  weekOffset=0;monthOffset=0;calSel=null;
+  calPick=opts.pick||null;
+  calMode=opts.mode||'month';
   weekSide=(side==='bodywork')?'bodywork':'mechanical';
+  if(opts.focus){const f=new Date(opts.focus+'T00:00:00'),n=new Date();
+    if(!isNaN(f))monthOffset=(f.getFullYear()-n.getFullYear())*12+(f.getMonth()-n.getMonth());calSel=opts.focus;}
   document.getElementById('ov-week').classList.add('open');
   renderWeek();
+  const wb=document.getElementById('week-body');if(wb)wb.scrollTop=0;
 }
 function setWeekSide(side){weekSide=side;renderWeek();}
-function weekNav(delta){weekOffset+=delta;renderWeek();}
-function weekToday(){weekOffset=0;renderWeek();}
+function setCalMode(m){calMode=m;renderWeek();}
+function weekNav(delta){if(calMode==='month'){monthOffset+=delta;calSel=null;}else weekOffset+=delta;renderWeek();}
+function weekToday(){weekOffset=0;monthOffset=0;calSel=null;renderWeek();}
+function calDayTap(ds){
+  if(calPick){
+    const id=calPick;calPick=null;
+    cx('ov-week');
+    const bm=window._bkModal;
+    if(bm&&document.body.contains(bm)){bm.style.display='';
+      try{pickSlot(ds,id);bkStripRefresh(id);setTimeout(bkStripJump,0);}catch(e){const d=document.getElementById('bk-date');if(d)d.value=ds;}
+    } else {try{openBookingModal(id);setTimeout(()=>{pickSlot(ds,id);bkStripRefresh(id);setTimeout(bkStripJump,0);},50);}catch(e){}}
+    return;
+  }
+  calSel=(calSel===ds?null:ds);renderWeek();
+  setTimeout(()=>{const e=document.getElementById('cal-daylist');if(e)e.scrollIntoView({behavior:'smooth',block:'start'});},30);
+}
+function calCancelPick(){
+  const id=calPick;calPick=null;cx('ov-week');
+  const bm=window._bkModal;if(bm&&document.body.contains(bm))bm.style.display='';
+}
+function renderMonth(el){
+  const side=weekSide, cap=SCHED_CAP[side]||99, workDays=SCHED_DAYS[side]||[1,2,3,4,5,6];
+  const now=new Date();
+  const first=new Date(now.getFullYear(),now.getMonth()+monthOffset,1);
+  const lbl=document.getElementById('week-label');
+  if(lbl)lbl.textContent=first.toLocaleString('en-GB',{month:'long',year:'numeric'})+(monthOffset===0?'  (this month)':'');
+  const booked=jobs.filter(j=>j.bookedFor&&j.stage!=='lost'&&!j.mergedInto&&schedSide(j)===side);
+  const start=new Date(first);start.setDate(1-((first.getDay()+6)%7));   // back to Monday
+  const today=dstr(new Date());
+  const pickJob=calPick?jobs.find(x=>x.id===calPick):null;
+  const pr=pickJob?partsReadyDate(pickJob):null;
+  const rule=pickJob?allowedDays(pickJob):null;
+  const accent=side==='bodywork'?'var(--blue)':'var(--gold)';
+  let cells='', monthIn=0, monthFull=0;
+  for(let i=0;i<42;i++){
+    const d=new Date(start);d.setDate(start.getDate()+i);
+    if(i>=35&&d.getMonth()!==first.getMonth())break;
+    const ds=dstr(d), inMonth=d.getMonth()===first.getMonth();
+    const closed=workDays.indexOf(d.getDay())<0;
+    const dayJobs=booked.filter(j=>jobOnDay(j,ds));
+    const ins=dayJobs.filter(j=>j.bookedFor===ds);
+    const n=bookedCountFor(side,ds);
+    const pct=n/cap, full=pct>=1&&!closed;
+    if(inMonth){monthIn+=ins.length;if(full)monthFull++;}
+    const col=closed?'var(--faint)':(pct>=1?'var(--red)':(pct>=0.67?'var(--amber)':'var(--green)'));
+    const past=ds<today;
+    let pickBad=false;
+    if(pickJob){pickBad=past||closed||(pr&&d<pr)||(rule&&rule.days.indexOf(d.getDay())<0)||fullDaysFor(pickJob,ds,side,jobLenDays(pickJob)).length>0;}
+    const sel=calSel===ds||(pickJob&&pickJob.bookedFor===ds);
+    cells+='<div onclick="calDayTap(\''+ds+'\')" style="cursor:pointer;min-height:clamp(70px,10.5vh,150px);border:1px solid '+(sel?accent:'var(--border)')+';'+(sel?'box-shadow:0 0 0 1px '+accent+';':'')+
+      'border-radius:8px;padding:5px 5px 6px;background:'+(ds===today?'rgba(201,168,76,.10)':'var(--surface2)')+';opacity:'+(!inMonth?'.35':(closed||past||pickBad?'.55':'1'))+';overflow:hidden;display:flex;flex-direction:column;gap:3px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:baseline">'+
+        '<span style="font-weight:800;font-size:13px;'+(ds===today?'color:var(--gold)':'')+'">'+d.getDate()+'</span>'+
+        (closed?'<span style="font-size:9px;color:var(--faint)">closed</span>':'<span style="font-size:9px;font-weight:800;color:'+col+'">'+n+'/'+cap+'</span>')+
+      '</div>'+
+      (closed?'':'<div style="height:3px;background:var(--surface3);border-radius:2px;overflow:hidden"><div style="height:100%;width:'+Math.min(100,Math.round(pct*100))+'%;background:'+col+'"></div></div>')+
+      dayJobs.slice(0,3).map(j=>'<div style="font-size:9.5px;line-height:1.25;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-left:2px solid '+(j.bookedFor===ds?accent:'var(--border)')+';padding-left:4px;color:'+(j.bookedFor===ds?'var(--fg)':'var(--dim)')+'">'+
+        escHtml(j.reg||j.name||'')+'</div>').join('')+
+      (dayJobs.length>3?'<div style="font-size:9px;color:var(--faint)">+'+(dayJobs.length-3)+' more</div>':'')+
+      (pickJob&&!pickBad&&inMonth?'<div style="margin-top:auto;font-size:9px;font-weight:800;color:var(--green)">\u2713 free</div>':'')+
+    '</div>';
+  }
+  const DAYN=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  let list='';
+  if(calSel&&!pickJob){
+    const dj=booked.filter(j=>jobOnDay(j,calSel)).sort((a,b)=>String(a.bookedTime||'').localeCompare(String(b.bookedTime||'')));
+    list='<div id="cal-daylist" style="margin-top:14px;background:var(--surface2);border:1px solid '+accent+';border-radius:var(--r);padding:10px 12px">'+
+      '<div style="font-weight:800;font-size:14px;margin-bottom:8px">'+escHtml(fmtBookDate(calSel))+' \u00b7 '+bookedCountFor(side,calSel)+' / '+cap+' cars</div>'+
+      (dj.length?dj.map(j=>{const span=jobSpan(j),k=span.indexOf(calSel)+1;
+        return '<div onclick="cx(\'ov-week\');openJob(\''+j.id+'\')" style="cursor:pointer;border-left:3px solid '+accent+';background:var(--bg2,#1a1a1a);border-radius:6px;padding:8px 10px;margin-bottom:6px">'+
+          '<div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:800;color:var(--gold);letter-spacing:.5px">'+escHtml(j.reg||'')+'</span>'+
+          '<span style="font-size:11px;color:var(--dim)">'+(j.bookedFor===calSel?(j.bookedTime?escHtml(fmt12(j.bookedTime))+' in':'in'):'day '+k+' of '+span.length)+'</span></div>'+
+          '<div style="font-size:12px">'+escHtml(j.name||'')+(j.mechanic?' \u00b7 \ud83d\udd27 '+escHtml(j.mechanic):'')+'</div>'+
+          '<div style="font-size:11px;color:var(--dim);margin-top:2px">'+escHtml((j.work||'').slice(0,90))+'</div>'+
+          '<div style="font-size:10px;color:var(--faint);margin-top:3px">'+escHtml(stg(j.stage).label)+(jobLenLabel(j)?' \u00b7 \u23f1 '+escHtml(jobLenLabel(j)):'')+'</div></div>';}).join('')
+        :'<div style="font-size:12px;color:var(--faint)">Nothing booked on this day.</div>')+
+    '</div>';
+  }
+  el.innerHTML=
+    (pickJob?'<div style="background:rgba(60,160,90,.14);border:1px solid var(--green);border-radius:var(--r);padding:9px 12px;margin:4px 0 10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+      '<div style="font-size:12px"><strong>Booking '+escHtml(pickJob.reg||'')+'</strong> \u2014 tap a free day. Greyed days are full, closed'+(pr?', before the parts land':'')+' or past (still tappable).</div>'+
+      '<button class="btn btn-ghost btn-xs" onclick="calCancelPick()">Back to booking</button></div>':'')+
+    '<div style="font-size:11px;color:var(--faint);padding:2px 2px 8px">'+monthIn+' car'+(monthIn===1?'':'s')+' coming in this month \u00b7 '+cap+' at a time'+
+      (monthFull?' \u00b7 <span style="color:var(--red);font-weight:700">'+monthFull+' full day'+(monthFull===1?'':'s')+'</span>':'')+'</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-bottom:4px">'+
+      DAYN.map(x=>'<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);text-align:center">'+x+'</div>').join('')+'</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px">'+cells+'</div>'+
+    list;
+}
 
 function renderWeek(){
   const el=document.getElementById('week-body');if(!el)return;
+  ['month','week'].forEach(k=>{const bt=document.getElementById('wk-mode-'+k);if(bt)bt.className='btn btn-sm '+(k===calMode?'btn-gold':'btn-ghost');});
+  if(calMode==='month'){
+    const side=weekSide;
+    ['mechanical','bodywork'].forEach(k=>{const bt=document.getElementById('wk-side-'+k);if(bt)bt.className='btn btn-sm '+(k===side?'btn-gold':'btn-ghost');});
+    const tt=document.getElementById('week-title');if(tt)tt.textContent=(side==='bodywork'?'\ud83c\udfa8 Bodywork calendar':'\ud83d\udd27 Mechanical calendar');
+    renderMonth(el);return;
+  }
   const side=weekSide;
   ['mechanical','bodywork'].forEach(k=>{const bt=document.getElementById('wk-side-'+k);if(bt)bt.className='btn btn-sm '+(k===side?'btn-gold':'btn-ghost');});
   const tt=document.getElementById('week-title');if(tt)tt.textContent=(side==='bodywork'?'\ud83c\udfa8 Bodywork calendar':'\ud83d\udd27 Mechanical calendar');
@@ -7642,6 +7941,9 @@ function markNotified(who){
 // • If everyone is busy the job waits, oldest first, and is handed to
 //   whoever frees up first. Nobody on shift = it waits for the morning.
 const EST_BUSY_STAGES=['intake','labour'];
+// Busy = in Intake or Labour, or a Price Range that has not gone out yet.
+// Once the range is sent they are free while the customer thinks.
+function estBusyOn(x){return EST_BUSY_STAGES.includes(x.stage)||(x.stage==='range'&&!x.rangeSentAt);}
 function _jobTime(x){
   if(x.stageAt)return +x.stageAt;
   const t=Date.parse(x.updatedAt||'');return isNaN(t)?0:t;
@@ -7651,9 +7953,9 @@ function estimatorState(){
   try{pool=getOnShiftEstimators().filter(s=>s.onShift);}catch(e){}
   return pool.map(s=>{
     const mine=jobs.filter(x=>x&&x.assignedEstimator===s.name&&!x.mergedInto);
-    const current=mine.filter(x=>EST_BUSY_STAGES.includes(x.stage));
+    const current=mine.filter(estBusyOn);
     // when did their last job leave their hands?
-    const left=mine.filter(x=>!EST_BUSY_STAGES.includes(x.stage)).map(_jobTime);
+    const left=mine.filter(x=>!estBusyOn(x)).map(_jobTime);
     return{name:s.name,staff:s,current,started:current.filter(x=>x.tmJob),
       free:current.length===0,freeSince:left.length?Math.max(...left):0};
   });
@@ -8174,8 +8476,14 @@ function allOrdersIn(j){
 // Any job with parts on it needs a PO. Only some jobs need an SO, and
 // Logan says which at sign-off; until he does, the work description is
 // used as a guess (MOT, DPF, key coding, alignment \u2026).
-function jobNeedsPO(j){ return realParts(j).some(p=>p.stockStatus!=='stock'&&!p.noOrder); }
+// ── SKIP POs & SOs (17 Oct 2026) ───────────────────────────────────
+// Logan can switch ordering off at sign-off (straight jobs, parts the
+// customer brings, everything off the shelf). The job then sits in Booked
+// until its day and goes straight to Vehicle Check-In — no PO or SO stage.
+function skipsOrders(j){ return !!(j&&j.skipOrders); }
+function jobNeedsPO(j){ if(skipsOrders(j))return false; return realParts(j).some(p=>p.stockStatus!=='stock'&&!p.noOrder); }
 function jobNeedsSO(j){
+  if(skipsOrders(j))return false;
   if(j.soNeeded===true)return true;
   if(j.soNeeded===false)return false;
   try{return soNeeded(j).length>0;}catch(e){return false;}
@@ -8189,6 +8497,167 @@ function nextOrderStage(j){
   return 'raised';
 }
 function afterPOsStage(j){return (j&&jobNeedsSO(j))?(soRaised(j)?'soraised':'so'):'raised';}
+// ══════════════════════════════════════════════════════════════════
+// PRICE RANGE (Nov 2026) \u2014 first step of Sales
+// ══════════════════════════════════════════════════════════════════
+// The estimator brain looks at every job KITH has already priced, finds
+// the ones most like this one, and gives the middle of what they cost.
+// The estimator checks it and sends it. Customer YES \u2192 full estimate;
+// NO \u2192 Lost, with the one why-survey message and our other services.
+const RANGE_STOP=new Set('the and for with from that this have has had need needs needed please car vehicle customer job work also check checks checked new old front rear left right side one two its not but are was were will can could would just like into onto off out our your their them they his her him she also very some any all more less than then only want wants wanted looking quote price estimate'.split(' '));
+function rangeWords(t){
+  return [...new Set(String(t||'').toLowerCase().replace(/[^a-z0-9 ]+/g,' ').split(/\s+/)
+    .map(w=>w.replace(/(ing|es|s)$/,'')).filter(w=>w.length>=3&&!RANGE_STOP.has(w)&&!/^\d+$/.test(w)))];
+}
+function skipsRange(j){
+  if(!j)return '';
+  if(j.isInternal)return 'Internal job';
+  if(j.isAA||/^aa/i.test(String(j.custType||'')))return 'AA job';
+  if(j.isB2B||/b2b|trade|fleet/i.test(String(j.custType||'')))return 'Trade / B2B customer';
+  if(j.isComeback||/^COMEBACK/i.test(String(j.work||'')))return 'Comeback';
+  if(j.additionalWork)return 'Additional work on a car already in';
+  return '';
+}
+function _pct(a,p){if(!a.length)return 0;const i=(a.length-1)*p,lo=Math.floor(i),hi=Math.ceil(i);return a[lo]+(a[hi]-a[lo])*(i-lo);}
+function brainRange(j){
+  const mine=rangeWords(j.work);
+  if(!mine.length)return {n:0,matches:[],why:'No work description to match on'};
+  const make=String(j.make||'').toLowerCase().trim();
+  const body=(typeof isBodywork==='function')&&isBodywork(j);
+  const pool=jobs.filter(x=>x&&x.id!==j.id&&!x.mergedInto&&parseFloat(x.quote)>0&&
+    !['intake','range','labour','parts','financial'].includes(x.stage));
+  const scored=[];
+  pool.forEach(x=>{
+    if(((typeof isBodywork==='function')&&isBodywork(x))!==body)return;
+    const w=rangeWords(x.work);if(!w.length)return;
+    const inter=mine.filter(t=>w.includes(t)).length;if(!inter)return;
+    let sc=inter/new Set([...mine,...w]).size;
+    if(make&&String(x.make||'').toLowerCase().trim()===make)sc+=0.1;
+    if(x.saidNo||x.stage==='lost')sc-=0.05;      // a quote that lost still tells us the price
+    if(sc>=0.3)scored.push({x,sc,q:parseFloat(x.quote)});
+  });
+  scored.sort((a,b)=>b.sc-a.sc);
+  const top=scored.slice(0,12);
+  if(top.length<3)return {n:top.length,matches:top,why:top.length?'Only '+top.length+' similar job'+(top.length===1?'':'s')+' so far \u2014 not enough to give a range':'No similar jobs priced yet'};
+  const qs=top.map(t=>t.q).sort((a,b)=>a-b);
+  let lo=_pct(qs,0.25),hi=_pct(qs,0.75);
+  if(hi-lo<lo*0.15){const m=(lo+hi)/2;lo=m*0.88;hi=m*1.12;}
+  lo=Math.max(10,Math.floor(lo/10)*10);hi=Math.ceil(hi/10)*10;
+  return {n:top.length,matches:top,low:lo,high:hi,conf:top.length>=6?'good':'rough',why:''};
+}
+function rangeMsg(j,lo,hi){
+  return 'Hi '+firstName(j)+', thanks for getting in touch with '+GARAGE.name+' about your '+vehDesc(j)+'.\n\n'+
+    'For '+String(j.work||'this work').replace(/\s+/g,' ').slice(0,140)+', jobs like this usually come to between \u00a3'+lo+' and \u00a3'+hi+' including VAT.\n\n'+
+    'If that works for you, just reply YES and we\u2019ll put together your exact quote.\n\n\u2014 '+GARAGE.name;
+}
+function rangePanelH(j){
+  const b=brainRange(j);
+  const lo=j.rangeLow||b.low||'', hi=j.rangeHigh||b.high||'';
+  const sent=!!j.rangeSentAt;
+  const num=estPhone(j);
+  const cur=v=>'<span style="font-size:22px;font-weight:900">\u00a3'+v+'</span>';
+  return photoStripH(j)+
+  '<div style="background:var(--surface2);border:1px solid var(--gold);border-radius:var(--r);padding:11px 13px;margin-bottom:10px">'+
+    '<div style="font-size:11px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">\ud83e\udde0 Estimator brain \u2014 price range</div>'+
+    (b.low
+      ?'<div style="display:flex;align-items:baseline;gap:8px">'+cur(b.low)+'<span style="color:var(--dim)">to</span>'+cur(b.high)+'<span style="font-size:11px;color:var(--dim)">inc VAT</span></div>'+
+       '<div style="font-size:11px;color:var(--dim);margin-top:3px">From '+b.n+' similar job'+(b.n===1?'':'s')+' KITH has priced \u00b7 '+(b.conf==='good'?'<span style="color:var(--green)">good match</span>':'<span style="color:var(--amber)">rough \u2014 check it</span>')+'</div>'
+      :'<div style="font-size:12px;color:var(--amber);font-weight:700">'+escHtml(b.why)+'.</div><div style="font-size:11px;color:var(--dim);margin-top:2px">Type a range below from experience \u2014 it gets better as more jobs are priced.</div>')+
+    (b.matches.length?'<details style="margin-top:6px"><summary style="font-size:11px;color:var(--dim);cursor:pointer">Jobs it matched</summary>'+
+      b.matches.map(m=>'<div style="font-size:11px;padding:3px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px">'+
+        '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml((m.x.reg||'')+' \u00b7 '+(m.x.make||'')+' \u00b7 '+String(m.x.work||'').slice(0,60))+'</span>'+
+        '<strong>\u00a3'+m.q.toFixed(0)+'</strong></div>').join('')+'</details>':'')+
+  '</div>'+
+  '<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px">'+
+    '<div style="flex:1"><label class="fl2">From \u00a3</label><input type="number" id="rg-lo" class="fi2" style="width:100%" value="'+escHtml(String(lo))+'" '+(sent?'disabled':'')+'/></div>'+
+    '<div style="flex:1"><label class="fl2">To \u00a3</label><input type="number" id="rg-hi" class="fi2" style="width:100%" value="'+escHtml(String(hi))+'" '+(sent?'disabled':'')+'/></div>'+
+  '</div>'+
+  (sent
+    ?'<div style="background:rgba(60,160,90,.12);border-left:3px solid var(--green);border-radius:var(--rs);padding:8px 10px;margin-bottom:10px;font-size:12px">'+
+       '\u2713 Range \u00a3'+j.rangeLow+'\u2013\u00a3'+j.rangeHigh+' sent '+escHtml(j.rangeSentAt)+(j.rangeSentBy?' by '+escHtml(j.rangeSentBy):'')+'. Waiting for the customer.</div>'+
+     '<div style="display:flex;flex-direction:column;gap:8px">'+
+       '<button class="btn btn-green btn-full" onclick="rangeYes(\''+j.id+'\')">\ud83d\udc4d Customer said YES \u2192 full estimate</button>'+
+       '<button class="btn btn-full" style="background:var(--red);color:#fff;font-weight:800" onclick="customerSaidNo(\''+j.id+'\')">\ud83d\udc4e Customer said NO \u2192 Lost</button>'+
+       (num?'<a class="btn btn-ghost btn-sm btn-full" target="_blank" href="'+escHtml(waLink(String(num).replace(/\D/g,''),rangeMsg(j,j.rangeLow,j.rangeHigh)))+'">\ud83d\udcac Send it again</a>':'')+
+     '</div>'
+    :'<div style="display:flex;flex-direction:column;gap:8px">'+
+       (num?'<button class="btn btn-gold btn-full" onclick="sendRange(\''+j.id+'\')">\ud83d\udcac Send this range to '+escHtml(firstName(j))+'</button>'
+           :'<div style="font-size:12px;color:var(--amber)">No mobile number \u2014 ring them with the range, then use the buttons below.</div>'+
+            '<button class="btn btn-gold btn-full" onclick="sendRange(\''+j.id+'\',true)">\ud83d\udcde Range given on the phone</button>')+
+       '<button class="btn btn-ghost btn-sm btn-full" onclick="skipRange(\''+j.id+'\')">Skip the range \u2014 straight to full estimate</button>'+
+     '</div>');
+}
+function _rangeVals(){
+  const lo=Math.round(parseFloat((document.getElementById('rg-lo')||{}).value)),hi=Math.round(parseFloat((document.getElementById('rg-hi')||{}).value));
+  if(!(lo>0)||!(hi>0)){alert('Put in both ends of the range.');return null;}
+  if(hi<lo){alert('The "To" figure is lower than the "From" figure.');return null;}
+  return {lo,hi};
+}
+async function sendRange(id,byPhone){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const v=_rangeVals();if(!v)return;
+  const b=brainRange(j);
+  j.rangeLow=v.lo;j.rangeHigh=v.hi;
+  j.rangeBrain=b.low?{low:b.low,high:b.high,n:b.n}:null;
+  j.log=j.log||[];
+  if(!byPhone){
+    const num=estPhone(j);
+    const r=await waSend(num,rangeMsg(j,v.lo,v.hi),{template:'kith_price_range',params:[firstName(j),String(v.lo),String(v.hi)]});
+    if(!r||!r.ok){alert('Did not send: '+((r&&r.error)||'unknown'));return;}
+    j.rangeVia=r.manual?'whatsapp (opened)':'whatsapp';
+  } else j.rangeVia='phone';
+  j.rangeSentAt=ts();j.rangeSentMs=Date.now();j.rangeSentBy=currentUser?currentUser.name:'';
+  j.log.push({t:ts(),s:'\ud83d\udcb7 Price range \u00a3'+v.lo+'\u2013\u00a3'+v.hi+' given by '+(byPhone?'phone':'WhatsApp')+
+    (b.low&&(b.low!==v.lo||b.high!==v.hi)?' (brain said \u00a3'+b.low+'\u2013\u00a3'+b.high+')':'')+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);
+  if(!window._sweepT)window._sweepT=setTimeout(()=>{window._sweepT=null;try{sweepAssign(true);}catch(e){}},2500);
+  renderDetail();renderAll();
+  if(typeof toast==='function')toast('\ud83d\udcb7 Range sent \u2014 waiting for the customer');
+}
+function rangeYes(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  j.rangeYesAt=ts();
+  j.log=j.log||[];
+  j.log.push({t:ts(),s:'\ud83d\udc4d Customer happy with the range \u2014 full estimate next'+(currentUser?' ['+currentUser.name+']':'')});
+  _toLabour(j,'Range accepted');
+}
+function skipRange(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  j.rangeSkipped=true;
+  j.log=j.log||[];
+  j.log.push({t:ts(),s:'\u23ed Price range skipped'+(currentUser?' ['+currentUser.name+']':'')});
+  _toLabour(j,'Range skipped');
+}
+function _toLabour(j,why){
+  const from=j.stage;
+  // keep whoever has it if they are free; otherwise let the hand-out pick
+  try{const me=estimatorState().find(e=>e.name===j.assignedEstimator);
+    if(j.assignedEstimator&&(!me||!me.free)){j.log.push({t:ts(),s:'\u21bb '+j.assignedEstimator+' is busy \u2014 back in the queue for the next free estimator'});j.assignedEstimator='';j.notifiedAt=null;}}catch(e){}
+  j.stage='labour';j.stageAt=Date.now();
+  try{stampStage(j,'labour');}catch(e){}
+  j.log.push({t:ts(),s:'\u2192 '+stg('labour').label+' ('+why+')'});
+  save(j);
+  try{stageMoved(j,from,'labour');}catch(e){}
+  try{sweepAssign(true);}catch(e){}
+  renderDetail();renderAll();
+}
+function setSkipOrders(id,v){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
+  if(!currentUser||currentUser.name!=='Logkith'){alert('Only Logkith can switch POs and SOs off.');return;}
+  j.skipOrders=!!v;
+  j.log=j.log||[];
+  j.log.push({t:ts(),s:(v?'\u23ed No POs or SOs \u2014 goes straight from Booked to Check-In':'\ud83d\udce6 POs/SOs back on')+' \u2014 set by '+currentUser.name});
+  // already sitting in an ordering stage? pull it out
+  if(v&&['po','so','raised','soraised'].includes(j.stage)){
+    const to=(j.bookedFor&&arrivalDue(j))?afterOrdersLand(j):'booked';
+    j.log.push({t:ts(),s:'\u2192 Moved from '+stg(j.stage).label+' to '+stg(to).label+' (ordering switched off)'});
+    j.stage=to;j.stageAt=Date.now();
+  }
+  if(v&&j.orderNeeded&&!j.orderNeeded.doneAt)j.orderNeeded.doneAt=Date.now();
+  save(j);
+  try{if(typeof autoPilot==='function')autoPilot();}catch(e){}
+  renderDetail();renderAll();
+}
 function setSoNeeded(id,v){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
   if(!currentUser||currentUser.name!=='Logkith'){alert('Only Logkith can set whether an SO is needed.');return;}
@@ -8203,10 +8672,21 @@ function soToggleH(j){
   const isBoss=currentUser&&currentUser.name==='Logkith';
   const guess=(function(){try{return soNeeded(j);}catch(e){return [];}})();
   const set=(j.soNeeded===true||j.soNeeded===false);
+  const skip=skipsOrders(j);
+  const sk=(v,label)=>'<button class="btn btn-sm" style="flex:1;'+(skip===v?'background:'+(v?'var(--gold)':'var(--surface3)')+';color:'+(v?'#111':'var(--text,#eee)')+';font-weight:800':'background:none;border:1px solid var(--border);color:var(--dim)')+
+    '"'+(isBoss?' onclick="setSkipOrders(\''+j.id+'\','+v+')"':' disabled')+'>'+label+'</button>';
+  const skipBox='<div style="background:var(--surface2);border:1px solid '+(skip?'var(--gold)':'var(--border)')+';border-radius:var(--r);padding:9px 11px;margin-bottom:10px">'+
+    '<div style="font-size:11px;font-weight:800;margin-bottom:5px">\ud83d\udce6 Does this job need ordering (POs / SOs)?</div>'+
+    '<div style="display:flex;gap:6px">'+sk(false,'Yes \u2014 normal ordering')+sk(true,'\u23ed No \u2014 skip POs &amp; SOs')+'</div>'+
+    '<div style="font-size:10px;color:var(--faint);margin-top:5px">'+
+      (skip?'Set: no POs or SOs. Once booked it waits in Booked, then goes straight to Vehicle Check-In on the day.'
+           :'Normal: parts go through POs to Raise, and SOs if needed.')+
+      (isBoss?'':' Only Logkith can change this.')+'</div></div>';
+  if(skip)return skipBox;
   const on=jobNeedsSO(j);
   const b=(v,label)=>'<button class="btn btn-sm" style="flex:1;'+((set&&j.soNeeded===v)?'background:'+(v?'var(--teal)':'var(--surface3)')+';color:'+(v?'#111':'var(--text,#eee)')+';font-weight:800':'background:none;border:1px solid var(--border);color:var(--dim)')+
     '"'+(isBoss?' onclick="setSoNeeded(\''+j.id+'\','+v+')"':' disabled')+'>'+label+'</button>';
-  return '<div style="background:var(--surface2);border:1px solid '+(on?'var(--teal)':'var(--border)')+';border-radius:var(--r);padding:9px 11px;margin-bottom:10px">'+
+  return skipBox+'<div style="background:var(--surface2);border:1px solid '+(on?'var(--teal)':'var(--border)')+';border-radius:var(--r);padding:9px 11px;margin-bottom:10px">'+
     '<div style="font-size:11px;font-weight:800;margin-bottom:5px">\ud83d\udd27 Subcontract work (SO) needed?</div>'+
     '<div style="display:flex;gap:6px">'+b(true,'Yes \u2014 needs an SO')+b(false,'No SO')+'</div>'+
     '<div style="font-size:10px;color:var(--faint);margin-top:5px">'+
@@ -9264,8 +9744,8 @@ function moveDupeContents(from,to){
 // when  : the fact that makes the move true
 // why   : what gets written in the job log
 const AUTO_RULES=[
-  { id:'intake-assigned', from:'intake', to:'labour',
-    label:'Intake → Labour Estimate once an estimator has it',
+  { id:'intake-assigned', from:'intake', to:j=>skipsRange(j)?'labour':'range',
+    label:'Intake → Price Range once an estimator has it (B2B, AA, internal and comebacks go straight to Labour Estimate)',
     why:'assigned to an estimator',
     when:j=>!!j.assignedEstimator },
 
@@ -9297,7 +9777,12 @@ const AUTO_RULES=[
   { id:'booked-to-po', from:'booked', to:nextOrderStage,
     label:'Booked \u2192 POs to Raise (parts) / SOs to Raise (subcontract) as soon as it has a date',
     why:'booked on the calendar \u2014 ordering next',
-    when:j=>!!j.bookedFor },
+    when:j=>!!j.bookedFor&&!skipsOrders(j) },
+
+  { id:'booked-skip-arrival', from:'booked', to:afterOrdersLand,
+    label:'Booked \u2192 Vehicle Check-In on the day, for jobs Logan has marked "no POs or SOs"',
+    why:'no ordering needed \u2014 booking day, car due in today',
+    when:j=>skipsOrders(j)&&!!j.bookedFor&&arrivalDue(j) },
 
   { id:'po-all-raised', from:'po', to:nextOrderStage,
     label:'POs to Raise \u2192 SOs to Raise (if an SO is needed) or POs/SOs Raised once every part is on an order',
