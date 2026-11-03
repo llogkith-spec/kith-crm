@@ -250,6 +250,16 @@ input:checked+.tsl:before{transform:translateX(20px)}
         <div style="font-size:11px;color:#8a7340;margin-top:8px;line-height:1.45">It suggests — you decide. It never gives a price and never says a car is safe to drive.</div>
       </div>
       <div id="brain-out" style="margin-top:12px"></div>
+
+      <div style="margin-top:14px">
+        <label class="fl">Photos <span style="font-weight:400;color:#888">(damage, dash lights, the reg — optional)</span></label>
+        <label class="btn" style="display:block;text-align:center;padding:12px;cursor:pointer;background:#222;border:1px dashed #c9a84c;color:#c9a84c;font-weight:700">
+          &#128247; Add photos
+          <input type="file" id="f-pics" accept="image/*" multiple style="display:none" onchange="addIntakePhotos(this)"/>
+        </label>
+        <div id="pics-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px"></div>
+        <div id="pics-st" style="font-size:11px;color:#888;margin-top:4px"></div>
+      </div>
     </div>
 
     <div id="quick-panel"></div>
@@ -1064,6 +1074,7 @@ async function submitJob(){
   var mustMissing=stillMissing.filter(function(x){return x.lvl==='must';}).map(function(x){return x.l;});
   if(mustMissing.length&&!confirm('Still missing:\n• '+mustMissing.join('\n• ')+
      '\n\nSubmit anyway? These will show on the job as MISSING so the next person chases them.'))return;
+  if(intakePics.some(function(p){return p.busy;})&&!confirm('Photos are still uploading. Submit now without them?'))return;
   btn.textContent='Submitting…';btn.disabled=true;
 
   var jt=JOB_TYPES.filter(function(x){return x.k===jobType;})[0]||{};
@@ -1151,7 +1162,7 @@ async function submitJob(){
     customerSuppliedParts:fchk('f-custparts'),
     source:fval('f-source'),notes:fval('f-notes'),by:staffName,
     asap:fchk('f-asap'),priority:fchk('f-asap'),
-    stage:'labour',stageAt:Date.now(),
+    stage:'intake',stageAt:Date.now(),
     custType:needsCustomer()?(CRM_CUST[custType]||''):'Internal (stock)',
     fleetAccount:false,fromIntakeApp:true,intakeKey:newIntakeKey(),
     tmJob:'',tmPart:'',est:null,finalEst:null,parts:[],finalNotes:'',fromForm:false,
@@ -1164,6 +1175,11 @@ async function submitJob(){
       (mustMissing.length?' · MISSING: '+mustMissing.join(', '):'')}],
     createdAt:ts,pathway:2
   };
+  var picUrls=intakePics.filter(function(p){return p.url;}).map(function(p){return p.url;});
+  if(picUrls.length){
+    job.photoLinks=picUrls;
+    job.log.push({t:ts,s:'\ud83d\udcf8 '+picUrls.length+' photo'+(picUrls.length===1?'':'s')+' added at intake by '+staffName});
+  }
 
   var saved=false;
   try{saved=await pushJob(job);}catch(e){}
@@ -1183,7 +1199,7 @@ async function submitJob(){
     (rampState.exempt?'<span style="color:var(--amber)">⚠ Ramp-exempt</span><br>':'')+
     (escalations.length?'<span style="color:var(--red)">⚠ '+escalations.length+' item(s) for Logan:<br>'+escalations.join('<br>')+'</span><br>':'')+
     (mustMissing.length?'<span style="color:var(--amber)">Still to chase: '+mustMissing.join(', ')+'</span><br>':'')+
-    '<br>'+(saved?'<span style="color:var(--green)">✓ Saved to CRM — Labour Estimate</span>':'<span style="color:var(--amber)">⚠ Saved offline — will sync</span>');
+    '<br>'+(saved?'<span style="color:var(--green)">✓ Saved to CRM — Intake</span>':'<span style="color:var(--amber)">⚠ Saved offline — will sync</span>');
   document.getElementById('suc-next').innerHTML=nextStepsFull(needsDiag,area);
   syncQueue();
 }
@@ -1229,7 +1245,62 @@ async function syncQueue(){
 }
 window.addEventListener('online',function(){syncQueue();});
 setInterval(function(){syncQueue();},60000);
+// ── INTAKE PHOTOS (17 Oct 2026) ─────────────────────────────────────
+// Each photo is shrunk on the phone and uploaded the moment it is picked,
+// so by Submit the job just carries the links. They show on the job card
+// in the CRM from Intake onwards.
+var PIC_BUCKET='job-sheets';
+var intakePics=[];   // {url, thumb, busy, err}
+function shrinkPic(file,max){
+  return new Promise(function(res,rej){
+    var fr=new FileReader();
+    fr.onerror=function(){rej(new Error('Could not read the photo'));};
+    fr.onload=function(){
+      var im=new Image();
+      im.onerror=function(){rej(new Error('Not an image this phone can open'));};
+      im.onload=function(){
+        var sc=Math.min(1,max/Math.max(im.width,im.height));
+        var c=document.createElement('canvas');c.width=Math.round(im.width*sc);c.height=Math.round(im.height*sc);
+        c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+        c.toBlob(function(b){b?res({blob:b,thumb:c.toDataURL('image/jpeg',0.5)}):rej(new Error('Could not shrink the photo'));},'image/jpeg',0.82);
+      };
+      im.src=fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+function drawPics(){
+  var g=document.getElementById('pics-grid');if(!g)return;
+  g.innerHTML=intakePics.map(function(p,i){
+    return '<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid '+(p.err?'#c0392b':'#333')+';background:#1a1a1a">'+
+      (p.thumb?'<img src="'+p.thumb+'" style="width:100%;height:100%;object-fit:cover;opacity:'+(p.busy?'.45':'1')+'"/>':'')+
+      (p.busy?'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:#c9a84c;font-weight:700">Uploading…</div>':'')+
+      (p.err?'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:#ff6b6b;font-weight:700;text-align:center;padding:4px;background:rgba(0,0,0,.5)">Failed</div>':'')+
+      '<button type="button" onclick="dropPic('+i+')" style="position:absolute;top:2px;right:2px;width:22px;height:22px;border-radius:11px;border:none;background:rgba(0,0,0,.7);color:#fff;font-size:13px;line-height:22px;padding:0;cursor:pointer">×</button></div>';
+  }).join('');
+  var st=document.getElementById('pics-st');
+  if(st){var up=intakePics.filter(function(p){return p.url;}).length,bz=intakePics.filter(function(p){return p.busy;}).length,bad=intakePics.filter(function(p){return p.err;}).length;
+    st.textContent=intakePics.length?(up+' uploaded'+(bz?' · '+bz+' uploading':'')+(bad?' · '+bad+' failed — tap × and try again':'')):'';}
+}
+function dropPic(i){intakePics.splice(i,1);drawPics();}
+async function addIntakePhotos(input){
+  var files=[].slice.call(input.files||[]);input.value='';
+  for(var k=0;k<files.length;k++){
+    var rec={busy:true};intakePics.push(rec);drawPics();
+    try{
+      var sm=await shrinkPic(files[k],1800);rec.thumb=sm.thumb;drawPics();
+      var reg=(fval('f-reg')||'NOREG').replace(/[^A-Z0-9]/gi,'');
+      var path='intake/'+reg+'-'+Date.now()+'-'+k+'.jpg';
+      var r=await fetch(SB_URL+'/storage/v1/object/'+PIC_BUCKET+'/'+path,{method:'POST',
+        headers:sbHdr({'Content-Type':'image/jpeg','x-upsert':'true'}),body:sm.blob});
+      if(!r.ok)throw new Error('Upload refused ('+r.status+')');
+      rec.url=SB_URL+'/storage/v1/object/public/'+PIC_BUCKET+'/'+path;
+    }catch(e){rec.err=e.message||'failed';console.warn('intake photo',e);}
+    rec.busy=false;drawPics();
+  }
+}
 function resetForm(){
+  intakePics=[];drawPics();
   jobType=null;area=null;mechCat=null;custType=null;curStep=0;
   safetyHits=[];diagOverride=null;warrantyState=null;triageResult=null;
   rampState={exempt:false,reason:'',pending:false};
