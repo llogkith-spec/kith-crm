@@ -80,9 +80,12 @@ function sendMessage(b) {
   if (!to) return { ok: false, error: 'No number' };
   var payload;
   if (b.useTemplate && b.template) {
+    var comps = [];
+    // a template with a PDF header (kith_estimate) carries the document here
+    if (b.document && b.document.link) comps.push({ type: 'header', parameters: [{ type: 'document', document: { link: b.document.link, filename: b.document.filename || 'estimate.pdf' } }] });
+    if (b.params && b.params.length) comps.push({ type: 'body', parameters: b.params.map(function (x) { return { type: 'text', text: String(x) }; }) });
     payload = { messaging_product: 'whatsapp', to: to, type: 'template',
-      template: { name: b.template, language: { code: 'en_GB' },
-        components: (b.params && b.params.length) ? [{ type: 'body', parameters: b.params.map(function (x) { return { type: 'text', text: String(x) }; }) }] : [] } };
+      template: { name: b.template, language: { code: 'en_GB' }, components: comps } };
   } else if (b.document && b.document.link) {
     payload = { messaging_product: 'whatsapp', to: to, type: 'document',
       document: { link: b.document.link, filename: b.document.filename || 'estimate.pdf', caption: String(b.text || '').slice(0, 1000) } };
