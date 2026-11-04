@@ -326,7 +326,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
   <button class="tab" onclick="setFilter('adviser',this)">📞 Service Adviser</button>
   <button class="tab" onclick="setFilter('lost',this)">✕ Lost</button>
   <button class="tab" id="tab-checkin" onclick="setFilter('checkin',this)">🚗 Check-In <span id="cnt-checkin" style="color:var(--faint);font-size:10px"></span></button>
-  <button class="tab" onclick="openAwaitingDash()">📞 Awaiting Response</button>
+  <button class="tab" onclick="openAwaitingDash()">🤝 Awaiting Decision</button>
   <button class="tab" onclick="openPOView()">📦 Purchase Orders</button>
   <button class="tab" onclick="openSubView()">🔧 Subcontractors</button>
   <button class="tab" onclick="openReturnsView()">↩ Returns</button>
@@ -574,8 +574,8 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
     <div class="pb">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <div>
-          <div style="font-weight:800;font-size:16px">📞 Awaiting Customer Response</div>
-          <div style="font-size:12px;color:var(--dim)">Chase customers waiting on estimates</div>
+          <div style="font-weight:800;font-size:16px">🤝 Awaiting Decision</div>
+          <div style="font-size:12px;color:var(--dim)">Every price in front of a customer — delivered, read, replied, chased</div>
         </div>
         <button class="btn btn-ghost btn-sm" onclick="cx('ov-awaiting')">✕</button>
       </div>
@@ -778,6 +778,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 
 
 <script src="engine.js"></script>
+<script src="kith-lines.js"></script>
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
@@ -5345,13 +5346,13 @@ async function waSend(number,text,opts){
         template:opts.template||'',params:opts.params||[],document:opts.document||undefined})
     });
     const out=await res.json();
-    if(out.ok)return{ok:true};
+    if(out.ok)return{ok:true,id:out.id||''};
     // Outside the 24-hour window — try the template version instead
     if(out.needsTemplate&&opts.template){
       const r2=await fetch(relayUrl(),{method:'POST',headers:{'Content-Type':'text/plain'},
         body:JSON.stringify({action:'send',secret:relaySecret(),to,useTemplate:true,template:opts.template,params:opts.params||[],document:opts.document||undefined})});
       const o2=await r2.json();
-      if(o2.ok)return{ok:true,viaTemplate:true};
+      if(o2.ok)return{ok:true,viaTemplate:true,id:o2.id||''};
       return{ok:false,error:o2.error||'Template refused'};
     }
     return{ok:false,error:out.error||'Send failed'};
@@ -5629,6 +5630,7 @@ async function sendEstimateWA(id,i,viaShare){
       params:[firstName(j),vehDesc(j),estTotalTxt(j)||'on the attached estimate'],
       document:{link:d.url,filename:estDocName(j,d)}}:{});
   if(r.ok){
+    noteWaMsg(j,'estimate',r);
     markEstimateSent(j,d,r.viaTemplate?'sent by the CRM (template)':'sent by the CRM');
     if(typeof toast==='function')toast('✓ Estimate sent to '+firstName(j));
     refreshEstimateDocs(j);renderDetail();
@@ -5680,6 +5682,7 @@ async function estAutoSendOne(j){
       params:[firstName(j),vehDesc(j),estTotalTxt(j)||'on the attached estimate'],
       document:{link:d.url,filename:estDocName(j,d)}});
     if(res.ok){
+      noteWaMsg(j,'estimate',res);
       markEstimateSent(j,d,'sent automatically by the CRM'+(res.viaTemplate?' (template)':''));
       try{notify('⚡ Estimate sent to '+escHtml(firstName(j))+' — '+escHtml(j.reg||''),'ok');}catch(e){}
       try{refreshEstimateDocs(j);}catch(e){}
@@ -8538,18 +8541,116 @@ function brainRange(j){
   });
   scored.sort((a,b)=>b.sc-a.sc);
   const top=scored.slice(0,12);
-  if(top.length<3)return {n:top.length,matches:top,why:top.length?'Only '+top.length+' similar job'+(top.length===1?'':'s')+' so far \u2014 not enough to give a range':'No similar jobs priced yet'};
+  if(top.length<3)return brainFallback(j,mine,body,top);
   const qs=top.map(t=>t.q).sort((a,b)=>a-b);
   let lo=_pct(qs,0.25),hi=_pct(qs,0.75);
   if(hi-lo<lo*0.15){const m=(lo+hi)/2;lo=m*0.88;hi=m*1.12;}
   lo=Math.max(10,Math.floor(lo/10)*10);hi=Math.ceil(hi/10)*10;
   return {n:top.length,matches:top,low:lo,high:hi,conf:top.length>=6?'good':'rough',why:''};
 }
+// When there are not three similar priced jobs yet, the brain works down
+// this list and says which one it used:
+//   1. ranges the team has already given for similar work
+//   2. every priced job in the same service line (servicing, MOT, tyres,
+//      exhaust, tuning, bodywork) \u2014 a broad range, flagged as broad
+//   3. nothing \u2014 the estimator types one, and that range is learned
+function brainFallback(j,mine,body,top){
+  const r10=v=>Math.round(v/10)*10;
+  // 1. ranges given before
+  const given=[];
+  jobs.forEach(x=>{
+    if(!x||x.id===j.id||!(x.rangeLow>0)||!(x.rangeHigh>0))return;
+    if(((typeof isBodywork==='function')&&isBodywork(x))!==body)return;
+    const w=rangeWords(x.work);if(!w.length)return;
+    const inter=mine.filter(t=>w.includes(t)).length;if(!inter)return;
+    const sc=inter/new Set([...mine,...w]).size;
+    if(sc>=0.3)given.push({x,sc,lo:x.rangeLow,hi:x.rangeHigh,yes:!!x.rangeYesAt});
+  });
+  if(given.length>=2){
+    given.sort((a,b)=>(b.yes-a.yes)||(b.sc-a.sc));
+    const g=given.slice(0,8);
+    const lo=r10(_pct(g.map(x=>x.lo).sort((a,b)=>a-b),0.5)),hi=r10(_pct(g.map(x=>x.hi).sort((a,b)=>a-b),0.5));
+    return {n:g.length,matches:g.map(x=>({x:x.x,sc:x.sc,q:(x.lo+x.hi)/2,label:'\u00a3'+x.lo+'\u2013\u00a3'+x.hi+(x.yes?' \u2713 yes':'')})),
+      low:Math.max(10,lo),high:Math.max(lo+10,hi),conf:'rough',src:'ranges',
+      note:'From '+g.length+' price ranges the team gave for similar work ('+g.filter(x=>x.yes).length+' said yes)'};
+  }
+  // 2. the whole service line
+  let cls=null;try{cls=(typeof KITHLines!=='undefined')?KITHLines.classify(j):null;}catch(e){}
+  if(cls&&cls.by==='words'){
+    const same=jobs.filter(x=>x&&x.id!==j.id&&parseFloat(x.quote)>0&&!['intake','range','labour','parts','financial'].includes(x.stage)&&
+      (()=>{try{const c=KITHLines.classify(x);return c.sub===cls.sub;}catch(e){return false;}})());
+    if(same.length>=5){
+      const qs=same.map(x=>parseFloat(x.quote)).sort((a,b)=>a-b);
+      const lo=Math.max(10,Math.floor(_pct(qs,0.25)/10)*10),hi=Math.ceil(_pct(qs,0.75)/10)*10;
+      const lab=KITHLines.subLabel(cls.line,cls.sub);
+      return {n:same.length,matches:same.slice(0,12).map(x=>({x,sc:0,q:parseFloat(x.quote)})),low:lo,high:Math.max(lo+10,hi),conf:'broad',src:'line',
+        note:'Broad \u2014 from all '+same.length+' '+lab+' jobs, not ones exactly like this. Narrow it if you can'};
+    }
+  }
+  return {n:top.length,matches:top,why:top.length?'Only '+top.length+' similar job'+(top.length===1?'':'s')+' so far \u2014 not enough to give a range':'Nothing like this priced yet'};
+}
 function rangeMsg(j,lo,hi){
   return 'Hi '+firstName(j)+', thanks for getting in touch with '+GARAGE.name+' about your '+vehDesc(j)+'.\n\n'+
     'For '+String(j.work||'this work').replace(/\s+/g,' ').slice(0,140)+', jobs like this usually come to between \u00a3'+lo+' and \u00a3'+hi+' including VAT.\n\n'+
     'If that works for you, just reply YES and we\u2019ll put together your exact quote.\n\n\u2014 '+GARAGE.name;
 }
+// ══════════════════════════════════════════════════════════════════
+// MESSAGE STATUS (Nov 2026) \u2014 sent / delivered / read
+// ══════════════════════════════════════════════════════════════════
+// The relay (kith-relay.gs) writes every message's latest status from
+// Meta into jobs row '__wa_status__'. Each send records its message id on
+// the job, so a quote can show \u2713, \u2713\u2713 or blue \u2713\u2713.
+var WA_STATUS={};
+function noteWaMsg(j,kind,r){
+  if(!j)return;
+  j.waMsgs=j.waMsgs||[];
+  j.waMsgs.push({id:(r&&r.id)||'',kind,ms:Date.now(),at:ts(),manual:!!(r&&r.manual)});
+  if(j.waMsgs.length>20)j.waMsgs=j.waMsgs.slice(-20);
+}
+async function loadWaStatus(){
+  if(!waAuto())return false;
+  try{
+    const r=await fetch(SB_URL+'/rest/v1/jobs?id=eq.__wa_status__&select=data',{headers:SB_HDR});
+    if(!r.ok)return false;
+    const rows=await r.json();
+    WA_STATUS=(rows[0]&&rows[0].data&&rows[0].data.msgs)||{};
+    return true;
+  }catch(e){return false;}
+}
+setInterval(()=>{if(document.getElementById('ov-awaiting')?.classList.contains('open'))loadWaStatus().then(ok=>{if(ok)renderAwaitingDash();});},45000);
+function lastWa(j,kinds){
+  const m=(j.waMsgs||[]).filter(x=>!kinds||kinds.includes(x.kind));
+  return m.length?m[m.length-1]:null;
+}
+// What the customer will see next to the message, in plain words
+function waTickH(m){
+  if(!m)return '<span style="color:var(--faint)">not sent on WhatsApp</span>';
+  if(m.manual||!m.id)return '<span style="color:var(--faint)">opened in WhatsApp by hand \u2014 no read receipt</span>';
+  const st=WA_STATUS[m.id];
+  const s=st&&st.s;
+  if(s==='read')return '<span style="color:#34b7f1;font-weight:800">\u2713\u2713 Read</span>'+(st.at?' <span style="color:var(--faint)">'+escHtml(new Date(st.at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}))+'</span>':'');
+  if(s==='delivered')return '<span style="color:var(--dim);font-weight:800">\u2713\u2713 Delivered</span> <span style="color:var(--faint)">not read yet</span>';
+  if(s==='sent')return '<span style="color:var(--dim);font-weight:800">\u2713 Sent</span> <span style="color:var(--faint)">not on their phone yet</span>';
+  if(s==='failed')return '<span style="color:var(--red);font-weight:800">\u2715 Failed</span>'+(st.err?' <span style="color:var(--faint)">'+escHtml(st.err)+'</span>':'');
+  return '<span style="color:var(--faint)">\u2713 Sent \u2014 waiting for WhatsApp to confirm</span>';
+}
+// Customer messages since we last sent them something
+function repliesSince(j,ms){
+  const ph=String(j.phone||'').replace(/\D/g,'').replace(/^44/,'0');
+  if(!ph)return [];
+  const out=[];
+  (typeof LEADS!=='undefined'?LEADS:[]).forEach(l=>{
+    if(!l||l.source!=='whatsapp')return;
+    const lp=String((l.from||{}).phone||'').replace(/\D/g,'').replace(/^44/,'0');
+    if(lp!==ph)return;
+    (l.msgs||[]).forEach(m=>{if(m.dir==='in'&&(m.ts||0)>=(ms||0))out.push(m);});
+  });
+  return out.sort((a,b)=>(a.ts||0)-(b.ts||0));
+}
+const YES_RE=/^\s*(yes|yeah|yep|yup|ya|ok|okay|go ahead|book (me|it)|please book|sounds good|lets do it|let's do it|deal|perfect|\ud83d\udc4d)/i;
+const NO_RE=/^\s*(no\b|nah|no thanks|not now|leave it|too (much|expensive|dear)|i'?ll leave)/i;
+function replyGuess(t){t=String(t||'');return YES_RE.test(t)?'yes':(NO_RE.test(t)?'no':'');}
+
 function rangePanelH(j){
   const b=brainRange(j);
   const lo=j.rangeLow||b.low||'', hi=j.rangeHigh||b.high||'';
@@ -8561,12 +8662,12 @@ function rangePanelH(j){
     '<div style="font-size:11px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">\ud83e\udde0 Estimator brain \u2014 price range</div>'+
     (b.low
       ?'<div style="display:flex;align-items:baseline;gap:8px">'+cur(b.low)+'<span style="color:var(--dim)">to</span>'+cur(b.high)+'<span style="font-size:11px;color:var(--dim)">inc VAT</span></div>'+
-       '<div style="font-size:11px;color:var(--dim);margin-top:3px">From '+b.n+' similar job'+(b.n===1?'':'s')+' KITH has priced \u00b7 '+(b.conf==='good'?'<span style="color:var(--green)">good match</span>':'<span style="color:var(--amber)">rough \u2014 check it</span>')+'</div>'
-      :'<div style="font-size:12px;color:var(--amber);font-weight:700">'+escHtml(b.why)+'.</div><div style="font-size:11px;color:var(--dim);margin-top:2px">Type a range below from experience \u2014 it gets better as more jobs are priced.</div>')+
+       '<div style="font-size:11px;color:var(--dim);margin-top:3px">'+(b.note?escHtml(b.note)+' \u00b7 <span style="color:var(--amber)">check it</span>':'From '+b.n+' similar job'+(b.n===1?'':'s')+' KITH has priced \u00b7 '+(b.conf==='good'?'<span style="color:var(--green)">good match</span>':'<span style="color:var(--amber)">rough \u2014 check it</span>'))+'</div>'
+      :'<div style="font-size:12px;color:var(--amber);font-weight:700">'+escHtml(b.why)+'.</div><div style="font-size:11px;color:var(--dim);margin-top:2px">Type a range below from experience. The brain keeps it, and uses it the next time similar work comes in.</div>')+
     (b.matches.length?'<details style="margin-top:6px"><summary style="font-size:11px;color:var(--dim);cursor:pointer">Jobs it matched</summary>'+
       b.matches.map(m=>'<div style="font-size:11px;padding:3px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px">'+
         '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml((m.x.reg||'')+' \u00b7 '+(m.x.make||'')+' \u00b7 '+String(m.x.work||'').slice(0,60))+'</span>'+
-        '<strong>\u00a3'+m.q.toFixed(0)+'</strong></div>').join('')+'</details>':'')+
+        '<strong>'+(m.label?escHtml(m.label):'\u00a3'+m.q.toFixed(0))+'</strong></div>').join('')+'</details>':'')+
   '</div>'+
   '<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px">'+
     '<div style="flex:1"><label class="fl2">From \u00a3</label><input type="number" id="rg-lo" class="fi2" style="width:100%" value="'+escHtml(String(lo))+'" '+(sent?'disabled':'')+'/></div>'+
@@ -8605,6 +8706,7 @@ async function sendRange(id,byPhone){
     const r=await waSend(num,rangeMsg(j,v.lo,v.hi),{template:'kith_price_range',params:[firstName(j),String(v.lo),String(v.hi)]});
     if(!r||!r.ok){alert('Did not send: '+((r&&r.error)||'unknown'));return;}
     j.rangeVia=r.manual?'whatsapp (opened)':'whatsapp';
+    noteWaMsg(j,'range',r);
   } else j.rangeVia='phone';
   j.rangeSentAt=ts();j.rangeSentMs=Date.now();j.rangeSentBy=currentUser?currentUser.name:'';
   j.log.push({t:ts(),s:'\ud83d\udcb7 Price range \u00a3'+v.lo+'\u2013\u00a3'+v.hi+' given by '+(byPhone?'phone':'WhatsApp')+
@@ -13054,61 +13156,116 @@ function viewAccJob(id){cx('ov-accounts');openJob(id);}
 function openAwaitingDash(){
   document.getElementById('ov-awaiting').classList.add('open');
   renderAwaitingDash();
+  Promise.all([loadWaStatus(),(typeof loadLeads==='function'?loadLeads():null)]).then(()=>renderAwaitingDash()).catch(()=>{});
 }
 
-function renderAwaitingDash(){
-  const el=document.getElementById('awaiting-wrap');
-  const waiting=jobs.filter(j=>j.stage==='waiting')
-    .sort((a,b)=>(a.stageAt||0)-(b.stageAt||0)); // oldest first
-  if(!waiting.length){
-    el.innerHTML='<div class="empty" style="padding:40px;text-align:center">No jobs awaiting response right now.</div>';
-    return;
+// ══════════════════════════════════════════════════════════════════
+// AWAITING DECISION (Nov 2026)
+// ══════════════════════════════════════════════════════════════════
+// Every price that is in front of a customer: a range waiting for a yes,
+// and full quotes the customer has not answered. Shows whether WhatsApp
+// delivered it and whether they read it, what they replied, and the next
+// chase. One tap for YES or NO.
+const AD_STAGES=['range','contact','contacted','waiting','waiting2'];
+function adJobs(){
+  return jobs.filter(j=>j&&!j.mergedInto&&AD_STAGES.includes(j.stage)&&(j.stage!=='range'||j.rangeSentAt)&&
+    (j.stage!=='contact'||j.estimateSentMs));
+}
+function adSentMs(j){ return j.stage==='range'?(j.rangeSentMs||0):(j.estimateSentMs||j.stageAt||0); }
+function adChaseMsg(j,n){
+  const f=firstName(j);
+  if(j.stage==='range'){
+    const r='\u00a3'+j.rangeLow+'\u2013\u00a3'+j.rangeHigh;
+    return n===1?'Hi '+f+', '+GARAGE.name+' here \u2014 just checking our '+r+' guide price for the '+vehDesc(j)+' came through. Reply YES and we will put your exact quote together.'
+      :'Hi '+f+', last one from '+GARAGE.name+' about the '+vehDesc(j)+'. If you still want it looked at, just reply YES and we will get your quote over.';
   }
+  const q=(parseFloat(j.quote)||parseFloat(j.finalEst))?'\u00a3'+(parseFloat(j.quote)||parseFloat(j.finalEst)).toFixed(2)+' including VAT':'your estimate';
+  if(n===1)return 'Hi '+f+', this is '+GARAGE.name+' checking in about the estimate for your '+vehDesc(j)+(workTxt(j,60)?' ('+workTxt(j,60)+')':'')+' \u2014 '+q+'. Did it come through OK? Reply YES to book in, or with any questions.';
+  if(n===2)return 'Hi '+f+', '+GARAGE.name+' here. Following up on the '+q+' estimate for your '+vehDesc(j)+'. Reply YES and we will send you the next available dates \u2014 or NO if you would rather leave it.';
+  return 'Hi '+f+', last message from '+GARAGE.name+' about the '+q+' estimate for your '+vehDesc(j)+'. If we don\u2019t hear back we will close it off \u2014 just reply here any time and we will pick it back up.';
+}
+async function adChase(id,n){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const num=estPhone(j);if(!num){alert('No mobile number on this job.');return;}
+  const r=await waSend(num,adChaseMsg(j,n),{template:'kith_chase',params:[firstName(j),vehDesc(j)]});
+  if(!r||!r.ok){alert('Did not send: '+((r&&r.error)||'unknown'));return;}
+  noteWaMsg(j,'chase',r);
+  j.chases=(j.chases||[]).concat([{n,at:ts(),ms:Date.now(),by:currentUser?currentUser.name:''}]);
+  j.log=j.log||[];
+  j.log.push({t:ts(),s:'\ud83d\udcac Chase '+(n===3?'(final)':n)+' sent'+(r.manual?' (opened in WhatsApp)':'')+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);renderAwaitingDash();
+}
+function adYes(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  if(j.stage==='range'){rangeYes(id);renderAwaitingDash();return;}
+  curId=id;
+  approveEstimate(id);onCustomerYes(id,{via:'awaiting decision'});
+  mv('ready','Customer said yes \u2014 booking in [Awaiting Decision]');
+  renderAwaitingDash();
+}
+function adNo(id){customerSaidNo(id);renderAwaitingDash();}
+let adFilter='all';
+function setAdFilter(f){adFilter=f;renderAwaitingDash();}
+function renderAwaitingDash(){
+  const el=document.getElementById('awaiting-wrap');if(!el)return;
   const now=Date.now();
-  el.innerHTML=waiting.map(j=>{
-    const f=j.name?j.name.split(' ')[0]:'Customer';
-    const phone=(j.phone||'').replace(/\s/g,'').replace(/^0/,'44');
-    const daysWaiting=Math.floor((now-(j.stageAt||now))/(1000*60*60*24));
-    const hrs=Math.floor((now-(j.stageAt||now))/(1000*60*60));
-    const waitLabel=hrs<1?'just now':hrs<24?hrs+'h ago':daysWaiting+'d ago';
-    const urgency=daysWaiting>=3?'var(--red)':daysWaiting>=1?'var(--amber)':'var(--green)';
-    // Pre-built chase messages
-    const quote=(parseFloat(j.quote)||parseFloat(j.finalEst))?'\u00a3'+(parseFloat(j.quote)||parseFloat(j.finalEst)).toFixed(2)+' including VAT':'your estimate';
-    const msg1=encodeURIComponent('Hi '+f+', this is KITH Cars checking in about the estimate for your '+vehDesc(j)+(workTxt(j,60)?' ('+workTxt(j,60)+')':'')+' \u2014 '+quote+'. Did it come through OK? Reply YES to book in, or with any questions.');
-    const msg2=encodeURIComponent('Hi '+f+', KITH Cars here. Following up on the '+quote+' estimate for your '+vehDesc(j)+'. Reply YES and we will send you the next available dates \u2014 or NO if you would rather leave it.');
-    const msgFinal=encodeURIComponent('Hi '+f+', last message from KITH Cars about the '+quote+' estimate for your '+vehDesc(j)+'. If we don\u2019t hear back we will close it off \u2014 just reply here any time and we will pick it back up.');
-    return'<div style="background:var(--surface2);border:1px solid var(--border);border-left:4px solid '+urgency+';border-radius:var(--r);padding:12px 14px;margin-bottom:10px">'+
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'+
-        '<div>'+
-          '<div style="font-weight:800;font-size:14px;color:var(--gold)">'+j.reg+'</div>'+
-          '<div style="font-size:13px;font-weight:600">'+escHtml(j.name)+'</div>'+
-          '<div style="font-size:12px;color:var(--dim)">'+escHtml(j.make+' '+j.model)+'</div>'+
-          '<div style="font-size:12px;color:var(--dim)">'+escHtml(j.work||'')+'</div>'+
+  let list=adJobs().map(j=>{
+    const sent=adSentMs(j);
+    const m=lastWa(j,j.stage==='range'?['range','chase']:['estimate','chase']);
+    const st=m&&m.id&&WA_STATUS[m.id]?WA_STATUS[m.id].s:'';
+    const reps=repliesSince(j,sent);
+    const lastRep=reps[reps.length-1]||null;
+    return {j,sent,m,st,reps,lastRep,guess:lastRep?replyGuess(lastRep.text):''};
+  });
+  const counts={all:list.length,replied:list.filter(x=>x.reps.length).length,read:list.filter(x=>x.st==='read'&&!x.reps.length).length,
+    unread:list.filter(x=>!x.reps.length&&x.st!=='read').length,range:list.filter(x=>x.j.stage==='range').length};
+  if(adFilter==='replied')list=list.filter(x=>x.reps.length);
+  else if(adFilter==='read')list=list.filter(x=>x.st==='read'&&!x.reps.length);
+  else if(adFilter==='unread')list=list.filter(x=>!x.reps.length&&x.st!=='read');
+  else if(adFilter==='range')list=list.filter(x=>x.j.stage==='range');
+  // replies first (they need answering), then oldest first
+  list.sort((a,b)=>(b.reps.length?1:0)-(a.reps.length?1:0)||(a.sent-b.sent));
+  const chip=(k,l)=>'<button class="btn btn-xs '+(adFilter===k?'btn-gold':'btn-ghost')+'" onclick="setAdFilter(\''+k+'\')">'+l+' ('+counts[k]+')</button>';
+  const head='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+
+      chip('all','All')+chip('replied','\ud83d\udcac Replied')+chip('read','\u2713\u2713 Read, no reply')+chip('unread','Not read')+chip('range','\ud83d\udcb7 Ranges')+'</div>'+
+    (waAuto()?'':'<div style="background:rgba(160,120,20,.14);border-left:3px solid var(--amber);border-radius:var(--rs);padding:8px 10px;margin-bottom:10px;font-size:11px;color:var(--amber)">'+
+      'WhatsApp is not connected yet, so messages open in WhatsApp by hand and there are no read receipts. Set up the relay in \u2699 Settings \u2192 Channels to see \u2713\u2713 Delivered / Read and customer replies here.</div>');
+  if(!list.length){el.innerHTML=head+'<div class="empty" style="padding:40px;text-align:center">Nothing waiting on a customer here.</div>';return;}
+  el.innerHTML=head+list.map(x=>{
+    const j=x.j;
+    const hrs=Math.floor((now-(x.sent||now))/3600000), days=Math.floor(hrs/24);
+    const age=hrs<1?'just now':hrs<24?hrs+'h ago':days+'d ago';
+    const urgency=x.reps.length?'var(--blue)':days>=3?'var(--red)':days>=1?'var(--amber)':'var(--green)';
+    const isRange=j.stage==='range';
+    const price=isRange?'\u00a3'+j.rangeLow+'\u2013\u00a3'+j.rangeHigh:((parseFloat(j.quote)||parseFloat(j.finalEst))?'\u00a3'+(parseFloat(j.quote)||parseFloat(j.finalEst)).toFixed(2):'');
+    const nChased=(j.chases||[]).filter(c=>c.ms>=x.sent).length;
+    const nextN=Math.min(3,nChased+1);
+    const chaseDue=!x.reps.length&&hrs>=24*(nChased+1);
+    return '<div style="background:var(--surface2);border:1px solid var(--border);border-left:4px solid '+urgency+';border-radius:var(--r);padding:12px 14px;margin-bottom:10px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">'+
+        '<div style="min-width:0">'+
+          '<div style="font-size:10px;font-weight:800;letter-spacing:.5px;color:'+(isRange?'var(--gold)':'var(--dim)')+'">'+(isRange?'\ud83d\udcb7 PRICE RANGE':'\ud83d\udcc4 FULL QUOTE')+' \u00b7 '+escHtml(stg(j.stage).label)+'</div>'+
+          '<div style="font-weight:800;font-size:14px;color:var(--gold)">'+escHtml(j.reg||'')+'</div>'+
+          '<div style="font-size:13px;font-weight:600">'+escHtml(j.name||'')+'</div>'+
+          '<div style="font-size:12px;color:var(--dim)">'+escHtml(String(j.work||'').slice(0,90))+'</div>'+
         '</div>'+
-        '<div style="text-align:right">'+
-          (j.finalEst?'<div style="font-size:18px;font-weight:800;color:var(--gold)">\u00a3'+parseFloat(j.finalEst).toFixed(2)+'</div>':'')+
-          '<div style="font-size:12px;font-weight:700;color:'+urgency+'">Waiting '+waitLabel+'</div>'+
-          (j.tmJob?'<div style="font-size:11px;color:var(--faint)">'+j.tmJob+'</div>':'')+
+        '<div style="text-align:right;flex-shrink:0">'+
+          (price?'<div style="font-size:17px;font-weight:800;color:var(--gold)">'+price+'</div>':'')+
+          '<div style="font-size:12px;font-weight:700;color:'+urgency+'">Sent '+age+'</div>'+
+          (nChased?'<div style="font-size:10px;color:var(--faint)">chased '+nChased+'\u00d7</div>':'')+
         '</div>'+
       '</div>'+
-      '<div style="font-size:11px;color:var(--dim);margin-bottom:10px;font-style:italic">'+
-        (daysWaiting===0?'Contacted today \u2014 allow 24h before chasing':
-         daysWaiting===1?'1 day waiting \u2014 a friendly reminder is appropriate':
-         daysWaiting===2?'2 days waiting \u2014 send a follow-up':
-         daysWaiting>=3?daysWaiting+' days waiting \u2014 urgent chase recommended':'')+
-      '</div>'+
-      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+
-        (phone?
-          '<a href="https://wa.me/'+phone+'?text='+msg1+'" target="_blank" class="btn btn-green btn-sm">1st Chase (Friendly)</a>'+
-          '<a href="https://wa.me/'+phone+'?text='+msg2+'" target="_blank" class="btn btn-ghost btn-sm">2nd Chase</a>'+
-          '<a href="https://wa.me/'+phone+'?text='+msgFinal+'" target="_blank" class="btn btn-ghost btn-sm" style="color:var(--amber)">Final Chase</a>':
-          '<span style="font-size:12px;color:var(--faint)">No phone number on file</span>'
-        )+
-      '</div>'+
-      '<div style="display:flex;gap:6px">'+
-        '<button class="btn btn-gold btn-sm" onclick="confirmFromDash(\''+j.id+'\')">Customer Said YES \u2192 Book</button>'+
-        '<button class="btn btn-red btn-sm" onclick="lostFromDash(\''+j.id+'\')">Declined \u2192 Lost</button>'+
-        '<button class="btn btn-ghost btn-sm" onclick="cx(\'ov-awaiting\');openJob(\''+j.id+'\')">Open Job</button>'+
+      '<div style="font-size:12px;margin-bottom:8px">'+waTickH(x.m)+'</div>'+
+      (x.reps.length?'<div style="background:var(--bg2,#151515);border-radius:8px;padding:8px 10px;margin-bottom:8px">'+
+        x.reps.slice(-3).map(r=>'<div style="font-size:12px;margin-bottom:3px"><span style="color:var(--faint);font-size:10px">'+escHtml(r.at||'')+'</span> '+escHtml(String(r.text||'').slice(0,240))+'</div>').join('')+
+        (x.guess==='yes'?'<div style="font-size:11px;font-weight:800;color:var(--green);margin-top:4px">\ud83d\udc4d Looks like a YES</div>':x.guess==='no'?'<div style="font-size:11px;font-weight:800;color:var(--red);margin-top:4px">\ud83d\udc4e Looks like a NO</div>':'')+
+      '</div>':'')+
+      (chaseDue?'<div style="font-size:11px;color:var(--amber);margin-bottom:6px">'+(nChased===0?'A day with no reply \u2014 send a friendly chase':'Still nothing \u2014 '+(nextN===3?'last chase':'second chase')+' due')+'</div>':'')+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
+        '<button class="btn btn-sm '+(x.guess==='yes'?'btn-green':'btn-gold')+'" onclick="adYes(\''+j.id+'\')">\ud83d\udc4d YES \u2192 '+(isRange?'full estimate':'book in')+'</button>'+
+        '<button class="btn btn-sm" style="background:'+(x.guess==='no'?'var(--red)':'transparent')+';color:'+(x.guess==='no'?'#fff':'var(--red)')+';border:1px solid var(--red)" onclick="adNo(\''+j.id+'\')">\ud83d\udc4e NO \u2192 Lost</button>'+
+        (estPhone(j)&&!x.reps.length&&nChased<(isRange?2:3)?'<button class="btn btn-ghost btn-sm" onclick="adChase(\''+j.id+'\','+nextN+')">\ud83d\udcac '+(nextN===1?'Chase':nextN===2?'2nd chase':'Final chase')+'</button>':'')+
+        '<button class="btn btn-ghost btn-sm" onclick="cx(\'ov-awaiting\');openJob(\''+j.id+'\')">Open job</button>'+
       '</div>'+
     '</div>';
   }).join('');
