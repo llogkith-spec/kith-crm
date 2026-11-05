@@ -799,6 +799,8 @@ const STAFF=[
   {name:'Ali',            icon:'📞', filter:'adviser',   wa:'2348126024190', pin:'7777', roles:['adviser','parts']},
   {name:'Joel',           icon:'📋', filter:'estimator', wa:'639072943859',  pin:'2222'},
   {name:'Sesugh',         icon:'📋', filter:'estimator', wa:'2348065966028', pin:'9999'},
+  {name:'Paul',           icon:'📋', filter:'estimator', wa:'',              pin:'3333', roles:['estimator','parts']},
+  {name:'Elvis',          icon:'📞', filter:'adviser',   wa:'',              pin:'8888', roles:['adviser','estimator']},
   {name:'Sudha',          icon:'🔩', filter:'parts',     wa:'447514422991',  pin:'6666', roles:['parts','accounts','onsite']},
   {name:'Giles',          icon:'🔧', filter:'parts',     wa:'447496673248',  pin:'4444', roles:['parts','workshop']},
   {name:'Harith',         icon:'📋', filter:'estimator', wa:'',              pin:'5555'},
@@ -5024,7 +5026,7 @@ function testPhonePing(){
 let _pingWarned=false;
 function queuePhonePing(n){
   if(!n)return;
-  const toEst=n.role==='estimator'||['Sesugh','Joel','Harith'].indexOf(n.to)>-1;
+  const toEst=n.role==='estimator'||['Sesugh','Joel','Harith','Paul','Elvis'].indexOf(n.to)>-1;
   const url=(toEst&&n.jobId?'kith-estimator.html':'./')+(n.poId&&!n.jobId?'?po='+encodeURIComponent(n.poId):(n.jobId?'?job='+encodeURIComponent(n.jobId):''));
   fetch(SB_URL+'/rest/v1/kith_pings',{method:'POST',headers:SB_HDR,body:JSON.stringify([{
     id:n.id,to_name:n.to||null,role:n.role||null,title:String(n.title||'').slice(0,200),
@@ -8507,6 +8509,74 @@ function afterPOsStage(j){return (j&&jobNeedsSO(j))?(soRaised(j)?'soraised':'so'
 // the ones most like this one, and gives the middle of what they cost.
 // The estimator checks it and sends it. Customer YES \u2192 full estimate;
 // NO \u2192 Lost, with the one why-survey message and our other services.
+// ── SUPABASE BRAIN (Nov 2026) ──────────────────────────────
+// SRT-informed AI estimate that runs alongside the historical pattern
+// match below. Calls the brain Edge Function (HaynesPro SRTs from
+// TechMan PDF cache + AI fallback + SOP v8.0 engine). Lazy-fires when
+// any brain-consuming view is first opened; caches to j.brainAI.
+const BRAIN_URL = SB_URL + '/functions/v1/brain';
+function _brainCustType(j){
+  const t = String(j.custType||'').toLowerCase().trim();
+  if(/^aa.*smart/.test(t)||t==='aa_smart')return 'aa_smart';
+  if(/^aa.*to.?win/.test(t)||t==='aa_towin')return 'aa_towin';
+  if(/^aa.*pgc/.test(t)||t==='aa_pgc')return 'aa_pgc';
+  if(/^aa.*fleet/.test(t)||t==='aa_fleet')return 'aa_fleet';
+  if(/warranty/.test(t))return 'warranty';
+  if(/trade|b2b|fleet/.test(t))return 'trade';
+  return 'retail';
+}
+function _brainVeh(j){
+  return [j.year, j.make, j.model, j.engine||j.engineVariant].filter(Boolean).join(' ').trim() || j.reg || '';
+}
+async function brainSupabase(j){
+  if(!j||!j.id)return null;
+  if(j._brainAIPending||j.brainAI)return j.brainAI||null;
+  if(!String(j.work||'').trim())return null;
+  j._brainAIPending = true;
+  try{
+    const res = await fetch(BRAIN_URL, {
+      method:'POST',
+      headers:{...SB_HDR, 'x-caller':'crm'},
+      body:JSON.stringify({
+        customer_type: _brainCustType(j),
+        vehicle: _brainVeh(j),
+        reg: j.reg||'',
+        complaint: j.work||''
+      })
+    });
+    const d = await res.json();
+    if(res.ok && !d.error){
+      j.brainAI = {
+        total: d.total_inc_vat||0,
+        lo: (d.total_range&&d.total_range.lo)||0,
+        hi: (d.total_range&&d.total_range.hi)||0,
+        jobs: d.jobs||[],
+        conf: d.confidence||'low',
+        allFirm: !!d.all_firm,
+        usedFallback: !!d.used_ai_fallback,
+        cacheStats: d.cache_stats||{},
+        at: ts(),
+        ms: Date.now()
+      };
+      delete j._brainAIPending;
+      try{ save(j); }catch(e){}
+      try{ if(typeof renderDetail==='function')renderDetail(); }catch(e){}
+      try{ if(typeof renderAll==='function')renderAll(); }catch(e){}
+      return j.brainAI;
+    }
+    delete j._brainAIPending;
+    return null;
+  }catch(e){
+    delete j._brainAIPending;
+    return null;
+  }
+}
+function brainMaybeFire(j){
+  if(!j||j.brainAI||j._brainAIPending)return;
+  if(!['intake','range','labour','parts','financial','signoff'].includes(j.stage))return;
+  setTimeout(()=>brainSupabase(j),10);
+}
+
 const RANGE_STOP=new Set('the and for with from that this have has had need needs needed please car vehicle customer job work also check checks checked new old front rear left right side one two its not but are was were will can could would just like into onto off out our your their them they his her him she also very some any all more less than then only want wants wanted looking quote price estimate'.split(' '));
 function rangeWords(t){
   return [...new Set(String(t||'').toLowerCase().replace(/[^a-z0-9 ]+/g,' ').split(/\s+/)
@@ -8517,12 +8587,17 @@ function skipsRange(j){
   if(j.isInternal)return 'Internal job';
   if(j.isAA||/^aa/i.test(String(j.custType||'')))return 'AA job';
   if(j.isB2B||/b2b|trade|fleet/i.test(String(j.custType||'')))return 'Trade / B2B customer';
+  if(/insurance/i.test(String(j.custType||'')))return 'Insurance job';
+  if(/warranty/i.test(String(j.custType||'')))return 'Warranty job';
   if(j.isComeback||/^COMEBACK/i.test(String(j.work||'')))return 'Comeback';
   if(j.additionalWork)return 'Additional work on a car already in';
+  // Bodywork skips the range UNLESS the damage picker gave us enough to work with
+  if((typeof isBodywork==='function')&&isBodywork(j)&&!(j.damagePanels&&j.damagePanels.length))return 'Bodywork without damage picker data';
   return '';
 }
 function _pct(a,p){if(!a.length)return 0;const i=(a.length-1)*p,lo=Math.floor(i),hi=Math.ceil(i);return a[lo]+(a[hi]-a[lo])*(i-lo);}
 function brainRange(j){
+  brainMaybeFire(j);  // kick off SRT-informed call in background if not already done
   const mine=rangeWords(j.work);
   if(!mine.length)return {n:0,matches:[],why:'No work description to match on'};
   const make=String(j.make||'').toLowerCase().trim();
@@ -8587,7 +8662,22 @@ function brainFallback(j,mine,body,top){
         note:'Broad \u2014 from all '+same.length+' '+lab+' jobs, not ones exactly like this. Narrow it if you can'};
     }
   }
-  return {n:top.length,matches:top,why:top.length?'Only '+top.length+' similar job'+(top.length===1?'':'s')+' so far \u2014 not enough to give a range':'Nothing like this priced yet'};
+  // 3. the Supabase Brain \u2014 SRT-informed AI estimate (HaynesPro + SOP v8.0 engine)
+  if(j.brainAI&&j.brainAI.lo>0&&j.brainAI.hi>0){
+    const b=j.brainAI, r10=v=>Math.round(v/10)*10;
+    const lo=Math.max(10,r10(b.lo)), hi=Math.max(lo+10,r10(b.hi));
+    const lines=(b.jobs||[]).map(bj=>({x:{reg:j.reg,make:j.make,work:bj.job_label||''},sc:0,q:bj.total_inc_vat||0,
+      label:'\u00a3'+Math.round(bj.total_inc_vat||0)+(bj.is_firm?' \u2713':' ~')}));
+    const firmCount = (b.jobs||[]).filter(bj=>bj.is_firm).length;
+    const srtMiss = (b.cacheStats&&b.cacheStats.srt_misses)||0;
+    const srtHits = (b.cacheStats&&b.cacheStats.srt_hits)||0;
+    return {n:b.jobs?b.jobs.length:0,matches:lines,
+      low:lo,high:hi,
+      conf: b.allFirm?'good':(firmCount>0?'rough':'broad'),
+      src:'brain',
+      note:'SRT-informed estimate from the brain' + (b.allFirm?' \u2014 all lines firm from TechMan cache':(srtHits>0?' \u2014 '+srtHits+' firm, '+srtMiss+' AI-estimated (needs TechMan check)':' \u2014 all AI-estimated, no TechMan data yet'))};
+  }
+  return {n:top.length,matches:top,why:top.length?'Only '+top.length+' similar job'+(top.length===1?'':'s')+' so far \u2014 not enough to give a range':'Nothing like this priced yet \u2014 brain working on an SRT estimate...'};
 }
 function rangeMsg(j,lo,hi){
   return 'Hi '+firstName(j)+', thanks for getting in touch with '+GARAGE.name+' about your '+vehDesc(j)+'.\n\n'+
@@ -8669,6 +8759,26 @@ function rangePanelH(j){
         '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml((m.x.reg||'')+' \u00b7 '+(m.x.make||'')+' \u00b7 '+String(m.x.work||'').slice(0,60))+'</span>'+
         '<strong>'+(m.label?escHtml(m.label):'\u00a3'+m.q.toFixed(0))+'</strong></div>').join('')+'</details>':'')+
   '</div>'+
+  // \u2500\u2500 Supabase Brain second signal (SRT-informed) \u2500\u2500
+  (b.src!=='brain'?(function(){
+    const ai=j.brainAI;
+    if(j._brainAIPending||(!ai&&!j.brainAIFailedAt)){
+      return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:9px 12px;margin-bottom:10px;font-size:12px;color:var(--dim)">'+
+        '\u2699 SRT-informed estimate loading from the brain (HaynesPro + SOP v8.0)\u2026</div>';
+    }
+    if(!ai)return '';
+    if(!(ai.lo>0)||!(ai.hi>0))return '';
+    const firmN=(ai.jobs||[]).filter(bj=>bj.is_firm).length;
+    const totalN=(ai.jobs||[]).length;
+    const confCol = ai.allFirm?'var(--green)':(firmN>0?'var(--amber)':'var(--dim)');
+    return '<div style="background:var(--surface2);border:1px solid var(--teal,'+confCol+');border-radius:var(--r);padding:9px 12px;margin-bottom:10px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:3px">'+
+        '<div style="font-size:11px;font-weight:800;color:'+confCol+';text-transform:uppercase;letter-spacing:.5px">\ud83d\udd0c SRT-informed brain</div>'+
+        '<div style="font-size:14px;font-weight:800;color:'+confCol+'">\u00a3'+Math.round(ai.lo)+'\u2013\u00a3'+Math.round(ai.hi)+'</div>'+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--dim)">'+(ai.allFirm?'All '+totalN+' lines firm from TechMan cache':(firmN+' of '+totalN+' firm \u00b7 rest AI-estimated (needs TechMan check)'))+' \u00b7 confidence: '+ai.conf+'</div>'+
+    '</div>';
+  })():'')+
   '<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px">'+
     '<div style="flex:1"><label class="fl2">From \u00a3</label><input type="number" id="rg-lo" class="fi2" style="width:100%" value="'+escHtml(String(lo))+'" '+(sent?'disabled':'')+'/></div>'+
     '<div style="flex:1"><label class="fl2">To \u00a3</label><input type="number" id="rg-hi" class="fi2" style="width:100%" value="'+escHtml(String(hi))+'" '+(sent?'disabled':'')+'/></div>'+
@@ -13127,12 +13237,14 @@ function renderB2BList(){renderB2BBoard();}
 
 // ── SETTINGS ─────────────────────────────────────────────
 const STAFF_TIMINGS=[
-  {name:'Ali',            role:'Service Adviser + Parts', days:'Mon–Fri', hours:'8am–5pm'},
-  {name:'Sesugh',         role:'Estimator',       days:'Mon–Fri',   hours:'8am–5pm'},
-  {name:'Joel',           role:'Estimator',       days:'Mon–Fri',   hours:'12pm–5pm'},
-  {name:'Sudha',          role:'Parts / Accounts',days:'Mon–Fri',   hours:'9am–5pm'},
-  {name:'Giles',          role:'Workshop Manager',days:'Mon–Sat',   hours:'8am–6pm'},
-  {name:'Logkith',        role:'Director',        days:'Mon–Sun',   hours:'—'},
+  {name:'Ali',            role:'Service Adviser + Parts',        days:'Mon–Fri', hours:'8am–5pm'},
+  {name:'Sesugh',         role:'Estimator',                      days:'Mon–Fri', hours:'8am–5pm'},
+  {name:'Joel',           role:'Estimator',                      days:'Mon–Fri', hours:'12pm–5pm'},
+  {name:'Paul',           role:'Estimator (parts + labour)',     days:'Mon–Fri', hours:'8am–5pm'},
+  {name:'Elvis',          role:'Service Adviser + Estimator',    days:'Mon–Fri', hours:'8am–5pm'},
+  {name:'Sudha',          role:'Parts / Accounts',               days:'Mon–Fri', hours:'9am–5pm'},
+  {name:'Giles',          role:'Workshop Manager',               days:'Mon–Sat', hours:'8am–6pm'},
+  {name:'Logkith',        role:'Director',                       days:'Mon–Sun', hours:'—'},
 ];
 
 function openAddWorkIntake(){
@@ -13794,7 +13906,7 @@ function renderActivityFeed(){
     '<div style="margin-bottom:16px">'+
       '<div style="font-weight:800;font-size:13px;color:var(--gold);padding:6px 0;border-bottom:2px solid var(--border);margin-bottom:8px">'+day+'</div>'+
       dayEntries.map(e=>{
-        const whoColour={'Fardeen':'var(--gold)','Joel':'var(--blue)','Ian':'var(--blue)','Muhammad Talha':'var(--blue)','Sudha':'var(--amber)','Giles':'var(--amber)','Harith':'var(--amber)','Logkith':'var(--green)'}[e.who]||'var(--dim)';
+        const whoColour={'Fardeen':'var(--gold)','Joel':'var(--blue)','Ian':'var(--blue)','Muhammad Talha':'var(--blue)','Sesugh':'var(--blue)','Paul':'var(--blue)','Elvis':'var(--gold)','Ali':'var(--gold)','Sudha':'var(--amber)','Giles':'var(--amber)','Harith':'var(--amber)','Logkith':'var(--green)'}[e.who]||'var(--dim)';
         const action=e.s.replace(/\[[^\]]+\]$/,'').trim();
         return'<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="cx(\'ov-activity\');openJob(\''+e.jobId+'\')">'+
           '<div style="flex-shrink:0;width:3px;background:'+whoColour+';border-radius:2px"></div>'+
