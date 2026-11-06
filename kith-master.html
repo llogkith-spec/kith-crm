@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KITH Master Pipeline</title>
+<meta name="theme-color" content="#14161A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="KITH Master">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="apple-touch-icon" href="icon-dash-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14161A; --bg-2:#1B1E24; --card:#20242B; --card-2:#262B33;
+  --line:#333A44; --line-soft:#2A2F37;
+  --ink:#EDEFF2; --ink-2:#A8B1BD; --ink-3:#6E7885;
+  --gold:#D8A32B; --gold-dim:#8A6A1C; --gold-bg:rgba(216,163,43,.10);
+  --go:#3FB07A; --go-bg:rgba(63,176,122,.12);
+  --warn:#E0A030; --warn-bg:rgba(224,160,48,.12);
+  --stop:#E05A4C; --stop-bg:rgba(224,90,76,.12);
+  --blue:#5B9BD5; --blue-bg:rgba(91,155,213,.12);
+  --teal:#45B7A8; --teal-bg:rgba(69,183,168,.12);
+  --purple:#9B7FD4; --purple-bg:rgba(155,127,212,.12);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:14px;line-height:1.45}
+.mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.cond{font-family:"Barlow Condensed",system-ui,sans-serif;font-weight:700;letter-spacing:.3px}
+button,input,select{font:inherit;color:inherit;background:transparent;border:0;outline:0}
+a{color:var(--gold);text-decoration:none}
+
+/* ─ Header ─ */
+.topbar{background:var(--bg-2);border-bottom:1px solid var(--line);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:10}
+.brand{display:flex;align-items:baseline;gap:10px}
+.brand-logo{font-family:"Barlow Condensed";font-weight:700;font-size:22px;color:var(--gold);letter-spacing:1px}
+.brand-sub{font-size:12px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.5px}
+.topbar-right{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--ink-3)}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--go);box-shadow:0 0 6px var(--go);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.btn-link{color:var(--ink-2);padding:6px 10px;border-radius:4px;cursor:pointer;font-size:12px}
+.btn-link:hover{background:var(--card-2);color:var(--ink)}
+
+/* ─ KPI tiles ─ */
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;padding:14px 20px;background:var(--bg-2);border-bottom:1px solid var(--line)}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+.kpi-label{font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
+.kpi-val{font-family:"Barlow Condensed";font-weight:700;font-size:26px;line-height:1;color:var(--ink)}
+.kpi-val.good{color:var(--go)}
+.kpi-val.warn{color:var(--warn)}
+.kpi-val.stop{color:var(--stop)}
+.kpi-val.gold{color:var(--gold)}
+.kpi-sub{font-size:10px;color:var(--ink-3);margin-top:3px}
+
+/* ─ The flow ─ */
+.flow-wrap{padding:20px;overflow-x:auto}
+.flow{display:flex;gap:0;min-width:fit-content;align-items:stretch}
+.sysgroup{display:flex;flex-direction:column;gap:8px;padding:0 10px;position:relative}
+.sysgroup + .sysgroup::before{content:'';position:absolute;left:-2px;top:36px;bottom:12px;width:1px;background:var(--line-soft)}
+.sysgroup-h{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-3);padding:4px 10px;border:1px solid var(--line);border-radius:12px;align-self:flex-start;background:var(--bg-2);font-weight:600}
+.sysgroup.g-inbox .sysgroup-h{color:var(--purple);border-color:var(--purple);background:var(--purple-bg)}
+.sysgroup.g-brain .sysgroup-h{color:var(--teal);border-color:var(--teal);background:var(--teal-bg)}
+.sysgroup.g-crm .sysgroup-h{color:var(--gold);border-color:var(--gold-dim);background:var(--gold-bg)}
+.sysgroup.g-ops .sysgroup-h{color:var(--blue);border-color:var(--blue);background:var(--blue-bg)}
+.sysgroup.g-acct .sysgroup-h{color:var(--go);border-color:var(--go);background:var(--go-bg)}
+.sysgroup.g-after .sysgroup-h{color:var(--warn);border-color:var(--warn);background:var(--warn-bg)}
+
+.stages{display:flex;gap:6px;align-items:stretch}
+.stage{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px 12px;min-width:120px;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;position:relative}
+.stage:hover{background:var(--card-2);border-color:var(--gold-dim);transform:translateY(-1px)}
+.stage-n{font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px}
+.stage-label{font-size:11px;color:var(--ink);font-weight:600;line-height:1.3;margin-bottom:6px;min-height:28px}
+.stage-count{font-family:"Barlow Condensed";font-weight:700;font-size:28px;line-height:1;color:var(--gold);margin-top:auto}
+.stage-count.z{color:var(--ink-3);opacity:.5}
+.stage-sub{font-size:9px;color:var(--ink-3);margin-top:3px;min-height:12px}
+.stage-sub.warn{color:var(--warn)}
+.stage-sub.stop{color:var(--stop)}
+.stage-flag{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%}
+.stage-flag.warn{background:var(--warn);box-shadow:0 0 4px var(--warn)}
+.stage-flag.stop{background:var(--stop);box-shadow:0 0 4px var(--stop)}
+.stage-arrow{align-self:center;color:var(--line);font-size:14px;padding:0 2px;flex-shrink:0}
+
+/* ─ Alerts row ─ */
+.alerts{padding:14px 20px;background:var(--bg-2);border-top:1px solid var(--line)}
+.alerts-h{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-3);margin-bottom:10px;font-weight:600}
+.alert-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.alert{border-radius:4px;padding:8px 12px;font-size:12px;display:flex;align-items:center;gap:10px;cursor:pointer}
+.alert:hover{filter:brightness(1.15)}
+.alert.go{background:var(--go-bg);border-left:3px solid var(--go)}
+.alert.warn{background:var(--warn-bg);border-left:3px solid var(--warn)}
+.alert.stop{background:var(--stop-bg);border-left:3px solid var(--stop)}
+.alert-icon{font-size:16px}
+.alert-txt{flex:1}
+.alert-count{font-family:"Barlow Condensed";font-weight:700;font-size:20px;line-height:1}
+
+/* ─ Drawer ─ */
+.drawer-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:none}
+.drawer-bg.open{display:block}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--bg-2);border-left:1px solid var(--line);z-index:101;transform:translateX(100%);transition:transform .2s;overflow-y:auto}
+.drawer.open{transform:translateX(0)}
+.drawer-h{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--bg-2);z-index:1}
+.drawer-title{font-family:"Barlow Condensed";font-weight:700;font-size:22px;color:var(--gold)}
+.drawer-sub{font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+.drawer-x{cursor:pointer;color:var(--ink-3);font-size:24px;padding:4px 10px;border-radius:4px}
+.drawer-x:hover{color:var(--ink);background:var(--card)}
+.drawer-body{padding:12px 20px 40px}
+.job-row{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:12px;margin-bottom:8px;cursor:pointer}
+.job-row:hover{background:var(--card-2);border-color:var(--gold-dim)}
+.job-row-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:4px}
+.job-reg{font-family:"IBM Plex Mono";font-weight:600;color:var(--gold);font-size:13px}
+.job-quote{font-family:"IBM Plex Mono";font-weight:600;color:var(--ink);font-size:13px}
+.job-cust{font-size:12px;color:var(--ink-2);margin-bottom:2px}
+.job-work{font-size:11px;color:var(--ink-3);line-height:1.4;max-height:30px;overflow:hidden}
+.job-meta{display:flex;gap:10px;font-size:10px;color:var(--ink-3);margin-top:6px;flex-wrap:wrap}
+.job-chip{background:var(--bg);padding:2px 6px;border-radius:3px;border:1px solid var(--line)}
+.job-chip.warn{color:var(--warn);border-color:var(--warn);background:var(--warn-bg)}
+.job-chip.stop{color:var(--stop);border-color:var(--stop);background:var(--stop-bg)}
+.open-crm{display:inline-block;margin-top:10px;background:var(--gold);color:#000;padding:6px 10px;border-radius:4px;font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;cursor:pointer}
+.open-crm:hover{background:#E6B847}
+.empty{text-align:center;padding:40px 20px;color:var(--ink-3);font-size:13px}
+
+.pin-wall{position:fixed;inset:0;background:var(--bg);z-index:200;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+.pin-wall input{width:160px;text-align:center;font-family:"IBM Plex Mono";font-size:28px;letter-spacing:8px;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:14px;color:var(--ink)}
+.pin-wall input:focus{border-color:var(--gold)}
+.pin-wall-msg{font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.5px}
+
+@media(max-width:600px){
+  .kpi-val{font-size:20px}
+  .stage{min-width:100px;padding:8px 10px}
+  .stage-count{font-size:22px}
+}
+</style>
+</head>
+<body>
+
+<div id="pinWall" class="pin-wall">
+  <div class="brand-logo" style="font-size:28px">KITH MASTER</div>
+  <div class="pin-wall-msg">Director PIN</div>
+  <input id="pinInput" type="tel" maxlength="4" inputmode="numeric" autofocus>
+  <div id="pinErr" style="font-size:11px;color:var(--stop);min-height:14px"></div>
+</div>
+
+<div id="app" style="display:none">
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-logo">KITH MASTER</div>
+    <div class="brand-sub">End-to-end pipeline</div>
+  </div>
+  <div class="topbar-right">
+    <span class="live-dot" title="Live"></span>
+    <span id="updatedAt">loading…</span>
+    <a class="btn-link" href="index.html">CRM board →</a>
+    <a class="btn-link" href="kith-dash.html">Director dash →</a>
+    <a class="btn-link" href="accounts.html">Accounts →</a>
+  </div>
+</div>
+
+<div class="kpi-row" id="kpiRow"></div>
+
+<div class="flow-wrap">
+  <div class="flow" id="flow"></div>
+</div>
+
+<div class="alerts">
+  <div class="alerts-h">Needs your attention</div>
+  <div class="alert-grid" id="alertGrid"></div>
+</div>
+
+</div>
+
+<div class="drawer-bg" id="drawerBg" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-h">
+    <div>
+      <div class="drawer-title" id="drTitle">Jobs</div>
+      <div class="drawer-sub" id="drSub"></div>
+    </div>
+    <span class="drawer-x" onclick="closeDrawer()">✕</span>
+  </div>
+  <div class="drawer-body" id="drBody"></div>
+</div>
+
+<script>
+'use strict';
+
+// ── CONFIG ──────────────────────────────────────────────
+const SB_URL = 'https://mxyrxyhvjndgjqupgstu.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
+const SB_HDR = {'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'};
+const DIRECTOR_PIN = '0000';  // matches the CRM's Logkith PIN
+const POLL_MS = 20000;
+
+// ── STAGE MAP — mirrors index.html STAGES and groups them by system ──
+// Each group is a system/area the work lives in. Stages map 1:1 to CRM
+// stage ids where applicable; lead inbox / brain / techman are system
+// boundaries that don't correspond to a CRM stage.
+const GROUPS = [
+  { id:'inbox', label:'LEAD INBOX', system:'Lead Inbox', link:'kith-inbox.html', stages:[
+    { id:'_leads_new',      label:'New leads',           pseudo:true, source:'leads_new' },
+    { id:'_leads_assigned', label:'Being handled',       pseudo:true, source:'leads_assigned' },
+  ]},
+  { id:'brain', label:'BRAIN', system:'Supabase AI', link:null, stages:[
+    { id:'_brain_queries',  label:'AI calls · 24h',     pseudo:true, source:'brain_24h' },
+    { id:'_brain_firm',     label:'Firm from cache',     pseudo:true, source:'brain_firm' },
+  ]},
+  { id:'crm', label:'CRM · SALES', system:'CRM pipeline', link:'index.html', stages:[
+    { id:'intake',    label:'Intake' },
+    { id:'range',     label:'Price Range' },
+    { id:'labour',    label:'Labour Est.' },
+    { id:'parts',     label:'Parts Est.' },
+    { id:'financial', label:'Final Est.' },
+    { id:'signoff',   label:'Logan Sign-Off' },
+    { id:'contact',   label:'Service Adv.' },
+    { id:'contacted', label:'Contacted' },
+    { id:'waiting',   label:'Awaiting D1' },
+    { id:'waiting2',  label:'Awaiting D2' },
+    { id:'ready',     label:'Deposit & T&Cs' },
+  ]},
+  { id:'ops', label:'OPERATIONS · TECHMAN', system:'TechMan + CRM', link:'index.html', stages:[
+    { id:'booked',    label:'Booked' },
+    { id:'po',        label:'POs to Raise' },
+    { id:'raised',    label:'POs Raised' },
+    { id:'so',        label:'SOs to Raise' },
+    { id:'soraised',  label:'SOs Raised' },
+    { id:'checkin',   label:'Check-In' },
+    { id:'authwait',  label:'Awaiting Auth' },
+    { id:'inprog',    label:'In Progress' },
+    { id:'done',      label:'Work Done' },
+  ]},
+  { id:'acct', label:'ACCOUNTS', system:'Accounts app', link:'accounts.html', stages:[
+    { id:'accounts',   label:'Accounts' },
+    { id:'receivable', label:'To Collect' },
+  ]},
+  { id:'after', label:'AFTERCARE', system:'CRM', link:'index.html', stages:[
+    { id:'review',   label:'Review / Referral' },
+    { id:'followup', label:'Follow-up Call' },
+  ]},
+];
+
+// ── Per-stage SLA targets (minutes) — anything older in-stage is flagged
+const SLA = {
+  intake:60, range:2*60, labour:4*60, parts:6*60, financial:4*60,
+  signoff:2*60, contact:30, contacted:24*60, waiting:24*60, waiting2:24*60,
+  ready:48*60, booked:72*60, po:24*60, raised:7*24*60, so:24*60, soraised:7*24*60,
+  checkin:60, authwait:24*60, inprog:3*24*60, done:24*60,
+  accounts:7*24*60, receivable:14*24*60, review:7*24*60, followup:30*24*60,
+};
+
+// ── STATE ──────────────────────────────────────────────
+let JOBS=[], LEADS=[], BRAIN=[], lastPoll=0, pinOk=false;
+
+// ── PIN GATE ──────────────────────────────────────────
+function checkPin(){
+  const v = document.getElementById('pinInput').value;
+  if(v.length < 4) return;
+  if(v === DIRECTOR_PIN){
+    pinOk = true;
+    sessionStorage.setItem('kmaster', '1');
+    document.getElementById('pinWall').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    start();
+  } else {
+    document.getElementById('pinErr').textContent = 'Wrong PIN';
+    document.getElementById('pinInput').value = '';
+    setTimeout(()=>document.getElementById('pinErr').textContent='', 1500);
+  }
+}
+document.getElementById('pinInput').addEventListener('input', checkPin);
+if(sessionStorage.getItem('kmaster')){
+  pinOk = true;
+  document.getElementById('pinWall').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  start();
+}
+
+// ── DATA ──────────────────────────────────────────────
+async function fetchJobs(){
+  const r = await fetch(SB_URL+'/rest/v1/jobs?select=id,data,updated_at&id=not.like.__*__&order=updated_at.desc', {
+    headers:{...SB_HDR,'Range':'0-4999','Range-Unit':'items'}
+  });
+  if(!r.ok) throw new Error('jobs HTTP '+r.status);
+  const rows = await r.json();
+  return rows.map(r => ({...(r.data||{}), id:r.id, updated_at:r.updated_at}))
+             .filter(j => j && j.id && !j.mergedInto);
+}
+
+async function fetchLeads(){
+  try{
+    const r = await fetch(SB_URL+'/rest/v1/jobs?id=eq.__inbox__&select=data', {headers:SB_HDR});
+    if(!r.ok) return [];
+    const rows = await r.json();
+    return (rows[0]&&rows[0].data&&rows[0].data.leads)||[];
+  }catch(e){ return []; }
+}
+
+async function fetchBrainStats(){
+  try{
+    const since = new Date(Date.now() - 24*3600*1000).toISOString();
+    const r = await fetch(SB_URL+'/rest/v1/kith_brain_queries?select=srt_hits,srt_misses,total_quoted_lo,total_quoted_hi,queried_at&queried_at=gte.'+encodeURIComponent(since)+'&order=queried_at.desc', {headers:SB_HDR});
+    if(!r.ok) return [];
+    return await r.json();
+  }catch(e){ return []; }
+}
+
+async function pollAll(){
+  try{
+    const [jobs, leads, brain] = await Promise.all([fetchJobs(), fetchLeads(), fetchBrainStats()]);
+    JOBS = jobs;
+    LEADS = Array.isArray(leads) ? leads : [];
+    BRAIN = brain;
+    lastPoll = Date.now();
+    render();
+  }catch(e){
+    console.error('poll failed:', e);
+  }
+}
+
+// ── HELPERS ──────────────────────────────────────────
+function jobsIn(stageId){ return JOBS.filter(j => j.stage === stageId); }
+function minsInStage(j){
+  const t = j.stageAt ? new Date(j.stageAt).getTime() : (j.updated_at ? new Date(j.updated_at).getTime() : Date.now());
+  return (Date.now() - t) / 60000;
+}
+function fmtQuote(j){
+  const q = parseFloat(j.quote || j.rangeHigh || 0);
+  return q > 0 ? '£'+Math.round(q).toLocaleString() : '—';
+}
+function pseudoCount(src){
+  if(src === 'leads_new')      return LEADS.filter(l => l && !l.assignedTo && !l.handledAt).length;
+  if(src === 'leads_assigned') return LEADS.filter(l => l && (l.assignedTo || l.handledAt) && !l.convertedTo).length;
+  if(src === 'brain_24h')      return BRAIN.length;
+  if(src === 'brain_firm'){
+    return BRAIN.filter(b => (b.srt_hits||0) > 0 && (b.srt_misses||0) === 0).length;
+  }
+  return 0;
+}
+
+// ── RENDER ───────────────────────────────────────────
+function render(){
+  renderKPI();
+  renderFlow();
+  renderAlerts();
+  document.getElementById('updatedAt').textContent = 'live · updated ' + fmtTime(lastPoll);
+}
+function fmtTime(ms){
+  const d = new Date(ms);
+  return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function renderKPI(){
+  const sales = JOBS.filter(j => ['intake','range','labour','parts','financial','signoff','contact','contacted','waiting','waiting2','ready'].includes(j.stage));
+  const ops   = JOBS.filter(j => ['booked','po','raised','so','soraised','checkin','authwait','inprog','done'].includes(j.stage));
+  const totalValue = sales.reduce((s,j) => s + (parseFloat(j.quote||j.rangeHigh||0) || 0), 0);
+  const opsValue   = ops.reduce((s,j) => s + (parseFloat(j.quote||0) || 0), 0);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const wonToday = JOBS.filter(j => j.customerYesAt && new Date(j.customerYesAt) >= today).length;
+  const lostToday = JOBS.filter(j => j.stage==='lost' && j.stageAt && new Date(j.stageAt) >= today).length;
+  const overdue = countOverdue();
+  const brainFirm = BRAIN.filter(b => (b.srt_hits||0) > 0 && (b.srt_misses||0) === 0).length;
+  const brainTotal = BRAIN.length;
+  const firmPct = brainTotal > 0 ? Math.round(100 * brainFirm / brainTotal) : 0;
+
+  const tiles = [
+    {label:'Sales pipeline',     val:sales.length,                    sub:'£'+Math.round(totalValue).toLocaleString()+' at stake'},
+    {label:'In operations',       val:ops.length,                      sub:'£'+Math.round(opsValue).toLocaleString()+' booked'},
+    {label:'Won today',            val:wonToday,                        sub:'YES replies',                     cls:'good'},
+    {label:'Lost today',           val:lostToday,                       sub:'to the Lost column',              cls: lostToday>0?'warn':''},
+    {label:'Needs attention',      val:overdue,                         sub:'SLA breached',                    cls: overdue>0?'stop':''},
+    {label:'Brain · 24h',          val:brainTotal,                      sub:firmPct+'% firm from cache',       cls:'gold'},
+    {label:'Leads unhandled',      val:pseudoCount('leads_new'),        sub:'in the inbox',                    cls: pseudoCount('leads_new')>5?'warn':''},
+  ];
+  document.getElementById('kpiRow').innerHTML = tiles.map(t =>
+    '<div class="kpi">'+
+      '<div class="kpi-label">'+t.label+'</div>'+
+      '<div class="kpi-val '+(t.cls||'')+'">'+t.val+'</div>'+
+      '<div class="kpi-sub">'+t.sub+'</div>'+
+    '</div>'
+  ).join('');
+}
+
+function stageTile(stage, groupId){
+  let count, flagCls = '', subText = '', subCls = '';
+  if(stage.pseudo){
+    count = pseudoCount(stage.source);
+    if(stage.source === 'brain_firm' && BRAIN.length > 0){
+      const pct = Math.round(100 * count / BRAIN.length);
+      subText = pct + '% hit rate';
+    }
+  } else {
+    const inStage = jobsIn(stage.id);
+    count = inStage.length;
+    const target = SLA[stage.id] || 0;
+    if(target > 0 && count > 0){
+      const stale = inStage.filter(j => minsInStage(j) > target).length;
+      if(stale > 0){
+        flagCls = (stale / count >= 0.5) ? 'stop' : 'warn';
+        subText = stale + ' past SLA';
+        subCls = flagCls;
+      } else {
+        subText = 'on time';
+        subCls = 'good';
+      }
+    }
+  }
+  const countCls = count === 0 ? 'z' : '';
+  const flag = flagCls ? '<span class="stage-flag '+flagCls+'"></span>' : '';
+  return '<div class="stage" onclick="openStage(\''+stage.id+'\',\''+groupId+'\',\''+(stage.pseudo?stage.source:'')+'\')">'+
+    flag +
+    '<div class="stage-n">'+(stage.pseudo?'•':'→')+'</div>'+
+    '<div class="stage-label">'+stage.label+'</div>'+
+    '<div class="stage-count '+countCls+'">'+count+'</div>'+
+    '<div class="stage-sub '+subCls+'">'+(subText||'&nbsp;')+'</div>'+
+  '</div>';
+}
+
+function renderFlow(){
+  const html = GROUPS.map((g, gi) => {
+    const stagesH = g.stages.map((s, si) => {
+      const arrow = si < g.stages.length - 1 ? '<div class="stage-arrow">›</div>' : '';
+      return stageTile(s, g.id) + arrow;
+    }).join('');
+    const groupArrow = gi < GROUPS.length - 1 ? '' : '';
+    return '<div class="sysgroup g-'+g.id+'">'+
+      '<div class="sysgroup-h">'+g.label+'</div>'+
+      '<div class="stages">'+stagesH+'</div>'+
+    '</div>' + groupArrow;
+  }).join('');
+  document.getElementById('flow').innerHTML = html;
+}
+
+function countOverdue(){
+  let n = 0;
+  JOBS.forEach(j => {
+    const t = SLA[j.stage];
+    if(t && minsInStage(j) > t) n++;
+  });
+  return n;
+}
+
+function renderAlerts(){
+  const alerts = [];
+  // Parts backlog
+  const parts = jobsIn('parts');
+  const partsStale = parts.filter(j => minsInStage(j) > (SLA.parts||0));
+  if(partsStale.length > 0){
+    alerts.push({cls:'stop', icon:'🔩', txt:partsStale.length+' parts estimate'+(partsStale.length===1?'':'s')+' past SLA', n:partsStale.length, action:()=>openStage('parts','crm','')});
+  }
+  // Sign-off backlog
+  const signoff = jobsIn('signoff');
+  if(signoff.length >= 3){
+    alerts.push({cls: signoff.length >= 5 ? 'stop' : 'warn', icon:'⭐', txt:signoff.length+' waiting your sign-off', n:signoff.length, action:()=>openStage('signoff','crm','')});
+  }
+  // Awaiting day 2
+  const w2 = jobsIn('waiting2');
+  if(w2.length > 0){
+    alerts.push({cls:'warn', icon:'⏳', txt:w2.length+' customer'+(w2.length===1?'':'s')+' silent for 2+ days', n:w2.length, action:()=>openStage('waiting2','crm','')});
+  }
+  // Booked with no TechMan reference
+  const booked = jobsIn('booked');
+  const noTM = booked.filter(j => !j.techmanJobNo);
+  if(noTM.length > 0){
+    alerts.push({cls:'warn', icon:'🛠', txt:noTM.length+' booked job'+(noTM.length===1?'':'s')+' not yet in TechMan', n:noTM.length, action:()=>openStage('booked','ops','')});
+  }
+  // Accounts overdue
+  const overdue = JOBS.filter(j => j.stage==='receivable' && j.invoicedAt && (Date.now() - new Date(j.invoicedAt).getTime()) > 14*24*3600*1000);
+  if(overdue.length > 0){
+    alerts.push({cls:'stop', icon:'💷', txt:overdue.length+' invoice'+(overdue.length===1?'':'s')+' past 14-day terms', n:overdue.length, action:()=>openStage('receivable','acct','')});
+  }
+  // Leads unassigned
+  const leadsNew = pseudoCount('leads_new');
+  if(leadsNew > 5){
+    alerts.push({cls:'warn', icon:'📬', txt:leadsNew+' lead'+(leadsNew===1?'':'s')+' unassigned in the inbox', n:leadsNew, action:()=>window.location='kith-inbox.html'});
+  }
+  // Brain cache cold
+  const brainFirmPct = BRAIN.length > 0 ? (100 * BRAIN.filter(b=>(b.srt_hits||0)>0&&(b.srt_misses||0)===0).length / BRAIN.length) : 0;
+  if(BRAIN.length >= 10 && brainFirmPct < 20){
+    alerts.push({cls:'warn', icon:'🧠', txt:'Brain cache cold ('+Math.round(brainFirmPct)+'% firm) · backfill TechMan PDFs', n:0});
+  }
+
+  if(alerts.length === 0){
+    alerts.push({cls:'go', icon:'✓', txt:'All clear — nothing past SLA', n:0});
+  }
+
+  document.getElementById('alertGrid').innerHTML = alerts.map(a =>
+    '<div class="alert '+a.cls+'" '+(a.action?'onclick="('+a.action+')()"':'')+'>'+
+      '<div class="alert-icon">'+a.icon+'</div>'+
+      '<div class="alert-txt">'+a.txt+'</div>'+
+      (a.n > 0 ? '<div class="alert-count">'+a.n+'</div>' : '')+
+    '</div>'
+  ).join('');
+}
+
+// ── DRAWER ───────────────────────────────────────────
+window.openStage = function(stageId, groupId, pseudoSrc){
+  const group = GROUPS.find(g => g.id === groupId);
+  const stage = group ? group.stages.find(s => s.id === stageId) : null;
+  if(!stage) return;
+
+  document.getElementById('drTitle').textContent = stage.label;
+  document.getElementById('drSub').textContent = (group ? group.system : '') + (stage.pseudo ? '' : ' · stage ID: '+stageId);
+
+  let body = '';
+  if(stage.pseudo){
+    body = '<div class="empty">This stage lives outside the CRM job board.<br>'+
+      (group.link ? '<a class="open-crm" href="'+group.link+'" style="margin-top:14px">Open '+group.system+'</a>' : 'Direct data not surfaced here yet.') +
+      '</div>';
+  } else {
+    const list = jobsIn(stageId).sort((a,b) => minsInStage(b) - minsInStage(a));
+    if(list.length === 0){
+      body = '<div class="empty">No jobs in this stage right now.</div>';
+    } else {
+      const target = SLA[stageId] || 0;
+      body = list.map(j => {
+        const mins = Math.round(minsInStage(j));
+        const stale = target > 0 && mins > target;
+        const ageTxt = mins < 60 ? mins+'m' : mins < 1440 ? Math.round(mins/60)+'h' : Math.round(mins/1440)+'d';
+        const cust = j.customer || j.name || j.first || '(no name)';
+        const work = String(j.work || '').slice(0, 120);
+        const owner = j.assignedEstimator || j.assignedAdviser || j.by || '';
+        return '<div class="job-row" onclick="window.location=\'index.html?job='+encodeURIComponent(j.id)+'\'">'+
+          '<div class="job-row-top">'+
+            '<div class="job-reg">'+(j.reg||'—')+'</div>'+
+            '<div class="job-quote">'+fmtQuote(j)+'</div>'+
+          '</div>'+
+          '<div class="job-cust">'+esc(cust)+' · '+esc((j.year||'')+' '+(j.make||'')+' '+(j.model||''))+'</div>'+
+          '<div class="job-work">'+esc(work)+(work.length>=120?'…':'')+'</div>'+
+          '<div class="job-meta">'+
+            '<span class="job-chip '+(stale?'stop':'')+'">'+ageTxt+' in stage</span>'+
+            (owner ? '<span class="job-chip">'+esc(owner)+'</span>' : '')+
+            (j.custType ? '<span class="job-chip">'+esc(j.custType)+'</span>' : '')+
+            (j.rangeSentAt ? '<span class="job-chip">range sent</span>' : '')+
+            (j.customerYesAt ? '<span class="job-chip" style="color:var(--go)">yes</span>' : '')+
+          '</div>'+
+        '</div>';
+      }).join('');
+      if(group.link){
+        body += '<a class="open-crm" href="'+group.link+'">Open '+group.system+' →</a>';
+      }
+    }
+  }
+  document.getElementById('drBody').innerHTML = body;
+  document.getElementById('drawerBg').classList.add('open');
+  document.getElementById('drawer').classList.add('open');
+};
+
+window.closeDrawer = function(){
+  document.getElementById('drawerBg').classList.remove('open');
+  document.getElementById('drawer').classList.remove('open');
+};
+
+function esc(s){ return String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// ── START ────────────────────────────────────────────
+function start(){
+  pollAll();
+  setInterval(() => { if(!document.hidden) pollAll(); }, POLL_MS);
+}
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeDrawer(); });
+</script>
+
+</body>
+</html>
