@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KITH SOP Editor</title>
+<meta name="theme-color" content="#14161A">
+<link rel="apple-touch-icon" href="icon-dash-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14161A; --bg-2:#1B1E24; --card:#20242B; --card-2:#262B33;
+  --line:#333A44; --line-soft:#2A2F37;
+  --ink:#EDEFF2; --ink-2:#A8B1BD; --ink-3:#6E7885;
+  --gold:#D8A32B; --gold-dim:#8A6A1C; --gold-bg:rgba(216,163,43,.10);
+  --go:#3FB07A; --go-bg:rgba(63,176,122,.12);
+  --warn:#E0A030; --warn-bg:rgba(224,160,48,.12);
+  --stop:#E05A4C; --stop-bg:rgba(224,90,76,.12);
+  --blue:#5B9BD5;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:14px;line-height:1.5}
+.mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.cond{font-family:"Barlow Condensed",system-ui,sans-serif;font-weight:700;letter-spacing:.3px}
+button,input,select,textarea{font:inherit;color:inherit;background:transparent;border:0;outline:0}
+a{color:var(--gold);text-decoration:none}
+
+.topbar{background:var(--bg-2);border-bottom:1px solid var(--line);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:10}
+.brand-logo{font-family:"Barlow Condensed";font-weight:700;font-size:22px;color:var(--gold);letter-spacing:1px}
+.brand-sub{font-size:12px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.5px}
+.topbar-right{display:flex;gap:10px;align-items:center}
+.version-pill{font-family:"IBM Plex Mono";font-size:11px;color:var(--ink-2);background:var(--card);padding:5px 10px;border-radius:4px;border:1px solid var(--line)}
+.btn{padding:8px 14px;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;letter-spacing:.3px;text-transform:uppercase;font-size:11px}
+.btn-primary{background:var(--gold);color:#000}
+.btn-primary:hover{background:#E6B847}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed}
+.btn-ghost{background:transparent;color:var(--ink-2);border:1px solid var(--line)}
+.btn-ghost:hover{background:var(--card-2);color:var(--ink)}
+
+.tabs{background:var(--bg-2);border-bottom:1px solid var(--line);padding:0 20px;display:flex;gap:4px;overflow-x:auto}
+.tab{padding:12px 16px;cursor:pointer;color:var(--ink-3);font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:600;border-bottom:2px solid transparent;white-space:nowrap}
+.tab:hover{color:var(--ink-2)}
+.tab.active{color:var(--gold);border-bottom-color:var(--gold)}
+
+.wrap{max-width:900px;margin:0 auto;padding:20px}
+.panel{display:none}
+.panel.active{display:block}
+.section{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:18px;margin-bottom:14px}
+.section-h{font-family:"Barlow Condensed";font-weight:700;font-size:18px;color:var(--gold);margin-bottom:6px}
+.section-sub{font-size:12px;color:var(--ink-3);margin-bottom:14px;line-height:1.5}
+
+.field{display:grid;grid-template-columns:200px 1fr;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line-soft)}
+.field:last-child{border-bottom:0}
+.field label{font-size:13px;color:var(--ink-2)}
+.field .hint{font-size:11px;color:var(--ink-3);margin-top:2px;grid-column:2}
+.field input[type="number"], .field input[type="text"]{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:6px 10px;font-family:"IBM Plex Mono";font-size:13px;color:var(--ink);width:100%;max-width:180px}
+.field input:focus{border-color:var(--gold)}
+.field input.changed{border-color:var(--warn);background:var(--warn-bg)}
+.field .prefix{font-size:12px;color:var(--ink-3);margin-right:4px}
+
+.sub-h{font-size:12px;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-3);margin-top:16px;margin-bottom:8px;font-weight:600}
+.sub-h:first-child{margin-top:0}
+.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.cell{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:10px 12px}
+.cell-label{font-size:10px;text-transform:uppercase;color:var(--ink-3);letter-spacing:1px;margin-bottom:4px}
+.cell input{background:transparent;border:0;font-family:"IBM Plex Mono";font-size:14px;color:var(--ink);width:100%;padding:0}
+.cell input.changed{color:var(--warn)}
+.cell input:focus{outline:1px solid var(--gold);outline-offset:4px}
+
+.ladder-tbl{width:100%;border-collapse:collapse;font-family:"IBM Plex Mono";font-size:13px}
+.ladder-tbl th{text-align:left;color:var(--ink-3);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:1px;padding:6px 10px;border-bottom:1px solid var(--line)}
+.ladder-tbl td{padding:8px 10px;border-bottom:1px solid var(--line-soft)}
+.ladder-tbl input{background:var(--bg);border:1px solid var(--line);border-radius:3px;padding:4px 8px;font-family:inherit;font-size:13px;color:var(--ink);width:90px}
+.ladder-tbl input.changed{border-color:var(--warn);background:var(--warn-bg)}
+
+.cust-card{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:14px;margin-bottom:10px}
+.cust-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.cust-name{font-weight:600;color:var(--gold);font-size:14px}
+.cust-kind{font-size:10px;text-transform:uppercase;color:var(--ink-3);letter-spacing:1px;background:var(--card-2);padding:2px 8px;border-radius:10px}
+
+.raw-area{width:100%;min-height:400px;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:12px;font-family:"IBM Plex Mono";font-size:12px;color:var(--ink);resize:vertical}
+.raw-area:focus{border-color:var(--gold)}
+
+.save-bar{position:fixed;bottom:0;left:0;right:0;background:var(--bg-2);border-top:1px solid var(--line);padding:12px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px;z-index:20}
+.save-bar-info{font-size:12px;color:var(--ink-3)}
+.save-bar-info.has-changes{color:var(--warn)}
+.save-bar-actions{display:flex;gap:10px}
+.note-input{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:6px 10px;font-size:12px;color:var(--ink);width:260px}
+.note-input:focus{border-color:var(--gold)}
+
+.toast{position:fixed;top:80px;right:20px;background:var(--go);color:#fff;padding:14px 20px;border-radius:5px;font-size:13px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.4);z-index:50;transform:translateX(400px);transition:transform .25s}
+.toast.show{transform:translateX(0)}
+.toast.err{background:var(--stop)}
+
+.history-panel{position:fixed;top:0;right:0;bottom:0;width:min(420px,100%);background:var(--bg-2);border-left:1px solid var(--line);z-index:30;transform:translateX(100%);transition:transform .2s;overflow-y:auto;padding:20px}
+.history-panel.open{transform:translateX(0)}
+.history-panel h3{margin:0 0 16px;font-family:"Barlow Condensed";font-weight:700;font-size:22px;color:var(--gold)}
+.hist-row{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:10px 12px;margin-bottom:8px;font-size:12px}
+.hist-row-top{display:flex;justify-content:space-between;color:var(--ink-3);font-size:11px;margin-bottom:4px}
+.hist-row-by{color:var(--gold)}
+.hist-ver{font-family:"IBM Plex Mono";font-weight:600}
+
+.pin-wall{position:fixed;inset:0;background:var(--bg);z-index:200;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+.pin-wall input{width:160px;text-align:center;font-family:"IBM Plex Mono";font-size:28px;letter-spacing:8px;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:14px;color:var(--ink)}
+.pin-wall input:focus{border-color:var(--gold)}
+.pin-wall-msg{font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.5px}
+
+@media(max-width:600px){ .field{grid-template-columns:1fr} .grid3,.grid4{grid-template-columns:repeat(2,1fr)} }
+</style>
+</head>
+<body>
+
+<div id="pinWall" class="pin-wall">
+  <div class="brand-logo" style="font-size:28px">KITH SOP</div>
+  <div class="pin-wall-msg">Director PIN</div>
+  <input id="pinInput" type="tel" maxlength="4" inputmode="numeric" autofocus>
+  <div id="pinErr" style="font-size:11px;color:var(--stop);min-height:14px"></div>
+</div>
+
+<div id="app" style="display:none">
+
+<div class="topbar">
+  <div>
+    <div class="brand-logo">KITH SOP EDITOR</div>
+    <div class="brand-sub">Single source of truth</div>
+  </div>
+  <div class="topbar-right">
+    <span class="version-pill" id="verPill">v?</span>
+    <button class="btn btn-ghost" onclick="openHistory()">History</button>
+    <a class="btn btn-ghost" href="kith-master.html">Master →</a>
+    <a class="btn btn-ghost" href="index.html">CRM →</a>
+  </div>
+</div>
+
+<div class="tabs" id="tabs"></div>
+
+<div class="wrap">
+  <div class="panel active" data-panel="rates" id="p_rates"></div>
+  <div class="panel" data-panel="customers" id="p_customers"></div>
+  <div class="panel" data-panel="multipliers" id="p_multipliers"></div>
+  <div class="panel" data-panel="parts" id="p_parts"></div>
+  <div class="panel" data-panel="fixed" id="p_fixed"></div>
+  <div class="panel" data-panel="bodywork" id="p_bodywork"></div>
+  <div class="panel" data-panel="fluids" id="p_fluids"></div>
+  <div class="panel" data-panel="raw" id="p_raw"></div>
+</div>
+
+<div style="height:80px"></div>
+
+<div class="save-bar">
+  <div>
+    <div class="save-bar-info" id="saveInfo">Loaded — no changes</div>
+    <input class="note-input" id="saveNote" placeholder="Note what changed (optional)">
+  </div>
+  <div class="save-bar-actions">
+    <button class="btn btn-ghost" onclick="revertChanges()" id="revertBtn" disabled>Revert</button>
+    <button class="btn btn-primary" onclick="saveChanges()" id="saveBtn" disabled>Save & publish</button>
+  </div>
+</div>
+
+</div>
+
+<div class="history-panel" id="historyPanel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <h3 style="margin:0">Version history</h3>
+    <span style="cursor:pointer;color:var(--ink-3);font-size:22px;padding:4px 10px" onclick="closeHistory()">✕</span>
+  </div>
+  <div id="historyList"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+// ── CONFIG ──────────────────────────────────────────────
+const SB_URL = 'https://mxyrxyhvjndgjqupgstu.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
+const SB_HDR = {'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'};
+const DIRECTOR_PIN = '0000';
+
+// ── STATE ──────────────────────────────────────────────
+let SOP = null;       // live loaded SOP from DB
+let SOP_ORIG = null;  // snapshot at load time, for diff/revert
+let SOP_VERSION = 1;
+
+// ── PIN ─────────────────────────────────────────────────
+function checkPin(){
+  const v = document.getElementById('pinInput').value;
+  if(v.length < 4) return;
+  if(v === DIRECTOR_PIN){
+    sessionStorage.setItem('ksop', '1');
+    document.getElementById('pinWall').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    start();
+  } else {
+    document.getElementById('pinErr').textContent = 'Wrong PIN';
+    document.getElementById('pinInput').value = '';
+    setTimeout(()=>document.getElementById('pinErr').textContent='', 1500);
+  }
+}
+document.getElementById('pinInput').addEventListener('input', checkPin);
+if(sessionStorage.getItem('ksop')){
+  document.getElementById('pinWall').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  start();
+}
+
+// ── TABS ───────────────────────────────────────────────
+const TABS = [
+  { id:'rates',       label:'Rates' },
+  { id:'customers',   label:'Customers' },
+  { id:'multipliers', label:'Multipliers' },
+  { id:'parts',       label:'Parts ladder' },
+  { id:'fixed',       label:'Fixed prices' },
+  { id:'bodywork',    label:'Bodywork' },
+  { id:'fluids',      label:'Fluids' },
+  { id:'raw',         label:'Raw JSON' },
+];
+function renderTabs(){
+  document.getElementById('tabs').innerHTML = TABS.map(t =>
+    '<div class="tab'+(t.id==='rates'?' active':'')+'" data-tab="'+t.id+'" onclick="showTab(\''+t.id+'\')">'+t.label+'</div>'
+  ).join('');
+}
+window.showTab = function(id){
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab===id));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.dataset.panel===id));
+};
+
+// ── DATA ───────────────────────────────────────────────
+async function loadSOP(){
+  const r = await fetch(SB_URL+'/rest/v1/kith_sop_config?id=eq.current&select=*', {headers:SB_HDR});
+  if(!r.ok) throw new Error('SOP load failed: '+r.status);
+  const rows = await r.json();
+  if(!rows.length) throw new Error('No SOP config row — run the SQL schema first');
+  SOP = rows[0].data;
+  SOP_ORIG = JSON.parse(JSON.stringify(SOP));
+  SOP_VERSION = rows[0].version;
+  document.getElementById('verPill').textContent = 'v'+SOP_VERSION+' · '+rows[0].updated_at.slice(0,10);
+}
+
+async function saveSOP(note){
+  const user = 'Logan';
+  // 1. Save new current
+  const payload = { data: SOP, version: SOP_VERSION+1, updated_at: new Date().toISOString(), updated_by: user, note: note||null };
+  const r = await fetch(SB_URL+'/rest/v1/kith_sop_config?id=eq.current', {
+    method: 'PATCH', headers: SB_HDR, body: JSON.stringify(payload)
+  });
+  if(!r.ok) throw new Error('save failed: '+r.status+' — '+(await r.text()));
+  const rows = await r.json();
+  SOP_VERSION = rows[0].version;
+  SOP_ORIG = JSON.parse(JSON.stringify(SOP));
+  // 2. Append history
+  await fetch(SB_URL+'/rest/v1/kith_sop_history', {
+    method: 'POST', headers: SB_HDR,
+    body: JSON.stringify({ version: SOP_VERSION, data: SOP, changed_by: user, note: note||null })
+  });
+  document.getElementById('verPill').textContent = 'v'+SOP_VERSION+' · '+rows[0].updated_at.slice(0,10);
+}
+
+// ── RENDER PANELS ──────────────────────────────────────
+function renderAll(){
+  renderRates();
+  renderCustomers();
+  renderMultipliers();
+  renderParts();
+  renderFixed();
+  renderBodywork();
+  renderFluids();
+  renderRaw();
+  updateSaveBar();
+}
+
+function renderRates(){
+  const r = SOP.rates;
+  document.getElementById('p_rates').innerHTML =
+    '<div class="section">'+
+      '<div class="section-h">Hourly rates (ex VAT)</div>'+
+      '<div class="section-sub">The base £/hr for each tier. Inc VAT is shown next to each as a sanity check. Retail hides the MED tier (see Customers).</div>'+
+      '<div class="grid4">'+
+        ['LOW','MED','TOP','BODY'].map(k => cellInput(k, r[k], 'rates.'+k, '£')+' <div class="cell-label" style="margin-top:2px;color:var(--ink-3)">inc VAT £'+(r[k]*1.2).toFixed(2)+'</div>').join('')+
+      '</div>'+
+    '</div>'+
+    '<div class="section">'+
+      '<div class="section-h">Instant price range (retail only)</div>'+
+      '<div class="section-sub">What the customer sees in the WhatsApp message. Widened from the engine total.</div>'+
+      '<div class="field"><label>Lower spread</label><div><input type="number" value="'+SOP.instantRange.lowerPct+'" step="1" onchange="setVal(\'instantRange.lowerPct\',parseFloat(this.value),this)"> <span class="prefix">% below</span></div></div>'+
+      '<div class="field"><label>Upper spread</label><div><input type="number" value="'+SOP.instantRange.upperPct+'" step="1" onchange="setVal(\'instantRange.upperPct\',parseFloat(this.value),this)"> <span class="prefix">% above</span></div></div>'+
+    '</div>';
+}
+
+function cellInput(label, val, path, prefix){
+  return '<div class="cell">'+
+    '<div class="cell-label">'+label+'</div>'+
+    '<div style="display:flex;align-items:baseline;gap:4px">'+
+      (prefix?'<span class="prefix">'+prefix+'</span>':'')+
+      '<input type="number" step="any" value="'+val+'" data-path="'+path+'" onchange="setVal(\''+path+'\',parseFloat(this.value),this)">'+
+    '</div></div>';
+}
+
+function renderCustomers(){
+  let html = '<div class="section">'+
+    '<div class="section-h">Customer types & rate cards</div>'+
+    '<div class="section-sub">KITH customers (retail, trade) go through the multiplier ladder. AA / warranty / insurance customers use a flat labour rate with no multiplier.</div>';
+  Object.keys(SOP.customers).forEach(key => {
+    const c = SOP.customers[key];
+    html += '<div class="cust-card">'+
+      '<div class="cust-head">'+
+        '<div class="cust-name">'+c.label+' <span style="color:var(--ink-3);font-weight:400;font-size:12px">('+key+')</span></div>'+
+        '<div class="cust-kind">'+c.kind+'</div>'+
+      '</div>';
+    if(c.kind === 'kith'){
+      html += '<div class="grid2">'+
+        cellInput('Threshold (hrs)', c.threshold, 'customers.'+key+'.threshold') +
+        '<div class="cell"><div class="cell-label">Tiers available</div><div style="font-family:IBM Plex Mono;font-size:12px;color:var(--ink-2)">'+c.tiers.join(' · ')+'</div></div>'+
+      '</div>';
+      if(c.note) html += '<div style="font-size:11px;color:var(--ink-3);margin-top:8px">'+c.note+'</div>';
+    } else {
+      const fields = ['labourRate','partsPct','diagRate','diagFixed','diagAuthMax'].filter(f => c[f] != null);
+      html += '<div class="grid'+Math.min(fields.length,4)+'">'+
+        fields.map(f => {
+          const val = c[f]; const label = ({labourRate:'£/hr',partsPct:'Parts %',diagRate:'Diag £/hr',diagFixed:'Diag flat £',diagAuthMax:'Max diag hrs'})[f];
+          const prefix = (f==='partsPct') ? '' : (f.startsWith('diag')&&f!=='diagAuthMax'?'£':'£');
+          return cellInput(label, val, 'customers.'+key+'.'+f, f==='partsPct'?'×':(f==='diagAuthMax'?'h':'£'));
+        }).join('')+
+      '</div>';
+      if(c.note) html += '<div style="font-size:11px;color:var(--ink-3);margin-top:8px">'+c.note+'</div>';
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+  document.getElementById('p_customers').innerHTML = html;
+}
+
+function renderMultipliers(){
+  const m = SOP.multiplier;
+  document.getElementById('p_multipliers').innerHTML =
+    '<div class="section">'+
+      '<div class="section-h">Normal multiplier</div>'+
+      '<div class="section-sub">Lower hrs × upper multiplier; past the threshold × lower multiplier. Each customer type has its own threshold (see Customers tab).</div>'+
+      '<div class="grid2">'+
+        cellInput('Lower (below threshold)', m.normal.lower, 'multiplier.normal.lower','×')+
+        cellInput('Upper (above threshold)', m.normal.upper, 'multiplier.normal.upper','×')+
+      '</div>'+
+    '</div>'+
+    '<div class="section">'+
+      '<div class="section-h">Ramp-exempt multiplier</div>'+
+      '<div class="section-sub">Jobs the garage flags as needing no ramp (e.g. bulb change) REPLACE the normal multiplier with these — they do not stack.</div>'+
+      '<div class="grid2">'+
+        cellInput('Lower (below threshold)', m.ramp.lower, 'multiplier.ramp.lower','×')+
+        cellInput('Upper (above threshold)', m.ramp.upper, 'multiplier.ramp.upper','×')+
+      '</div>'+
+    '</div>'+
+    '<div class="section">'+
+      '<div class="section-h">Always ×2 categories</div>'+
+      '<div class="section-sub">These jobs never step down to the upper multiplier, however many hours. Comma-separated.</div>'+
+      '<input type="text" value="'+SOP.multiplier.alwaysX2.join(', ')+'" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:8px 12px;color:var(--ink);font-family:IBM Plex Mono" onchange="setVal(\'multiplier.alwaysX2\',this.value.split(\',\').map(s=>s.trim()).filter(Boolean),this)">'+
+    '</div>'+
+    '<div class="section">'+
+      '<div class="section-h">Minimums</div>'+
+      '<div class="grid2">'+
+        cellInput('Min labour hrs/line', SOP.minimums.labourHours, 'minimums.labourHours', '×')+
+        cellInput('Bodywork min / line £', SOP.minimums.bodyMinCharge, 'minimums.bodyMinCharge','£')+
+      '</div>'+
+      '<div class="sub-h" style="margin-top:14px">Exempt from min labour</div>'+
+      '<input type="text" value="'+SOP.minimums.exemptCategories.join(', ')+'" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:8px 12px;color:var(--ink);font-family:IBM Plex Mono" onchange="setVal(\'minimums.exemptCategories\',this.value.split(\',\').map(s=>s.trim()).filter(Boolean),this)">'+
+    '</div>';
+}
+
+function renderParts(){
+  const l = SOP.partsLadder;
+  let rows = l.map((b,i) =>
+    '<tr>'+
+      '<td class="mono">'+(i===0?'£0.01':'£'+(l[i-1].to+0.01).toFixed(2))+'</td>'+
+      '<td><input type="number" step="any" value="'+b.to+'" onchange="setLadder('+i+',\'to\',parseFloat(this.value),this)"></td>'+
+      '<td><input type="number" step="0.01" value="'+b.mult+'" onchange="setLadder('+i+',\'mult\',parseFloat(this.value),this)"></td>'+
+      '<td><input type="number" step="any" value="'+b.minSell+'" onchange="setLadder('+i+',\'minSell\',parseFloat(this.value),this)"></td>'+
+      '<td class="mono" style="color:var(--ink-3)">eg £'+((l[i-1]?l[i-1].to+0.01:5)*b.mult).toFixed(2)+' or min £'+b.minSell+'</td>'+
+    '</tr>').join('');
+  document.getElementById('p_parts').innerHTML =
+    '<div class="section">'+
+      '<div class="section-h">Parts ladder (banded per part, applied to net cost)</div>'+
+      '<div class="section-sub">Each part\'s net unit cost chooses its band. The multiplier gives the markup; minSell is the floor that stops a band edge inverting.</div>'+
+      '<table class="ladder-tbl">'+
+        '<thead><tr><th>Net ≥</th><th>Net ≤ £</th><th>×</th><th>Min sell £</th><th>Example</th></tr></thead>'+
+        '<tbody>'+rows+'</tbody>'+
+      '</table>'+
+      '<div class="field" style="margin-top:14px">'+
+        '<label>Escalate above</label>'+
+        '<div><span class="prefix">£</span><input type="number" value="'+SOP.partsEscalateAbove+'" onchange="setVal(\'partsEscalateAbove\',parseFloat(this.value),this)"> <span class="hint" style="margin-left:8px">parts above this flag for manual sign-off</span></div>'+
+      '</div>'+
+    '</div>';
+}
+
+function renderFixed(){
+  const fixed = [
+    { title:'MOT (outside VAT)', obj: SOP.mot, prefix:'Class ' },
+    { title:'Diagnostics (ex VAT)', obj: SOP.diagnostics },
+    { title:'Remaps & tuning (inc VAT)', obj: SOP.tuning },
+  ];
+  let html = fixed.map(f => {
+    const rows = Object.keys(f.obj).map(k => {
+      const path = f.title.startsWith('MOT')?'mot.'+k : f.title.startsWith('Diag')?'diagnostics.'+(k.replace(/'/g,"\\'")) : 'tuning.'+(k.replace(/'/g,"\\'"));
+      const val = typeof f.obj[k] === 'object' ? f.obj[k].price : f.obj[k];
+      return '<div class="field"><label>'+(f.prefix||'')+k+'</label><div><span class="prefix">£</span><input type="number" step="any" value="'+val+'" data-path="'+path+'" onchange="setVal(\''+path+'\',parseFloat(this.value),this)"></div></div>';
+    }).join('');
+    return '<div class="section"><div class="section-h">'+f.title+'</div>'+rows+'</div>';
+  }).join('');
+  // Inspections (nested)
+  let insp = '<div class="section"><div class="section-h">Inspections</div>';
+  Object.keys(SOP.inspections).forEach(k => {
+    const i = SOP.inspections[k];
+    const kesc = k.replace(/'/g,"\\'");
+    insp += '<div class="field"><label>'+k+'</label><div><span class="prefix">£</span><input type="number" step="any" value="'+i.price+'" onchange="setVal(\'inspections.'+kesc+'.price\',parseFloat(this.value),this)"> <span class="prefix">'+(i.incVat?'inc VAT':'ex VAT')+'</span></div></div>';
+  });
+  insp += '</div>';
+  // Recovery & collection
+  let rec = '<div class="section"><div class="section-h">Recovery</div><table class="ladder-tbl"><thead><tr><th>Up to miles</th><th>Price £</th></tr></thead><tbody>';
+  SOP.recovery.forEach((b,i) => {
+    rec += '<tr><td><input type="number" value="'+b.toMiles+'" onchange="setArr(\'recovery\','+i+',\'toMiles\',parseFloat(this.value),this)"></td>'+
+      '<td><input type="number" value="'+b.price+'" onchange="setArr(\'recovery\','+i+',\'price\',parseFloat(this.value),this)"></td></tr>';
+  });
+  rec += '</tbody></table></div>';
+  let col = '<div class="section"><div class="section-h">Collection & delivery</div><table class="ladder-tbl"><thead><tr><th>Up to miles</th><th>Price £</th></tr></thead><tbody>';
+  SOP.collection.forEach((b,i) => {
+    col += '<tr><td><input type="number" value="'+b.toMiles+'" onchange="setArr(\'collection\','+i+',\'toMiles\',parseFloat(this.value),this)"></td>'+
+      '<td><input type="number" value="'+b.price+'" onchange="setArr(\'collection\','+i+',\'price\',parseFloat(this.value),this)"></td></tr>';
+  });
+  col += '</tbody></table></div>';
+  document.getElementById('p_fixed').innerHTML = html + insp + rec + col +
+    '<div class="section"><div class="section-h">Tyre fitting</div>'+
+      '<div class="field"><label>Per tyre (ex VAT)</label><div><span class="prefix">£</span><input type="number" step="any" value="'+SOP.tyreFitEach+'" onchange="setVal(\'tyreFitEach\',parseFloat(this.value),this)"></div></div>'+
+    '</div>';
+}
+
+function renderBodywork(){
+  const b = SOP.bodywork;
+  let panels = '<div class="section"><div class="section-h">Panel base prices (ex VAT, 5-seater)</div>'+
+    '<div class="section-sub">Add vehicle uplift and apply age discount (10+ years = −25% panel painting).</div><div class="grid2">';
+  Object.keys(b.panelBase).forEach(k => {
+    const kesc = k.replace(/'/g,"\\'");
+    panels += cellInput(k, b.panelBase[k], 'bodywork.panelBase.'+kesc, '£');
+  });
+  panels += '</div></div>';
+
+  let uplift = '<div class="section"><div class="section-h">Vehicle size uplift</div><div class="section-sub">Added on top of the panel base for larger vehicles.</div><div class="grid2">';
+  Object.keys(b.panelUplift).forEach(k => {
+    const kesc = k.replace(/'/g,"\\'");
+    uplift += cellInput(k, b.panelUplift[k], 'bodywork.panelUplift.'+kesc, '+£');
+  });
+  uplift += '</div></div>';
+
+  let blend = '<div class="section"><div class="section-h">Blends & related</div><div class="grid2">'+
+    cellInput('Panel blend', b.blend.panel, 'bodywork.blend.panel', '£')+
+    cellInput('Door blend', b.blend.door, 'bodywork.blend.door', '£')+
+    cellInput('SMART repair', b.smartRepair, 'bodywork.smartRepair', '£')+
+    cellInput('Multi-panel disc', b.multiPanelDiscount, 'bodywork.multiPanelDiscount', '×')+
+  '</div></div>';
+
+  let dent = '<div class="section"><div class="section-h">Dent & straightening</div>'+
+    '<div class="section-sub">KITH does not do PDR — straightening prices are on top of painting the panel.</div><div class="grid2">'+
+    cellInput('Dent min £', b.dent.min, 'bodywork.dent.min', '£')+
+    cellInput('Dent max £', b.dent.max, 'bodywork.dent.max', '£')+
+    cellInput('Straightening min', b.straightening.shallowMin, 'bodywork.straightening.shallowMin', '£')+
+    cellInput('Straightening max', b.straightening.badMax, 'bodywork.straightening.badMax', '£')+
+  '</div></div>';
+
+  let age = '<div class="section"><div class="section-h">Vehicle age discount</div><div class="section-sub">Applies to panel painting only. Over N years old gets a flat % off.</div><div class="grid2">'+
+    cellInput('Over years old', b.vehicleAgeDiscount.overYears, 'bodywork.vehicleAgeDiscount.overYears', '')+
+    cellInput('Discount %', b.vehicleAgeDiscount.pct*100, 'bodywork.vehicleAgeDiscount.pct', '% (÷100)')+
+  '</div></div>';
+
+  document.getElementById('p_bodywork').innerHTML = panels + uplift + blend + dent + age;
+}
+
+function renderFluids(){
+  let html = '<div class="section"><div class="section-h">Fluid & consumable sell prices (ex VAT)</div>'+
+    '<div class="section-sub">These are the SELL prices — never go through the parts ladder. One price for everyone. Barrel stock sells at this; bought-in fluids for a job go through the ladder.</div><div class="grid2">';
+  Object.keys(SOP.fluids).forEach(k => {
+    const kesc = k.replace(/'/g,"\\'");
+    html += cellInput(k, SOP.fluids[k], 'fluids.'+kesc, '£');
+  });
+  html += '</div></div>';
+  document.getElementById('p_fluids').innerHTML = html;
+}
+
+function renderRaw(){
+  document.getElementById('p_raw').innerHTML =
+    '<div class="section">'+
+      '<div class="section-h">Raw JSON</div>'+
+      '<div class="section-sub">Edit anything directly. Changes here apply when you save.</div>'+
+      '<textarea class="raw-area" id="rawJson" onchange="parseRaw(this)" spellcheck="false">'+JSON.stringify(SOP,null,2)+'</textarea>'+
+    '</div>';
+}
+window.parseRaw = function(ta){
+  try{ SOP = JSON.parse(ta.value); updateSaveBar(); ta.style.borderColor=''; }
+  catch(e){ ta.style.borderColor='var(--stop)'; }
+};
+
+// ── EDITS ───────────────────────────────────────────────
+window.setVal = function(path, value, inputEl){
+  const keys = path.split('.');
+  let o = SOP;
+  for(let i=0;i<keys.length-1;i++) o = o[keys[i]];
+  // handle age discount special-case (UI shows % *100)
+  if(path === 'bodywork.vehicleAgeDiscount.pct') value = value / 100;
+  o[keys[keys.length-1]] = value;
+  if(inputEl) inputEl.classList.add('changed');
+  updateSaveBar();
+};
+window.setArr = function(root, idx, field, value, inputEl){
+  SOP[root][idx][field] = value;
+  if(inputEl) inputEl.classList.add('changed');
+  updateSaveBar();
+};
+window.setLadder = function(idx, field, value, inputEl){
+  SOP.partsLadder[idx][field] = value;
+  if(inputEl) inputEl.classList.add('changed');
+  updateSaveBar();
+};
+
+function hasChanges(){ return JSON.stringify(SOP) !== JSON.stringify(SOP_ORIG); }
+
+function updateSaveBar(){
+  const changed = hasChanges();
+  document.getElementById('saveBtn').disabled = !changed;
+  document.getElementById('revertBtn').disabled = !changed;
+  const info = document.getElementById('saveInfo');
+  info.classList.toggle('has-changes', changed);
+  info.textContent = changed ? 'You have unsaved changes — click Save to publish to Brain + CRM' : 'Loaded v'+SOP_VERSION+' — no changes';
+}
+
+window.revertChanges = function(){
+  if(!confirm('Discard your unsaved changes?')) return;
+  SOP = JSON.parse(JSON.stringify(SOP_ORIG));
+  renderAll();
+};
+
+window.saveChanges = async function(){
+  const note = document.getElementById('saveNote').value.trim();
+  try{
+    document.getElementById('saveBtn').disabled = true;
+    await saveSOP(note);
+    document.getElementById('saveNote').value = '';
+    document.querySelectorAll('.changed').forEach(el => el.classList.remove('changed'));
+    updateSaveBar();
+    toast('Published v'+SOP_VERSION+' — Brain + CRM will pick up within 60 seconds');
+  }catch(e){
+    toast('Save failed: '+e.message, true);
+    document.getElementById('saveBtn').disabled = false;
+  }
+};
+
+// ── TOAST ───────────────────────────────────────────────
+function toast(msg, err){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.toggle('err', !!err);
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 4000);
+}
+
+// ── HISTORY ─────────────────────────────────────────────
+window.openHistory = async function(){
+  const r = await fetch(SB_URL+'/rest/v1/kith_sop_history?select=version,changed_at,changed_by,note&order=changed_at.desc&limit=50', {headers:SB_HDR});
+  const rows = await r.json();
+  document.getElementById('historyList').innerHTML = rows.length ? rows.map(h =>
+    '<div class="hist-row">'+
+      '<div class="hist-row-top"><span class="hist-ver">v'+h.version+'</span><span>'+new Date(h.changed_at).toLocaleString('en-GB')+'</span></div>'+
+      '<div class="hist-row-by">'+(h.changed_by||'?')+'</div>'+
+      (h.note ? '<div style="color:var(--ink-2);margin-top:4px">'+esc(h.note)+'</div>' : '')+
+    '</div>'
+  ).join('') : '<div style="color:var(--ink-3);text-align:center;padding:20px">No history yet</div>';
+  document.getElementById('historyPanel').classList.add('open');
+};
+window.closeHistory = function(){ document.getElementById('historyPanel').classList.remove('open'); };
+
+function esc(s){ return String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// ── START ───────────────────────────────────────────────
+async function start(){
+  renderTabs();
+  try{
+    await loadSOP();
+    renderAll();
+  }catch(e){
+    document.querySelector('.wrap').innerHTML = '<div class="section" style="border-color:var(--stop);background:var(--stop-bg)"><div class="section-h" style="color:var(--stop)">Could not load SOP</div><div style="margin-top:10px">'+e.message+'</div><div style="margin-top:14px;font-size:12px;color:var(--ink-2)">Run <code>sop-schema.sql</code> in the Supabase SQL editor first, then refresh this page.</div></div>';
+  }
+}
+</script>
+
+</body>
+</html>
