@@ -4572,6 +4572,7 @@ function renderDetail(){
         '<div>'+actH(j)+'</div>'+
       '</div>'+
       (pm.length?pmH(pm):'<div class="notice n-blue" style="font-size:12px">No Parts Form entries found for '+j.reg+' yet — will appear here once the Parts team submits the form.</div>')+
+      brainPrefillH(j)+
       labourH(j)+
       psH(j)+
       jobMarginH(j)+
@@ -8596,10 +8597,12 @@ async function brainSupabase(j){
         lo: (d.total_range&&d.total_range.lo)||0,
         hi: (d.total_range&&d.total_range.hi)||0,
         jobs: d.jobs||[],
+        vehicle: d.vehicle||null,
         conf: d.confidence||'low',
         allFirm: !!d.all_firm,
         usedFallback: !!d.used_ai_fallback,
         cacheStats: d.cache_stats||{},
+        sopVersion: d.sop_version||null,
         at: ts(),
         ms: Date.now()
       };
@@ -8621,6 +8624,166 @@ function brainMaybeFire(j){
   if(!['intake','range','labour','parts','financial','signoff'].includes(j.stage))return;
   setTimeout(()=>brainSupabase(j),10);
 }
+
+// ── BRAIN PRE-FILL on the Labour Estimate card ──────────────────────────────
+// At the labour stage, show every job the Brain identified with its SRT
+// (firm from TechMan cache, or AI-estimated), each row Verify-able so a
+// corrected SRT writes back to kith_srt_cache (the learning loop). One
+// "Apply to job" rollup sets j.srt / j.labourCost so labourH() renders
+// normally from there.
+function brainPrefillH(j){
+  if(!j||j.stage!=='labour')return '';
+  if(j.brainPrefillDismissedAt)return '';
+  brainMaybeFire(j);  // kick it off if it hasn't run
+  if(j._brainAIPending){
+    return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:11px 14px;margin-bottom:14px;font-size:12px;color:var(--dim)">'+
+      '⚙ Brain pre-fill loading…</div>';
+  }
+  const ai = j.brainAI;
+  if(!ai||!ai.jobs||!ai.jobs.length)return '';
+  const applied = !!j.brainAppliedAt;
+  const firmN = ai.jobs.filter(b=>b.is_firm).length;
+  const totN = ai.jobs.length;
+  const totSrt = ai.jobs.reduce((s,b)=>s+(parseFloat(b.srt_hours)||0),0);
+  const totLabour = ai.jobs.reduce((s,b)=>s+(parseFloat(b.labour_ex_vat)||0),0);
+  const totCard = ai.allFirm?'var(--green)':(firmN>0?'var(--amber)':'var(--gold)');
+  const rows = ai.jobs.map((bj,i) => {
+    const firm = !!bj.is_firm;
+    const verified = !!(j.brainVerified&&j.brainVerified[bj.job_normalised]);
+    const chip = firm
+      ? '<span style="background:var(--green);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">FIRM</span>'
+      : (verified
+        ? '<span style="background:var(--green);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">✓ VERIFIED</span>'
+        : '<span style="background:var(--amber);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">AI EST.</span>');
+    const srtH = parseFloat(bj.srt_hours)||0;
+    return '<div style="display:grid;grid-template-columns:1fr 100px 100px 120px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">'+
+      '<div>'+
+        '<div style="font-size:13px;font-weight:600;color:var(--fg)">'+escHtml(bj.job_label||bj.job_normalised)+'</div>'+
+        '<div style="font-size:10px;color:var(--faint);margin-top:2px">'+escHtml(bj.srt_source||'')+'</div>'+
+      '</div>'+
+      '<div style="text-align:right">'+
+        '<input type="number" step="0.1" min="0" value="'+srtH.toFixed(1)+'" '+(applied?'disabled':'')+' '+
+          'style="width:70px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px 6px;font-family:inherit;font-size:13px;color:var(--fg);text-align:right" '+
+          'id="brh-'+j.id+'-'+i+'" onchange="brainEditSrt(\''+j.id+'\','+i+',this.value)">'+
+        '<span style="font-size:10px;color:var(--faint);margin-left:3px">h</span>'+
+      '</div>'+
+      '<div style="text-align:right;font-family:ui-monospace,monospace;font-size:13px;font-weight:600;color:var(--gold)">£'+Math.round(bj.labour_ex_vat||0)+'</div>'+
+      '<div style="display:flex;gap:4px;justify-content:flex-end;align-items:center">'+
+        chip +
+        (!firm&&!verified&&!applied?' <button onclick="brainVerifySrt(\''+j.id+'\','+i+')" style="background:var(--gold);color:#000;border:none;padding:3px 8px;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer">✓</button>':'')+
+      '</div>'+
+    '</div>';
+  }).join('');
+  const buttons = applied
+    ? '<div style="display:flex;gap:8px;align-items:center;margin-top:10px"><div style="color:var(--green);font-size:12px;font-weight:600">✓ Applied '+fmtWhen(j.brainAppliedAt)+'</div><button onclick="brainResetApply(\''+j.id+'\')" style="background:transparent;color:var(--dim);border:1px solid var(--border);padding:4px 10px;border-radius:3px;font-size:11px;cursor:pointer;margin-left:auto">Reset</button></div>'
+    : '<div style="display:flex;gap:8px;margin-top:10px"><button onclick="brainApplyToJob(\''+j.id+'\')" style="background:var(--gold);color:#000;border:none;padding:8px 14px;border-radius:4px;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.5px;text-transform:uppercase">Apply to job</button>'+
+      '<button onclick="brainDismissPrefill(\''+j.id+'\')" style="background:transparent;color:var(--dim);border:1px solid var(--border);padding:8px 14px;border-radius:4px;font-size:12px;cursor:pointer">Dismiss — I\'ll do it manually</button></div>';
+  return '<div style="background:var(--surface2);border:1px solid '+totCard+';border-radius:var(--r);padding:12px 14px;margin-bottom:14px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">'+
+      '<div style="font-size:12px;font-weight:800;color:'+totCard+';text-transform:uppercase;letter-spacing:.5px">🧠 Brain pre-fill — audit and apply</div>'+
+      '<div style="font-size:11px;color:var(--dim)">'+(ai.allFirm?'All '+totN+' lines firm from TechMan cache':(firmN+'/'+totN+' firm · rest AI-estimated'))+'</div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 100px 100px 120px;gap:10px;font-size:10px;text-transform:uppercase;color:var(--faint);letter-spacing:.5px;padding-bottom:4px;border-bottom:1px solid var(--border)">'+
+      '<div>Job</div><div style="text-align:right">SRT</div><div style="text-align:right">Labour £</div><div style="text-align:right">Status</div>'+
+    '</div>'+
+    rows +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:2px solid var(--border)">'+
+      '<div style="font-size:11px;color:var(--dim)">Total SRT '+totSrt.toFixed(1)+'h · Labour ex VAT</div>'+
+      '<div style="font-family:ui-monospace,monospace;font-size:16px;font-weight:800;color:var(--gold)">£'+Math.round(totLabour)+'</div>'+
+    '</div>'+
+    buttons +
+  '</div>';
+}
+
+function _brainJob(jobId){ return jobs.find(x => x && x.id === jobId); }
+// Edit an SRT on the pre-fill (per-row live update; doesn't save back to cache yet)
+window.brainEditSrt = function(jobId, idx, val){
+  const j = _brainJob(jobId); if(!j||!j.brainAI||!j.brainAI.jobs[idx])return;
+  const h = parseFloat(val)||0;
+  if(h<=0)return;
+  j.brainAI.jobs[idx].srt_hours = h;
+  // Recompute the labour for this line using the current SOP and customer type
+  try{
+    const bj = j.brainAI.jobs[idx];
+    const cust = _brainCustType(j);
+    const tierKey = (bj.tier||'LOW');
+    const lower = (KITH_SOP&&KITH_SOP.multiplier&&KITH_SOP.multiplier.normal&&KITH_SOP.multiplier.normal.lower)||2.0;
+    const upper = (KITH_SOP&&KITH_SOP.multiplier&&KITH_SOP.multiplier.normal&&KITH_SOP.multiplier.normal.upper)||1.5;
+    const rates = (KITH_SOP&&KITH_SOP.rates)||{LOW:50,MED:60,TOP:70,BODY:90};
+    const threshold = (KITH_SOP&&KITH_SOP.customers&&KITH_SOP.customers[cust]&&KITH_SOP.customers[cust].threshold)||2.0;
+    const mult = h<threshold?lower:upper;
+    const rate = rates[tierKey]||rates.TOP||70;
+    bj.labour_ex_vat = Math.max(h*mult, 0.5)*rate;
+  }catch(e){}
+  save(j); renderDetail();
+};
+
+// Verify an SRT — writes back to kith_srt_cache (the learning loop)
+window.brainVerifySrt = async function(jobId, idx){
+  const j = _brainJob(jobId); if(!j||!j.brainAI||!j.brainAI.jobs[idx])return;
+  const bj = j.brainAI.jobs[idx];
+  const v = j.brainAI.vehicle || {};
+  const make = v.make || j.make || '';
+  const model = v.model || j.model || '';
+  if(!make||!model){ alert('Need make + model on the job before verifying'); return; }
+  const payload = {
+    make, model,
+    engine_variant: v.engine_variant || j.engine || null,
+    year_from: v.year || j.year || null,
+    year_to: v.year || j.year || null,
+    job_normalised: bj.job_normalised,
+    job_label: bj.job_label,
+    srt_hours: parseFloat(bj.srt_hours)||0,
+    source: 'estimator_verified',
+    source_job_id: j.id,
+    confidence: 'high'
+  };
+  try{
+    const r = await fetch(SB_URL+'/rest/v1/kith_srt_cache', {
+      method:'POST', headers:{...SB_HDR,'Prefer':'return=minimal'}, body:JSON.stringify(payload)
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    j.brainVerified = j.brainVerified || {};
+    j.brainVerified[bj.job_normalised] = { at: ts(), by: brainWho(), hours: payload.srt_hours };
+    save(j); renderDetail();
+  }catch(e){
+    alert('Verify failed: '+e.message);
+  }
+};
+
+// Roll up the pre-fill to the job's single labour fields
+window.brainApplyToJob = function(jobId){
+  const j = _brainJob(jobId); if(!j||!j.brainAI)return;
+  const totSrt = j.brainAI.jobs.reduce((s,b)=>s+(parseFloat(b.srt_hours)||0),0);
+  const totLabour = j.brainAI.jobs.reduce((s,b)=>s+(parseFloat(b.labour_ex_vat)||0),0);
+  j.srt = Number(totSrt.toFixed(2));
+  j.srtCharged = Number(totSrt.toFixed(2));
+  j.labourCost = Number(totLabour.toFixed(2));
+  j.srtSource = 'Brain pre-fill · ' + j.brainAI.jobs.length + ' lines';
+  j.brainAppliedAt = ts();
+  j.brainAppliedBy = brainWho();
+  save(j); renderDetail();
+};
+
+window.brainResetApply = function(jobId){
+  const j = _brainJob(jobId); if(!j)return;
+  if(!confirm('Clear the applied labour and re-edit?'))return;
+  j.srt = 0; j.srtCharged = 0; j.labourCost = 0; j.srtSource = '';
+  delete j.brainAppliedAt; delete j.brainAppliedBy;
+  save(j); renderDetail();
+};
+
+window.brainDismissPrefill = function(jobId){
+  const j = _brainJob(jobId); if(!j)return;
+  j.brainPrefillDismissedAt = ts();
+  save(j); renderDetail();
+};
+
+function fmtWhen(iso){
+  if(!iso)return '';
+  const d=new Date(iso); return d.toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+}
+function brainWho(){ try{ return (currentUser&&currentUser.name)||sessionStorage.getItem('kith_who')||'?'; }catch(e){return '?';} }
 
 const RANGE_STOP=new Set('the and for with from that this have has had need needs needed please car vehicle customer job work also check checks checked new old front rear left right side one two its not but are was were will can could would just like into onto off out our your their them they his her him she also very some any all more less than then only want wants wanted looking quote price estimate'.split(' '));
 function rangeWords(t){
