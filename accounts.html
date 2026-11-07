@@ -81,8 +81,24 @@ var SB = 'https://mxyrxyhvjndgjqupgstu.supabase.co';
 var SK = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
 var SH = {apikey:SK, Authorization:'Bearer '+SK, 'Content-Type':'application/json', Prefer:'resolution=merge-duplicates'};
 
+// Supabase hands back at most 1,000 rows per request, so anything bigger
+// has to be read a page at a time or the rest silently goes missing.
+// (The CRM passed 1,000 jobs in Nov 2026 and this month's work vanished
+// from the reports.)
+async function sbAll(path) {
+  var out = [], sep = path.indexOf('?') > -1 ? '&' : '?';
+  for (var off = 0; off < 100000; off += 1000) {
+    var r = await fetch(SB+'/rest/v1/'+path+sep+'limit=1000&offset='+off, {headers:SH});
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    var page = await r.json();
+    if (!Array.isArray(page)) break;
+    out = out.concat(page);
+    if (page.length < 1000) break;
+  }
+  return out;
+}
 async function sbGet(t) {
-  try { var r = await fetch(SB+'/rest/v1/'+t+'?select=*&order=updated_at.desc',{headers:SH}); return r.json(); }
+  try { return await sbAll(t+'?select=*&order=updated_at.desc,id.asc'); }
   catch(e) { return []; }
 }
 async function sbUp(t, row) {
@@ -182,9 +198,7 @@ function _mergeCrmJobs(rows) {
 }
 async function fetchCRMJobs() {
   try {
-    var r = await fetch(SB+'/rest/v1/jobs?select=id,data,updated_at', {headers:SH});
-    if (!r.ok) return CRM_JOBS;
-    var arr = await r.json();
+    var arr = await sbAll('jobs?select=id,data,updated_at&order=id.asc');
     CRM_JOBS = []; _mergeCrmJobs(arr); _noteCrmStamp(arr); CRM_FULL_AT = Date.now();
     return CRM_JOBS;
   } catch(e) { return CRM_JOBS; }
@@ -216,9 +230,7 @@ async function saveCRMPos(posArray) {
 // Fetch every real job from the CRM (skipping the __pos__ helper row)
 async function fetchCRMJobsFull() {
   try {
-    var r = await fetch(SB+'/rest/v1/jobs?select=id,data', {headers:SH});
-    if (!r.ok) return [];
-    var arr = await r.json();
+    var arr = await sbAll('jobs?select=id,data&order=id.asc');
     return (arr||[])
       .filter(function(x){return x.id && String(x.id).slice(0,2) !== '__';})
       .map(function(x){return x.data || x;})
@@ -269,6 +281,9 @@ function crmJobToSale(j) {
     payStatus: j.payStatus || 'Unpaid',
     stage:     stageLabel,
     source:    'CRM · ' + stageLabel,
+    chasedAt:  j.chasedAt || '',
+    chaseCount: j.chaseCount || 0,
+    chaseLog:  Array.isArray(j.chaseLog) ? j.chaseLog : [],
     custType:  j.custType || '',
     fleetAccount: !!j.fleetAccount,
     division:  j.division || '',
@@ -509,6 +524,7 @@ function saveSales() {
   localStorage.setItem('kith_sales', JSON.stringify(localOnly));
 }
 
+function _curTab() { var el = document.querySelector('.tab.on'); return el ? el.id.replace(/^tab-/,'') : ''; }
 function showTab(tab) {
   var _onEl = document.querySelector('.tab.on'); var _tabWas = _onEl ? _onEl.id.replace(/^tab-/,'') : '';
   ['dash','pos','ro','sos','ap','ar','expenses','recurring','bank','payroll','reports','search','cash','cashbook','sales'].forEach(function(t){
@@ -536,6 +552,28 @@ function showTab(tab) {
 }
 
 function rDash() {
+  _rDash();
+  var el = document.getElementById('v-dash');
+  if (el) {
+    var box = document.createElement('div');
+    box.innerHTML = payRemindersCard(true) + _dashChaseLine();
+    var h = el.firstElementChild;
+    if (h && h.nextSibling) el.insertBefore(box, h.nextSibling); else el.appendChild(box);
+  }
+}
+function _dashChaseLine() {
+  var today = _bkToday();
+  var due = sales.filter(function(s){
+    if (s.paid || (s._crm && !s.workDone)) return false;
+    var d = normDate(s.date); if (!d) return false;
+    var over = daysBetween(shiftDate(d, s.termsDays || AR_PAYMENT_TERMS_DAYS), today);
+    return over > 0 && (!s.chasedAt || daysBetween(String(s.chasedAt).slice(0,10), today) >= CHASE_GAP_DAYS);
+  });
+  if (!due.length) return '';
+  var tot = due.reduce(function(t,s){ return t + ((s.balance !== undefined && s.balance !== null) ? Math.max(0,+s.balance) : (parseFloat(s.amount)||0)); }, 0);
+  return '<div onclick="showTab(\'ar\')" style="cursor:pointer;background:#fff;border:2px solid #c62828;border-radius:12px;padding:12px 14px;margin-bottom:14px;font-weight:700;color:#c62828">📣 '+due.length+' customer'+(due.length===1?'':'s')+' to chase today · '+_gbp(tot)+' <span style="font-weight:400;color:#1565c0;text-decoration:underline">open To Collect →</span></div>';
+}
+function _rDash() {
   var tPO = POs.reduce(function(s,p){return s+(+p.price||0);},0);
   var paid = POs.filter(function(p){return p.paid;}).reduce(function(s,p){return s+(+p.price||0);},0);
   var unpaid = POs.filter(function(p){return !p.paid;});
@@ -560,6 +598,7 @@ function rDash() {
     return due < today;
   }).reduce(function(s,x){return s+(parseFloat(x.amount)||0);},0);
 
+  if (!supAcctsLoaded) loadSupAccts().then(function(){ if (_curTab() === 'dash') rDash(); });
   document.getElementById('v-dash').innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">'+
       '<h2 style="font-size:20px;font-weight:800">Accounts Overview</h2>'+
@@ -669,6 +708,97 @@ async function mROCredit(id) {
   rDash(); rROs();
 }
 
+// ---- PO filters + stock ----
+var poFilter = 'all';
+function setPoFilter(f) { poFilter = f; rPOs(); }
+function poHasBill(p) {
+  return (p.invoices && p.invoices.length) || invs.some(function(i){ return i.matchedPO && (i.matchedPO === p.num || i.matchedPO === p.id); });
+}
+function poArrived(p) { return /receiv|deliver|collect|fitted|arrived|complete/i.test(p.status || ''); }
+var PO_FILTERS = {
+  all:     {t:'All',                    f:function(){ return true; }},
+  waiting: {t:'Not arrived yet',        f:function(p){ return !poArrived(p) && !/cancel/i.test(p.status||''); }},
+  topay:   {t:'Arrived, not paid',      f:function(p){ return poArrived(p) && !p.paid; }},
+  nobill:  {t:'No supplier invoice',    f:function(p){ return !poHasBill(p) && !/cancel/i.test(p.status||''); }},
+  paid:    {t:'Paid',                   f:function(p){ return p.paid; }}
+};
+
+// Stock lives in the Stock app (kith-stock.html, the __stock__ row). Accounts
+// sees what's on the shelf, what it's worth and what's running low, and can
+// tell parts to order it.
+var stockItems = null;
+async function loadStock() {
+  try {
+    var r = await fetch(SB+'/rest/v1/jobs?id=eq.__stock__&select=data', {headers:SH});
+    var a = r.ok ? await r.json() : [];
+    stockItems = (a && a[0] && a[0].data && Array.isArray(a[0].data.items)) ? a[0].data.items : [];
+  } catch(e) { stockItems = []; }
+  return stockItems;
+}
+function _stockLow(it) { var q = parseFloat(it.qty)||0, m = parseFloat(it.min)||0; return m > 0 && q <= m && (it.countedOn || q); }
+function stockCard() {
+  if (stockItems === null) { loadStock().then(function(){ if (_curTab() === 'pos') rPOs(); }); return '<div style="'+cardStyle()+'margin-bottom:14px;color:#888">Loading stock…</div>'; }
+  var items = stockItems.filter(function(x){ return x && x.name; });
+  var head = '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'+
+    '<div style="'+stitle()+'margin:0">📦 Stock — consumables, paint and tyres on the shelf</div>'+
+    '<a href="kith-stock.html" target="_blank" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:5px 12px;font-size:12px;text-decoration:none">Open the Stock app →</a></div>';
+  if (!items.length) return '<div style="'+cardStyle()+'margin-bottom:14px">'+head+
+    '<div style="font-size:13px;color:#e65100;margin-top:8px;line-height:1.5"><strong>Nothing is being counted yet.</strong> In the Stock app press <em>Add the standard list</em> for Mechanical, Tyres and Bodywork, then do a stocktake. '+
+    'From then on every PO marked received adds to the shelf, everything used comes off, and anything at or below its reorder level shows here and goes to parts.</div></div>';
+  var val = items.reduce(function(t,x){ return t + (parseFloat(x.qty)||0) * (parseFloat(x.price)||0); }, 0);
+  var low = items.filter(_stockLow);
+  var never = items.filter(function(x){ return !x.countedOn && !(parseFloat(x.qty)||0); }).length;
+  var sec = function(x){ return x.kind === 'paint' ? 'Bodywork' : x.kind === 'tyre' ? 'Tyres' : 'Mechanical'; };
+  var bySec = {};
+  items.forEach(function(x){ var k = sec(x); bySec[k] = bySec[k] || {n:0, v:0, low:0}; bySec[k].n++; bySec[k].v += (parseFloat(x.qty)||0)*(parseFloat(x.price)||0); if (_stockLow(x)) bySec[k].low++; });
+  var lowRows = low.sort(function(a,b){ return (parseFloat(a.qty)||0)/(parseFloat(a.min)||1) - (parseFloat(b.qty)||0)/(parseFloat(b.min)||1); }).map(function(x){
+    var order = Math.max(1, Math.ceil((parseFloat(x.min)||0)*2 - (parseFloat(x.qty)||0)));
+    return '<tr>'+td('<strong>'+escapeHtml(x.name)+'</strong><div style="font-size:10px;color:#888">'+sec(x)+'</div>')+
+      td('<strong style="color:#c62828">'+escapeHtml(String(x.qty||0))+'</strong> '+escapeHtml(x.unit||''))+
+      td(escapeHtml(String(x.min))+' '+escapeHtml(x.unit||''))+
+      td('<strong>'+order+'</strong> '+escapeHtml(x.unit||''))+
+      td(escapeHtml(x.supplier||'—'))+
+      td(x.price ? _gbp(order*(parseFloat(x.price)||0)) : '<span style="color:#ccc">—</span>')+'</tr>';
+  }).join('');
+  return '<div style="'+cardStyle()+'margin-bottom:14px;padding:0;overflow-x:auto"><div style="padding:14px 14px 8px">'+head+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:10px">'+
+      sc('On the shelf (cost)', _gbp(val), '#1a1a2e')+
+      sc('Running low', String(low.length), low.length?'#c62828':'#2e7d32')+
+      Object.keys(bySec).map(function(k){ return sc(k+' ('+bySec[k].n+' items)', _gbp(bySec[k].v), '#1565c0'); }).join('')+
+    '</div>'+
+    (never ? '<div style="font-size:12px;color:#e65100;margin-top:8px">'+never+' item'+(never===1?' has':'s have')+' never been counted — do a stocktake in the Stock app.</div>' : '')+
+    '</div>'+
+    (low.length
+      ? '<table style="width:100%;border-collapse:collapse">'+th(['Running low','Left','Reorder at','Order','Usual supplier','Est. cost'])+'<tbody>'+lowRows+'</tbody></table>'+
+        '<div style="padding:10px 14px"><button id="stock-tell" onclick="tellPartsLowStock()" style="'+btnStyle('#c62828','#fff')+'">📣 Tell parts to order these ('+low.length+')</button></div>'
+      : '<div style="padding:4px 14px 14px;font-size:13px;color:#2e7d32">✓ Nothing below its reorder level.</div>')+
+  '</div>';
+}
+async function tellPartsLowStock() {
+  var low = (stockItems||[]).filter(_stockLow);
+  if (!low.length) return;
+  var btn = document.getElementById('stock-tell'); if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  var body = low.map(function(x){ return x.name + ' — ' + (x.qty||0) + ' ' + (x.unit||'') + ' left, order ' + Math.max(1, Math.ceil((parseFloat(x.min)||0)*2 - (parseFloat(x.qty)||0))) + (x.supplier ? ' from ' + x.supplier : ''); }).join('\n');
+  var key = 'stocklow|accounts|' + low.map(function(x){ return x.id; }).sort().join(',');
+  try {
+    var sent = false;
+    for (var attempt = 0; attempt < 5 && !sent; attempt++) {
+      var r = await fetch(SB+'/rest/v1/jobs?id=eq.__notifs__&select=data,updated_at', {headers:SH});
+      var rows = r.ok ? await r.json() : [];
+      var row = rows[0], list = (row && row.data && row.data.list) || [];
+      if (list.some(function(n){ return !n.seen && n.key === key; })) { alert('Parts have already been told about these.'); if (btn) { btn.disabled = false; btn.textContent = '📣 Tell parts to order these'; } return; }
+      var n = {id:'N'+Date.now()+Math.floor(Math.random()*9999), key:key, role:'parts', to:'', title:'Stock running low (from accounts)', body:body, jobId:null, poId:null, at:ts(), ts:Date.now(), by:user||'accounts', seen:false};
+      var data = Object.assign({}, (row && row.data) || {}); data.list = [n].concat(list);
+      var res;
+      if (!row) res = await fetch(SB+'/rest/v1/jobs', {method:'POST', headers:Object.assign({}, SH, {Prefer:'return=representation'}), body: JSON.stringify({id:'__notifs__', data:data, updated_at:new Date().toISOString()})});
+      else res = await fetch(SB+'/rest/v1/jobs?id=eq.__notifs__&updated_at=eq.'+encodeURIComponent(row.updated_at), {method:'PATCH', headers:Object.assign({}, SH, {Prefer:'return=representation'}), body: JSON.stringify({data:data, updated_at:new Date().toISOString()})});
+      if (res.ok) { var back = await res.json(); sent = Array.isArray(back) && back.length > 0; }
+    }
+    if (!sent) throw new Error('could not save — try again');
+    if (btn) btn.textContent = '✓ Parts told — it\'s on their list in the Parts app';
+  } catch(e) { alert('Couldn\'t tell parts: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = '📣 Tell parts to order these'; } }
+}
+
 function rPOs() {
   var exVat = POs.reduce(function(s,p){return s+(+p.price||0);},0);
   var incVat = POs.reduce(function(s,p){return s+(+p.gross||0);},0);
@@ -678,8 +808,8 @@ function rPOs() {
   // Monthly breakdown by createdAt
   var monthlyGroups = groupByMonth(POs,
     function(p){ return normDate(p.createdAt); },
-    function(p){ return (+p.gross||0); }
-  );
+    function(p){ return (+p.gross||0); }, true
+  ).reverse();
 
   document.getElementById('v-pos').innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
@@ -690,18 +820,27 @@ function rPOs() {
       'ℹ Purchase Orders are raised in the CRM (llogkith-spec.github.io/kith-crm). This view is read + mark-paid only.'+
     '</div>'+
 
-    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:14px">'+
       sc('Total inc-VAT','£'+incVat.toFixed(2),'#1a1a2e')+
+      sc('Not arrived yet', String(POs.filter(PO_FILTERS.waiting.f).length), '#1565c0')+
+      sc('Arrived, not paid', String(POs.filter(PO_FILTERS.topay.f).length), '#c62828')+
+      sc('No supplier invoice', String(POs.filter(PO_FILTERS.nobill.f).length), '#e65100')+
       sc('Paid',paidCount,'#2e7d32')+
-      sc('Unpaid',unpaidCount,'#c62828')+
     '</div>'+
+
+    stockCard()+
 
     // Monthly breakdown
     monthCard('📅 POs raised — by month', monthlyGroups, '#c62828')+
 
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
+      Object.keys(PO_FILTERS).map(function(k){ var on = poFilter === k, n = POs.filter(PO_FILTERS[k].f).length;
+        return '<button onclick="setPoFilter(\''+k+'\')" style="border:1.5px solid #1a1a2e;background:'+(on?'#1a1a2e':'#fff')+';color:'+(on?'#fff':'#1a1a2e')+';padding:6px 12px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">'+PO_FILTERS[k].t+' ('+n+')</button>'; }).join('')+
+    '</div>'+
+
     '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
-    '<table style="width:100%;border-collapse:collapse">'+th(['PO#','Reg','Part(s)','Supplier','ex-VAT','VAT 20%','Total inc-VAT','ETA','Paid'])+
-    '<tbody>'+POs.map(function(p){
+    '<table style="width:100%;border-collapse:collapse">'+th(['PO#','Reg','Part(s)','Supplier','Status','ex-VAT','VAT 20%','Total inc-VAT','ETA','Paid'])+
+    '<tbody>'+POs.filter(PO_FILTERS[poFilter].f).map(function(p){
       var n=+p.price||0,v=+p.vat||0;
       return'<tr>'+
         td('<span style="font-family:monospace;font-weight:700;color:#b8860b">'+escapeHtml(p.num||p.id)+'</span>'+
@@ -715,6 +854,8 @@ function rPOs() {
           (p.creditDue?'<div style="font-size:10px;color:#2e7d32;font-weight:700">↩ £'+(+p.creditDue).toFixed(2)+' going back — credit due</div>':'')+
           (p.vat===0?'<div style="font-size:10px;color:#e65100">No VAT charged</div>':''))+
         td(escapeHtml(p.supplier||''))+
+        td('<span style="font-size:11px;font-weight:700;color:'+(poArrived(p)?'#2e7d32':/cancel/i.test(p.status||'')?'#888':'#1565c0')+'">'+escapeHtml(p.status||'Ordered')+'</span>'+
+           (poHasBill(p) ? '<div style="font-size:10px;color:#2e7d32">🧾 invoice in</div>' : '<div style="font-size:10px;color:#e65100">no invoice yet</div>'))+
         td('<strong>£'+n.toFixed(2)+'</strong>')+
         td('<span style="color:#888">£'+v.toFixed(2)+'</span>')+
         td('<strong style="color:#1565c0">£'+(n+v).toFixed(2)+'</strong>')+
@@ -732,8 +873,8 @@ function rROs() {
 
   var monthlyGroups = groupByMonth(ROs,
     function(r){ return normDate(r.createdAt); },
-    function(r){ return +r.price || 0; }
-  );
+    function(r){ return +r.price || 0; }, true
+  ).reverse();
 
   document.getElementById('v-ro').innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
@@ -843,8 +984,7 @@ function rExp() {
       var od=inv.due&&new Date(inv.due)<new Date()&&inv.status!=='paid';
       var supplierEsc = String(inv.supplier||'').replace(/\'/g,"\\'");
       return'<tr style="'+(od?'background:#fff5f5':'')+'">'+
-        td('<strong style="color:#b8860b">'+escapeHtml(inv.num)+'</strong>'+
-           (inv.source==='scan'?'<div style="font-size:9px;color:#888;margin-top:2px">📄 scanned</div>':''))+
+        td('<strong style="color:#b8860b">'+escapeHtml(inv.num)+'</strong>'+billScanBadge(inv))+
         td('<div style="font-weight:600;cursor:pointer;color:#1565c0;text-decoration:underline" onclick="openStatement(\''+escapeHtml(supplierEsc)+'\')" title="View monthly statement">'+escapeHtml(inv.supplier||'—')+'</div>'+
            regChip(inv)+
            catChips(inv)+
@@ -858,7 +998,8 @@ function rExp() {
         td(inv.status==='paid'
            ?'<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700">PAID</span>'
            :'<span style="color:#c62828;font-size:11px;font-weight:700">Unpaid</span>')+
-        td((inv.docPath?'<button onclick="viewDoc(\''+escapeHtml(String(inv.docPath).replace(/\\'/g,"\\\\'"))+'\')" style="'+btnStyle('#fff','#1565c0',true)+'padding:3px 8px;font-size:11px" title="View stored document">📄</button> ':'')+
+        td((inv.docPath?'<button onclick="openBillCheck(\''+inv.id+'\')" style="'+btnStyle('#fff','#1565c0',true)+'padding:3px 8px;font-size:11px" title="See the scan beside the figures">🔍</button> '
+                       :'<button onclick="attachBillScan(\''+inv.id+'\')" style="'+btnStyle('#fff','#e65100',true)+'padding:3px 8px;font-size:11px" title="Attach the scan or photo of this bill">📎</button> ')+
            (inv.status!=='paid'?'<button onclick="mInvPaid('+i+')" style="'+btnStyle('#2e7d32','#fff')+'padding:3px 8px;font-size:11px">✓</button> ':'')+
            '<button onclick="delInv('+i+')" style="'+btnStyle('#fff','#888',true)+'padding:3px 8px;font-size:11px">✕</button>')+
       '</tr>';}).join('')+'</tbody></table></div>'
@@ -1186,7 +1327,7 @@ function agingBucket(days) {
 // Group items into monthly buckets keyed as "YYYY-MM" (or "overdue" for past-due)
 // getDate(item) returns the YYYY-MM-DD due/expected date for that item
 // getAmount(item) returns the £ amount
-function groupByMonth(items, getDate, getAmount) {
+function groupByMonth(items, getDate, getAmount, history) {
   var today = new Date().toISOString().slice(0,10);
   var groups = {};
   items.forEach(function(it) {
@@ -1194,7 +1335,7 @@ function groupByMonth(items, getDate, getAmount) {
     var amt = getAmount(it);
     var key;
     if (!d) key = 'unknown';
-    else if (d < today) key = 'overdue';
+    else if (d < today && !history) key = 'overdue';
     else key = d.slice(0, 7); // YYYY-MM
     if (!groups[key]) groups[key] = {total: 0, count: 0, key: key};
     groups[key].total += amt;
@@ -1254,14 +1395,183 @@ function ageColor(days) {
   return '#b71c1c';
 }
 
+// ---- SUPPLIER CREDIT ACCOUNTS ----
+// Which suppliers give us credit, on what terms, up to what limit — and so
+// when each bill actually falls due, how much credit is left, and what needs
+// paying this week. Terms are kept in kith_bank_tx (id SUPACCT-…) so no new
+// table is needed; the OK / cash only / on stop status is the CRM's, read
+// from the shared supplier directory (__directory__).
+
+var supAccts = {};          // canonical supplier name -> settings
+var supDir = [];            // CRM supplier directory
+var supAcctsLoaded = false;
+var ACCT_LABEL = {ok:{t:'Account OK', c:'#2e7d32'}, cash:{t:'Cash only', c:'#e65100'}, stop:{t:'ON STOP', c:'#c62828'}};
+
+function _supKey(name) { return normalizeSupplier(name || '').toUpperCase(); }
+async function loadSupAccts() {
+  try {
+    var got = await Promise.all([
+      sbAll('kith_bank_tx?select=id,data&id=like.SUPACCT-*&order=id.asc'),
+      fetch(SB+'/rest/v1/jobs?id=eq.__directory__&select=data', {headers:SH}).then(function(r){ return r.ok ? r.json() : []; })
+    ]);
+    supAccts = {};
+    (got[0]||[]).forEach(function(r){ var d = r.data; if (d && d.kind === 'supacct') supAccts[_supKey(d.name)] = d; });
+    var dir = got[1] && got[1][0] && got[1][0].data && got[1][0].data.DIRECTORY;
+    supDir = Array.isArray(dir) ? dir.filter(function(d){ return d && d.active !== false && (d.type === 'supplier' || d.type === 'both'); }) : [];
+    supAcctsLoaded = true;
+  } catch(e) { console.warn('loadSupAccts', e); }
+}
+function supAcct(name) { return supAccts[_supKey(name)] || null; }
+function supStatus(name) {
+  var k = _supKey(name);
+  var d = supDir.filter(function(x){ return _supKey(x.name) === k; })[0];
+  return d ? {acct: d.acct || 'ok', note: d.acctNote || ''} : {acct: '', note: ''};
+}
+function supTermsText(a) {
+  if (!a) return 'Not set yet';
+  if (!a.credit) return 'Pay on order / collection';
+  return a.terms === 'eom' ? 'End of month following invoice' : (a.days || 30) + ' days from invoice';
+}
+// When a bill is really due: the date on the bill if there is one,
+// otherwise worked out from that supplier's terms (30 days if unknown).
+function billDue(inv) {
+  if (inv.due) return inv.due;
+  if (!inv.date) return '';
+  var a = supAcct(inv.supplier);
+  if (a && a.credit && a.terms === 'eom') {
+    var d = new Date(inv.date + 'T00:00:00');
+    return _ymdL(new Date(d.getFullYear(), d.getMonth() + 2, 0));
+  }
+  if (a && !a.credit) return inv.date;
+  return shiftDate(inv.date, a && a.credit ? (a.days || 30) : 30);
+}
+
+// Everything owed, grouped by supplier, with the reminders that matter
+function payablesBySupplier() {
+  var today = _bkToday(), week = shiftDate(today, 7);
+  var G = {};
+  var get = function(name){
+    var k = _supKey(name) || '—';
+    if (!G[k]) G[k] = {key:k, name: normalizeSupplier(name) || '—', owed:0, overdue:0, dueWeek:0, bills:0, pos:0, nextDue:'', nextAmt:0, oldestDays:0};
+    return G[k];
+  };
+  invs.forEach(function(inv){
+    if (inv.status === 'paid') return;
+    var g = get(inv.supplier), t = (parseFloat(inv.net)||0) + (parseFloat(inv.vat)||0), due = billDue(inv);
+    g.owed += t; g.bills++;
+    if (due && due < today) { g.overdue += t; g.oldestDays = Math.max(g.oldestDays, daysBetween(due, today)); }
+    else if (due && due <= week) g.dueWeek += t;
+    if (due && due >= today && (!g.nextDue || due < g.nextDue)) { g.nextDue = due; g.nextAmt = 0; }
+    if (due && due === g.nextDue) g.nextAmt += t;
+  });
+  crmPayables().pos.forEach(function(p){ var g = get(p.supplier); var t = parseFloat(p.gross)||parseFloat(p.price)||0; g.owed += t; g.pos++; g.dueWeek += t; });
+  // suppliers with a credit account but nothing owed still show
+  Object.keys(supAccts).forEach(function(k){ var a = supAccts[k]; if (a.credit) get(a.name); });
+  return Object.keys(G).map(function(k){
+    var g = G[k], a = supAcct(g.name), st = supStatus(g.name);
+    g.acct = a; g.status = st;
+    g.limit = a && a.credit ? (+a.limit || 0) : 0;
+    g.left = g.limit ? g.limit - g.owed : null;
+    return g;
+  }).sort(function(a,b){ return b.overdue - a.overdue || b.owed - a.owed; });
+}
+
+function payReminders() {
+  var L = payablesBySupplier(), out = [];
+  L.forEach(function(g){
+    if (g.overdue > 0.005) out.push({lvl:3, txt:'<strong>'+escapeHtml(g.name)+'</strong> — '+_gbp(g.overdue)+' overdue'+(g.oldestDays?' (oldest '+g.oldestDays+' days late)':''), sup:g.name});
+    if (g.left !== null && g.left < 0) out.push({lvl:3, txt:'<strong>'+escapeHtml(g.name)+'</strong> — '+_gbp(-g.left)+' over the '+_gbp(g.limit)+' credit limit', sup:g.name});
+    else if (g.left !== null && g.limit && g.left < g.limit * 0.15) out.push({lvl:2, txt:'<strong>'+escapeHtml(g.name)+'</strong> — only '+_gbp(g.left)+' credit left of '+_gbp(g.limit), sup:g.name});
+    if (g.dueWeek > 0.005) out.push({lvl:1, txt:'<strong>'+escapeHtml(g.name)+'</strong> — '+_gbp(g.dueWeek)+' due in the next 7 days', sup:g.name});
+    if (g.status.acct === 'stop' && g.owed > 0.005) out.push({lvl:3, txt:'<strong>'+escapeHtml(g.name)+'</strong> is ON STOP'+(g.status.note?' ('+escapeHtml(g.status.note)+')':'')+' — pay '+_gbp(g.owed)+' to reopen the account', sup:g.name});
+  });
+  return out.sort(function(a,b){ return b.lvl - a.lvl; });
+}
+function payRemindersCard(compact) {
+  var R = payReminders();
+  if (!R.length) return compact ? '' : '<div style="'+cardStyle()+'margin-bottom:14px;color:#2e7d32;font-size:13px">✓ Nothing overdue, nothing due this week, every account within its limit.</div>';
+  var col = {3:'#c62828', 2:'#e65100', 1:'#1565c0'}, ic = {3:'⛔', 2:'⚠', 1:'⏰'};
+  return '<div style="background:#fff;border:2px solid '+col[R[0].lvl]+';border-radius:12px;padding:12px 14px;margin-bottom:14px">'+
+    '<div style="font-weight:800;color:'+col[R[0].lvl]+';margin-bottom:6px">⏰ Pay reminders ('+R.length+')</div>'+
+    R.slice(0, compact ? 5 : 50).map(function(r){ return '<div style="font-size:13px;padding:4px 0;border-bottom:1px solid #f5f5f5;color:#333"><span style="color:'+col[r.lvl]+'">'+ic[r.lvl]+'</span> '+r.txt+'</div>'; }).join('')+
+    (compact && R.length > 5 ? '<div style="font-size:12px;margin-top:6px"><a onclick="showTab(\'ap\')" style="color:#1565c0;cursor:pointer;text-decoration:underline">See all '+R.length+' in To Pay →</a></div>' : '')+
+  '</div>';
+}
+
+function creditAccountsCard() {
+  var L = payablesBySupplier();
+  if (!L.length) return '';
+  var rows = L.map(function(g){
+    var a = g.acct, st = g.status;
+    var badge = st.acct ? '<span style="font-size:10px;font-weight:800;color:'+ACCT_LABEL[st.acct].c+'">'+ACCT_LABEL[st.acct].t+'</span>' : '';
+    var limitCell = g.limit
+      ? '<div style="font-weight:700">'+_gbp(g.limit)+'</div><div style="height:6px;background:#eee;border-radius:9px;margin-top:4px;min-width:90px"><div style="height:6px;border-radius:9px;width:'+Math.min(100, Math.round(g.owed/g.limit*100))+'%;background:'+(g.left<0?'#c62828':g.left<g.limit*.15?'#e65100':'#2e7d32')+'"></div></div>'
+      : '<span style="color:#ccc">—</span>';
+    return '<tr>'+
+      td('<strong style="color:#1565c0;cursor:pointer;text-decoration:underline" onclick="openStatementFromAP(\''+escapeHtml(g.name.replace(/'/g,"\\'"))+'\')">'+escapeHtml(g.name)+'</strong><div>'+badge+'</div>'+(a&&a.accountNo?'<div style="font-size:10px;color:#888">Acc '+escapeHtml(a.accountNo)+'</div>':''))+
+      td('<span style="font-size:12px">'+escapeHtml(supTermsText(a))+'</span>')+
+      td('<strong>'+_gbp(g.owed)+'</strong><div style="font-size:10px;color:#888">'+g.bills+' bill'+(g.bills===1?'':'s')+(g.pos?' · '+g.pos+' PO':'')+'</div>')+
+      td(limitCell)+
+      td(g.left === null ? '<span style="color:#ccc">—</span>' : '<strong style="color:'+(g.left<0?'#c62828':'#2e7d32')+'">'+(g.left<0?'−':'')+_gbp(Math.abs(g.left))+'</strong>')+
+      td(g.overdue>0.005 ? '<strong style="color:#c62828">'+_gbp(g.overdue)+'</strong>' : '<span style="color:#ccc">—</span>')+
+      td(g.nextDue ? '<span style="font-size:12px">'+escapeHtml(prettyYmd(g.nextDue))+'</span><div style="font-size:11px;color:#888">'+_gbp(g.nextAmt)+'</div>' : '<span style="color:#ccc">—</span>')+
+      td('<button onclick="editSupAcct(\''+escapeHtml(g.name.replace(/'/g,"\\'"))+'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:3px 9px;font-size:11px">'+(a?'Edit':'Set terms')+'</button>')+
+    '</tr>';
+  }).join('');
+  return '<div style="'+cardStyle()+'overflow-x:auto;padding:0;margin-bottom:14px">'+
+    '<div style="padding:14px 14px 4px 14px"><div style="'+stitle()+'margin:0">🏦 Supplier accounts — credit, terms and what\'s due</div>'+
+    '<div style="font-size:11px;color:#aaa;margin-top:3px">Set each supplier\'s terms and credit limit once. Bills without a due date are then given one from the terms. OK / cash only / on stop is set in the CRM.</div></div>'+
+    '<table style="width:100%;border-collapse:collapse">'+th(['Supplier','Terms','Owed now','Credit limit','Credit left','Overdue','Next due',''])+'<tbody>'+rows+'</tbody></table></div>';
+}
+
+function editSupAcct(name) {
+  var a = supAcct(name) || {credit:false, terms:'days', days:30, limit:'', accountNo:'', contact:'', note:''};
+  var ov = document.getElementById('ov-check');
+  _checkModal(
+    '<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">🏦 '+escapeHtml(name)+' — account</h3>'+
+    '<button onclick="closeBillCheck()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888">✕</button></div>'+
+    '<div style="max-width:460px">'+
+    '<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:14px"><input type="checkbox" id="sa-credit" '+(a.credit?'checked':'')+'> We have a credit account with them</label>'+
+    '<label style="display:block;font-size:11px;font-weight:700;color:#888;margin-top:10px">Payment terms</label>'+
+    '<select id="sa-terms" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:14px">'+
+      '<option value="days"'+(a.terms!=='eom'?' selected':'')+'>A number of days from the invoice date</option>'+
+      '<option value="eom"'+(a.terms==='eom'?' selected':'')+'>End of the month after the invoice</option></select>'+
+    '<label style="display:block;font-size:11px;font-weight:700;color:#888;margin-top:10px">Days (if days from invoice)</label>'+
+    '<input id="sa-days" inputmode="numeric" value="'+escapeHtml(String(a.days||30))+'" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:14px">'+
+    '<label style="display:block;font-size:11px;font-weight:700;color:#888;margin-top:10px">Credit limit £</label>'+
+    '<input id="sa-limit" inputmode="decimal" value="'+escapeHtml(String(a.limit||''))+'" placeholder="e.g. 2000" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:14px">'+
+    '<label style="display:block;font-size:11px;font-weight:700;color:#888;margin-top:10px">Our account number with them</label>'+
+    '<input id="sa-acc" value="'+escapeHtml(a.accountNo||'')+'" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:14px">'+
+    '<label style="display:block;font-size:11px;font-weight:700;color:#888;margin-top:10px">Accounts contact (name / phone / email)</label>'+
+    '<input id="sa-contact" value="'+escapeHtml(a.contact||'')+'" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:14px">'+
+    '<div id="sa-err" style="color:#c62828;font-size:13px;margin-top:8px"></div>'+
+    '<button onclick="saveSupAcct(\''+escapeHtml(name.replace(/'/g,"\\'"))+'\')" style="'+btnStyle('#2e7d32','#fff')+'width:100%;margin-top:14px;padding:12px;font-size:15px">Save</button></div>');
+}
+async function saveSupAcct(name) {
+  var limit = document.getElementById('sa-limit').value.trim();
+  var lim = limit ? parseMoney(limit) : 0;
+  if (isNaN(lim)) { document.getElementById('sa-err').textContent = 'Credit limit must be a number.'; return; }
+  var days = parseInt(document.getElementById('sa-days').value, 10);
+  var canon = normalizeSupplier(name);
+  var d = {kind:'supacct', id:'SUPACCT-' + _supKey(canon).replace(/[^A-Z0-9]+/g,'-'), name:canon,
+    credit: document.getElementById('sa-credit').checked, terms: document.getElementById('sa-terms').value,
+    days: isNaN(days) || days < 0 ? 30 : days, limit: lim, accountNo: document.getElementById('sa-acc').value.trim(),
+    contact: document.getElementById('sa-contact').value.trim(), at: ts(), by: user || ''};
+  supAccts[_supKey(canon)] = d;
+  await sbUp('kith_bank_tx', {id: d.id, data: d, updated_at: new Date().toISOString()});
+  closeBillCheck();
+  rAP();
+}
+
 // ---- ACCOUNTS PAYABLE (bills we owe suppliers) ----
 function rAP() {
-  var today = new Date().toISOString().slice(0,10);
+  if (!supAcctsLoaded) { loadSupAccts().then(function(){ if (_curTab() === 'ap') rAP(); }); }
+  var today = _bkToday();
   var unpaid = invs.filter(function(i){ return i.status !== 'paid'; });
 
-  // Compute days overdue for each (based on due date; fall back to invoice date + 30)
+  // Due date from the bill, or from that supplier's terms
   unpaid.forEach(function(inv) {
-    var dueDate = inv.due || (inv.date ? shiftDate(inv.date, 30) : '');
+    var dueDate = billDue(inv);
     inv._due = dueDate;
     inv._daysOverdue = dueDate ? daysBetween(dueDate, today) : 0;
     inv._total = (parseFloat(inv.net)||0) + (parseFloat(inv.vat)||0);
@@ -1287,6 +1597,9 @@ function rAP() {
       sc('Overdue','£'+overdueTotal.toFixed(2),'#c62828')+
       sc('CRM POs & SOs to pay', _gbp(crmPayables().total), '#e65100')+
     '</div>'+
+
+    payRemindersCard(false)+
+    creditAccountsCard()+
 
     // Aging summary
     '<div style="'+cardStyle()+'margin-bottom:14px">'+
@@ -1319,7 +1632,7 @@ function rAP() {
         return '<tr style="'+(isOver?'background:#fff5f5':'')+'">'+
           td('<strong style="color:#b8860b">'+escapeHtml(inv.num)+'</strong>')+
           td('<div style="font-weight:600">'+escapeHtml(inv.supplier||'—')+'</div>')+
-          td('<span style="font-size:12px">'+escapeHtml(inv._due||'—')+'</span>')+
+          td('<span style="font-size:12px">'+escapeHtml(inv._due||'—')+'</span>'+(inv._due && !inv.due ? '<div style="font-size:9px;color:#888">from terms</div>' : ''))+
           td(isOver
             ? '<strong style="color:'+ageColor(inv._daysOverdue)+'">'+inv._daysOverdue+' days over</strong>'
             : (inv._daysOverdue < 0 ? '<span style="color:#2e7d32">'+Math.abs(inv._daysOverdue)+' days left</span>' : '<span style="color:#e65100">Due today</span>'))+
@@ -1364,7 +1677,7 @@ function mInvPaidById(id) {
 var AR_PAYMENT_TERMS_DAYS = 14;
 
 // Business phone shown in chase SMS (edit this if your number changes)
-var KITH_PHONE = '020 8000 0000';
+var KITH_PHONE = '020 4629 9469';
 
 var arStageFilter = 'all';
 function setArStageFilter(s) { arStageFilter = s; rAR(); }
@@ -1420,6 +1733,8 @@ function rAR() {
       sc('Total Outstanding','£'+grandTotal.toFixed(2),'#1a1a2e')+
       sc('Overdue','£'+overdueTotal.toFixed(2),'#c62828')+
     '</div>'+
+
+    chaseQueueCard(unpaid)+
 
     '<div style="'+cardStyle()+'margin-bottom:14px">'+
       '<div style="'+stitle()+'">Aging</div>'+
@@ -1477,7 +1792,8 @@ function rAR() {
              (s.received?'<div style="font-size:10px;color:#2e7d32">£'+(+s.received).toFixed(2)+' of £'+(+s.amount).toFixed(2)+' paid'+
                (s.cash?' · £'+(+s.cash).toFixed(2)+' cash':'')+'</div>':''))+
           td(s.phone
-             ? '<button onclick="chaseSaleById(\''+escapeHtml(s.ref||s.createdAt)+'\')" style="'+btnStyle('#1565c0','#fff')+'padding:4px 10px;font-size:11px">💬 Chase</button>'
+             ? '<button onclick="chaseSaleById(\''+escapeHtml(s.ref||s.createdAt)+'\',\'wa\')" style="'+btnStyle('#25d366','#fff')+'padding:4px 8px;font-size:11px">💬</button> '+
+               '<button onclick="chaseSaleById(\''+escapeHtml(s.ref||s.createdAt)+'\',\'sms\')" style="'+btnStyle('#1565c0','#fff')+'padding:4px 8px;font-size:11px">✉</button>'
              : '<span style="color:#ccc;font-size:11px">no phone</span>')+
           td('<button onclick="markSalePaidById(\''+escapeHtml(s.ref||s.createdAt)+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:4px 10px;font-size:11px">✓ Paid</button>')+
         '</tr>';
@@ -1663,31 +1979,91 @@ async function markSalePaidById(id) {
   rAR(); rSales(); rDash();
 }
 
-// Open the phone's Messages app with a pre-filled chase SMS
-function chaseSaleById(id) {
+// ---- CHASING ----
+// Who to chase today: owed money, past their terms, and not chased in the
+// last 3 days. Each chase steps up — friendly reminder, firm reminder,
+// final notice — and is logged on the CRM job so everyone sees it.
+var CHASE_GAP_DAYS = 3;
+function chaseLevel(s) { return Math.min(3, (s.chaseCount || 0) + 1); }
+var CHASE_LEVELS = {1:'Friendly reminder', 2:'Firm reminder', 3:'Final notice'};
+function chaseText(s, level) {
+  var amount = '£' + ((s.balance !== undefined && s.balance !== null) ? Math.max(0,+s.balance) : (parseFloat(s.amount)||0)).toFixed(2);
+  var name = (s.customer || '').split(' ')[0] || 'there';
+  var what = (s.desc && s.desc !== '—' ? s.desc : 'your recent work') + (s.reg ? ' (' + s.reg + ')' : '');
+  if (level >= 3) return 'Hi ' + name + ', this is a final notice from KITH Cars. ' + amount + ' for ' + what + ' is now ' + Math.max(0, s._daysOverdue||0) +
+    ' days overdue. Please pay within 7 days or call us on ' + KITH_PHONE + ' to arrange payment, otherwise we will have to take further action. KITH Cars';
+  if (level === 2) return 'Hi ' + name + ', we still haven\'t received ' + amount + ' for ' + what + ', which is now overdue. Please could you pay this week? ' +
+    'If there\'s a problem, call us on ' + KITH_PHONE + '. Thanks — KITH Cars';
+  return 'Hi ' + name + ', a friendly reminder from KITH Cars that ' + amount + ' for ' + what + ' is outstanding. ' +
+    'Please could you settle at your earliest convenience? Any questions, call us on ' + KITH_PHONE + '. Thanks — KITH Cars';
+}
+function _waNumber(phone) {
+  var d = String(phone || '').replace(/[^\d+]/g, '');
+  if (d.indexOf('+') === 0) return d.slice(1);
+  if (d.indexOf('00') === 0) return d.slice(2);
+  if (d.indexOf('0') === 0) return '44' + d.slice(1);
+  return d;
+}
+async function _logChase(s, how, level) {
+  var entry = {at: new Date().toISOString(), by: user || '', how: how, level: level};
+  s.chasedAt = entry.at; s.chaseCount = (s.chaseCount || 0) + (how === 'note' ? 0 : 1);
+  s.chaseLog = (s.chaseLog || []).concat([entry]);
+  if (s._crm && s.id) await updateCRMJob(s.id, {chasedAt: s.chasedAt, chaseCount: s.chaseCount, chaseLog: s.chaseLog});
+  else saveSales();
+}
+function chaseSaleById(id, how) {
   var i = findSaleIdx(id); if (i < 0) return;
   var s = sales[i];
-  if (!s.phone) { alert('Add a phone number first.'); return; }
-
-  var amount = ((s.balance !== undefined && s.balance !== null) ? Math.max(0,+s.balance) : (parseFloat(s.amount)||0)).toFixed(2);
-  var name = (s.customer || '').split(' ')[0] || 'there';
-  var desc = s.desc || 'your recent job';
-  var body =
-    'Hi ' + name + ', this is a friendly reminder from KITH Cars that £' + amount +
-    ' for ' + desc + (s.reg ? ' (' + s.reg + ')' : '') +
-    ' is outstanding. Please could you settle at your earliest convenience? ' +
-    'Any queries call us on ' + KITH_PHONE + '. Thanks — KITH Cars';
-
-  // Track the chase attempt
-  s.chasedAt = new Date().toISOString();
-  s.chaseCount = (s.chaseCount || 0) + 1;
-  saveSales();
-
-  // Trigger iOS Messages / Android SMS app
-  var url = 'sms:' + encodeURIComponent(s.phone) + '?&body=' + encodeURIComponent(body);
-  window.location.href = url;
-
+  how = how || 'sms';
+  if (!s.phone && how !== 'note') { alert('Add a phone number first.'); return; }
+  var level = chaseLevel(s), body = chaseText(s, level);
+  if (how === 'call') { _logChase(s, 'call', level); window.location.href = 'tel:' + encodeURIComponent(s.phone); setTimeout(rAR, 500); return; }
+  if (how === 'note') {
+    var n = prompt('What did they say? (e.g. "Paying Friday", "Disputes the bill")', '');
+    if (n === null) return;
+    var e = {at: new Date().toISOString(), by: user || '', how: 'note', note: n.trim()};
+    s.chaseLog = (s.chaseLog || []).concat([e]);
+    if (s._crm && s.id) updateCRMJob(s.id, {chaseLog: s.chaseLog}); else saveSales();
+    rAR(); return;
+  }
+  _logChase(s, how, level);
+  if (how === 'wa') window.open('https://wa.me/' + _waNumber(s.phone) + '?text=' + encodeURIComponent(body), '_blank');
+  else window.location.href = 'sms:' + encodeURIComponent(s.phone) + '?&body=' + encodeURIComponent(body);
   setTimeout(rAR, 500);
+}
+
+function chaseQueueCard(unpaid) {
+  var today = _bkToday();
+  var due = unpaid.filter(function(s){
+    if (!(s._daysOverdue > 0) || s._amount < 0.01) return false;
+    return !s.chasedAt || daysBetween(String(s.chasedAt).slice(0,10), today) >= CHASE_GAP_DAYS;
+  }).sort(function(a,b){ return b._amount * (1 + b._daysOverdue/30) - a._amount * (1 + a._daysOverdue/30); });
+  var waiting = unpaid.filter(function(s){ return s._daysOverdue > 0 && s.chasedAt && daysBetween(String(s.chasedAt).slice(0,10), today) < CHASE_GAP_DAYS; });
+  if (!due.length && !waiting.length) return '';
+  var b = function(id, how, label, bg, col){ return '<button onclick="chaseSaleById(\''+escapeHtml(id)+'\',\''+how+'\')" style="'+btnStyle(bg,col,bg==='#fff')+'padding:4px 9px;font-size:11px;margin:2px">'+label+'</button>'; };
+  var rows = due.map(function(s){
+    var id = String(s.ref||s.createdAt).replace(/'/g,"\\'"), lvl = chaseLevel(s);
+    var last = (s.chaseLog||[]).filter(function(x){ return x.how === 'note'; }).slice(-1)[0];
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f3f3f3;flex-wrap:wrap">'+
+      '<div style="flex:1;min-width:200px"><div style="font-weight:700">'+(s._crm?jobLink(s.id, s.customer||'—'):escapeHtml(s.customer||'—'))+
+        ' <span style="font-family:monospace;color:#888;font-size:12px">'+escapeHtml(s.reg||'')+'</span></div>'+
+        '<div style="font-size:12px;color:#888"><strong style="color:#c62828">'+_gbp(s._amount)+'</strong> · '+s._daysOverdue+' days overdue · '+
+        (s.chaseCount ? 'chased '+s.chaseCount+'× (last '+escapeHtml(String(s.chasedAt).slice(0,10))+')' : 'never chased')+'</div>'+
+        (last ? '<div style="font-size:11px;color:#555">📝 '+escapeHtml(last.note)+' — '+escapeHtml(String(last.at).slice(0,10))+'</div>' : '')+
+        '<div style="font-size:11px;font-weight:700;color:'+(lvl===3?'#c62828':lvl===2?'#e65100':'#1565c0')+'">Next: '+CHASE_LEVELS[lvl]+'</div></div>'+
+      '<div>'+(s.phone
+        ? b(id,'wa','💬 WhatsApp','#25d366','#fff')+b(id,'sms','✉ Text','#1565c0','#fff')+b(id,'call','📞 Call','#fff','#1a1a2e')
+        : '<button onclick="editSalePhoneById(\''+escapeHtml(id)+'\')" style="'+btnStyle('#fff','#888',true)+'padding:4px 9px;font-size:11px">+ Add phone</button>')+
+        b(id,'note','📝 Note','#fff','#555')+'</div>'+
+    '</div>';
+  }).join('');
+  var total = due.reduce(function(t,s){ return t + s._amount; }, 0);
+  return '<div style="background:#fff;border:2px solid '+(due.length?'#c62828':'#2e7d32')+';border-radius:12px;padding:12px 14px;margin-bottom:14px">'+
+    '<div style="font-weight:800;color:'+(due.length?'#c62828':'#2e7d32')+'">📣 To chase today — '+due.length+' customer'+(due.length===1?'':'s')+' · '+_gbp(total)+'</div>'+
+    '<div style="font-size:11px;color:#888;margin-bottom:4px">Overdue and not chased in the last '+CHASE_GAP_DAYS+' days. Each chase is logged on the job; the message steps up from friendly to firm to final notice.'+
+      (waiting.length ? ' '+waiting.length+' more already chased recently.' : '')+'</div>'+
+    (rows || '<div style="font-size:13px;color:#2e7d32;padding:6px 0">✓ Everyone overdue has been chased in the last '+CHASE_GAP_DAYS+' days.</div>')+
+  '</div>';
 }
 
 // (payroll moved to the cash / money module near the end of the script)
@@ -1980,6 +2356,21 @@ function _bkRange() {
 
 function bkSetPeriod(p) { bkPeriod = p; _renderBreakdown(); }
 function bkToday() { bkAnchor = _bkToday(); _renderBreakdown(); }
+// One-tap periods so "this month" is always one click away
+function _bkQuickSpec(k) {
+  var t = new Date();
+  if (k === 'today') return {p:'day', a:_ymdL(t)};
+  if (k === 'thisweek') return {p:'week', a:_ymdL(t)};
+  if (k === 'lastweek') { var w = new Date(t); w.setDate(w.getDate()-7); return {p:'week', a:_ymdL(w)}; }
+  if (k === 'thismonth') return {p:'month', a:_ymdL(t)};
+  return {p:'month', a:_ymdL(new Date(t.getFullYear(), t.getMonth()-1, 1))};
+}
+function bkQuick(k) { var q = _bkQuickSpec(k); bkPeriod = q.p; bkAnchor = q.a; _renderBreakdown(); }
+function bkIsQuick(k) {
+  var q = _bkQuickSpec(k); if (q.p !== bkPeriod) return false;
+  var save = bkAnchor, a = _bkRange(); bkAnchor = q.a; var b = _bkRange(); bkAnchor = save;
+  return a.start === b.start;
+}
 function bkShift(delta) {
   var d = new Date((bkAnchor || _bkToday()) + 'T00:00:00');
   if (bkPeriod === 'day') d.setDate(d.getDate() + delta);
@@ -2352,6 +2743,12 @@ async function _renderBreakdown() {
       '<div style="display:inline-flex;background:#fff;border:1.5px solid #1a1a2e;border-radius:8px;padding:2px">'+
         pBtn('day','Day')+pBtn('week','Week')+pBtn('month','Month')+
       '</div>'+
+    '</div>'+
+    '<div style="display:flex;justify-content:center;gap:6px;margin-bottom:10px;flex-wrap:wrap">'+
+      ['today','thisweek','lastweek','thismonth','lastmonth'].map(function(k){
+        var lbl = {today:'Today', thisweek:'This week', lastweek:'Last week', thismonth:'This month', lastmonth:'Last month'}[k];
+        return '<button onclick="bkQuick(\''+k+'\')" style="'+btnStyle('#fff', bkIsQuick(k)?'#1565c0':'#555', true)+'padding:5px 11px;font-size:11px'+(bkIsQuick(k)?';border-color:#1565c0;font-weight:800':'')+'">'+lbl+'</button>';
+      }).join('')+
     '</div>'+
     '<div style="display:flex;justify-content:center;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">'+
       '<button onclick="bkShift(-1)" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:8px 14px;font-size:12px">←</button>'+
@@ -4757,6 +5154,20 @@ async function scanBill(file) {
     invs.unshift(entry);
     persistInv(entry);
 
+    // Keep the paper itself, not just the numbers read off it. Saved in the
+    // background so a slow upload never loses the bill.
+    entry.docUploading = true;
+    sbUploadDoc(file, 'bills').then(function(path){
+      delete entry.docUploading;
+      if (path) entry.docPath = path; else entry.docFailed = true;
+      persistInv(entry);
+      if (_curTab() === 'expenses') rExp();
+      var st = document.getElementById('scan-doc-status');
+      if (st) st.innerHTML = path
+        ? '<span style="color:#2e7d32">✓ Scan of the paper saved — tap 🔍 Check on the bill to compare it with the figures.</span>'
+        : '<span style="color:#c62828">⚠ The figures are saved but the scan itself didn\'t upload. Use 📎 on the bill to attach it again.</span>';
+    });
+
     out.innerHTML =
       '<div style="background:#e8f5e9;padding:12px;border-radius:8px;color:#2e7d32">' +
         '<strong>✓ Bill scanned &amp; saved to expenses</strong>' +
@@ -4768,11 +5179,124 @@ async function scanBill(file) {
             : 'No confident PO match') +
           (entry.matchReason ? ' — <span style="color:#555">' + escapeHtml(entry.matchReason) + '</span>' : '') +
         '</div>' +
+        '<div id="scan-doc-status" style="margin-top:6px;font-size:12px;color:#888">⏳ Saving the scan of the paper…</div>' +
+        '<button onclick="openBillCheck(\'' + entry.id + '\')" style="' + btnStyle('#1565c0','#fff') + 'padding:6px 12px;font-size:12px;margin-top:8px">🔍 Check it against the paper</button>' +
       '</div>';
     rExp();
   } catch(e) {
     out.innerHTML = '<div style="background:#ffebee;padding:10px;border-radius:8px;color:#c62828">Error: ' + escapeHtml(e.message) + '</div>';
   }
+}
+
+// ========== CHECK A BILL AGAINST ITS SCAN ==========
+// The AI reads the bill, but a person should be able to see the paper next
+// to what was read off it and say "yes, that's right" (or fix it). Every
+// scanned bill keeps its image in the kith-docs bucket.
+
+function billScanBadge(inv) {
+  if (inv.docUploading) return '<div style="font-size:9px;color:#1565c0;margin-top:2px">⏳ saving scan…</div>';
+  if (inv.docPath && inv.checked) return '<div style="font-size:9px;color:#2e7d32;margin-top:2px;font-weight:700">✓ checked'+(inv.checkedBy?' · '+escapeHtml(inv.checkedBy):'')+'</div>';
+  if (inv.docPath) return '<div style="font-size:9px;color:#e65100;margin-top:2px;font-weight:700">📄 scan saved · not checked</div>';
+  if (inv.source === 'scan') return '<div style="font-size:9px;color:#c62828;margin-top:2px;font-weight:700">⚠ scan not kept</div>';
+  return '<div style="font-size:9px;color:#aaa;margin-top:2px">no scan</div>';
+}
+
+function _billById(id) { return invs.filter(function(x){ return x.id === id; })[0]; }
+
+function _checkModal(html) {
+  var ov = document.getElementById('ov-check');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'ov-check';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:600;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto';
+    ov.onclick = function(e){ if (e.target === ov) closeBillCheck(); };
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = '<div style="background:#fff;border-radius:12px;width:100%;max-width:1100px;margin:auto;padding:16px">'+html+'</div>';
+  ov.style.display = 'flex';
+}
+function closeBillCheck() { var ov = document.getElementById('ov-check'); if (ov) ov.style.display = 'none'; }
+
+async function openBillCheck(id) {
+  var inv = _billById(id); if (!inv) return;
+  var f = function(k, label, type){
+    return '<label style="display:block;font-size:11px;font-weight:700;color:#888;margin-top:8px">'+label+'</label>'+
+      '<input id="bc-'+k+'" '+(type?'type="'+type+'" ':'')+'value="'+escapeHtml(inv[k]==null?'':String(inv[k]))+'" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:14px">';
+  };
+  var items = Array.isArray(inv.items) && inv.items.length
+    ? '<div style="font-size:11px;font-weight:700;color:#888;margin-top:10px">Lines read off the bill</div>'+
+      '<div style="font-size:12px;max-height:160px;overflow:auto;border:1px solid #eee;border-radius:8px;padding:6px 8px;margin-top:4px">'+
+      inv.items.map(function(it){ return '<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0"><span>'+escapeHtml((it.qty?it.qty+'× ':'')+(it.description||''))+(it.reg?' <span style="font-family:monospace;color:#888">'+escapeHtml(it.reg)+'</span>':'')+'</span><strong>'+(it.price!=null?'£'+(+it.price).toFixed(2):'')+'</strong></div>'; }).join('')+'</div>'
+    : '';
+  var tot = (parseFloat(inv.net)||0) + (parseFloat(inv.vat)||0);
+  _checkModal(
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+      '<h3 style="font-size:17px;font-weight:800">🔍 Check bill — '+escapeHtml(inv.supplier||'')+' '+escapeHtml(inv.num||'')+'</h3>'+
+      '<button onclick="closeBillCheck()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888">✕</button></div>'+
+    '<div style="display:flex;gap:16px;flex-wrap:wrap">'+
+      '<div id="bc-doc" style="flex:1.4;min-width:300px;min-height:420px;background:#f4f4f6;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#888;overflow:auto">'+
+        (inv.docPath ? '⏳ Loading the scan…' : '<div style="text-align:center;padding:20px">No scan kept for this bill.<br><button onclick="attachBillScan(\''+inv.id+'\')" style="'+btnStyle('#e65100','#fff')+'margin-top:10px">📎 Attach the scan</button></div>')+
+      '</div>'+
+      '<div style="flex:1;min-width:260px">'+
+        '<div style="font-size:12px;color:#888">Compare these with the paper. Fix anything that\'s wrong, then confirm.</div>'+
+        f('supplier','Supplier')+f('num','Invoice / receipt number')+f('date','Invoice date','date')+f('due','Due date','date')+
+        '<div style="display:flex;gap:8px"><div style="flex:1">'+f('net','Net (ex VAT) £')+'</div><div style="flex:1">'+f('vat','VAT £')+'</div></div>'+
+        '<div style="font-size:13px;margin-top:8px">Total inc VAT: <strong id="bc-tot">£'+tot.toFixed(2)+'</strong></div>'+
+        items+
+        (inv.checked ? '<div style="font-size:12px;color:#2e7d32;margin-top:10px">✓ Checked by '+escapeHtml(inv.checkedBy||'')+' '+escapeHtml(String(inv.checkedAt||'').slice(0,16))+'</div>' : '')+
+        '<div id="bc-err" style="color:#c62828;font-size:13px;margin-top:8px"></div>'+
+        '<button onclick="saveBillCheck(\''+inv.id+'\')" style="'+btnStyle('#2e7d32','#fff')+'width:100%;margin-top:12px;padding:12px;font-size:15px">✓ Matches the paper — save</button>'+
+        (inv.docPath ? '<button onclick="viewDoc(\''+escapeHtml(String(inv.docPath).replace(/'/g,"\\'"))+'\')" style="'+btnStyle('#fff','#1565c0',true)+'width:100%;margin-top:8px">Open the scan full size</button>' : '')+
+      '</div>'+
+    '</div>');
+  ['net','vat'].forEach(function(k){ var el = document.getElementById('bc-'+k); if (el) el.oninput = function(){
+    var t = (parseMoney(document.getElementById('bc-net').value)||0) + (parseMoney(document.getElementById('bc-vat').value)||0);
+    document.getElementById('bc-tot').textContent = '£'+t.toFixed(2); }; });
+  if (inv.docPath) {
+    var url = await sbSignedUrl(inv.docPath, 3600);
+    var box = document.getElementById('bc-doc'); if (!box) return;
+    if (!url) { box.innerHTML = '⚠ Couldn\'t open the scan.'; return; }
+    box.innerHTML = /\.pdf$/i.test(inv.docPath)
+      ? '<iframe src="'+url+'" style="width:100%;height:70vh;border:0;border-radius:10px"></iframe>'
+      : '<img src="'+url+'" style="max-width:100%;max-height:75vh;display:block;margin:auto;border-radius:6px" alt="Scan of the bill">';
+  }
+}
+
+function saveBillCheck(id) {
+  var inv = _billById(id); if (!inv) return;
+  var g = function(k){ var el = document.getElementById('bc-'+k); return el ? el.value.trim() : ''; };
+  var net = parseMoney(g('net')||'0'), vat = parseMoney(g('vat')||'0');
+  if (isNaN(net) || isNaN(vat)) { document.getElementById('bc-err').textContent = 'Net and VAT must be numbers, e.g. 120.50'; return; }
+  var changed = [];
+  [['supplier','Supplier'],['num','Number'],['date','Date'],['due','Due']].forEach(function(p){
+    if (String(inv[p[0]]||'') !== g(p[0])) { changed.push(p[1]); inv[p[0]] = g(p[0]); }
+  });
+  if (Math.abs((parseFloat(inv.net)||0) - net) > 0.004) { changed.push('Net'); inv.net = net.toFixed(2); }
+  if (Math.abs((parseFloat(inv.vat)||0) - vat) > 0.004) { changed.push('VAT'); inv.vat = vat.toFixed(2); }
+  inv.checked = true; inv.checkedBy = user || ''; inv.checkedAt = ts();
+  if (changed.length) inv.checkLog = (inv.checkLog || []).concat([ts() + ' ' + (user||'') + ' corrected ' + changed.join(', ')]);
+  persistInv(inv);
+  closeBillCheck();
+  rExp(); if (typeof rAP === 'function') rAP();
+}
+
+// Attach a photo/PDF to a bill that has none (old scans, manual entries)
+function attachBillScan(id) {
+  var inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*,application/pdf'; inp.capture = 'environment';
+  inp.onchange = async function(){
+    var file = inp.files && inp.files[0]; if (!file) return;
+    var inv = _billById(id); if (!inv) return;
+    inv.docUploading = true; rExp();
+    var path = await sbUploadDoc(file, 'bills');
+    delete inv.docUploading;
+    if (!path) { alert('The scan didn\'t upload — check the signal and try again.'); rExp(); return; }
+    inv.docPath = path; inv.checked = false; delete inv.docFailed;
+    persistInv(inv);
+    rExp();
+    openBillCheck(id);
+  };
+  inp.click();
 }
 
 // ========== SALES ==========
@@ -4991,6 +5515,38 @@ function _cashBadge(type) {
 
 function setCashMonth(m) { cashMonth = m; rCashBook(true); }
 
+// The tin is read as a proper cash book: a week or a month at a time,
+// brought-forward balance at the top, money in and money out in their own
+// columns, a running balance, weekly sub-totals inside a month, and the
+// carried-forward balance at the bottom.
+var cbPeriod = 'week';
+var cbAnchor = null;
+function cbSetPeriod(p) { cbPeriod = p; rCashBook(true); }
+function cbShift(d) {
+  var a = new Date((cbAnchor || _cashToday()) + 'T00:00:00');
+  if (cbPeriod === 'week') a.setDate(a.getDate() + 7*d); else a = new Date(a.getFullYear(), a.getMonth() + d, 1);
+  cbAnchor = _ymdL(a); rCashBook(true);
+}
+function cbNow() { cbAnchor = null; rCashBook(true); }
+function _periodChip(on, label, fn) {
+  return '<button onclick="'+fn+'" style="border:1.5px solid #1a1a2e;background:'+(on?'#1a1a2e':'#fff')+';color:'+(on?'#fff':'#1a1a2e')+';padding:6px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">'+label+'</button>';
+}
+function _weekStart(ymdStr) { var d = new Date(ymdStr + 'T00:00:00'); d.setDate(d.getDate() - ((d.getDay()+6) % 7)); return _ymdL(d); }
+function _shortDay(ymdStr) { return new Date(ymdStr+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}); }
+
+// One cash-book line per movement: what went in, what went out. A count
+// that doesn't match shows as its own line (over = in, short = out) so the
+// columns always add up to the balance.
+function _cbLine(e) {
+  var ty = CASH_TYPES[e.type] || {sign:0};
+  if (e.type === 'count') {
+    if (e._diff === null || e._diff === undefined) return {inA:0, outA:0, opening:true};
+    return {inA: e._diff > 0 ? e._diff : 0, outA: e._diff < 0 ? -e._diff : 0};
+  }
+  var v = ty.sign * (+e.amount || 0);
+  return {inA: v > 0 ? v : 0, outA: v < 0 ? -v : 0};
+}
+
 async function rCashBook(skipLoad) {
   var el = document.getElementById('v-cashbook'); if (!el) return;
   if (!skipLoad || !cashLoaded) {
@@ -4998,52 +5554,63 @@ async function rCashBook(skipLoad) {
     await Promise.all([loadCash(), (typeof bankLoaded !== 'undefined' && !bankLoaded) ? loadBank() : null]);
   }
   var L = cashLedger();
-  var months = {}; months[_cashToday().slice(0,7)] = true;
-  L.all.forEach(function(e){ if (e.date) months[e.date.slice(0,7)] = true; });
-  var mKeys = Object.keys(months).sort().reverse();
-  if (!cashMonth || !months[cashMonth]) cashMonth = mKeys[0];
+  var R = _mnRange(cbAnchor, cbPeriod);
+  cashMonth = R.start.slice(0,7);   // CSV export follows what's on screen
 
-  var inM = L.all.filter(function(e){ return (e.date||'').slice(0,7) === cashMonth; });
+  var before = L.all.filter(function(e){ return (e.date||'') < R.start; });
+  var bf = before.length ? before[before.length-1]._bal : 0;
+  var bfKnown = before.some(function(e){ return e.type === 'count'; });
+  var inM = L.all.filter(function(e){ return e.date && e.date >= R.start && e.date <= R.end; });
   var sum = function(types){ return inM.filter(function(e){ return types.indexOf(e.type) >= 0; }).reduce(function(s,e){ return s + (+e.amount||0); }, 0); };
   var taken = sum(['job']), otherIn = sum(['otherin','topup']), spent = sum(['spent']),
       wages = sum(['wages','advance']), banked = sum(['banked']), drawn = sum(['drawings']);
   var lc = L.lastCount;
   var countAge = lc ? daysBetween(lc.date, _cashToday()) : null;
+  var cf = inM.length ? inM[inM.length-1]._bal : bf;
+  var totIn = 0, totOut = 0;
 
-  var rows = inM.slice().reverse().map(function(e){
-    var ty = CASH_TYPES[e.type] || {sign:0};
-    var signed = ty.sign * (+e.amount||0);
-    var what = '';
-    if (e.type === 'job') what = (e.jobId ? jobLink(e.jobId, (e.reg||'') + ' ' + (e.customer||'')) : '') + '<div style="font-size:11px;color:#888">'+escapeHtml(e.note||'')+'</div>';
-    else if (e.type === 'count') what = '<strong>Counted '+_gbp(e.counted)+'</strong>' +
+  var detail = function(e){
+    if (e.type === 'job') return (e.jobId ? jobLink(e.jobId, (e.reg||'') + ' ' + (e.customer||'')) : '') + '<div style="font-size:11px;color:#888">'+escapeHtml(e.note||'')+'</div>';
+    if (e.type === 'count') return '<strong>Tin counted: '+_gbp(e.counted)+'</strong>' +
         (e._diff === null ? '<div style="font-size:11px;color:#888">Starting point</div>'
           : Math.abs(e._diff) < 0.01 ? '<div style="font-size:11px;color:#2e7d32;font-weight:700">✓ Matches — expected '+_gbp(e._expected)+'</div>'
           : '<div style="font-size:11px;color:#c62828;font-weight:700">'+(e._diff<0?'SHORT ':'OVER ')+_gbp(Math.abs(e._diff))+' — expected '+_gbp(e._expected)+'</div>') +
         (e.note ? '<div style="font-size:11px;color:#888">'+escapeHtml(e.note)+'</div>' : '');
-    else {
-      var head = e.type === 'spent' ? (escapeHtml(e.payee||'') + (e.cat ? ' <span style="font-size:11px;color:#888">· '+escapeHtml(e.cat)+'</span>' : ''))
-               : (e.type === 'wages' || e.type === 'advance') ? '<strong>'+escapeHtml(e.staffName||'')+'</strong>'
-               : '';
-      var bill = e.billId ? invs.filter(function(i){ return i.id === e.billId; })[0] : null;
-      what = (head ? '<div style="font-weight:600">'+head+'</div>' : '') +
-        (e.note ? '<div style="font-size:11px;color:#888">'+escapeHtml(e.note)+'</div>' : '') +
-        (bill ? '<div style="font-size:11px;color:#2e7d32">✓ pays bill '+escapeHtml(bill.supplier||'')+' '+escapeHtml(bill.num||'')+'</div>' : '') +
-        (e.docPath ? '<a onclick="openCashReceipt(\''+e.id+'\')" style="font-size:11px;color:#1565c0;cursor:pointer;text-decoration:underline">📎 receipt</a>' : (e.type === 'spent' ? '<span style="font-size:10px;color:#e65100">no receipt</span>' : '')) +
-        ((e.type === 'banked' || (e.type === 'topup' && e.source !== 'owner')) && !e.derived
-          ? (e._onStmt ? ' <span style="font-size:10px;color:#2e7d32">✓ on '+escapeHtml(e._onStmt.acct||'bank')+' statement</span>' : ' <span style="font-size:10px;color:#888">waiting for the bank statement</span>') : '') +
-        (e.fromBank ? '<div style="font-size:10px;color:#888">from the bank statement — nobody logged it in the tin</div>' : '');
-    }
+    var head = e.type === 'spent' ? (escapeHtml(e.payee||'') + (e.cat ? ' <span style="font-size:11px;color:#888">· '+escapeHtml(e.cat)+'</span>' : ''))
+             : (e.type === 'wages' || e.type === 'advance') ? '<strong>'+escapeHtml(e.staffName||'')+'</strong>' : '';
+    var bill = e.billId ? invs.filter(function(i){ return i.id === e.billId; })[0] : null;
+    return (head ? '<div style="font-weight:600">'+head+'</div>' : '') +
+      (e.note ? '<div style="font-size:11px;color:#888">'+escapeHtml(e.note)+'</div>' : '') +
+      (bill ? '<div style="font-size:11px;color:#2e7d32">✓ pays bill '+escapeHtml(bill.supplier||'')+' '+escapeHtml(bill.num||'')+'</div>' : '') +
+      (e.docPath ? '<a onclick="openCashReceipt(\''+e.id+'\')" style="font-size:11px;color:#1565c0;cursor:pointer;text-decoration:underline">📎 receipt</a>' : (e.type === 'spent' ? '<span style="font-size:10px;color:#e65100">no receipt</span>' : '')) +
+      ((e.type === 'banked' || (e.type === 'topup' && e.source !== 'owner')) && !e.derived
+        ? (e._onStmt ? ' <span style="font-size:10px;color:#2e7d32">✓ on '+escapeHtml(e._onStmt.acct||'bank')+' statement</span>' : ' <span style="font-size:10px;color:#888">waiting for the bank statement</span>') : '') +
+      (e.fromBank ? '<div style="font-size:10px;color:#888">from the bank statement — nobody logged it in the tin</div>' : '');
+  };
+  var money = function(v, col){ return v ? '<strong style="color:'+col+';white-space:nowrap">'+_gbp(v)+'</strong>' : ''; };
+  var R_ = function(cells, style){ return '<tr style="'+(style||'')+'">'+cells.map(function(c, i){ return '<td style="padding:9px 10px;border-bottom:1px solid #f0f0f0;font-size:13px;vertical-align:top'+(i>=3&&i<=5?';text-align:right':'')+'">'+c+'</td>'; }).join('')+'</tr>'; };
+
+  var rows = R_(['<span style="font-size:12px;color:#888;white-space:nowrap">'+_shortDay(R.start)+'</span>', '', '<strong>Balance brought forward</strong>'+(bfKnown||!before.length?'':'<div style="font-size:11px;color:#e65100">no count before this — count the tin to fix the starting point</div>'), '', '', '<strong>'+_gbp(bf)+'</strong>', ''], 'background:#f7f7f9');
+  var wk = null, wIn = 0, wOut = 0;
+  var weekTotal = function(){
+    if (cbPeriod !== 'month' || wk === null) return '';
+    var we = new Date(wk + 'T00:00:00'); we.setDate(we.getDate()+6);
+    return R_(['', '', '<span style="font-size:12px;color:#555;font-weight:700">Week '+new Date(wk+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' – '+we.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' total</span>',
+      '<span style="font-size:12px;color:#2e7d32;font-weight:700">'+_gbp(wIn)+'</span>', '<span style="font-size:12px;color:#c62828;font-weight:700">'+_gbp(wOut)+'</span>', '', ''], 'background:#fafafa');
+  };
+  inM.forEach(function(e){
+    var w = _weekStart(e.date);
+    if (w !== wk) { rows += weekTotal(); wk = w; wIn = 0; wOut = 0; }
+    var l = _cbLine(e);
+    totIn += l.inA; totOut += l.outA; wIn += l.inA; wOut += l.outA;
     var by = e.by ? '<div style="font-size:10px;color:#bbb">'+escapeHtml(e.by)+'</div>' : '';
     var del = (!e.derived && e.type !== 'wages') ? '<a onclick="deleteCashEntry(\''+e.id+'\')" style="font-size:10px;color:#bbb;cursor:pointer" title="Delete">✕</a>' : '';
-    return '<tr>'+
-      td('<span style="font-size:12px;color:#888;white-space:nowrap">'+escapeHtml(e.date)+'</span>'+by)+
-      td(_cashBadge(e.type))+
-      td(what)+
-      td(e.type === 'count' ? '' : '<strong style="color:'+(signed>=0?'#2e7d32':'#c62828')+';white-space:nowrap">'+(signed>=0?'+':'−')+_gbp(Math.abs(signed))+'</strong>')+
-      td('<span style="white-space:nowrap;color:#555">'+_gbp(e._bal)+'</span>')+
-      td(del)+
-    '</tr>';
-  }).join('');
+    rows += R_(['<span style="font-size:12px;color:#888;white-space:nowrap">'+_shortDay(e.date)+'</span>'+by, _cashBadge(e.type), detail(e),
+      money(l.inA, '#2e7d32'), money(l.outA, '#c62828'), '<span style="white-space:nowrap;color:#555">'+_gbp(e._bal)+'</span>', del]);
+  });
+  rows += weekTotal();
+  rows += R_(['', '', '<strong>Totals for the '+cbPeriod+'</strong>', '<strong style="color:#2e7d32">'+_gbp(totIn)+'</strong>', '<strong style="color:#c62828">'+_gbp(totOut)+'</strong>', '', ''], 'background:#f7f7f9');
+  rows += R_(['<span style="font-size:12px;color:#888;white-space:nowrap">'+_shortDay(R.end < _cashToday() ? R.end : _cashToday())+'</span>', '', '<strong>Balance carried forward</strong><div style="font-size:11px;color:#888">'+_gbp(bf)+' + '+_gbp(totIn)+' in − '+_gbp(totOut)+' out</div>', '', '', '<strong style="font-size:15px">'+_gbp(cf)+'</strong>', ''], 'background:#eef2ff');
 
   var btn = function(type, label, bg, col){ return '<button onclick="openCashForm(\''+type+'\')" style="'+btnStyle(bg, col, bg==='#fff')+'padding:9px 14px">'+label+'</button>'; };
 
@@ -5051,10 +5618,16 @@ async function rCashBook(skipLoad) {
     '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">'+
       '<h2 style="font-size:20px;font-weight:800">💵 Cash Tin</h2>'+
       '<div style="display:flex;gap:8px;align-items:center">'+
-        '<select onchange="setCashMonth(this.value)" style="padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;background:#fff">'+
-          mKeys.map(function(m){ return '<option value="'+m+'"'+(m===cashMonth?' selected':'')+'>'+monthLabel(m)+'</option>'; }).join('')+'</select>'+
         '<button onclick="expCashCSV()" style="'+btnStyle('#fff','#1a1a2e',true)+'">⬇ CSV</button>'+
       '</div>'+
+    '</div>'+
+    '<div style="display:flex;justify-content:center;align-items:center;gap:8px;margin:6px 0 14px;flex-wrap:wrap">'+
+      _periodChip(cbPeriod==='week','Week','cbSetPeriod(\'week\')')+_periodChip(cbPeriod==='month','Month','cbSetPeriod(\'month\')')+
+      '<span style="width:10px"></span>'+
+      '<button onclick="cbShift(-1)" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:7px 13px">←</button>'+
+      '<div style="font-size:17px;font-weight:800;min-width:190px;text-align:center">'+escapeHtml(R.label)+'</div>'+
+      '<button onclick="cbShift(1)" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:7px 13px">→</button>'+
+      (cbAnchor ? '<button onclick="cbNow()" style="'+btnStyle('#fff','#888',true)+'padding:7px 12px;font-size:12px">Now</button>' : '')+
     '</div>'+
     '<div style="font-size:12px;color:#888;margin-bottom:14px">Cash taken on jobs comes in automatically from the CRM. Log everything that leaves the tin, and count it at the end of each week.</div>'+
 
@@ -5087,8 +5660,8 @@ async function rCashBook(skipLoad) {
     '</div>'+
 
     '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
-      (rows ? '<table style="width:100%;border-collapse:collapse">'+th(['Date','What','Detail','Amount','Tin after',''])+'<tbody>'+rows+'</tbody></table>'
-            : '<div style="padding:30px;text-align:center;color:#888">No cash movements in '+monthLabel(cashMonth)+'.</div>')+
+      '<table style="width:100%;border-collapse:collapse">'+th(['Date','Type','Details','In','Out','Balance',''])+'<tbody>'+rows+'</tbody></table>'+
+      (inM.length ? '' : '<div style="padding:16px;text-align:center;color:#888;font-size:13px">No cash movements in '+escapeHtml(R.label)+'.</div>')+
     '</div>'+
     '<p style="margin-top:10px;font-size:12px;color:#888;line-height:1.5">Cash wages are recorded from the Payroll tab when you mark someone paid. Advances logged here are taken off that person\'s wages for the month. '+
     'Cash paid into Metro is matched to the statement automatically once it\'s uploaded in the Bank tab.</p>';
@@ -5220,16 +5793,16 @@ async function openCashReceipt(id) {
 }
 
 function expCashCSV() {
-  var L = cashLedger();
-  var rows = [['Date','Type','Detail','Category','Staff','In','Out','Counted','Difference','Tin after','By']];
-  L.all.forEach(function(e){
+  var L = cashLedger(), R = _mnRange(cbAnchor, cbPeriod);
+  var rows = [['KITH Cars — Cash book', R.label], [], ['Date','Type','Detail','Category','Staff','In','Out','Counted','Difference','Tin after','By']];
+  L.all.filter(function(e){ return e.date && e.date >= R.start && e.date <= R.end; }).forEach(function(e){
     var ty = CASH_TYPES[e.type] || {sign:0, label:e.type};
     var v = ty.sign * (+e.amount||0);
     rows.push([e.date, ty.label, (e.reg ? e.reg+' '+(e.customer||'')+' ' : '') + (e.payee||'') + (e.note?' '+e.note:''), e.cat||'', e.staffName||'',
       v > 0 ? v.toFixed(2) : '', v < 0 ? (-v).toFixed(2) : '', e.type==='count' ? (+e.counted).toFixed(2) : '',
       e.type==='count' && e._diff !== null ? e._diff.toFixed(2) : '', e._bal.toFixed(2), e.by||'']);
   });
-  dl(rows, 'KITH-Cash-Tin');
+  dl(rows, 'KITH-Cash-Book-' + R.start);
 }
 
 
@@ -5281,13 +5854,18 @@ function _payMethodName(m) {
 function _moneyFor(R, ledger) {
   var inR = function(day){ return day && day >= R.start && day <= R.end; };
   var M = {inMethods:{}, otherIn:{}, unmatchedIn:[], cardPayouts:0, out:{}, payees:{}, totIn:0, totOut:0,
-           cashTaken:0, cashBanked:0, paidBillsNoTrace:[], uncatOut:0, uncatOutN:0};
+           cashTaken:0, cashBanked:0, paidBillsNoTrace:[], uncatOut:0, uncatOutN:0, lines:[]};
+  var line = function(day, t, detail, via, inA, outA){ M.lines.push({date:day, t:t||0, detail:detail, via:via, inA:inA||0, outA:outA||0}); };
   // money in from jobs
   (sales || []).forEach(function(s){
     (s.payments || []).forEach(function(p){
       if (p.writeOff || /write-?off/i.test(p.method||'')) return;
       if (!inR(_bkDay(p.ts || p.at))) return;
       var amt = parseFloat(p.amount) || 0, m = _payMethodName(p.method);
+      var pd = _bkDay(p.ts || p.at);
+      var who = (s.reg ? s.reg + ' · ' : '') + (s.customer || '');
+      if (amt >= 0) line(pd, typeof p.ts === 'number' ? p.ts : 0, (s._crm ? jobLink(s.id, who || 'job') : escapeHtml(who||'Sale')) + (/deposit/i.test(p.ref||'') ? ' <span style="font-size:11px;color:#888">deposit</span>' : ''), m, amt, 0);
+      else line(pd, typeof p.ts === 'number' ? p.ts : 0, escapeHtml(who) + ' <span style="font-size:11px;color:#888">refund</span>', m, 0, -amt);
       if (!M.inMethods[m]) M.inMethods[m] = {n:0, amt:0};
       M.inMethods[m].n++; M.inMethods[m].amt += amt; M.totIn += amt;
     });
@@ -5302,17 +5880,19 @@ function _moneyFor(R, ledger) {
       if (t.cat === 'Card machine payout') { M.cardPayouts += t.amount; return; }
       if (t.jobId) return;                                   // already on the job
       if (!t.cat || t.cat === 'Customer payment' || t.cat === 'Insurance / fleet payment') {
-        if (t.noJobOk && t.cat) { var k0 = t.cat; M.otherIn[k0] = (M.otherIn[k0]||0) + t.amount; M.totIn += t.amount; }
+        if (t.noJobOk && t.cat) { var k0 = t.cat; M.otherIn[k0] = (M.otherIn[k0]||0) + t.amount; M.totIn += t.amount; line(t.date, 0, escapeHtml(t.payee||t.desc||k0)+' <span style="font-size:11px;color:#888">'+escapeHtml(k0)+'</span>', t.acct||'Bank', t.amount, 0); }
         else M.unmatchedIn.push(t);
         return;
       }
       M.otherIn[t.cat] = (M.otherIn[t.cat]||0) + t.amount; M.totIn += t.amount;
+      line(t.date, 0, escapeHtml(t.payee||t.desc||t.cat)+' <span style="font-size:11px;color:#888">'+escapeHtml(t.cat)+'</span>', t.acct||'Bank', t.amount, 0);
       return;
     }
     var c = t.cat || 'Not categorised';
     if (!t.cat) { M.uncatOut += t.amount; M.uncatOutN++; }
     if (!M.out[c]) M.out[c] = {bank:0, cash:0, n:0};
     M.out[c].bank += t.amount; M.out[c].n++; M.totOut += t.amount;
+    line(t.date, 0, escapeHtml(t.payee||t.desc||'?')+' <span style="font-size:11px;color:'+(t.cat?'#888':'#e65100')+'">'+escapeHtml(c)+'</span>', t.acct||'Bank', 0, t.amount);
     var pk = (t.cat === 'Wages' ? '👷 ' : '') + (t.payee || t.desc || '?');
     if (!M.payees[pk]) M.payees[pk] = {amt:0, n:0, cat:c};
     M.payees[pk].amt += t.amount; M.payees[pk].n++;
@@ -5323,7 +5903,8 @@ function _moneyFor(R, ledger) {
     if (e.type === 'job') { M.cashTaken += +e.amount||0; return; }
     if (e.type === 'otherin' || (e.type === 'topup' && e.source === 'owner')) {
       var k = e.type === 'otherin' ? 'Other cash in' : 'Director loan in (cash)';
-      M.otherIn[k] = (M.otherIn[k]||0) + (+e.amount||0); M.totIn += +e.amount||0; return;
+      M.otherIn[k] = (M.otherIn[k]||0) + (+e.amount||0); M.totIn += +e.amount||0;
+      line(e.date, e.t, escapeHtml(k) + (e.note ? ' <span style="font-size:11px;color:#888">'+escapeHtml(e.note)+'</span>' : ''), 'Cash tin', +e.amount||0, 0); return;
     }
     var cat = e.type === 'spent' ? (e.cat || 'Not categorised')
             : (e.type === 'wages' || e.type === 'advance') ? 'Wages'
@@ -5331,6 +5912,7 @@ function _moneyFor(R, ledger) {
     if (!cat) return;
     if (!M.out[cat]) M.out[cat] = {bank:0, cash:0, n:0};
     M.out[cat].cash += +e.amount||0; M.out[cat].n++; M.totOut += +e.amount||0;
+    line(e.date, e.t, escapeHtml(e.payee || e.staffName || (e.type === 'drawings' ? 'Director' : e.note) || cat)+' <span style="font-size:11px;color:#888">'+escapeHtml(cat)+'</span>', 'Cash tin', 0, +e.amount||0);
     var pk = (cat === 'Wages' ? '👷 ' : '') + (e.payee || e.staffName || (e.type === 'drawings' ? 'Director' : e.note) || cat);
     if (!M.payees[pk]) M.payees[pk] = {amt:0, n:0, cat:cat};
     M.payees[pk].amt += +e.amount||0; M.payees[pk].n++;
@@ -5466,6 +6048,8 @@ async function rCashFlow(skipLoad) {
       sc('Cash tin now', L.started ? _gbp(L.balance) : 'not counted', '#1a1a2e')+
     '</div>'+
 
+    _mnCashBook(R, M)+
+
     _bkTable('💰 Where the money came from', 'Customer payments on the day they were taken, by how they paid',
       [['Source'],['Amount','right'],['']], inRows, inRows.length?['Total', '<strong>'+_gbp(M.totIn)+'</strong>', '']:null, 'No money received in this period.')+
 
@@ -5487,6 +6071,43 @@ async function rCashFlow(skipLoad) {
         return [escapeHtml(t.label), _gbp(t.in), _gbp(t.out), '<strong style="color:'+(n>=0?'#2e7d32':'#c62828')+'">'+(n>=0?'+':'')+_gbp(n)+'</strong>',
           (t.in||t.out ? '<div style="min-width:120px">'+_bkBar(t.in, tMax, '#2e7d32')+'<div style="height:3px"></div>'+_bkBar(t.out, tMax, '#c62828')+'</div>' : '')]; }),
       null, '');
+}
+
+// Every payment in and out for the period, in date order, like a cash book:
+// in and out in their own columns, a running total, and weekly totals when
+// a whole month is shown.
+var mnBookOpen = true;
+function mnToggleBook() { mnBookOpen = !mnBookOpen; rCashFlow(true); }
+function _mnCashBook(R, M) {
+  var lines = M.lines.filter(function(l){ return l.date; }).sort(function(a,b){ return a.date.localeCompare(b.date) || (a.t||0) - (b.t||0); });
+  var head = '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'+
+    '<div><div style="'+stitle()+'margin:0">📒 Cash book — every payment in and out</div><div style="font-size:11px;color:#888;margin-top:2px">'+lines.length+' entries · '+escapeHtml(R.label)+'</div></div>'+
+    '<button onclick="mnToggleBook()" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:5px 12px;font-size:12px">'+(mnBookOpen?'Hide':'Show')+'</button></div>';
+  if (!mnBookOpen) return '<div style="'+cardStyle()+'margin-bottom:14px">'+head+'</div>';
+  if (!lines.length) return '<div style="'+cardStyle()+'margin-bottom:14px">'+head+'<div style="padding:20px;text-align:center;color:#888;font-size:13px">Nothing in or out in this period.</div></div>';
+  var cell = function(c, right, st){ return '<td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;font-size:13px;vertical-align:top'+(right?';text-align:right;white-space:nowrap':'')+(st||'')+'">'+c+'</td>'; };
+  var net = 0, wk = null, wIn = 0, wOut = 0, tIn = 0, tOut = 0, rows = '';
+  var wkRow = function(){
+    if (mnPeriod !== 'month' || wk === null) return '';
+    var we = new Date(wk+'T00:00:00'); we.setDate(we.getDate()+6);
+    return '<tr style="background:#fafafa">'+cell('')+cell('<span style="font-size:12px;font-weight:700;color:#555">Week '+new Date(wk+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' – '+we.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+'</span>')+cell('')+
+      cell('<span style="font-size:12px;font-weight:700;color:#2e7d32">'+_gbp(wIn)+'</span>',1)+cell('<span style="font-size:12px;font-weight:700;color:#c62828">'+_gbp(wOut)+'</span>',1)+
+      cell('<span style="font-size:12px;font-weight:700;color:'+(wIn-wOut>=0?'#2e7d32':'#c62828')+'">'+(wIn-wOut>=0?'+':'−')+_gbp(Math.abs(wIn-wOut))+'</span>',1)+'</tr>';
+  };
+  lines.forEach(function(l){
+    var w = _weekStart(l.date);
+    if (w !== wk) { rows += wkRow(); wk = w; wIn = 0; wOut = 0; }
+    net += l.inA - l.outA; tIn += l.inA; tOut += l.outA; wIn += l.inA; wOut += l.outA;
+    rows += '<tr>'+cell('<span style="font-size:12px;color:#888;white-space:nowrap">'+_shortDay(l.date)+'</span>')+cell(l.detail)+
+      cell('<span style="font-size:11px;background:#f1f5f9;color:#475569;padding:2px 7px;border-radius:4px;white-space:nowrap">'+escapeHtml(l.via)+'</span>')+
+      cell(l.inA ? '<strong style="color:#2e7d32">'+_gbp(l.inA)+'</strong>' : '',1)+cell(l.outA ? '<strong style="color:#c62828">'+_gbp(l.outA)+'</strong>' : '',1)+
+      cell('<span style="color:'+(net>=0?'#555':'#c62828')+'">'+(net>=0?'':'−')+_gbp(Math.abs(net))+'</span>',1)+'</tr>';
+  });
+  rows += wkRow();
+  rows += '<tr style="background:#eef2ff">'+cell('')+cell('<strong>Totals</strong>')+cell('')+cell('<strong style="color:#2e7d32">'+_gbp(tIn)+'</strong>',1)+cell('<strong style="color:#c62828">'+_gbp(tOut)+'</strong>',1)+
+    cell('<strong style="color:'+(tIn-tOut>=0?'#2e7d32':'#c62828')+'">'+(tIn-tOut>=0?'+':'−')+_gbp(Math.abs(tIn-tOut))+'</strong>',1)+'</tr>';
+  return '<div style="'+cardStyle()+'margin-bottom:14px;padding:0;overflow-x:auto"><div style="padding:14px 14px 10px">'+head+'</div>'+
+    '<table style="width:100%;border-collapse:collapse">'+th(['Date','Details','Paid by / from','In','Out','Running total'])+'<tbody>'+rows+'</tbody></table></div>';
 }
 
 function expMoneyCSV() {
@@ -5517,27 +6138,49 @@ function expMoneyCSV() {
 var currentPayrollMonth = (function(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");})(new Date());  // "YYYY-MM"
 var _payrollList = [];
 
+// Your Supabase has kith_staff (no hourly_rate column) and no kith_payroll
+// table, so rates and "paid" records are kept in kith_bank_tx instead
+// (RATE-<staff> and PAYREC-<staff>_<month>). If the columns/table are added
+// later they're still read, so nothing is lost either way.
+var _rateCache = null;
+async function fetchRates() {
+  try {
+    var rows = await sbAll('kith_bank_tx?select=id,data&id=like.RATE-*&order=id.asc');
+    _rateCache = {};
+    rows.forEach(function(r){ if (r.data && r.data.kind === 'rate') _rateCache[r.data.staffId] = +r.data.rate || 0; });
+  } catch(e) { _rateCache = _rateCache || {}; }
+  return _rateCache;
+}
 async function fetchStaff() {
   try {
-    var r = await fetch(SB+'/rest/v1/kith_staff?select=*&order=name.asc', {headers:SH});
-    return await r.json() || [];
+    var got = await Promise.all([fetch(SB+'/rest/v1/kith_staff?select=*&order=name.asc', {headers:SH}).then(function(r){ return r.ok ? r.json() : []; }), fetchRates()]);
+    var staff = Array.isArray(got[0]) ? got[0] : [], rates = got[1] || {};
+    staff.forEach(function(s){ if (rates[s.id] !== undefined) s.hourly_rate = rates[s.id]; });
+    return staff;
   } catch(e) { console.warn('fetchStaff:',e); return []; }
 }
 async function fetchShifts(month) {
+  var s0 = new Date(month + '-01T00:00:00');
+  var e0 = new Date(s0); e0.setMonth(e0.getMonth()+1);
+  return fetchShiftsRange(s0, e0);
+}
+async function fetchShiftsRange(s0, e0) {
   try {
-    var s0 = new Date(month + '-01T00:00:00');
-    var e0 = new Date(s0); e0.setMonth(e0.getMonth()+1);
-    var url = SB+'/rest/v1/kith_shifts?clock_in=gte.'+encodeURIComponent(s0.toISOString())+
-              '&clock_in=lt.'+encodeURIComponent(e0.toISOString())+'&select=*';
-    var r = await fetch(url, {headers:SH});
-    return await r.json() || [];
+    return await sbAll('kith_shifts?clock_in=gte.'+encodeURIComponent(s0.toISOString())+
+              '&clock_in=lt.'+encodeURIComponent(e0.toISOString())+'&select=*&order=clock_in.asc');
   } catch(e) { console.warn('fetchShifts:',e); return []; }
 }
 async function fetchPayrollPaid(month) {
+  var out = [];
   try {
     var r = await fetch(SB+'/rest/v1/kith_payroll?month=eq.'+encodeURIComponent(month)+'&select=*', {headers:SH});
-    return await r.json() || [];
-  } catch(e) { return []; }
+    if (r.ok) { var a = await r.json(); if (Array.isArray(a)) out = a; }
+  } catch(e) {}
+  try {
+    var rows = await sbAll('kith_bank_tx?select=id,data&id=like.PAYREC-*'+encodeURIComponent('_'+month)+'&order=id.asc');
+    rows.forEach(function(x){ var d = x.data; if (d && d.kind === 'payrec' && d.month === month && !out.some(function(o){ return o.staff_id === d.staff_id; })) out.push(d); });
+  } catch(e) {}
+  return out;
 }
 async function fetchWagePays(month) {
   try {
@@ -5579,6 +6222,7 @@ async function _payrollData(month) {
   });
   shifts.forEach(function(sh){
     var b = byStaff[sh.staff_id]; if (!b) return;
+    if (_shiftFlags(sh).some(function(f){ return f.t !== 'still clocked in' && f.t !== 'no location'; })) b.flagged = (b.flagged||0) + 1;
     if (!sh.clock_out) { b.open++; return; }
     b.mins += Math.max(0, Math.floor((new Date(sh.clock_out) - new Date(sh.clock_in)) / 60000));
     b.shifts += 1;
@@ -5594,7 +6238,7 @@ async function _payrollData(month) {
     var b = byStaff[e.staffId]; if (!b) return;
     b.advances += +e.amount || 0; b.advList.push(e);
   });
-  var list = Object.keys(byStaff).map(function(k){ return byStaff[k]; });
+  var list = Object.keys(byStaff).map(function(k){ return byStaff[k]; }).filter(function(p){ return p.active || p.mins || p.open || p.paid || p.advances; });
   list.forEach(function(p){
     p.hours = p.mins/60;
     p.calcGross = +(p.hours * p.rate).toFixed(2);
@@ -5660,7 +6304,8 @@ async function rPayroll() {
       : noRate ? '<span style="font-size:10px;color:#c62828">Set rate first</span>'
       : '<button onclick="openPayrollPay(\''+p.id+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:4px 10px;font-size:11px">✓ Pay</button>';
     return '<tr style="'+(noRate && p.mins?'background:#fff5f5':'')+(noWork?'opacity:.55':'')+'">'+
-      td('<strong>'+escapeHtml(p.name)+'</strong><div style="font-size:11px;color:#888">'+escapeHtml(p.role)+'</div>'+(p.open?'<div style="font-size:10px;color:#e65100">'+p.open+' shift still clocked in</div>':''))+
+      td('<strong onclick="openShifts(\''+escapeHtml(String(p.id))+'\')" style="cursor:pointer;color:#1565c0;text-decoration:underline">'+escapeHtml(p.name)+'</strong><div style="font-size:11px;color:#888">'+escapeHtml(p.role)+'</div>'+
+         (p.flagged ? '<div style="font-size:10px;color:#e65100;font-weight:700">⚠ '+p.flagged+' shift'+(p.flagged>1?'s':'')+' to check</div>' : '')+(p.open?'<div style="font-size:10px;color:#e65100">'+p.open+' shift still clocked in</div>':''))+
       td(p.mins?('<strong>'+h+'h '+m+'m</strong><div style="font-size:10px;color:#888">'+p.shifts+' shift'+(p.shifts>1?'s':'')+'</div>'):'<span style="color:#ccc">—</span>')+
       td('<span onclick="editRate(\''+p.id+'\')" style="cursor:pointer;color:'+(noRate?'#c62828':'#1565c0')+';text-decoration:underline">'+(noRate?'Set rate':'£'+p.rate.toFixed(2))+'</span>')+
       td(noRate||!p.mins&&!p.paid?'<span style="color:#ccc">—</span>':('<strong>'+_gbp(p.gross)+'</strong>'))+
@@ -5678,8 +6323,20 @@ async function rPayroll() {
         '<h2 style="font-size:20px;font-weight:800">💷 Payroll</h2>'+
         '<div style="font-size:12px;color:#888;margin-top:2px">Hours from clock-in × hourly rate, less cash advances. Bookkeeping only — tax, NI and pension stay in your payroll software.</div>'+
       '</div>'+
-      '<button onclick="expPayrollCSV()" style="'+btnStyle('#fff','#1a1a2e',true)+'">⬇ CSV</button>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+        '<button onclick="openStaffAdmin()" style="'+btnStyle('#1a1a2e','#fff')+'">👥 Staff &amp; PINs</button>'+
+        '<button onclick="openShiftForm(\'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'">+ Missing shift</button>'+
+        '<button onclick="document.getElementById(\'sheet-in\').click()" style="'+btnStyle('#fff','#1a1a2e',true)+'">📄 Scan paper sheet</button>'+
+        '<input type="file" id="sheet-in" accept="image/*,application/pdf" capture="environment" style="display:none" onchange="scanSignSheet(this.files[0]);this.value=\'\'">'+
+        '<button onclick="expPayrollCSV()" style="'+btnStyle('#fff','#1a1a2e',true)+'">⬇ CSV</button>'+
+      '</div>'+
     '</div>'+
+    (!_payrollList.some(function(x){ return x.mins > 0 || x.open; })
+      ? '<div style="background:#e3f2fd;border:1px solid #90caf9;color:#0d47a1;border-radius:10px;padding:12px 14px;font-size:13px;margin-bottom:14px;line-height:1.6">'+
+          '<strong>Nobody has clocked in with the QR code this month.</strong> To switch over from the paper sheet: '+
+          '1) 👥 Staff &amp; PINs — mark leavers as left, add new people, give everyone their own PIN and hourly rate. '+
+          '2) Print the QR poster and put it by the door. 3) Staff scan it with their phone on arrival and when they leave. '+
+          'Until then, 📄 Scan paper sheet or + Missing shift fills the gaps.</div>' : '')+
 
     '<div style="display:flex;justify-content:center;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">'+
       '<button onclick="setPayrollMonth(\''+prev+'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:8px 14px;font-size:12px">←</button>'+
@@ -5708,16 +6365,240 @@ async function rPayroll() {
     'Advances are logged in the Cash Tin and taken off here. "On bank statement" shows wages to that person found on the statements for the month (and the first 10 days after).</p>';
 }
 
+// ---- STAFF, CLOCK-IN AND SHIFT FIXES ----
+// The QR clock-in (clock.html) is the record: phone scan, own PIN, server
+// time, location checked. The paper sheet is only a backup — anything
+// typed or scanned in from it is marked as a hand entry so it stands out.
+
+function _shiftFlags(sh) {
+  var m = String(sh.method || '');
+  var f = [];
+  if (/^manual|^sheet/i.test(m)) f.push({t:/^sheet/i.test(m)?'from paper sheet':'added by hand', c:'#e65100'});
+  if (/edited/i.test(m)) f.push({t:'edited', c:'#e65100'});
+  var far = m.match(/(\d+)m away/); if (far) f.push({t:far[1]+'m from workshop', c:'#c62828'});
+  if (/no location/i.test(m)) f.push({t:'no location', c:'#888'});
+  if (!sh.clock_out) f.push({t:'still clocked in', c:'#1565c0'});
+  return f;
+}
+function _hm(mins) { return Math.floor(mins/60) + 'h ' + String(mins%60).padStart(2,'0') + 'm'; }
+function _localInput(iso) { if (!iso) return ''; var d = new Date(iso); return _ymdL(d) + 'T' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); }
+function _tm(iso) { return iso ? new Date(iso).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : '—'; }
+
+var _shiftCache = {};
+async function openShifts(staffId) {
+  var p = _payrollList.filter(function(x){ return String(x.id) === String(staffId); })[0]; if (!p) return;
+  var shifts = (await fetchShifts(currentPayrollMonth)).filter(function(x){ return String(x.staff_id) === String(staffId); });
+  shifts.forEach(function(x){ _shiftCache[x.id] = x; });
+  var rows = shifts.map(function(sh){
+    var mins = sh.clock_out ? Math.max(0, Math.floor((new Date(sh.clock_out) - new Date(sh.clock_in))/60000)) : 0;
+    return '<tr>'+td('<span style="font-size:12px">'+escapeHtml(_shortDay(_ymdL(new Date(sh.clock_in))))+'</span>')+
+      td(_tm(sh.clock_in))+td(_tm(sh.clock_out))+td(sh.clock_out ? '<strong>'+_hm(mins)+'</strong>' : '')+
+      td(_shiftFlags(sh).map(function(f){ return '<span style="font-size:10px;font-weight:700;color:'+f.c+';margin-right:6px">'+escapeHtml(f.t)+'</span>'; }).join('') +
+         (/manual|sheet|edited/i.test(sh.method||'') ? '<div style="font-size:10px;color:#888">'+escapeHtml(String(sh.method).slice(0,120))+'</div>' : ''))+
+      td('<button onclick="openShiftForm(\''+escapeHtml(String(staffId))+'\',\''+escapeHtml(String(sh.id))+'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:3px 9px;font-size:11px">Fix</button>')+'</tr>';
+  }).join('');
+  _checkModal('<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">🕐 '+escapeHtml(p.name)+' — '+monthLabel(currentPayrollMonth)+'</h3>'+
+    '<button onclick="closeBillCheck()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888">✕</button></div>'+
+    '<div style="font-size:12px;color:#888;margin:4px 0 10px">Every clock-in and clock-out. Hand entries and edits are marked so they can be checked.</div>'+
+    (rows ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+th(['Day','In','Out','Hours','Checks',''])+'<tbody>'+rows+'</tbody></table></div>'
+          : '<div style="padding:20px;text-align:center;color:#888">No shifts this month.</div>')+
+    '<button onclick="openShiftForm(\''+escapeHtml(String(staffId))+'\')" style="'+btnStyle('#1a1a2e','#fff')+'margin-top:12px">+ Add a missing shift</button>');
+}
+
+function openShiftForm(staffId, shiftId) {
+  var staffList = _payrollList.filter(function(x){ return x.active || String(x.id) === String(staffId); });
+  var sh = shiftId ? _shiftCache[shiftId] : null;
+  var day = _cashToday();
+  var inV = sh ? _localInput(sh.clock_in) : day + 'T08:00', outV = sh ? _localInput(sh.clock_out) : day + 'T17:00';
+  closeBillCheck();
+  _cashModal('<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">'+(sh?'Fix shift':'Add a missing shift')+'</h3>'+
+    '<button onclick="closeCashForm()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">✕</button></div>'+
+    '<div style="font-size:12px;color:#888;margin-top:4px">Only for when someone forgot to scan or the phone failed. It\'s marked as a hand entry with your name and the reason.</div>'+
+    _fLabel('Who') + '<select id="sf-staff" style="'+_fIn+'"'+(sh?' disabled':'')+'>'+staffList.map(function(x){ return '<option value="'+escapeHtml(String(x.id))+'"'+(String(x.id)===String(staffId)?' selected':'')+'>'+escapeHtml(x.name)+'</option>'; }).join('')+'</select>'+
+    _fLabel('Clocked in') + '<input id="sf-in" type="datetime-local" value="'+inV+'" style="'+_fIn+'">'+
+    _fLabel('Clocked out') + '<input id="sf-out" type="datetime-local" value="'+outV+'" style="'+_fIn+'">'+
+    _fLabel('Reason') + '<input id="sf-why" placeholder="e.g. forgot to scan — on the paper sheet" style="'+_fIn+'">'+
+    '<div id="sf-err" style="color:#c62828;font-size:13px;margin-top:10px"></div>'+
+    '<button id="sf-save" onclick="saveShiftForm(\''+(shiftId?escapeHtml(String(shiftId)):'')+'\')" style="'+btnStyle('#2e7d32','#fff')+'width:100%;margin-top:14px;padding:12px;font-size:15px">Save</button>');
+}
+
+async function saveShiftForm(shiftId) {
+  var err = function(m){ document.getElementById('sf-err').textContent = m; };
+  var staffId = document.getElementById('sf-staff').value;
+  var inV = document.getElementById('sf-in').value, outV = document.getElementById('sf-out').value;
+  var why = document.getElementById('sf-why').value.trim();
+  if (!inV) return err('Enter the clock-in time.');
+  if (!why) return err('Say why — this is what stops made-up hours.');
+  var ci = new Date(inV), co = outV ? new Date(outV) : null;
+  if (co && co <= ci) return err('Clock-out must be after clock-in.');
+  if (co && (co - ci) > 16*3600000) return err('That\'s over 16 hours — check the times.');
+  var btn = document.getElementById('sf-save'); btn.disabled = true; btn.textContent = 'Saving…';
+  var stamp = ' (by ' + (user||'') + ' ' + ts() + ': ' + why + ')';
+  try {
+    var r;
+    if (shiftId) {
+      var old = _shiftCache[shiftId] || {};
+      var was = ' was ' + _tm(old.clock_in) + '–' + _tm(old.clock_out);
+      r = await fetch(SB+'/rest/v1/kith_shifts?id=eq.'+encodeURIComponent(shiftId), {method:'PATCH', headers:SH,
+        body: JSON.stringify({clock_in: ci.toISOString(), clock_out: co ? co.toISOString() : null, method: String(old.method||'') + ' · edited' + was + stamp})});
+    } else {
+      r = await fetch(SB+'/rest/v1/kith_shifts', {method:'POST', headers:SH,
+        body: JSON.stringify({staff_id: staffId, clock_in: ci.toISOString(), clock_out: co ? co.toISOString() : null, method: 'manual' + stamp})});
+    }
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0,120));
+  } catch(e) { btn.disabled = false; btn.textContent = 'Save'; return err('Save failed: ' + e.message); }
+  closeCashForm();
+  await rPayroll();
+  openShifts(staffId);
+}
+
+// ---- Staff list (who can clock in, their PIN, rate, on-site or remote) ----
+async function openStaffAdmin() {
+  var staff = await fetchStaff();
+  var rows = staff.map(function(s){
+    var id = escapeHtml(String(s.id));
+    return '<tr style="'+(s.active===false?'opacity:.5':'')+'">'+
+      td('<strong>'+escapeHtml(s.name)+'</strong><div style="font-size:11px;color:#888">'+escapeHtml(s.role||'')+'</div>')+
+      td('<span style="font-family:monospace">••••</span>')+
+      td(s.hourly_rate ? '£'+(+s.hourly_rate).toFixed(2) : '<span style="color:#c62828;font-size:11px">no rate</span>')+
+      td(s.site === false ? 'Remote' : 'On site')+
+      td(s.active === false ? '<span style="color:#888">Left</span>' : '<span style="color:#2e7d32">Active</span>')+
+      td('<button onclick="openStaffForm(\''+id+'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:3px 9px;font-size:11px">Edit</button>')+'</tr>';
+  }).join('');
+  window._staffAdmin = staff;
+  _checkModal('<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">👥 Staff who clock in</h3>'+
+    '<button onclick="closeBillCheck()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888">✕</button></div>'+
+    '<div style="font-size:12px;color:#888;margin:4px 0 10px">These are the names on the clock-in screen. Mark leavers as left (their past hours stay). Each person needs their own PIN.</div>'+
+    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+th(['Name','PIN','Rate','Where','Status',''])+'<tbody>'+rows+'</tbody></table></div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'+
+      '<button onclick="openStaffForm()" style="'+btnStyle('#1a1a2e','#fff')+'">+ Add someone</button>'+
+      '<a href="clock-poster.html" target="_blank" style="'+btnStyle('#fff','#1a1a2e',true)+'text-decoration:none;display:inline-block">🖨 Print the clock-in QR poster</a>'+
+    '</div>');
+}
+function openStaffForm(id) {
+  var s = id ? (window._staffAdmin||[]).filter(function(x){ return String(x.id) === String(id); })[0] : null;
+  s = s || {name:'', role:'', pin:'', site:true, active:true, hourly_rate:''};
+  closeBillCheck();
+  _cashModal('<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">'+(id?'Edit '+escapeHtml(s.name):'Add someone')+'</h3>'+
+    '<button onclick="closeCashForm();openStaffAdmin()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">✕</button></div>'+
+    _fLabel('Name') + '<input id="sa2-name" value="'+escapeHtml(s.name||'')+'" style="'+_fIn+'">'+
+    _fLabel('Role') + '<input id="sa2-role" value="'+escapeHtml(s.role||'')+'" placeholder="e.g. Estimator, Mechanic" style="'+_fIn+'">'+
+    _fLabel('4-digit PIN for clocking in') + '<input id="sa2-pin" inputmode="numeric" maxlength="4" value="" placeholder="'+(id?'leave blank to keep their PIN':'e.g. 4821')+'" style="'+_fIn+'">'+
+    _fLabel('Hourly rate £') + '<input id="sa2-rate" inputmode="decimal" value="'+escapeHtml(s.hourly_rate?String(s.hourly_rate):'')+'" style="'+_fIn+'">'+
+    '<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:14px"><input type="checkbox" id="sa2-remote" '+(s.site===false?'checked':'')+'> Works remotely (no location check)</label>'+
+    (id ? '<label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px"><input type="checkbox" id="sa2-left" '+(s.active===false?'checked':'')+'> Has left — remove from the clock-in screen</label>' : '')+
+    '<div id="sa2-err" style="color:#c62828;font-size:13px;margin-top:10px"></div>'+
+    '<button id="sa2-save" onclick="saveStaffForm(\''+(id?escapeHtml(String(id)):'')+'\')" style="'+btnStyle('#2e7d32','#fff')+'width:100%;margin-top:14px;padding:12px;font-size:15px">Save</button>');
+}
+async function saveStaffForm(id) {
+  var err = function(m){ document.getElementById('sa2-err').textContent = m; };
+  var name = document.getElementById('sa2-name').value.trim();
+  var pinV = document.getElementById('sa2-pin').value.trim();
+  var rateV = document.getElementById('sa2-rate').value.trim();
+  if (!name) return err('Enter their name.');
+  if (!id && !/^\d{4}$/.test(pinV)) return err('Give them a 4-digit PIN.');
+  if (id && pinV && !/^\d{4}$/.test(pinV)) return err('The PIN must be 4 digits.');
+  var all = window._staffAdmin || [];
+  if (pinV && all.some(function(x){ return String(x.pin) === pinV && String(x.id) !== String(id) && x.active !== false; })) return err('Someone else already has that PIN — pick another.');
+  var rate = rateV ? parseMoney(rateV) : null;
+  if (rateV && isNaN(rate)) return err('Rate must be a number, e.g. 12.50');
+  var row = {name: name, role: document.getElementById('sa2-role').value.trim(), site: !document.getElementById('sa2-remote').checked};
+  if (pinV) row.pin = pinV;
+  var leftEl = document.getElementById('sa2-left'); row.active = leftEl ? !leftEl.checked : true;
+  var btn = document.getElementById('sa2-save'); btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    var r;
+    if (id) r = await fetch(SB+'/rest/v1/kith_staff?id=eq.'+encodeURIComponent(id), {method:'PATCH', headers:SH, body: JSON.stringify(row)});
+    else {
+      id = name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || ('staff-' + Date.now());
+      if (all.some(function(x){ return String(x.id) === id; })) id += '-' + String(Date.now()).slice(-4);
+      row.id = id;
+      r = await fetch(SB+'/rest/v1/kith_staff', {method:'POST', headers:SH, body: JSON.stringify(row)});
+    }
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0,120));
+    if (rate !== null) await fetch(SB+'/rest/v1/kith_bank_tx', {method:'POST', headers:SH,
+      body: JSON.stringify({id:'RATE-'+id, data:{kind:'rate', staffId:id, rate:rate, at:ts(), by:user||''}, updated_at:new Date().toISOString()})});
+  } catch(e) { btn.disabled = false; btn.textContent = 'Save'; return err('Save failed: ' + e.message); }
+  cashStaff = []; bankStaff = [];
+  closeCashForm();
+  await openStaffAdmin();
+  rPayroll();
+}
+
+// ---- Backup: read a photo of the paper sign-in sheet ----
+async function scanSignSheet(file) {
+  if (!file) return;
+  var staff = _payrollList.filter(function(x){ return x.active; });
+  _checkModal('<div style="padding:30px;text-align:center;color:#0d47a1">⏳ Reading the sign-in sheet…</div>');
+  var prompt = ROBUST_HINT +
+    'This is a paper staff sign-in / sign-out sheet from KITH Cars (UK garage). Read every row.\n' +
+    'Return ONLY JSON: {"rows":[{"name":"","date":"YYYY-MM-DD","in":"HH:MM","out":"HH:MM or empty","unclear":false}]}\n' +
+    'Use 24-hour times. UK dates are DD/MM. If the year is missing assume ' + new Date().getFullYear() + '. ' +
+    'Set "unclear": true for any row you cannot read confidently. Our staff: ' + staff.map(function(x){ return x.name; }).join(', ') + '.';
+  var p;
+  try { p = await scanDocument(file, prompt); }
+  catch(e) { _checkModal('<div style="padding:20px;color:#c62828">Couldn\'t read it: '+escapeHtml(e.message)+'</div><button onclick="closeBillCheck()" style="'+btnStyle('#fff','#1a1a2e',true)+'">Close</button>'); return; }
+  var docPath = await sbUploadDoc(file, 'signsheets');
+  var rows = (p && Array.isArray(p.rows)) ? p.rows : [];
+  var match = function(n){ n = String(n||'').toLowerCase().trim(); return staff.filter(function(x){ var a = String(x.name).toLowerCase(); return a === n || a.split(' ')[0] === n.split(' ')[0]; })[0]; };
+  window._sheetRows = rows.map(function(r){ var m = match(r.name); return {name:r.name, staffId: m ? m.id : '', date:r.date||'', inT:r.in||'', outT:r.out||'', unclear:!!r.unclear}; });
+  window._sheetDoc = docPath;
+  var opt = function(sel){ return '<option value="">— who? —</option>' + staff.map(function(x){ return '<option value="'+escapeHtml(String(x.id))+'"'+(String(x.id)===String(sel)?' selected':'')+'>'+escapeHtml(x.name)+'</option>'; }).join(''); };
+  var body = window._sheetRows.map(function(r, i){
+    return '<tr style="'+(r.unclear||!r.staffId?'background:#fff5f5':'')+'">'+
+      td('<input type="checkbox" id="ss-ok-'+i+'" '+(r.unclear||!r.staffId?'':'checked')+'>')+
+      td('<select id="ss-who-'+i+'" style="padding:4px">'+opt(r.staffId)+'</select><div style="font-size:10px;color:#888">read as "'+escapeHtml(r.name||'')+'"</div>')+
+      td('<input id="ss-d-'+i+'" type="date" value="'+escapeHtml(r.date)+'" style="padding:4px">')+
+      td('<input id="ss-in-'+i+'" type="time" value="'+escapeHtml(r.inT)+'" style="padding:4px">')+
+      td('<input id="ss-out-'+i+'" type="time" value="'+escapeHtml(r.outT)+'" style="padding:4px">')+
+      td(r.unclear ? '<span style="font-size:10px;color:#c62828;font-weight:700">hard to read</span>' : '')+'</tr>';
+  }).join('');
+  _checkModal('<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">📄 Sign-in sheet — check before saving</h3>'+
+    '<button onclick="closeBillCheck()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888">✕</button></div>'+
+    '<div style="font-size:12px;color:#888;margin:4px 0 10px">Tick the rows to add. Rows that clash with a QR clock-in on the same day are skipped — the QR record wins.'+(docPath?' The photo is saved with them.':'')+'</div>'+
+    (body ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+th(['Add','Who','Date','In','Out',''])+'<tbody>'+body+'</tbody></table></div>' : '<div style="padding:20px;color:#888">No rows found on the sheet.</div>')+
+    '<div id="ss-err" style="color:#c62828;font-size:13px;margin-top:8px"></div>'+
+    (body ? '<button id="ss-save" onclick="saveSignSheet()" style="'+btnStyle('#2e7d32','#fff')+'margin-top:12px;padding:10px 16px">Add ticked shifts</button>' : ''));
+}
+async function saveSignSheet() {
+  var rows = window._sheetRows || [], add = [];
+  rows.forEach(function(r, i){
+    if (!document.getElementById('ss-ok-'+i).checked) return;
+    var who = document.getElementById('ss-who-'+i).value, d = document.getElementById('ss-d-'+i).value,
+        a = document.getElementById('ss-in-'+i).value, b = document.getElementById('ss-out-'+i).value;
+    if (!who || !d || !a) return;
+    var ci = new Date(d+'T'+a), co = b ? new Date(d+'T'+b) : null;
+    if (co && co <= ci) return;
+    add.push({staff_id: who, clock_in: ci.toISOString(), clock_out: co ? co.toISOString() : null,
+      method: 'sheet (by ' + (user||'') + ' ' + ts() + (window._sheetDoc ? ' · ' + window._sheetDoc : '') + ')'});
+  });
+  if (!add.length) { document.getElementById('ss-err').textContent = 'Nothing ticked with a name, date and time.'; return; }
+  // don't double up with a QR clock-in on the same day
+  var days = add.map(function(x){ return x.clock_in; }).sort();
+  var s0 = new Date(days[0]); s0.setHours(0,0,0,0); var e0 = new Date(days[days.length-1]); e0.setHours(24,0,0,0);
+  var have = await fetchShiftsRange(s0, e0);
+  var skipped = 0;
+  add = add.filter(function(x){
+    var dup = have.some(function(h){ return String(h.staff_id) === String(x.staff_id) && _ymdL(new Date(h.clock_in)) === _ymdL(new Date(x.clock_in)); });
+    if (dup) skipped++; return !dup;
+  });
+  if (add.length) {
+    var r = await fetch(SB+'/rest/v1/kith_shifts', {method:'POST', headers:SH, body: JSON.stringify(add)});
+    if (!r.ok) { document.getElementById('ss-err').textContent = 'Save failed: HTTP ' + r.status; return; }
+  }
+  closeBillCheck();
+  await rPayroll();
+  alert(add.length + ' shift' + (add.length===1?'':'s') + ' added from the sheet' + (skipped ? ', ' + skipped + ' skipped (already clocked in by QR that day)' : '') + '.');
+}
+
 async function editRate(staffId) {
   var r = prompt('Hourly rate (£) — enter as a number, e.g. 12.50');
   if (r === null) return;
   var n = parseFloat(r);
   if (isNaN(n) || n < 0) { alert('Not a valid number.'); return; }
   try {
-    var resp = await fetch(SB+'/rest/v1/kith_staff?id=eq.'+encodeURIComponent(staffId), {
-      method:'PATCH', headers:SH,
-      body: JSON.stringify({hourly_rate: n})
-    });
+    var resp = await fetch(SB+'/rest/v1/kith_bank_tx', {method:'POST', headers:SH,
+      body: JSON.stringify({id:'RATE-'+staffId, data:{kind:'rate', staffId:staffId, rate:n, at:ts(), by:user||''}, updated_at:new Date().toISOString()})});
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
   } catch(e) { alert('Save failed: '+e.message); return; }
   rPayroll();
@@ -5760,7 +6641,8 @@ async function savePayrollPay(staffId) {
   var body = {id: key, staff_id: staffId, month: month, hours: p.hours, rate: p.rate, gross: p.calcGross,
               paid: true, paid_at: now, paid_by: user};
   try {
-    var r = await fetch(SB+'/rest/v1/kith_payroll', {method:'POST', headers:SH, body: JSON.stringify(body)});
+    var rec = Object.assign({kind:'payrec'}, body);
+    var r = await fetch(SB+'/rest/v1/kith_bank_tx', {method:'POST', headers:SH, body: JSON.stringify({id:'PAYREC-'+key, data:rec, updated_at:now})});
     if (!r.ok) throw new Error('HTTP ' + r.status);
   } catch(e) { err('Save failed: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = '✓ Mark paid'; } return; }
   var wp = {kind:'wagepay', id:'WAGE-' + key, staffId: staffId, name: p.name, month: month, gross: p.calcGross,
@@ -5784,9 +6666,8 @@ async function markPayrollPaid(staffId) { openPayrollPay(staffId); }
 async function markPayrollUnpaid(staffId) {
   if (!confirm('Undo this payment? It goes back to unpaid, and any cash wages are put back in the tin.')) return;
   var key = staffId + '_' + currentPayrollMonth;
-  try {
-    await fetch(SB+'/rest/v1/kith_payroll?id=eq.'+encodeURIComponent(key), {method:'DELETE', headers:SH});
-  } catch(e) {}
+  try { await fetch(SB+'/rest/v1/kith_payroll?id=eq.'+encodeURIComponent(key), {method:'DELETE', headers:SH}); } catch(e) {}
+  await sbDel('kith_bank_tx', 'PAYREC-' + key);
   await sbDel('kith_bank_tx', 'WAGE-' + key);
   await sbDel('kith_bank_tx', 'CASH-WAGE-' + key);
   cashEntries = cashEntries.filter(function(x){ return x.id !== 'CASH-WAGE-' + key; });
