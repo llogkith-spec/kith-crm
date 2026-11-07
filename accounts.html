@@ -910,13 +910,71 @@ function rROs() {
     '</tr>';}).join('')+'</tbody></table></div>';
 }
 
+// ---- Period switch for Bills & Expenses: today / week / month / all time ----
+var exPeriod = 'month', exAnchor = null;
+function exSetPeriod(p) { exPeriod = p; rExp(); }
+function exShift(d) {
+  var a = new Date((exAnchor || _bkToday()) + 'T00:00:00');
+  if (exPeriod === 'day') a.setDate(a.getDate() + d);
+  else if (exPeriod === 'week') a.setDate(a.getDate() + 7*d);
+  else a = new Date(a.getFullYear(), a.getMonth() + d, 1);
+  exAnchor = _ymdL(a); rExp();
+}
+function exNow() { exAnchor = null; rExp(); }
+function exGoMonth(ym) { exPeriod = 'month'; exAnchor = ym + '-01'; rExp(); window.scrollTo(0,0); }
+function _exRange() {
+  if (exPeriod === 'all') return {start:'', end:'9999', label:'Since the beginning'};
+  if (exPeriod === 'day') { var a = exAnchor || _bkToday(); return {start:a, end:a, label:new Date(a+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}; }
+  return _mnRange(exAnchor, exPeriod);
+}
+function _billDay(i) { return normDate(i.date) || _bkDay(i.createdAt) || ''; }
+function _billInc(i) { return (parseFloat(i.net)||0) + (parseFloat(i.vat)||0); }
+
+function exPeriodBar(R) {
+  var chip = function(p, l){ return _periodChip(exPeriod === p, l, 'exSetPeriod(\''+p+'\')'); };
+  return '<div style="display:flex;justify-content:center;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">'+
+    chip('day','Today')+chip('week','Week')+chip('month','Month')+chip('all','All time')+
+    (exPeriod !== 'all'
+      ? '<span style="width:8px"></span><button onclick="exShift(-1)" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:7px 13px">←</button>'+
+        '<div style="font-size:16px;font-weight:800;min-width:180px;text-align:center">'+escapeHtml(R.label)+'</div>'+
+        '<button onclick="exShift(1)" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:7px 13px">→</button>'+
+        (exAnchor ? '<button onclick="exNow()" style="'+btnStyle('#fff','#888',true)+'padding:7px 12px;font-size:12px">Now</button>' : '')
+      : '<div style="font-size:16px;font-weight:800;margin-left:8px">Since the beginning</div>')+
+  '</div>';
+}
+
+// Month-by-month table — every month since the first bill
+function exMonthsCard(list) {
+  var M = {};
+  list.forEach(function(i){
+    var k = (_billDay(i) || '').slice(0,7) || 'unknown';
+    if (!M[k]) M[k] = {n:0, net:0, vat:0, unpaid:0};
+    M[k].n++; M[k].net += parseFloat(i.net)||0; M[k].vat += parseFloat(i.vat)||0;
+    if (i.status !== 'paid') M[k].unpaid += _billInc(i);
+  });
+  var keys = Object.keys(M).sort().reverse();
+  if (!keys.length) return '';
+  var tot = {n:0, net:0, vat:0, unpaid:0};
+  var rows = keys.map(function(k){ var m = M[k]; tot.n += m.n; tot.net += m.net; tot.vat += m.vat; tot.unpaid += m.unpaid;
+    return '<tr>'+td(k === 'unknown' ? '<span style="color:#888">No date</span>' : '<a onclick="exGoMonth(\''+k+'\')" style="color:#1565c0;cursor:pointer;text-decoration:underline;font-weight:700">'+monthLabel(k)+'</a>')+
+      td(String(m.n))+td(_gbp(m.net))+td('<span style="color:#888">'+_gbp(m.vat)+'</span>')+td('<strong>'+_gbp(m.net+m.vat)+'</strong>')+
+      td(m.unpaid > 0.005 ? '<strong style="color:#c62828">'+_gbp(m.unpaid)+'</strong>' : '<span style="color:#2e7d32">All paid</span>')+'</tr>'; }).join('');
+  rows += '<tr style="background:#f7f7f9">'+td('<strong>Total</strong>')+td('<strong>'+tot.n+'</strong>')+td('<strong>'+_gbp(tot.net)+'</strong>')+td('<strong>'+_gbp(tot.vat)+'</strong>')+td('<strong>'+_gbp(tot.net+tot.vat)+'</strong>')+td('<strong style="color:#c62828">'+_gbp(tot.unpaid)+'</strong>')+'</tr>';
+  return '<div style="'+cardStyle()+'overflow-x:auto;padding:0;margin-bottom:14px"><div style="padding:14px 14px 4px"><div style="'+stitle()+'margin:0">📅 Month by month</div>'+
+    '<div style="font-size:11px;color:#aaa;margin-top:3px">Tap a month to see its bills.</div></div>'+
+    '<table style="width:100%;border-collapse:collapse">'+th(['Month','Bills','ex VAT','VAT','inc VAT','Unpaid'])+'<tbody>'+rows+'</tbody></table></div>';
+}
+
 function rExp() {
   // Filter by supplier if the search box has anything in it
   var filterLower = String(invSupplierFilter||'').toLowerCase().trim();
-  var shown = filterLower
+  var matched = filterLower
     ? invs.filter(function(i){ return String(i.supplier||'').toLowerCase().indexOf(filterLower) > -1
                                     || String(i.num||'').toLowerCase().indexOf(filterLower) > -1; })
     : invs;
+  var exR = _exRange();
+  var shown = exPeriod === 'all' ? matched : matched.filter(function(i){ var d = _billDay(i); return d && d >= exR.start && d <= exR.end; });
+  shown = shown.slice().sort(function(a,b){ return _billDay(b).localeCompare(_billDay(a)); });
 
   var totalNet = shown.reduce(function(s,i){return s+(parseFloat(i.net)||0);},0);
   var totalVat = shown.reduce(function(s,i){return s+(parseFloat(i.vat)||0);},0);
@@ -954,13 +1012,19 @@ function rExp() {
       '<div id="scan-out" style="margin-top:12px"></div>'+
     '</div>'+
 
-    // SUMMARY CARDS
-    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">'+
-      sc('Total ex-VAT','£'+totalNet.toFixed(2),'#1565c0')+
-      sc('Total VAT','£'+totalVat.toFixed(2),'#888')+
-      sc('Total inc-VAT','£'+totalInc.toFixed(2),'#1a1a2e')+
-      sc('Outstanding','£'+unpaidInc.toFixed(2),'#c62828')+
+    exPeriodBar(exR)+
+
+    // SUMMARY CARDS — for the period picked above
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">'+
+      sc('Bills ('+shown.length+')', String(shown.length), '#1a1a2e')+
+      sc('Total ex-VAT', _gbp(totalNet), '#1565c0')+
+      sc('Total VAT', _gbp(totalVat), '#888')+
+      sc('Total inc-VAT', _gbp(totalInc), '#1a1a2e')+
+      sc('Paid', _gbp(paidInc), '#2e7d32')+
+      sc('Outstanding', _gbp(unpaidInc), '#c62828')+
     '</div>'+
+
+    (exPeriod === 'all' ? exMonthsCard(matched) : '')+
 
     // SEARCH BAR
     '<div style="'+cardStyle()+'margin-bottom:14px;padding:12px 14px">'+
@@ -978,7 +1042,19 @@ function rExp() {
     // TABLE
     (shown.length?'<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
     '<table style="width:100%;border-collapse:collapse">'+th(['Ref#','Supplier','Date','ex-VAT','VAT','inc-VAT','Matched PO','Status',''])+
-    '<tbody>'+shown.map(function(inv){
+    '<tbody>'+(function(){ var lastM = null; return shown.map(function(inv){
+      var mk = (_billDay(inv)||'').slice(0,7) || 'unknown', hdr = '';
+      if ((exPeriod === 'all' || exPeriod === 'month') && mk !== lastM) {
+        var ml = shown.filter(function(x){ return ((_billDay(x)||'').slice(0,7) || 'unknown') === mk; });
+        hdr = '<tr style="background:#eef2ff"><td colspan="9" style="padding:8px 12px;font-weight:800;font-size:13px">'+(mk==='unknown'?'No date':monthLabel(mk))+
+          ' <span style="font-weight:400;color:#555;font-size:12px">· '+ml.length+' bill'+(ml.length===1?'':'s')+' · '+_gbp(ml.reduce(function(t,x){ return t+_billInc(x); },0))+' inc VAT</span></td></tr>';
+        lastM = mk;
+      }
+      return hdr + _expRow(inv); }).join(''); })()+'</tbody></table></div>'
+    :'<div style="'+cardStyle()+'color:#888;text-align:center;padding:30px">'+(invSupplierFilter?'No bills match "'+escapeHtml(invSupplierFilter)+'" in '+escapeHtml(exR.label)+'.':invs.length?'No bills in '+escapeHtml(exR.label)+'.':'No bills or expenses yet. Scan a bill above to get started.')+'</div>');
+}
+
+function _expRow(inv) {
       var i = invs.indexOf(inv);  // keep original index for actions
       var n=parseFloat(inv.net)||0, v=parseFloat(inv.vat)||0, t=n+v;
       var od=inv.due&&new Date(inv.due)<new Date()&&inv.status!=='paid';
@@ -1002,8 +1078,7 @@ function rExp() {
                        :'<button onclick="attachBillScan(\''+inv.id+'\')" style="'+btnStyle('#fff','#e65100',true)+'padding:3px 8px;font-size:11px" title="Attach the scan or photo of this bill">📎</button> ')+
            (inv.status!=='paid'?'<button onclick="mInvPaid('+i+')" style="'+btnStyle('#2e7d32','#fff')+'padding:3px 8px;font-size:11px">✓</button> ':'')+
            '<button onclick="delInv('+i+')" style="'+btnStyle('#fff','#888',true)+'padding:3px 8px;font-size:11px">✕</button>')+
-      '</tr>';}).join('')+'</tbody></table></div>'
-    :'<div style="'+cardStyle()+'color:#888;text-align:center;padding:30px">'+(invSupplierFilter?'No bills match "'+escapeHtml(invSupplierFilter)+'".':'No bills or expenses yet. Scan a bill above to get started.')+'</div>');
+      '</tr>';
 }
 
 
@@ -1412,11 +1487,14 @@ async function loadSupAccts() {
   try {
     var got = await Promise.all([
       sbAll('kith_bank_tx?select=id,data&id=like.SUPACCT-*&order=id.asc'),
+      sbAll('kith_bank_tx?select=id,data&id=like.SNOOZE-*&order=id.asc'),
       fetch(SB+'/rest/v1/jobs?id=eq.__directory__&select=data', {headers:SH}).then(function(r){ return r.ok ? r.json() : []; })
     ]);
     supAccts = {};
     (got[0]||[]).forEach(function(r){ var d = r.data; if (d && d.kind === 'supacct') supAccts[_supKey(d.name)] = d; });
-    var dir = got[1] && got[1][0] && got[1][0].data && got[1][0].data.DIRECTORY;
+    supSnooze = {};
+    (got[1]||[]).forEach(function(r){ var d = r.data; if (d && d.kind === 'snooze') supSnooze[d.key] = d.until; });
+    var dir = got[2] && got[2][0] && got[2][0].data && got[2][0].data.DIRECTORY;
     supDir = Array.isArray(dir) ? dir.filter(function(d){ return d && d.active !== false && (d.type === 'supplier' || d.type === 'both'); }) : [];
     supAcctsLoaded = true;
   } catch(e) { console.warn('loadSupAccts', e); }
@@ -1477,8 +1555,9 @@ function payablesBySupplier() {
 }
 
 function payReminders() {
-  var L = payablesBySupplier(), out = [];
+  var L = payablesBySupplier(), out = [], today = _bkToday();
   L.forEach(function(g){
+    if (supSnooze[g.key] && supSnooze[g.key] > today) return;   // hidden for now
     if (g.overdue > 0.005) out.push({lvl:3, txt:'<strong>'+escapeHtml(g.name)+'</strong> — '+_gbp(g.overdue)+' overdue'+(g.oldestDays?' (oldest '+g.oldestDays+' days late)':''), sup:g.name});
     if (g.left !== null && g.left < 0) out.push({lvl:3, txt:'<strong>'+escapeHtml(g.name)+'</strong> — '+_gbp(-g.left)+' over the '+_gbp(g.limit)+' credit limit', sup:g.name});
     else if (g.left !== null && g.limit && g.left < g.limit * 0.15) out.push({lvl:2, txt:'<strong>'+escapeHtml(g.name)+'</strong> — only '+_gbp(g.left)+' credit left of '+_gbp(g.limit), sup:g.name});
@@ -1493,9 +1572,61 @@ function payRemindersCard(compact) {
   var col = {3:'#c62828', 2:'#e65100', 1:'#1565c0'}, ic = {3:'⛔', 2:'⚠', 1:'⏰'};
   return '<div style="background:#fff;border:2px solid '+col[R[0].lvl]+';border-radius:12px;padding:12px 14px;margin-bottom:14px">'+
     '<div style="font-weight:800;color:'+col[R[0].lvl]+';margin-bottom:6px">⏰ Pay reminders ('+R.length+')</div>'+
-    R.slice(0, compact ? 5 : 50).map(function(r){ return '<div style="font-size:13px;padding:4px 0;border-bottom:1px solid #f5f5f5;color:#333"><span style="color:'+col[r.lvl]+'">'+ic[r.lvl]+'</span> '+r.txt+'</div>'; }).join('')+
+    R.slice(0, compact ? 5 : 50).map(function(r){
+      var sup = escapeHtml(String(r.sup).replace(/'/g,"\\'"));
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;padding:5px 0;border-bottom:1px solid #f5f5f5;color:#333">'+
+        '<div><span style="color:'+col[r.lvl]+'">'+ic[r.lvl]+'</span> '+r.txt+'</div>'+
+        '<div style="white-space:nowrap">'+
+          '<button onclick="openSupPay(\''+sup+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:3px 10px;font-size:11px">✓ Paid</button> '+
+          '<button onclick="snoozeSup(\''+sup+'\')" style="'+btnStyle('#fff','#888',true)+'padding:3px 10px;font-size:11px" title="Hide this reminder for 7 days">Hide 7 days</button>'+
+        '</div></div>'; }).join('')+
     (compact && R.length > 5 ? '<div style="font-size:12px;margin-top:6px"><a onclick="showTab(\'ap\')" style="color:#1565c0;cursor:pointer;text-decoration:underline">See all '+R.length+' in To Pay →</a></div>' : '')+
   '</div>';
+}
+
+// Clearing a reminder: tick off what's been paid to that supplier
+function openSupPay(name) {
+  var k = _supKey(name);
+  var bills = invs.filter(function(i){ return i.status !== 'paid' && _supKey(i.supplier) === k; })
+                  .sort(function(a,b){ return (billDue(a)||'').localeCompare(billDue(b)||''); });
+  var pos = crmPayables().pos.filter(function(p){ return _supKey(p.supplier) === k; });
+  var today = _bkToday();
+  var rows = bills.map(function(i){
+    var due = billDue(i), late = due && due < today;
+    return '<tr>'+td('<strong>'+escapeHtml(i.num||'—')+'</strong><div style="font-size:11px;color:#888">'+escapeHtml(i.date||'')+'</div>')+
+      td('<span style="font-size:12px;color:'+(late?'#c62828':'#555')+'">'+(due?escapeHtml(prettyYmd(due)):'—')+(late?' · late':'')+'</span>')+
+      td('<strong>'+_gbp(_billInc(i))+'</strong>')+
+      td('<button onclick="supPayBill(\''+i.id+'\',\''+escapeHtml(String(name).replace(/'/g,"\\'"))+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:3px 10px;font-size:11px">✓ Paid</button>')+'</tr>';
+  }).concat(pos.map(function(p){
+    return '<tr>'+td('<strong>'+escapeHtml(p.num||p.id)+'</strong><div style="font-size:11px;color:#888">PO from the CRM</div>')+td('—')+
+      td('<strong>'+_gbp(p.gross||p.price)+'</strong>')+
+      td('<button onclick="mPaid(\''+escapeHtml(p.id)+'\');setTimeout(function(){openSupPay(\''+escapeHtml(String(name).replace(/'/g,"\\'"))+'\')},600)" style="'+btnStyle('#2e7d32','#fff')+'padding:3px 10px;font-size:11px">✓ Paid</button>')+'</tr>';
+  })).join('');
+  var total = bills.reduce(function(t,i){ return t + _billInc(i); }, 0);
+  _checkModal('<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">✓ Pay '+escapeHtml(name)+'</h3>'+
+    '<button onclick="closeBillCheck();_rerenderPay()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888">✕</button></div>'+
+    '<div style="font-size:12px;color:#888;margin:4px 0 10px">Tick off what you\'ve paid. The reminder clears once nothing is late or due this week.</div>'+
+    (rows ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+th(['Bill','Due','Amount',''])+'<tbody>'+rows+'</tbody></table></div>'+
+      (bills.length > 1 ? '<button onclick="supPayAll(\''+escapeHtml(String(name).replace(/'/g,"\\'"))+'\')" style="'+btnStyle('#2e7d32','#fff')+'margin-top:12px">✓ Mark all '+bills.length+' bills paid ('+_gbp(total)+')</button>' : '')
+          : '<div style="padding:20px;text-align:center;color:#2e7d32">✓ Nothing left to pay '+escapeHtml(name)+'.</div>'));
+}
+function _markBillPaid(inv) { inv.status = 'paid'; inv.paidAt = ts(); inv.paidBy = user; persistInv(inv); }
+function supPayBill(id, name) { var inv = _billById(id); if (inv) _markBillPaid(inv); openSupPay(name); }
+function supPayAll(name) {
+  var k = _supKey(name);
+  var bills = invs.filter(function(i){ return i.status !== 'paid' && _supKey(i.supplier) === k; });
+  if (!confirm('Mark all ' + bills.length + ' unpaid bills from ' + name + ' as paid?')) return;
+  bills.forEach(_markBillPaid);
+  openSupPay(name);
+}
+function _rerenderPay() { var t = _curTab(); if (t === 'ap') rAP(); else if (t === 'dash') rDash(); else if (t === 'expenses') rExp(); }
+// Hide a supplier's reminders for 7 days (shared, so it's hidden for everyone)
+var supSnooze = {};
+async function snoozeSup(name) {
+  var k = _supKey(name), until = shiftDate(_bkToday(), 7);
+  supSnooze[k] = until;
+  _rerenderPay();
+  await sbUp('kith_bank_tx', {id: 'SNOOZE-' + k.replace(/[^A-Z0-9]+/g,'-'), data: {kind:'snooze', key:k, name:normalizeSupplier(name), until:until, by:user||'', at:ts()}, updated_at: new Date().toISOString()});
 }
 
 function creditAccountsCard() {
