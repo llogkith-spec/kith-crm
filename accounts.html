@@ -2529,15 +2529,18 @@ async function fetchShiftsBetween(startYmd, endYmd) {
 function _wageSummary(staff, shifts) {
   var by = {}, open = 0;
   staff.forEach(function(p){
-    by[p.id] = {id:p.id, name:p.name, role:p.role||'', rate:parseFloat(p.hourly_rate)||0, active:p.active!==false, mins:0, shifts:0};
+    by[p.id] = {id:p.id, name:p.name, role:p.role||'', rate:parseFloat(p.hourly_rate)||0, dayRate:parseFloat(p.day_rate)||0, payBy:p.pay_by||'hour', active:p.active!==false, mins:0, shifts:0, dayset:{}};
   });
   shifts.forEach(function(sh){
     var b = by[sh.staff_id]; if (!b) return;
     if (!sh.clock_out) { open++; return; }
     b.mins += Math.max(0, Math.floor((new Date(sh.clock_out) - new Date(sh.clock_in)) / 60000));
-    b.shifts++;
+    b.shifts++; b.dayset[_ymdL(new Date(sh.clock_in))] = 1;
   });
-  var list = Object.keys(by).map(function(k){ var x = by[k]; x.hours = x.mins/60; x.cost = x.hours*x.rate; return x; });
+  var list = Object.keys(by).map(function(k){ var x = by[k]; x.hours = x.mins/60; x.days = Object.keys(x.dayset).length;
+    x.cost = x.payBy === 'day' ? x.days*x.dayRate : x.hours*x.rate;
+    if (x.payBy === 'day' && x.dayRate && !x.rate) x.rate = x.hours ? x.cost/x.hours : 0;
+    return x; });
   return {list:list, open:open,
           hours: list.reduce(function(t,x){return t+x.hours;},0),
           cost:  list.reduce(function(t,x){return t+x.cost;},0)};
@@ -6278,7 +6281,7 @@ async function fetchRates() {
   try {
     var rows = await sbAll('kith_bank_tx?select=id,data&id=like.RATE-*&order=id.asc');
     _rateCache = {};
-    rows.forEach(function(r){ if (r.data && r.data.kind === 'rate') _rateCache[r.data.staffId] = +r.data.rate || 0; });
+    rows.forEach(function(r){ if (r.data && r.data.kind === 'rate') _rateCache[r.data.staffId] = r.data; });
   } catch(e) { _rateCache = _rateCache || {}; }
   return _rateCache;
 }
@@ -6286,7 +6289,7 @@ async function fetchStaff() {
   try {
     var got = await Promise.all([fetch(SB+'/rest/v1/kith_staff?select=*&order=name.asc', {headers:SH}).then(function(r){ return r.ok ? r.json() : []; }), fetchRates()]);
     var staff = Array.isArray(got[0]) ? got[0] : [], rates = got[1] || {};
-    staff.forEach(function(s){ if (rates[s.id] !== undefined) s.hourly_rate = rates[s.id]; });
+    staff.forEach(function(s){ var r = rates[s.id]; if (r) { s.hourly_rate = +r.rate || 0; s.day_rate = +r.dayRate || 0; s.pay_by = r.payBy === 'day' ? 'day' : 'hour'; } });
     return staff;
   } catch(e) { console.warn('fetchStaff:',e); return []; }
 }
@@ -6348,7 +6351,7 @@ async function _payrollData(month) {
   var staff = got[0] || [], shifts = got[1] || [], paidRecs = got[2] || [], wagePays = got[3] || [];
   var byStaff = {};
   staff.forEach(function(s){
-    byStaff[s.id] = {id:s.id, name:s.name, role:s.role||'', rate:parseFloat(s.hourly_rate)||0, active:s.active !== false,
+    byStaff[s.id] = {id:s.id, name:s.name, role:s.role||'', rate:parseFloat(s.hourly_rate)||0, dayRate:parseFloat(s.day_rate)||0, payBy:s.pay_by||'hour', dayset:{}, active:s.active !== false,
       mins:0, shifts:0, open:0, paid:false, paidAt:null, lockedGross:null, advances:0, advList:[], pay:null, bankSeen:0, bankList:[], _staff:s};
   });
   shifts.forEach(function(sh){
@@ -6356,7 +6359,7 @@ async function _payrollData(month) {
     if (_shiftFlags(sh).some(function(f){ return f.c !== '#888' && f.t !== 'still clocked in'; })) b.flagged = (b.flagged||0) + 1;
     if (!sh.clock_out) { b.open++; return; }
     b.mins += Math.max(0, Math.floor((new Date(sh.clock_out) - new Date(sh.clock_in)) / 60000));
-    b.shifts += 1;
+    b.shifts += 1; b.dayset[_ymdL(new Date(sh.clock_in))] = 1;
   });
   paidRecs.forEach(function(rec){
     var b = byStaff[rec.staff_id]; if (!b) return;
@@ -6372,7 +6375,12 @@ async function _payrollData(month) {
   var list = Object.keys(byStaff).map(function(k){ return byStaff[k]; }).filter(function(p){ return p.active || p.mins || p.open || p.paid || p.advances; });
   list.forEach(function(p){
     p.hours = p.mins/60;
-    p.calcGross = +(p.hours * p.rate).toFixed(2);
+    p.days = Object.keys(p.dayset).length;
+    p.hasRate = p.payBy === 'day' ? p.dayRate > 0 : p.rate > 0;
+    p.calcGross = +(p.payBy === 'day' ? p.days * p.dayRate : p.hours * p.rate).toFixed(2);
+    // what the other rate works out at, so both can be compared
+    p.dayEquiv = p.days ? p.hours / p.days * p.rate : 8 * p.rate;
+    p.hourEquiv = p.hours ? p.days * p.dayRate / p.hours : p.dayRate / 8;
     p.gross = p.paid && p.lockedGross !== null ? p.lockedGross : p.calcGross;
     p.changed = p.paid && p.lockedGross !== null && Math.abs(p.calcGross - p.lockedGross) >= 0.01;
     p.toPay = +(p.gross - p.advances).toFixed(2);
@@ -6408,7 +6416,7 @@ async function rPayroll() {
   var paidBank   = tot(function(x){ return x.paid && x.pay ? +x.pay.bank : 0; });
   var paidCash   = tot(function(x){ return x.paid && x.pay ? +x.pay.cash : 0; });
   var paidOld    = tot(function(x){ return x.paid && !x.pay ? x.toPay : 0; });   // marked paid before methods were recorded
-  var stillToPay = tot(function(x){ return !x.paid && x.rate ? Math.max(0, x.toPay) : 0; });
+  var stillToPay = tot(function(x){ return !x.paid && x.hasRate ? Math.max(0, x.toPay) : 0; });
   var bankSeen   = tot(function(x){ return x.bankSeen; });
   var openShifts = tot(function(x){ return x.open; });
 
@@ -6416,7 +6424,7 @@ async function rPayroll() {
 
   var rows = list.map(function(p){
     var h = Math.floor(p.mins/60), m = p.mins%60;
-    var noRate = !p.rate, noWork = p.mins === 0 && !p.advances && !p.paid;
+    var noRate = !p.hasRate, noWork = p.mins === 0 && !p.advances && !p.paid;
     var paidCell = '';
     if (p.paid) {
       paidCell = '<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700">PAID</span>'+
@@ -6437,8 +6445,9 @@ async function rPayroll() {
     return '<tr style="'+(noRate && p.mins?'background:#fff5f5':'')+(noWork?'opacity:.55':'')+'">'+
       td('<strong onclick="openShifts(\''+escapeHtml(String(p.id))+'\')" style="cursor:pointer;color:#1565c0;text-decoration:underline">'+escapeHtml(p.name)+'</strong><div style="font-size:11px;color:#888">'+escapeHtml(p.role)+'</div>'+
          (p.flagged ? '<div style="font-size:10px;color:#e65100;font-weight:700">⚠ '+p.flagged+' shift'+(p.flagged>1?'s':'')+' to check</div>' : '')+(p.open?'<div style="font-size:10px;color:#e65100">'+p.open+' shift still clocked in</div>':''))+
-      td(p.mins?('<strong>'+h+'h '+m+'m</strong><div style="font-size:10px;color:#888">'+p.shifts+' shift'+(p.shifts>1?'s':'')+'</div>'):'<span style="color:#ccc">—</span>')+
-      td('<span onclick="editRate(\''+p.id+'\')" style="cursor:pointer;color:'+(noRate?'#c62828':'#1565c0')+';text-decoration:underline">'+(noRate?'Set rate':'£'+p.rate.toFixed(2))+'</span>')+
+      td(p.mins?('<strong>'+h+'h '+m+'m</strong><div style="font-size:10px;color:#888">'+p.days+' day'+(p.days===1?'':'s')+' · '+p.shifts+' shift'+(p.shifts>1?'s':'')+'</div>'):'<span style="color:#ccc">—</span>')+
+      (payShow !== 'day' ? td(_rateCell(p, 'hour', noRate)) : '')+
+      (payShow !== 'hour' ? td(_rateCell(p, 'day', noRate)) : '')+
       td(noRate||!p.mins&&!p.paid?'<span style="color:#ccc">—</span>':('<strong>'+_gbp(p.gross)+'</strong>'))+
       td(p.advances?('<span style="color:#e65100;font-weight:700" title="'+escapeHtml(p.advList.map(function(e){ return e.date+' '+_gbp(e.amount)+(e.note?' '+e.note:''); }).join('\n'))+'">−'+_gbp(p.advances)+'</span>'):'<span style="color:#ccc">—</span>')+
       td(noRate||(!p.mins&&!p.advances)?'<span style="color:#ccc">—</span>':('<strong style="color:'+(p.toPay<0?'#c62828':'#1565c0')+'">'+_gbp(p.toPay)+'</strong>'+(p.toPay<0?'<div style="font-size:10px;color:#c62828">advances more than earned</div>':'')))+
@@ -6452,7 +6461,7 @@ async function rPayroll() {
     '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
       '<div>'+
         '<h2 style="font-size:20px;font-weight:800">💷 Payroll</h2>'+
-        '<div style="font-size:12px;color:#888;margin-top:2px">Hours from the sign-in sheets × hourly rate, less cash advances. Bookkeeping only — tax, NI and pension stay in your payroll software.</div>'+
+        '<div style="font-size:12px;color:#888;margin-top:2px">Hours or days from the sign-in sheets × each person's hourly or day rate, less cash advances. Bookkeeping only — tax, NI and pension stay in your payroll software.</div>'+
       '</div>'+
       '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
         '<button onclick="document.getElementById(\'sheet-in\').click()" style="'+btnStyle('#1a1a2e','#fff')+'">📄 Scan sign-in sheet</button>'+
@@ -6472,6 +6481,10 @@ async function rPayroll() {
       '<div style="font-size:18px;font-weight:800;padding:0 12px;min-width:180px;text-align:center">'+monthLabel(month)+'</div>'+
       '<button onclick="setPayrollMonth(\''+next+'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:8px 14px;font-size:12px">→</button>'+
     '</div>'+
+    '<div style="display:flex;justify-content:center;align-items:center;gap:6px;margin:-6px 0 16px;flex-wrap:wrap">'+
+      '<span style="font-size:12px;color:#888;margin-right:4px">Show:</span>'+
+      _periodChip(payShow==='hour','Hourly rate','setPayShow(\'hour\')')+_periodChip(payShow==='day','Day rate','setPayShow(\'day\')')+_periodChip(payShow==='both','Both','setPayShow(\'both\')')+
+    '</div>'+
 
     (openShifts ? '<div style="background:#fff3e0;border:1px solid #ffcc80;color:#e65100;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:14px">'+openShifts+' shift'+(openShifts>1?'s are':' is')+' still clocked in and not counted yet. Close '+(openShifts>1?'them':'it')+' before paying.</div>' : '')+
 
@@ -6488,7 +6501,7 @@ async function rPayroll() {
 
     '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
     '<table style="width:100%;border-collapse:collapse">'+
-    th(['Name','Hours','Rate £/h','Earned','Advances','To pay','Paid','On bank statement',''])+
+    th(['Name','Hours / days'].concat(payShow !== 'day' ? ['Hourly rate'] : []).concat(payShow !== 'hour' ? ['Day rate'] : []).concat(['Earned','Advances','To pay','Paid','On bank statement','']))+
     '<tbody>'+rows+'</tbody></table></div>'+
     '<p style="margin-top:12px;font-size:12px;color:#888;line-height:1.5">Tap the rate to change it. ✓ Pay asks how much went by bank and how much in cash — the cash part comes out of the 💵 Cash Tin. '+
     'Advances are logged in the Cash Tin and taken off here. "On bank statement" shows wages to that person found on the statements for the month (and the first 10 days after).</p>';
@@ -6590,16 +6603,18 @@ async function openStaffAdmin() {
     return '<tr style="'+(s.active===false?'opacity:.5':'')+'">'+
       td('<strong>'+escapeHtml(s.name)+'</strong><div style="font-size:11px;color:#888">'+escapeHtml(s.role||'')+'</div>')+
       td('<span style="font-family:monospace">••••</span>')+
-      td(s.hourly_rate ? '£'+(+s.hourly_rate).toFixed(2) : '<span style="color:#c62828;font-size:11px">no rate</span>')+
+      td((s.hourly_rate ? '£'+(+s.hourly_rate).toFixed(2)+'/hr' : '<span style="color:#aaa;font-size:11px">no hourly</span>') +
+         '<div>'+(s.day_rate ? '£'+(+s.day_rate).toFixed(2)+'/day' : '<span style="color:#aaa;font-size:11px">no day rate</span>')+'</div>'+
+         ((s.pay_by==='day'?s.day_rate:s.hourly_rate) ? '<div style="font-size:9px;color:#2e7d32;font-weight:700">PAID BY THE '+(s.pay_by==='day'?'DAY':'HOUR')+'</div>' : '<div style="font-size:9px;color:#c62828;font-weight:700">RATE NEEDED</div>'))+
       td(s.site === false ? 'Remote' : 'On site')+
       td(s.active === false ? '<span style="color:#888">Left</span>' : '<span style="color:#2e7d32">Active</span>')+
       td('<button onclick="openStaffForm(\''+id+'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:3px 9px;font-size:11px">Edit</button>')+'</tr>';
   }).join('');
   window._staffAdmin = staff;
-  _checkModal('<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">👥 Staff who clock in</h3>'+
+  _checkModal('<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">👥 Staff</h3>'+
     '<button onclick="closeBillCheck()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888">✕</button></div>'+
-    '<div style="font-size:12px;color:#888;margin:4px 0 10px">The names the sign-in sheet is matched against. Mark leavers as left (their past hours stay) and set everyone\'s hourly rate.</div>'+
-    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+th(['Name','PIN','Rate','Where','Status',''])+'<tbody>'+rows+'</tbody></table></div>'+
+    '<div style="font-size:12px;color:#888;margin:4px 0 10px">The names the sign-in sheet is matched against. Mark leavers as left (their past hours stay) and set how each person is paid (by the hour or by the day).</div>'+
+    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+th(['Name','PIN','Pay','Where','Status',''])+'<tbody>'+rows+'</tbody></table></div>'+
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'+
       '<button onclick="openStaffForm()" style="'+btnStyle('#1a1a2e','#fff')+'">+ Add someone</button>'+
 
@@ -6614,7 +6629,9 @@ function openStaffForm(id) {
     _fLabel('Name') + '<input id="sa2-name" value="'+escapeHtml(s.name||'')+'" style="'+_fIn+'">'+
     _fLabel('Role') + '<input id="sa2-role" value="'+escapeHtml(s.role||'')+'" placeholder="e.g. Estimator, Mechanic" style="'+_fIn+'">'+
     _fLabel('4-digit PIN (only needed for the QR clock-in — can leave blank)') + '<input id="sa2-pin" inputmode="numeric" maxlength="4" value="" placeholder="'+(id?'leave blank to keep their PIN':'optional')+'" style="'+_fIn+'">'+
+    _fLabel('Paid by') + '<select id="sa2-by" style="'+_fIn+'"><option value="hour"'+(s.pay_by!=='day'?' selected':'')+'>The hour</option><option value="day"'+(s.pay_by==='day'?' selected':'')+'>The day</option></select>'+
     _fLabel('Hourly rate £') + '<input id="sa2-rate" inputmode="decimal" value="'+escapeHtml(s.hourly_rate?String(s.hourly_rate):'')+'" style="'+_fIn+'">'+
+    _fLabel('Day rate £') + '<input id="sa2-day" inputmode="decimal" value="'+escapeHtml(s.day_rate?String(s.day_rate):'')+'" style="'+_fIn+'">'+
     '<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:14px"><input type="checkbox" id="sa2-remote" '+(s.site===false?'checked':'')+'> Works remotely (no location check)</label>'+
     (id ? '<label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px"><input type="checkbox" id="sa2-left" '+(s.active===false?'checked':'')+'> Has left — remove from the clock-in screen</label>' : '')+
     '<div id="sa2-err" style="color:#c62828;font-size:13px;margin-top:10px"></div>'+
@@ -6632,6 +6649,9 @@ async function saveStaffForm(id) {
   if (pinV && all.some(function(x){ return String(x.pin) === pinV && String(x.id) !== String(id) && x.active !== false; })) return err('Someone else already has that PIN — pick another.');
   var rate = rateV ? parseMoney(rateV) : null;
   if (rateV && isNaN(rate)) return err('Rate must be a number, e.g. 12.50');
+  var dayV = document.getElementById('sa2-day').value.trim(), payBy = document.getElementById('sa2-by').value;
+  var dayRate = dayV ? parseMoney(dayV) : null;
+  if (dayV && isNaN(dayRate)) return err('Day rate must be a number, e.g. 100');
   var row = {name: name, role: document.getElementById('sa2-role').value.trim(), site: !document.getElementById('sa2-remote').checked};
   if (pinV) row.pin = pinV;
   var leftEl = document.getElementById('sa2-left'); row.active = leftEl ? !leftEl.checked : true;
@@ -6646,8 +6666,8 @@ async function saveStaffForm(id) {
       r = await fetch(SB+'/rest/v1/kith_staff', {method:'POST', headers:SH, body: JSON.stringify(row)});
     }
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0,120));
-    if (rate !== null) await fetch(SB+'/rest/v1/kith_bank_tx', {method:'POST', headers:SH,
-      body: JSON.stringify({id:'RATE-'+id, data:{kind:'rate', staffId:id, rate:rate, at:ts(), by:user||''}, updated_at:new Date().toISOString()})});
+    if (rate !== null || dayRate !== null || payBy === 'day') await _saveRateRow(id, payBy, rate || 0, dayRate || 0);
+    _wageRateCache = null;
   } catch(e) { btn.disabled = false; btn.textContent = 'Save'; return err('Save failed: ' + e.message); }
   cashStaff = []; bankStaff = [];
   closeCashForm();
@@ -6723,16 +6743,50 @@ async function saveSignSheet() {
   alert(add.length + ' shift' + (add.length===1?'':'s') + ' added from the sheet' + (skipped ? ', ' + skipped + ' skipped (already had hours that day)' : '') + '.');
 }
 
-async function editRate(staffId) {
-  var r = prompt('Hourly rate (£) — enter as a number, e.g. 12.50');
-  if (r === null) return;
-  var n = parseFloat(r);
-  if (isNaN(n) || n < 0) { alert('Not a valid number.'); return; }
-  try {
-    var resp = await fetch(SB+'/rest/v1/kith_bank_tx', {method:'POST', headers:SH,
-      body: JSON.stringify({id:'RATE-'+staffId, data:{kind:'rate', staffId:staffId, rate:n, at:ts(), by:user||''}, updated_at:new Date().toISOString()})});
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-  } catch(e) { alert('Save failed: '+e.message); return; }
+// Which rate columns payroll shows. The rate actually used to pay someone
+// is marked "paid on"; the other is shown in grey as what it works out at.
+var payShow = (function(){ try { return localStorage.getItem('kith_pay_show') || 'both'; } catch(e) { return 'both'; } })();
+function setPayShow(v) { payShow = v; try { localStorage.setItem('kith_pay_show', v); } catch(e){} rPayroll(); }
+function _rateCell(p, kind, noRate) {
+  var mine = p.payBy === kind;
+  var val = kind === 'hour' ? p.rate : p.dayRate;
+  var link = function(inner){ return '<span onclick="editRate(\''+escapeHtml(String(p.id))+'\')" style="cursor:pointer;text-decoration:underline;color:'+(noRate&&mine?'#c62828':'#1565c0')+'">'+inner+'</span>'; };
+  if (mine) return link(noRate ? 'Set rate' : '<strong>£'+val.toFixed(2)+'</strong>') + '<div style="font-size:9px;color:#2e7d32;font-weight:700">PAID ON THIS</div>';
+  if (val) return link('£'+val.toFixed(2)) + '<div style="font-size:9px;color:#888">set, not used</div>';
+  var eq = kind === 'hour' ? p.hourEquiv : p.dayEquiv;
+  return eq ? '<span style="color:#999">≈ £'+eq.toFixed(2)+'</span><div style="font-size:9px;color:#aaa">works out at</div>' : link('<span style="color:#ccc">—</span>');
+}
+
+// Change how someone is paid: by the hour or by the day, and the rates
+function editRate(staffId) {
+  var p = _payrollList.filter(function(x){ return String(x.id) === String(staffId); })[0];
+  var cur = p || {payBy:'hour', rate:0, dayRate:0, name:''};
+  _cashModal('<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">💷 '+escapeHtml(cur.name)+' — pay</h3>'+
+    '<button onclick="closeCashForm()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">✕</button></div>'+
+    _fLabel('Paid by') + '<select id="er-by" style="'+_fIn+'"><option value="hour"'+(cur.payBy!=='day'?' selected':'')+'>The hour — hours on the sheet × hourly rate</option>'+
+      '<option value="day"'+(cur.payBy==='day'?' selected':'')+'>The day — days worked × day rate</option></select>'+
+    _fLabel('Hourly rate £') + '<input id="er-rate" inputmode="decimal" value="'+(cur.rate?cur.rate.toFixed(2):'')+'" placeholder="e.g. 12.50" style="'+_fIn+'">'+
+    _fLabel('Day rate £') + '<input id="er-day" inputmode="decimal" value="'+(cur.dayRate?cur.dayRate.toFixed(2):'')+'" placeholder="e.g. 100" style="'+_fIn+'">'+
+    '<div style="font-size:12px;color:#888;margin-top:8px">Fill in both if you like — only the one picked above is used to work out pay.</div>'+
+    '<div id="er-err" style="color:#c62828;font-size:13px;margin-top:10px"></div>'+
+    '<button id="er-save" onclick="saveRate(\''+escapeHtml(String(staffId))+'\')" style="'+btnStyle('#2e7d32','#fff')+'width:100%;margin-top:14px;padding:12px;font-size:15px">Save</button>');
+}
+async function _saveRateRow(staffId, payBy, rate, dayRate) {
+  var r = await fetch(SB+'/rest/v1/kith_bank_tx', {method:'POST', headers:SH,
+    body: JSON.stringify({id:'RATE-'+staffId, data:{kind:'rate', staffId:staffId, payBy:payBy, rate:rate||0, dayRate:dayRate||0, at:ts(), by:user||''}, updated_at:new Date().toISOString()})});
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+}
+async function saveRate(staffId) {
+  var err = function(m){ document.getElementById('er-err').textContent = m; };
+  var by = document.getElementById('er-by').value;
+  var rv = document.getElementById('er-rate').value.trim(), dv = document.getElementById('er-day').value.trim();
+  var rate = rv ? parseMoney(rv) : 0, day = dv ? parseMoney(dv) : 0;
+  if (isNaN(rate) || isNaN(day)) return err('Rates must be numbers, e.g. 12.50 or 100');
+  if (by === 'hour' && !rate) return err('Enter the hourly rate.');
+  if (by === 'day' && !day) return err('Enter the day rate.');
+  try { await _saveRateRow(staffId, by, rate, day); } catch(e) { return err('Save failed: ' + e.message); }
+  _wageRateCache = null;
+  closeCashForm();
   rPayroll();
 }
 
@@ -6744,7 +6798,7 @@ function openPayrollPay(staffId) {
   var h = '<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">💷 Pay '+escapeHtml(p.name)+' — '+monthLabel(currentPayrollMonth)+'</h3>'+
           '<button onclick="closeCashForm()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">✕</button></div>'+
           '<div style="background:#f7f7f9;border-radius:10px;padding:10px 14px;margin-top:10px">'+
-            line('Earned ('+Math.floor(p.mins/60)+'h '+(p.mins%60)+'m × £'+p.rate.toFixed(2)+')', _gbp(p.gross))+
+            line('Earned ('+(p.payBy==='day' ? p.days+' day'+(p.days===1?'':'s')+' × £'+p.dayRate.toFixed(2) : Math.floor(p.mins/60)+'h '+(p.mins%60)+'m × £'+p.rate.toFixed(2))+')', _gbp(p.gross))+
             (p.advances ? line('Cash advances already taken', '−'+_gbp(p.advances), '#e65100') : '')+
             '<div style="border-top:1px solid #ddd;margin:4px 0"></div>'+
             line('To pay', _gbp(p.toPay), '#1565c0')+
@@ -6770,7 +6824,7 @@ async function savePayrollPay(staffId) {
   if (Math.abs(diff) >= 0.01 && !confirm('That adds up to ' + _gbp(bank + cash) + ' but the sheet says ' + _gbp(p.toPay) + ' (' + (diff>0?'over':'under') + ' by ' + _gbp(Math.abs(diff)) + ').\n\nSave anyway?')) return;
   var btn = document.getElementById('pp-save'); if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   var month = currentPayrollMonth, key = staffId + '_' + month, now = new Date().toISOString();
-  var body = {id: key, staff_id: staffId, month: month, hours: p.hours, rate: p.rate, gross: p.calcGross,
+  var body = {id: key, staff_id: staffId, month: month, hours: p.hours, rate: p.rate, dayRate: p.dayRate, payBy: p.payBy, days: p.days, gross: p.calcGross,
               paid: true, paid_at: now, paid_by: user};
   try {
     var rec = Object.assign({kind:'payrec'}, body);
@@ -6808,9 +6862,9 @@ async function markPayrollUnpaid(staffId) {
 
 async function expPayrollCSV() {
   var list = await _payrollData(currentPayrollMonth);
-  var rows = [['Name','Role','Shifts','Hours','Rate £/h','Earned £','Advances £','To pay £','Status','Paid by bank £','Paid in cash £','On bank statement £','Paid at']];
+  var rows = [['Name','Role','Paid by','Days','Shifts','Hours','Hourly rate £','Day rate £','Earned £','Advances £','To pay £','Status','Paid by bank £','Paid in cash £','On bank statement £','Paid at']];
   list.forEach(function(p){
-    rows.push([p.name, p.role, p.shifts, p.hours.toFixed(2), p.rate.toFixed(2), p.gross.toFixed(2), p.advances.toFixed(2), p.toPay.toFixed(2),
+    rows.push([p.name, p.role, p.payBy === 'day' ? 'Day' : 'Hour', p.days, p.shifts, p.hours.toFixed(2), p.rate.toFixed(2), p.dayRate.toFixed(2), p.gross.toFixed(2), p.advances.toFixed(2), p.toPay.toFixed(2),
       p.paid ? 'PAID' : 'Unpaid', p.pay ? (+p.pay.bank).toFixed(2) : '', p.pay ? (+p.pay.cash).toFixed(2) : '', p.bankSeen.toFixed(2),
       p.paidAt ? String(p.paidAt).slice(0,10) : '']);
   });
