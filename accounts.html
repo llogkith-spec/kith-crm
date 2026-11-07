@@ -2862,7 +2862,7 @@ function _bkWagesHtml(W, RR, payRecs, R, pName, D, profit, salesNet, billsNet) {
   });
   var noRate = W.list.filter(function(x){ return x.hours>0 && !x.rate; }).length;
 
-  return _bkTable('👷 Wages', 'Hours from clock-in × hourly rate, gross. Employer NI and pension are not included — your payroll software works those out.'+
+  return _bkTable('👷 Wages', 'Hours from the sign-in sheets × hourly rate, gross. Employer NI and pension are not included — your payroll software works those out.'+
         (W.open?' '+W.open+' shift'+(W.open>1?'s':'')+' still clocked in, not counted yet.':'')+
         (noRate?' <span style="color:#e65100;font-weight:700">'+noRate+' person'+(noRate>1?'s have':' has')+' no hourly rate — set it in the Payroll tab.</span>':''),
       cols, rows, rows.length?foot:null, 'Nobody clocked in this '+pName+'.')+
@@ -6222,7 +6222,7 @@ async function _payrollData(month) {
   });
   shifts.forEach(function(sh){
     var b = byStaff[sh.staff_id]; if (!b) return;
-    if (_shiftFlags(sh).some(function(f){ return f.t !== 'still clocked in' && f.t !== 'no location'; })) b.flagged = (b.flagged||0) + 1;
+    if (_shiftFlags(sh).some(function(f){ return f.c !== '#888' && f.t !== 'still clocked in'; })) b.flagged = (b.flagged||0) + 1;
     if (!sh.clock_out) { b.open++; return; }
     b.mins += Math.max(0, Math.floor((new Date(sh.clock_out) - new Date(sh.clock_in)) / 60000));
     b.shifts += 1;
@@ -6321,22 +6321,20 @@ async function rPayroll() {
     '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'+
       '<div>'+
         '<h2 style="font-size:20px;font-weight:800">💷 Payroll</h2>'+
-        '<div style="font-size:12px;color:#888;margin-top:2px">Hours from clock-in × hourly rate, less cash advances. Bookkeeping only — tax, NI and pension stay in your payroll software.</div>'+
+        '<div style="font-size:12px;color:#888;margin-top:2px">Hours from the sign-in sheets × hourly rate, less cash advances. Bookkeeping only — tax, NI and pension stay in your payroll software.</div>'+
       '</div>'+
       '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
-        '<button onclick="openStaffAdmin()" style="'+btnStyle('#1a1a2e','#fff')+'">👥 Staff &amp; PINs</button>'+
-        '<button onclick="openShiftForm(\'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'">+ Missing shift</button>'+
-        '<button onclick="document.getElementById(\'sheet-in\').click()" style="'+btnStyle('#fff','#1a1a2e',true)+'">📄 Scan paper sheet</button>'+
+        '<button onclick="document.getElementById(\'sheet-in\').click()" style="'+btnStyle('#1a1a2e','#fff')+'">📄 Scan sign-in sheet</button>'+
+        '<button onclick="openShiftForm(\'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'">+ Add hours</button>'+
+        '<button onclick="openStaffAdmin()" style="'+btnStyle('#fff','#1a1a2e',true)+'">👥 Staff</button>'+
         '<input type="file" id="sheet-in" accept="image/*,application/pdf" capture="environment" style="display:none" onchange="scanSignSheet(this.files[0]);this.value=\'\'">'+
         '<button onclick="expPayrollCSV()" style="'+btnStyle('#fff','#1a1a2e',true)+'">⬇ CSV</button>'+
       '</div>'+
     '</div>'+
     (!_payrollList.some(function(x){ return x.mins > 0 || x.open; })
       ? '<div style="background:#e3f2fd;border:1px solid #90caf9;color:#0d47a1;border-radius:10px;padding:12px 14px;font-size:13px;margin-bottom:14px;line-height:1.6">'+
-          '<strong>Nobody has clocked in with the QR code this month.</strong> To switch over from the paper sheet: '+
-          '1) 👥 Staff &amp; PINs — mark leavers as left, add new people, give everyone their own PIN and hourly rate. '+
-          '2) Print the QR poster and put it by the door. 3) Staff scan it with their phone on arrival and when they leave. '+
-          'Until then, 📄 Scan paper sheet or + Missing shift fills the gaps.</div>' : '')+
+          '<strong>No hours in yet for this month.</strong> Take a photo of each week\'s sign-in sheet with 📄 Scan sign-in sheet — the hours are read off it, you check them, and they go into payroll. '+
+          'First time: open 👥 Staff to mark leavers as left, add new people and set everyone\'s hourly rate, so names on the sheet match.</div>' : '')+
 
     '<div style="display:flex;justify-content:center;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">'+
       '<button onclick="setPayrollMonth(\''+prev+'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:8px 14px;font-size:12px">←</button>'+
@@ -6373,7 +6371,8 @@ async function rPayroll() {
 function _shiftFlags(sh) {
   var m = String(sh.method || '');
   var f = [];
-  if (/^manual|^sheet/i.test(m)) f.push({t:/^sheet/i.test(m)?'from paper sheet':'added by hand', c:'#e65100'});
+  if (/^manual/i.test(m)) f.push({t:'typed in by hand', c:'#e65100'});
+  if (/^sheet/i.test(m)) f.push({t:'from sign-in sheet', c:'#888'});
   if (/edited/i.test(m)) f.push({t:'edited', c:'#e65100'});
   var far = m.match(/(\d+)m away/); if (far) f.push({t:far[1]+'m from workshop', c:'#c62828'});
   if (/no location/i.test(m)) f.push({t:'no location', c:'#888'});
@@ -6413,11 +6412,11 @@ function openShiftForm(staffId, shiftId) {
   closeBillCheck();
   _cashModal('<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">'+(sh?'Fix shift':'Add a missing shift')+'</h3>'+
     '<button onclick="closeCashForm()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">✕</button></div>'+
-    '<div style="font-size:12px;color:#888;margin-top:4px">Only for when someone forgot to scan or the phone failed. It\'s marked as a hand entry with your name and the reason.</div>'+
+    '<div style="font-size:12px;color:#888;margin-top:4px">For hours the sheet scan missed or couldn\'t read. It\'s marked as typed in by hand, with your name and the reason.</div>'+
     _fLabel('Who') + '<select id="sf-staff" style="'+_fIn+'"'+(sh?' disabled':'')+'>'+staffList.map(function(x){ return '<option value="'+escapeHtml(String(x.id))+'"'+(String(x.id)===String(staffId)?' selected':'')+'>'+escapeHtml(x.name)+'</option>'; }).join('')+'</select>'+
     _fLabel('Clocked in') + '<input id="sf-in" type="datetime-local" value="'+inV+'" style="'+_fIn+'">'+
     _fLabel('Clocked out') + '<input id="sf-out" type="datetime-local" value="'+outV+'" style="'+_fIn+'">'+
-    _fLabel('Reason') + '<input id="sf-why" placeholder="e.g. forgot to scan — on the paper sheet" style="'+_fIn+'">'+
+    _fLabel('Reason') + '<input id="sf-why" placeholder="e.g. smudged on the sign-in sheet" style="'+_fIn+'">'+
     '<div id="sf-err" style="color:#c62828;font-size:13px;margin-top:10px"></div>'+
     '<button id="sf-save" onclick="saveShiftForm(\''+(shiftId?escapeHtml(String(shiftId)):'')+'\')" style="'+btnStyle('#2e7d32','#fff')+'width:100%;margin-top:14px;padding:12px;font-size:15px">Save</button>');
 }
@@ -6428,7 +6427,7 @@ async function saveShiftForm(shiftId) {
   var inV = document.getElementById('sf-in').value, outV = document.getElementById('sf-out').value;
   var why = document.getElementById('sf-why').value.trim();
   if (!inV) return err('Enter the clock-in time.');
-  if (!why) return err('Say why — this is what stops made-up hours.');
+  if (!why) return err('Say why — so typed-in hours can be checked later.');
   var ci = new Date(inV), co = outV ? new Date(outV) : null;
   if (co && co <= ci) return err('Clock-out must be after clock-in.');
   if (co && (co - ci) > 16*3600000) return err('That\'s over 16 hours — check the times.');
@@ -6468,11 +6467,11 @@ async function openStaffAdmin() {
   window._staffAdmin = staff;
   _checkModal('<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">👥 Staff who clock in</h3>'+
     '<button onclick="closeBillCheck()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888">✕</button></div>'+
-    '<div style="font-size:12px;color:#888;margin:4px 0 10px">These are the names on the clock-in screen. Mark leavers as left (their past hours stay). Each person needs their own PIN.</div>'+
+    '<div style="font-size:12px;color:#888;margin:4px 0 10px">The names the sign-in sheet is matched against. Mark leavers as left (their past hours stay) and set everyone\'s hourly rate.</div>'+
     '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+th(['Name','PIN','Rate','Where','Status',''])+'<tbody>'+rows+'</tbody></table></div>'+
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'+
       '<button onclick="openStaffForm()" style="'+btnStyle('#1a1a2e','#fff')+'">+ Add someone</button>'+
-      '<a href="clock-poster.html" target="_blank" style="'+btnStyle('#fff','#1a1a2e',true)+'text-decoration:none;display:inline-block">🖨 Print the clock-in QR poster</a>'+
+
     '</div>');
 }
 function openStaffForm(id) {
@@ -6483,7 +6482,7 @@ function openStaffForm(id) {
     '<button onclick="closeCashForm();openStaffAdmin()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">✕</button></div>'+
     _fLabel('Name') + '<input id="sa2-name" value="'+escapeHtml(s.name||'')+'" style="'+_fIn+'">'+
     _fLabel('Role') + '<input id="sa2-role" value="'+escapeHtml(s.role||'')+'" placeholder="e.g. Estimator, Mechanic" style="'+_fIn+'">'+
-    _fLabel('4-digit PIN for clocking in') + '<input id="sa2-pin" inputmode="numeric" maxlength="4" value="" placeholder="'+(id?'leave blank to keep their PIN':'e.g. 4821')+'" style="'+_fIn+'">'+
+    _fLabel('4-digit PIN (only needed for the QR clock-in — can leave blank)') + '<input id="sa2-pin" inputmode="numeric" maxlength="4" value="" placeholder="'+(id?'leave blank to keep their PIN':'optional')+'" style="'+_fIn+'">'+
     _fLabel('Hourly rate £') + '<input id="sa2-rate" inputmode="decimal" value="'+escapeHtml(s.hourly_rate?String(s.hourly_rate):'')+'" style="'+_fIn+'">'+
     '<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:14px"><input type="checkbox" id="sa2-remote" '+(s.site===false?'checked':'')+'> Works remotely (no location check)</label>'+
     (id ? '<label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px"><input type="checkbox" id="sa2-left" '+(s.active===false?'checked':'')+'> Has left — remove from the clock-in screen</label>' : '')+
@@ -6496,7 +6495,7 @@ async function saveStaffForm(id) {
   var pinV = document.getElementById('sa2-pin').value.trim();
   var rateV = document.getElementById('sa2-rate').value.trim();
   if (!name) return err('Enter their name.');
-  if (!id && !/^\d{4}$/.test(pinV)) return err('Give them a 4-digit PIN.');
+  if (!id && !pinV) { do { pinV = String(1000 + Math.floor(Math.random()*9000)); } while ((window._staffAdmin||[]).some(function(x){ return String(x.pin) === pinV; })); }
   if (id && pinV && !/^\d{4}$/.test(pinV)) return err('The PIN must be 4 digits.');
   var all = window._staffAdmin || [];
   if (pinV && all.some(function(x){ return String(x.pin) === pinV && String(x.id) !== String(id) && x.active !== false; })) return err('Someone else already has that PIN — pick another.');
@@ -6545,17 +6544,19 @@ async function scanSignSheet(file) {
   window._sheetDoc = docPath;
   var opt = function(sel){ return '<option value="">— who? —</option>' + staff.map(function(x){ return '<option value="'+escapeHtml(String(x.id))+'"'+(String(x.id)===String(sel)?' selected':'')+'>'+escapeHtml(x.name)+'</option>'; }).join(''); };
   var body = window._sheetRows.map(function(r, i){
-    return '<tr style="'+(r.unclear||!r.staffId?'background:#fff5f5':'')+'">'+
-      td('<input type="checkbox" id="ss-ok-'+i+'" '+(r.unclear||!r.staffId?'':'checked')+'>')+
+    var bad = r.unclear || !r.staffId || !r.outT;
+    return '<tr style="'+(bad?'background:#fff5f5':'')+'">'+
+      td('<input type="checkbox" id="ss-ok-'+i+'" '+(bad?'':'checked')+'>')+
       td('<select id="ss-who-'+i+'" style="padding:4px">'+opt(r.staffId)+'</select><div style="font-size:10px;color:#888">read as "'+escapeHtml(r.name||'')+'"</div>')+
       td('<input id="ss-d-'+i+'" type="date" value="'+escapeHtml(r.date)+'" style="padding:4px">')+
       td('<input id="ss-in-'+i+'" type="time" value="'+escapeHtml(r.inT)+'" style="padding:4px">')+
       td('<input id="ss-out-'+i+'" type="time" value="'+escapeHtml(r.outT)+'" style="padding:4px">')+
-      td(r.unclear ? '<span style="font-size:10px;color:#c62828;font-weight:700">hard to read</span>' : '')+'</tr>';
+      td(r.unclear ? '<span style="font-size:10px;color:#c62828;font-weight:700">hard to read</span>' : !r.staffId ? '<span style="font-size:10px;color:#c62828;font-weight:700">name not matched</span>' : !r.outT ? '<span style="font-size:10px;color:#c62828;font-weight:700">no sign-out time</span>' : '')+'</tr>';
   }).join('');
   _checkModal('<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">📄 Sign-in sheet — check before saving</h3>'+
     '<button onclick="closeBillCheck()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888">✕</button></div>'+
-    '<div style="font-size:12px;color:#888;margin:4px 0 10px">Tick the rows to add. Rows that clash with a QR clock-in on the same day are skipped — the QR record wins.'+(docPath?' The photo is saved with them.':'')+'</div>'+
+    '<div style="font-size:12px;color:#888;margin:4px 0 10px">Check each row against the sheet and fix anything misread. Rows in red couldn\'t be read clearly or didn\'t match a name — fix them or leave them unticked. '+
+      'If that person already has hours for that day they\'re skipped, so scanning the same sheet twice won\'t double up.'+(docPath?' The photo is saved with the hours.':'')+'</div>'+
     (body ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+th(['Add','Who','Date','In','Out',''])+'<tbody>'+body+'</tbody></table></div>' : '<div style="padding:20px;color:#888">No rows found on the sheet.</div>')+
     '<div id="ss-err" style="color:#c62828;font-size:13px;margin-top:8px"></div>'+
     (body ? '<button id="ss-save" onclick="saveSignSheet()" style="'+btnStyle('#2e7d32','#fff')+'margin-top:12px;padding:10px 16px">Add ticked shifts</button>' : ''));
@@ -6588,7 +6589,7 @@ async function saveSignSheet() {
   }
   closeBillCheck();
   await rPayroll();
-  alert(add.length + ' shift' + (add.length===1?'':'s') + ' added from the sheet' + (skipped ? ', ' + skipped + ' skipped (already clocked in by QR that day)' : '') + '.');
+  alert(add.length + ' shift' + (add.length===1?'':'s') + ' added from the sheet' + (skipped ? ', ' + skipped + ' skipped (already had hours that day)' : '') + '.');
 }
 
 async function editRate(staffId) {
