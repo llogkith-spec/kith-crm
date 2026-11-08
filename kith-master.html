@@ -312,18 +312,26 @@ if(sessionStorage.getItem('kmaster')){
 
 // ── DATA ──────────────────────────────────────────────
 async function fetchJobs(){
-  const r = await fetch(SB_URL+'/rest/v1/jobs?select=id,data,updated_at&id=not.like.__*__&order=updated_at.desc', {
-    headers:{...SB_HDR,'Range':'0-4999','Range-Unit':'items'}
+  // Fetch all jobs then filter out the special system rows in JS. The old
+  // filter used __*__ (a wildcard syntax PostgREST doesn't understand) which
+  // silently passed everything through — including the inbox / outbox / config
+  // rows, which don't belong in the pipeline view.
+  const r = await fetch(SB_URL+'/rest/v1/jobs?select=id,data,updated_at&order=updated_at.desc.nullslast', {
+    headers: SB_HDR
   });
   if(!r.ok) throw new Error('jobs HTTP '+r.status);
   const rows = await r.json();
-  return rows.map(r => ({...(r.data||{}), id:r.id, updated_at:r.updated_at}))
-             .filter(j => j && j.id && !j.mergedInto);
+  return rows
+    .filter(r => r && r.id && !/^__.+__$/.test(r.id))  // drop system rows (__leads__, __outbox__, __pos__ etc.)
+    .map(r => ({...(r.data||{}), id:r.id, updated_at:r.updated_at}))
+    .filter(j => j && j.id && !j.mergedInto);
 }
 
 async function fetchLeads(){
+  // The inbox stores leads under id='__leads__' (not '__inbox__' which was a
+  // typo). Row shape is { data: { leads: [...] } }.
   try{
-    const r = await fetch(SB_URL+'/rest/v1/jobs?id=eq.__inbox__&select=data', {headers:SB_HDR});
+    const r = await fetch(SB_URL+'/rest/v1/jobs?id=eq.__leads__&select=data', {headers:SB_HDR});
     if(!r.ok) return [];
     const rows = await r.json();
     return (rows[0]&&rows[0].data&&rows[0].data.leads)||[];
