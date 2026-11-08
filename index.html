@@ -4574,6 +4574,7 @@ function renderDetail(){
       (pm.length?pmH(pm):'<div class="notice n-blue" style="font-size:12px">No Parts Form entries found for '+j.reg+' yet — will appear here once the Parts team submits the form.</div>')+
       brainPrefillH(j)+
       labourH(j)+
+      brainPartsPrefillH(j)+
       psH(j)+
       jobMarginH(j)+
       raisedOrdersH(j)+
@@ -7202,12 +7203,8 @@ async function loadLiveSop(showToast){
 // Fire now, then every 2 min (fallback to the realtime channel below)
 loadLiveSop(false);
 setInterval(() => loadLiveSop(true), 120000);
-// Realtime channel — instant notify when kith_sop_config changes
-try{
-  const ch = new EventSource(SB_URL+'/realtime/v1/channels?apikey='+SB_KEY);
-  // Native realtime needs the supabase-js client; the simple-poll above is the primary.
-  // Kept this stub so a future refactor can swap in the supabase-js realtime subscription.
-}catch(e){}
+// Realtime push for SOP changes is handled by the 2-min poll above; a future
+// refactor can swap in the supabase-js realtime subscription for instant push.
 
 function applyMarkup(costPrice,part){
   const c=parseFloat(costPrice)||0;
@@ -8784,6 +8781,157 @@ function fmtWhen(iso){
   const d=new Date(iso); return d.toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
 }
 function brainWho(){ try{ return (currentUser&&currentUser.name)||sessionStorage.getItem('kith_who')||'?'; }catch(e){return '?';} }
+
+// ── BRAIN PARTS PRE-FILL on the Parts Estimate card ─────────────────────────
+// Shows every part the Brain identified — AI-estimated price per part, FIRM/
+// AI chip, each row editable (part name, qty, supplier, cost) and Verify-able.
+// Verify writes back to kith_parts_cache (learning loop). Apply pushes each
+// part into j.parts so the existing psH() takes over from there.
+function brainPartsPrefillH(j){
+  if(!j||j.stage!=='parts')return '';
+  if(j.brainPartsAppliedAt||j.brainPartsDismissedAt)return '';
+  brainMaybeFire(j);
+  if(j._brainAIPending){
+    return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:11px 14px;margin-bottom:14px;font-size:12px;color:var(--dim)">'+
+      '⚙ Brain parts pre-fill loading…</div>';
+  }
+  const ai = j.brainAI;
+  if(!ai||!ai.jobs||!ai.jobs.length)return '';
+  // Gather all parts across all jobs, de-dupe by part_normalised
+  const all = [];
+  const seen = {};
+  ai.jobs.forEach(bj => (bj.parts_lines||[]).forEach(p => {
+    const key = (p.part_normalised||'')+'|'+(p.part_label||'');
+    if(!seen[key]){
+      seen[key] = true;
+      all.push({
+        part_normalised: p.part_normalised,
+        part_label: p.part_label || p.part_normalised,
+        net: parseFloat(p.net)||0,
+        brand: p.brand || '',
+        source: p.source || '',
+        from_cache: !!p.from_cache || String(p.source||'').startsWith('cache') || String(p.source||'').includes('(exact)') || String(p.source||'').includes('(model_only)'),
+        qty: 1
+      });
+    }
+  }));
+  if(!all.length)return '';
+  // Working copy stored on j so edits persist
+  if(!j.brainPartsDraft) j.brainPartsDraft = all.map(p => ({...p}));
+  const draft = j.brainPartsDraft;
+  const totalCost = draft.reduce((s,p) => s + (parseFloat(p.net)||0) * (parseInt(p.qty)||1), 0);
+  const firmN = draft.filter(p => p.from_cache || (j.brainPartsVerified && j.brainPartsVerified[p.part_normalised])).length;
+  const totN = draft.length;
+  const totCard = (firmN===totN)?'var(--green)':(firmN>0?'var(--amber)':'var(--gold)');
+  const rows = draft.map((p,i) => {
+    const firm = !!p.from_cache;
+    const verified = !!(j.brainPartsVerified && j.brainPartsVerified[p.part_normalised]);
+    const chip = firm
+      ? '<span style="background:var(--green);color:#000;padding:2px 6px;border-radius:3px;font-size:9px;font-weight:700">FIRM</span>'
+      : (verified
+        ? '<span style="background:var(--green);color:#000;padding:2px 6px;border-radius:3px;font-size:9px;font-weight:700">✓ VERIFIED</span>'
+        : '<span style="background:var(--amber);color:#000;padding:2px 6px;border-radius:3px;font-size:9px;font-weight:700">AI EST.</span>');
+    return '<div style="display:grid;grid-template-columns:2fr 50px 110px 90px 90px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">'+
+      '<div>'+
+        '<input type="text" value="'+escHtml(p.part_label)+'" onchange="brainEditPart(\''+j.id+'\','+i+',\'part_label\',this.value)" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px 6px;font-size:12px;color:var(--fg);font-weight:600">'+
+        '<div style="font-size:10px;color:var(--faint);margin-top:2px">'+
+          '<input type="text" placeholder="supplier / brand" value="'+escHtml(p.brand||'')+'" onchange="brainEditPart(\''+j.id+'\','+i+',\'brand\',this.value)" style="background:transparent;border:0;border-bottom:1px dashed var(--border);padding:1px 2px;font-size:10px;color:var(--faint);width:140px">'+
+          ' · '+escHtml(p.source||'')+
+        '</div>'+
+      '</div>'+
+      '<div><input type="number" min="1" value="'+p.qty+'" onchange="brainEditPart(\''+j.id+'\','+i+',\'qty\',parseInt(this.value)||1)" style="width:40px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px 6px;font-family:inherit;font-size:12px;color:var(--fg);text-align:center"></div>'+
+      '<div style="display:flex;align-items:center;gap:4px"><span style="font-size:11px;color:var(--faint)">£</span><input type="number" step="0.01" min="0" value="'+(parseFloat(p.net)||0).toFixed(2)+'" onchange="brainEditPart(\''+j.id+'\','+i+',\'net\',parseFloat(this.value)||0)" style="width:80px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px 6px;font-family:inherit;font-size:12px;color:var(--fg);text-align:right"></div>'+
+      '<div style="font-family:ui-monospace,monospace;font-size:12px;color:var(--gold);text-align:right">£'+((parseFloat(p.net)||0)*(parseInt(p.qty)||1)).toFixed(2)+'</div>'+
+      '<div style="display:flex;justify-content:flex-end;align-items:center;gap:4px">'+chip+
+        (!firm&&!verified ? ' <button onclick="brainVerifyPart(\''+j.id+'\','+i+')" style="background:var(--gold);color:#000;border:none;padding:3px 7px;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer">✓</button>' : '')+
+      '</div>'+
+    '</div>';
+  }).join('');
+  return '<div style="background:var(--surface2);border:1px solid '+totCard+';border-radius:var(--r);padding:12px 14px;margin-bottom:14px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">'+
+      '<div style="font-size:12px;font-weight:800;color:'+totCard+';text-transform:uppercase;letter-spacing:.5px">🧠 Brain parts pre-fill — phone suppliers then verify</div>'+
+      '<div style="font-size:11px;color:var(--dim)">'+firmN+'/'+totN+' firm · rest are AI starting points, phone supplier for real price</div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:2fr 50px 110px 90px 90px;gap:8px;font-size:10px;text-transform:uppercase;color:var(--faint);letter-spacing:.5px;padding-bottom:4px;border-bottom:1px solid var(--border)">'+
+      '<div>Part &amp; supplier</div><div>Qty</div><div>Net cost</div><div style="text-align:right">Line total</div><div style="text-align:right">Status</div>'+
+    '</div>'+
+    rows +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:2px solid var(--border)">'+
+      '<div style="font-size:11px;color:var(--dim)">'+draft.length+' parts · total net cost</div>'+
+      '<div style="font-family:ui-monospace,monospace;font-size:16px;font-weight:800;color:var(--gold)">£'+totalCost.toFixed(2)+'</div>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;margin-top:10px">'+
+      '<button onclick="brainApplyPartsToJob(\''+j.id+'\')" style="background:var(--gold);color:#000;border:none;padding:8px 14px;border-radius:4px;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.5px;text-transform:uppercase">Apply '+draft.length+' parts to job</button>'+
+      '<button onclick="brainDismissPartsPrefill(\''+j.id+'\')" style="background:transparent;color:var(--dim);border:1px solid var(--border);padding:8px 14px;border-radius:4px;font-size:12px;cursor:pointer">Dismiss — add parts manually</button>'+
+    '</div>'+
+  '</div>';
+}
+
+window.brainEditPart = function(jobId, idx, field, value){
+  const j = _brainJob(jobId); if(!j||!j.brainPartsDraft||!j.brainPartsDraft[idx])return;
+  j.brainPartsDraft[idx][field] = value;
+  save(j); renderDetail();
+};
+
+window.brainVerifyPart = async function(jobId, idx){
+  const j = _brainJob(jobId); if(!j||!j.brainPartsDraft||!j.brainPartsDraft[idx])return;
+  const p = j.brainPartsDraft[idx];
+  const v = (j.brainAI&&j.brainAI.vehicle) || {};
+  const make = v.make || j.make || '';
+  const model = v.model || j.model || '';
+  if(!make||!model){ alert('Need make + model on the job before verifying'); return; }
+  const payload = {
+    make, model,
+    engine_variant: v.engine_variant || j.engine || null,
+    year_from: v.year || j.year || null,
+    year_to: v.year || j.year || null,
+    part_normalised: p.part_normalised,
+    part_label: p.part_label,
+    part_brand: p.brand || null,
+    supplier: p.brand || null,
+    net_cost: parseFloat(p.net)||0,
+    source: 'parts_team_verified',
+    source_po_id: j.id,
+    confidence: 'high'
+  };
+  try{
+    const r = await fetch(SB_URL+'/rest/v1/kith_parts_cache', {
+      method:'POST', headers:{...SB_HDR,'Prefer':'return=minimal'}, body:JSON.stringify(payload)
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    j.brainPartsVerified = j.brainPartsVerified || {};
+    j.brainPartsVerified[p.part_normalised] = { at: ts(), by: brainWho(), net: payload.net_cost };
+    save(j); renderDetail();
+  }catch(e){
+    alert('Verify failed: '+e.message);
+  }
+};
+
+window.brainApplyPartsToJob = function(jobId){
+  const j = _brainJob(jobId); if(!j||!j.brainPartsDraft)return;
+  j.parts = j.parts || [];
+  // Push each Brain part as a new row in j.parts (matching the psH shape)
+  j.brainPartsDraft.forEach(p => {
+    j.parts.push({
+      name: p.part_label,
+      qty: p.qty || 1,
+      price: parseFloat(p.net)||0,
+      supplier: p.brand || '',
+      brand: p.brand || '',
+      _brainSourced: true,
+      _brainPartNormalised: p.part_normalised
+    });
+  });
+  j.brainPartsAppliedAt = ts();
+  j.brainPartsAppliedBy = brainWho();
+  save(j); renderDetail();
+};
+
+window.brainDismissPartsPrefill = function(jobId){
+  const j = _brainJob(jobId); if(!j)return;
+  j.brainPartsDismissedAt = ts();
+  save(j); renderDetail();
+};
 
 const RANGE_STOP=new Set('the and for with from that this have has had need needs needed please car vehicle customer job work also check checks checked new old front rear left right side one two its not but are was were will can could would just like into onto off out our your their them they his her him she also very some any all more less than then only want wants wanted looking quote price estimate'.split(' '));
 function rangeWords(t){
