@@ -276,18 +276,71 @@
   }
 
   // ── Turning a lead into a job ───────────────────────────────────
+  // If triage already ran and fired a rapid-fire range to the customer,
+  // the CRM job is pre-loaded with that range, the Brain's priced jobs,
+  // and the inferred customer type — so the estimator opens the job and
+  // can cross-check the detailed estimate against what the customer was
+  // already promised.
   function leadToJob(lead, by, now) {
     now = now || new Date();
     if (!hasAll(lead)) throw new Error('Still needs: ' + missing(lead).map(k => k === 'reg' ? 'the reg' : 'a ' + k).join(' and ') + '.');
     const id = 'J' + now.getTime() + (lead.idSuffix || '');
-    return {
+    const t = lead.triage || {};
+    const rf = t.rapidFireRange || {};
+    const bai = t.brainResult || null;
+
+    // Customer type — triage knows if it's AA / warranty / insurance /
+    // trade / fleet / retail. Default retail.
+    const custType = t.suggestedCustType || (t.category === 'adviser' && t.is_work_enquiry ? 'retail' : '');
+
+    const log = [{ t: ts(now), s: 'Taken in from ' + channelLabel(lead.channel) + (lead.handle ? ' (' + lead.handle + ')' : '') + (by ? ' [' + by + ']' : '') }];
+    // Carry inbound messages so the estimator sees the customer's words
+    (lead.messages || []).filter(m => m.dir === 'in').slice(-5).forEach(m =>
+      log.push({ t: m.at, s: '💬 ' + channelLabel(m.channel || lead.channel) + ': ' + shorten(m.text, 200) }));
+    // Carry the triage decision + the rapid-fire action, if any
+    if (t.category) log.push({ t: ts(now), s: '🧠 Triage: ' + t.category + (t.is_rapid_fire ? ' · ⚡ rapid fire' : '') + (t.reasoning ? ' — ' + t.reasoning : '') });
+    if (t.rapidFireSentAt && rf.lo && rf.hi) log.push({ t: t.rapidFireSentAt, s: '📤 Range £' + Math.round(rf.lo) + '–£' + Math.round(rf.hi) + ' sent to customer' + (t.rapidFireBrainConfidence ? ' (brain confidence ' + t.rapidFireBrainConfidence + ')' : '') });
+
+    const job = {
       id, reg: cleanReg(lead.reg), name: str(lead.name), phone: str(lead.phone), email: str(lead.email),
       make: '', model: '', work: str(lead.what), stage: 'intake', stageAt: now.getTime(),
       source: channelLabel(lead.channel), leadId: lead.id, enquiredAt: lead.at,
-      parts: [], payments: [],
-      log: [{ t: ts(now), s: 'Taken in from ' + channelLabel(lead.channel) + (lead.handle ? ' (' + lead.handle + ')' : '') + (by ? ' [' + by + ']' : '') }]
-        .concat((lead.messages || []).filter(m => m.dir === 'in').slice(-5).map(m => ({ t: m.at, s: '💬 ' + channelLabel(m.channel || lead.channel) + ': ' + shorten(m.text, 200) })))
+      parts: [], payments: [], log
     };
+    if (custType) job.custType = custType;
+    // The range that was sent via rapid fire — Range stage sees this as
+    // already-sent and lets adviser move straight to Labour on YES.
+    if (t.rapidFireSentAt && rf.lo && rf.hi) {
+      job.rangeLow = Math.round(rf.lo);
+      job.rangeHigh = Math.round(rf.hi);
+      job.rangeSentAt = t.rapidFireSentAt;
+      job.rangeSentMs = new Date(t.rapidFireSentAt).getTime();
+      job.rangeSentBy = 'Triage AI';
+      job.rangeSentVia = 'whatsapp';
+      job.rangeSource = 'brain_rapid_fire';
+      if (t.rapidFireBrainConfidence) job.rangeConfidence = t.rapidFireBrainConfidence;
+      if (t.rapidFireSopVersion) job.rangeSopVersion = t.rapidFireSopVersion;
+    }
+    // The Brain's priced jobs — the Labour and Parts pre-fill panels pick
+    // this up immediately so the estimator doesn't wait for a re-call.
+    if (bai && Array.isArray(bai.jobs) && bai.jobs.length) {
+      job.brainAI = {
+        total: bai.total_inc_vat || 0,
+        lo: (bai.total_range && bai.total_range.lo) || 0,
+        hi: (bai.total_range && bai.total_range.hi) || 0,
+        jobs: bai.jobs,
+        vehicle: bai.vehicle || null,
+        conf: bai.confidence || 'low',
+        allFirm: !!bai.all_firm,
+        usedFallback: !!bai.used_ai_fallback,
+        cacheStats: bai.cache_stats || {},
+        sopVersion: bai.sop_version || null,
+        at: ts(now),
+        ms: now.getTime(),
+        source: 'inbox_rapid_fire'
+      };
+    }
+    return job;
   }
 
   return {

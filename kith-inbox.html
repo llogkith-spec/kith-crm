@@ -298,7 +298,8 @@ async function triageLead(l) {
       pingSentAt: l.triage.pingSentAt, pingSentTo: l.triage.pingSentTo, pingSkippedReason: l.triage.pingSkippedReason,
       rapidFireSentAt: l.triage.rapidFireSentAt, rapidFireRange: l.triage.rapidFireRange,
       rapidFireMsgId: l.triage.rapidFireMsgId, rapidFireSopVersion: l.triage.rapidFireSopVersion,
-      rapidFireSkippedReason: l.triage.rapidFireSkippedReason, rapidFireBrainConfidence: l.triage.rapidFireBrainConfidence
+      rapidFireSkippedReason: l.triage.rapidFireSkippedReason, rapidFireBrainConfidence: l.triage.rapidFireBrainConfidence,
+      brainResult: l.triage.brainResult, suggestedCustType: l.triage.suggestedCustType
     } : {};
     l.triage = Object.assign({}, r, { text_hash: triageHash(l) }, keep);
     debouncedSaveLeads();
@@ -511,6 +512,11 @@ async function sendRapidFire(l) {
     l.triage.rapidFireBrainConfidence = brain.confidence || 'low';
     l.triage.rapidFireMsgId = m.id;
     l.triage.rapidFireSopVersion = brain.sop_version || null;
+    // Store the full Brain result so leadToJob can carry brainAI into the CRM
+    // and the Labour/Parts pre-fill panels light up immediately for the
+    // estimator — no re-call needed.
+    l.triage.brainResult = brain;
+    l.triage.suggestedCustType = 'retail';  // rapid fire only ever fires for retail
     LEADS = LEADS.map(x => x.id === l.id ? B.addMessage(x, { dir: 'out', channel: m.route[0], text: m.text, status: 'queued', msgId: m.id }) : x);
     const nx = LEADS.find(x => x && x.id === l.id); if (nx) Object.assign(l, nx);
   } catch (e) { l.triage.rapidFireSkippedReason = e.message; }
