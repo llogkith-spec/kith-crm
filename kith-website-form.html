@@ -1,0 +1,103 @@
+<!--
+  KITH Cars — website enquiry form
+  Drop this snippet into kithcars.com (any page). It POSTs to the
+  inbox-ingest Edge Function. The lead lands in kith-inbox.html, the
+  triage AI classifies it, the rapid-fire range goes out on WhatsApp
+  automatically if it's a retail mechanical job with enough detail.
+
+  CONFIG: nothing to change — SUPABASE anon key is safe to embed in
+  public HTML (same pattern as the CRM / inbox pages themselves).
+-->
+<style>
+  #kith-form{max-width:520px;margin:30px auto;padding:28px;background:#14161A;color:#EDEFF2;font-family:system-ui,-apple-system,sans-serif;border-radius:10px;border:1px solid #333A44}
+  #kith-form h2{font-family:Georgia,serif;color:#D8A32B;margin:0 0 6px;font-size:22px;letter-spacing:.3px}
+  #kith-form .sub{color:#A8B1BD;font-size:13px;margin-bottom:22px}
+  #kith-form label{display:block;font-size:11px;text-transform:uppercase;color:#A8B1BD;letter-spacing:.8px;margin:14px 0 4px;font-weight:600}
+  #kith-form input, #kith-form textarea{width:100%;background:#1B1E24;border:1px solid #333A44;color:#EDEFF2;padding:11px 13px;border-radius:6px;font:inherit;font-size:14px;box-sizing:border-box}
+  #kith-form input:focus, #kith-form textarea:focus{outline:none;border-color:#D8A32B}
+  #kith-form textarea{resize:vertical;min-height:90px}
+  #kith-form .reg{background:#FFCE00;color:#000;border:2px solid #000;font-weight:800;font-size:22px;letter-spacing:1px;text-align:center;text-transform:uppercase}
+  #kith-form button{width:100%;background:#D8A32B;color:#000;border:none;padding:14px;font:inherit;font-weight:800;text-transform:uppercase;letter-spacing:1px;border-radius:6px;cursor:pointer;margin-top:22px;font-size:14px}
+  #kith-form button:hover{background:#E6B847}
+  #kith-form button:disabled{opacity:.5;cursor:not-allowed}
+  #kith-form .thanks{text-align:center;padding:40px 10px;color:#EDEFF2}
+  #kith-form .thanks .tick{font-size:48px;color:#3FB07A;margin-bottom:12px}
+  #kith-form .thanks h3{color:#D8A32B;margin:6px 0;font-family:Georgia,serif;font-size:22px}
+  #kith-form .thanks p{color:#A8B1BD;font-size:14px;line-height:1.5;margin:4px 0}
+  #kith-form .err{background:rgba(224,90,76,.15);border:1px solid #E05A4C;color:#E05A4C;padding:10px 14px;border-radius:5px;margin-top:14px;font-size:13px}
+</style>
+
+<form id="kith-form" onsubmit="return kithSubmit(event)">
+  <h2>Get an instant price</h2>
+  <div class="sub">Tell us your reg, how to reach you and what the car needs. We'll ping you a WhatsApp range within 5 minutes, free and no obligation.</div>
+
+  <div id="kith-form-body">
+    <label for="k-reg">Your registration</label>
+    <input id="k-reg" class="reg" name="reg" placeholder="AB15 XYZ" maxlength="10" required>
+
+    <label for="k-name">Your name</label>
+    <input id="k-name" name="name" placeholder="e.g. Jane Patel" required>
+
+    <label for="k-phone">Mobile (for the WhatsApp reply)</label>
+    <input id="k-phone" name="phone" type="tel" inputmode="tel" placeholder="e.g. 07700 900123" required>
+
+    <label for="k-what">What does the car need?</label>
+    <textarea id="k-what" name="what" placeholder="e.g. rear brakes grinding and a full service" required></textarea>
+
+    <label for="k-email">Email (optional — if you'd rather not use WhatsApp)</label>
+    <input id="k-email" name="email" type="email" placeholder="you@example.com">
+
+    <button id="k-submit" type="submit">Get my price range</button>
+    <div id="k-err" class="err" style="display:none"></div>
+  </div>
+</form>
+
+<script>
+(function(){
+  // Supabase anon key is safe to embed in a public web page.
+  // (Anon writes are gated by Edge Function logic + the inbox's own
+  // de-dup + staff-only read side in the CRM.)
+  const INGEST_URL = 'https://mxyrxyhvjndgjqupgstu.supabase.co/functions/v1/inbox-ingest';
+  const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
+
+  window.kithSubmit = async function(e){
+    e.preventDefault();
+    const btn = document.getElementById('k-submit');
+    const err = document.getElementById('k-err');
+    err.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    const v = id => (document.getElementById(id).value || '').trim();
+    try {
+      const r = await fetch(INGEST_URL, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', 'apikey': ANON_KEY, 'Authorization':'Bearer ' + ANON_KEY, 'x-caller':'website_form' },
+        body: JSON.stringify({
+          channel: 'website',
+          sender_name: v('k-name'),
+          sender_phone: v('k-phone'),
+          sender_email: v('k-email'),
+          reg: v('k-reg'),
+          message_text: v('k-what')
+        })
+      });
+      const data = await r.json();
+      if(!r.ok || data.error) throw new Error(data.error || ('HTTP ' + r.status));
+      document.getElementById('kith-form-body').innerHTML =
+        '<div class="thanks">' +
+          '<div class="tick">✓</div>' +
+          '<h3>Thanks ' + escapeHtml(v('k-name').split(' ')[0] || '') + '</h3>' +
+          '<p>Your enquiry for <strong style="color:#D8A32B">' + escapeHtml(v('k-reg').toUpperCase()) + '</strong> is in.</p>' +
+          '<p style="margin-top:14px">We\'ll send a WhatsApp price range to <strong>' + escapeHtml(v('k-phone')) + '</strong> in the next few minutes.</p>' +
+          '<p style="margin-top:14px;font-size:12px;color:#6E7885">KITH Cars · Hackbridge · Reply YES on WhatsApp to get the exact figure.</p>' +
+        '</div>';
+    } catch(e) {
+      err.textContent = 'Could not send — please try again, or call us on 020 XXXX XXXX.';
+      err.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Get my price range';
+    }
+  };
+  function escapeHtml(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+})();
+</script>
