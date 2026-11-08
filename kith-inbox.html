@@ -291,9 +291,20 @@ async function triageLead(l) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const r = await res.json();
     if (r.error) throw new Error(r.error);
-    l.triage = Object.assign({}, r, { text_hash: triageHash(l) });
+    // Preserve any action timestamps already recorded — if re-triage fires
+    // for any reason we don't want to re-send actions that already went out.
+    const keep = l.triage ? {
+      ackSentAt: l.triage.ackSentAt, ackMsgId: l.triage.ackMsgId, ackSkippedReason: l.triage.ackSkippedReason,
+      pingSentAt: l.triage.pingSentAt, pingSentTo: l.triage.pingSentTo, pingSkippedReason: l.triage.pingSkippedReason,
+      rapidFireSentAt: l.triage.rapidFireSentAt, rapidFireRange: l.triage.rapidFireRange,
+      rapidFireMsgId: l.triage.rapidFireMsgId, rapidFireSopVersion: l.triage.rapidFireSopVersion,
+      rapidFireSkippedReason: l.triage.rapidFireSkippedReason, rapidFireBrainConfidence: l.triage.rapidFireBrainConfidence
+    } : {};
+    l.triage = Object.assign({}, r, { text_hash: triageHash(l) }, keep);
     debouncedSaveLeads();
     render();
+    // Fire the actions the triage decided on (ack / staff ping / rapid fire)
+    fireTriageActions(l).catch(e => console.warn('triage actions:', e.message));
   } catch (e) {
     console.warn('triage failed for', l.id, e.message);
   } finally {
@@ -308,9 +319,13 @@ function triageText(l) {
   return parts.join(' — ');
 }
 function triageHash(l) {
+  // Hash only INBOUND content — never include outbound messages, which would
+  // cause fireTriageActions (which adds outbound messages) to re-trigger triage
+  // in a loop.
   const s = triageText(l);
+  const inboundCount = (l.messages || []).filter(m => m.dir === 'in').length;
   let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-  return h + ':' + ((l.messages || []).length);
+  return h + ':' + inboundCount;
 }
 // Override: Logan picks a different category manually. Writes the correction
 // so the next triage call can learn from it.
@@ -355,7 +370,171 @@ function triageChip(t) {
   const amb = t.is_ambiguous ? ' <span class="tag" style="background:#E0A030;color:#000;margin-left:4px">❓ AMBIGUOUS</span>' : '';
   const prio = t.priority === 'urgent' ? ' <span class="tag" style="background:#E05A4C;color:#fff;margin-left:4px">URGENT</span>' : '';
   const ov = t.overridden_by ? ' <span class="tag" style="opacity:.6;margin-left:4px">✎ override</span>' : '';
-  return '<span class="tag" style="background:' + m.col + ';color:#000;font-weight:800">' + m.lbl + '</span>' + rf + amb + prio + ov;
+  const ack = t.ackSentAt ? ' <span class="tag go" style="margin-left:4px">✓ ack sent</span>' : '';
+  const ping = t.pingSentAt && t.pingSentTo ? ' <span class="tag" style="background:#5B9BD5;color:#000;margin-left:4px">→ ' + esc(t.pingSentTo.join(', ')) + '</span>' : '';
+  const rfSent = t.rapidFireSentAt && t.rapidFireRange ? ' <span class="tag go" style="margin-left:4px">⚡ £' + Math.round(t.rapidFireRange.lo) + '–£' + Math.round(t.rapidFireRange.hi) + ' sent</span>' : '';
+  return '<span class="tag" style="background:' + m.col + ';color:#000;font-weight:800">' + m.lbl + '</span>' + rf + amb + prio + ov + ack + ping + rfSent;
+}
+
+// ── TRIAGE ACTIONS (Round B) ────────────────────────────────────────────────
+// After triage classifies a lead, these functions fire the decided actions:
+//   - If ambiguous: do nothing (Logan handles)
+//   - If rapid_fire: call the pricing Brain + queue range to customer, skip ack
+//   - Else: queue ack reply to customer + queue WhatsApp pings to staff
+// Each action records a timestamp on l.triage so nothing fires twice.
+const STAFF_BY_ROLE = {
+  adviser:  [{name:'Ali',   wa:'2348126024190'}, {name:'Elvis', wa:''}],
+  parts:    [{name:'Sudha', wa:'447514422991'},  {name:'Giles', wa:'447496673248'}, {name:'Harith', wa:''}, {name:'Paul', wa:''}],
+  accounts: [{name:'Sudha', wa:'447514422991'},  {name:'Logan', wa:''}],
+  director: [{name:'Logan', wa:''}]
+};
+
+async function fireTriageActions(l) {
+  if (!l || !l.triage) return;
+  const t = l.triage;
+  if (t.is_ambiguous) return;                             // Logan handles ambiguous
+  if (t.is_rapid_fire && !t.rapidFireSentAt) {
+    await sendRapidFire(l);                               // range replaces the ack
+  } else if (!t.rapidFireSentAt) {
+    if (!t.ackSentAt && t.suggested_reply) await sendAutoAck(l);
+  }
+  if (!t.pingSentAt) await sendStaffPings(l);
+  debouncedSaveLeads();
+  debouncedSaveOut();
+  render();
+}
+
+async function sendAutoAck(l) {
+  if (!l.triage || !l.triage.suggested_reply) return;
+  if (!canSend(l)) { l.triage.ackSkippedReason = 'no contact to send to'; return; }
+  try {
+    const m = B.queue({
+      kind: 'triage_ack', leadId: l.id,
+      phone: l.phone, email: l.email,
+      text: l.triage.suggested_reply,
+      idSuffix: '-ack'
+    }, 'Triage AI');
+    OUT = [m].concat(OUT);
+    // Mutate l.triage FIRST so when addMessage clones, the timestamps carry
+    // through to the new LEADS entry. Otherwise the clone leaves l orphaned.
+    l.triage.ackSentAt = new Date().toISOString();
+    l.triage.ackMsgId = m.id;
+    LEADS = LEADS.map(x => x.id === l.id ? B.addMessage(x, { dir: 'out', channel: m.route[0], text: m.text, status: 'queued', msgId: m.id }) : x);
+    // Re-point l at the new cloned entry so later mutations in this call chain
+    // also persist.
+    const nx = LEADS.find(x => x && x.id === l.id); if (nx) Object.assign(l, nx);
+  } catch (e) { l.triage.ackSkippedReason = e.message; }
+}
+
+async function sendStaffPings(l) {
+  if (!l.triage) return;
+  const roles = l.triage.routed_to_roles && l.triage.routed_to_roles.length
+    ? l.triage.routed_to_roles
+    : [l.triage.category];
+  const seen = {}; const targets = [];
+  roles.forEach(r => (STAFF_BY_ROLE[r] || []).forEach(p => {
+    if (!p.wa) return; if (seen[p.wa]) return; seen[p.wa] = true; targets.push(p);
+  }));
+  if (!targets.length) { l.triage.pingSkippedReason = 'no staff WA numbers for role(s): ' + roles.join(','); return; }
+  const summary = pingText(l);
+  targets.forEach((p, i) => {
+    try {
+      const m = B.queue({
+        kind: 'staff_ping', leadId: l.id,
+        phone: p.wa, text: summary,
+        route: ['whatsapp'],
+        idSuffix: '-ping-' + i
+      }, 'Triage AI');
+      OUT = [m].concat(OUT);
+    } catch (e) { /* skip this target */ }
+  });
+  l.triage.pingSentAt = new Date().toISOString();
+  l.triage.pingSentTo = targets.map(p => p.name);
+}
+
+function pingText(l) {
+  const t = l.triage;
+  const prio = t.priority === 'urgent' ? '🚨 URGENT · ' : '';
+  const cat = (t.category || 'inbox').toUpperCase();
+  const who = l.name || l.handle || 'unknown';
+  const contact = [l.phone, l.reg].filter(Boolean).join(' · ') || 'no number';
+  const what = l.what || '(see thread)';
+  const ch = B.channelLabel(l.channel);
+  return prio + 'KITH inbox · ' + cat + ' · ' + ch + '\n' +
+    who + ' · ' + contact + '\n' +
+    what + '\n\n' +
+    'Open: ' + (window.location.origin + window.location.pathname);
+}
+
+async function sendRapidFire(l) {
+  if (!l.triage) return;
+  if (l.triage.rapidFireSentAt) return;
+  if (!canSend(l)) { l.triage.rapidFireSkippedReason = 'no contact to send to'; return; }
+  // Call the pricing Brain
+  let brain;
+  try {
+    const res = await fetch(CFG.url + '/functions/v1/brain', {
+      method: 'POST', headers: HDR(),
+      body: JSON.stringify({
+        customer_type: 'retail',
+        vehicle: [l.year, l.make, l.model].filter(Boolean).join(' ') || l.reg || '',
+        reg: l.reg || '',
+        complaint: l.what || ''
+      })
+    });
+    brain = await res.json();
+    if (!res.ok || brain.error) throw new Error(brain.error || ('HTTP ' + res.status));
+  } catch (e) {
+    l.triage.rapidFireSkippedReason = 'brain: ' + e.message;
+    // Fall back to the ack so the customer gets SOMETHING
+    if (!l.triage.ackSentAt && l.triage.suggested_reply) await sendAutoAck(l);
+    return;
+  }
+  const lo = brain.total_range && Math.round(brain.total_range.lo);
+  const hi = brain.total_range && Math.round(brain.total_range.hi);
+  if (!lo || !hi) {
+    l.triage.rapidFireSkippedReason = 'brain returned no range';
+    if (!l.triage.ackSentAt && l.triage.suggested_reply) await sendAutoAck(l);
+    return;
+  }
+  const text = rapidFireText(l, brain);
+  try {
+    const m = B.queue({
+      kind: 'triage_rapid_fire', leadId: l.id,
+      phone: l.phone, email: l.email,
+      text, idSuffix: '-rf'
+    }, 'Triage AI');
+    OUT = [m].concat(OUT);
+    // Mutate l.triage FIRST so addMessage's clone carries the timestamps.
+    l.triage.rapidFireSentAt = new Date().toISOString();
+    l.triage.rapidFireRange = { lo, hi };
+    l.triage.rapidFireBrainConfidence = brain.confidence || 'low';
+    l.triage.rapidFireMsgId = m.id;
+    l.triage.rapidFireSopVersion = brain.sop_version || null;
+    LEADS = LEADS.map(x => x.id === l.id ? B.addMessage(x, { dir: 'out', channel: m.route[0], text: m.text, status: 'queued', msgId: m.id }) : x);
+    const nx = LEADS.find(x => x && x.id === l.id); if (nx) Object.assign(l, nx);
+  } catch (e) { l.triage.rapidFireSkippedReason = e.message; }
+}
+
+function rapidFireText(l, brain) {
+  const lo = Math.round(brain.total_range.lo);
+  const hi = Math.round(brain.total_range.hi);
+  const name = l.name ? l.name.split(' ')[0] : 'there';
+  const veh = [l.year, l.make, l.model].filter(Boolean).join(' ') || ('your ' + (l.reg || 'vehicle'));
+  return 'Hi ' + name + ' — thanks for your enquiry about the ' + veh + '.\n\n' +
+    'Based on what you\'ve described, our instant estimate is £' + lo + '–£' + hi + ' (inc VAT).\n\n' +
+    'This is a range from our pricing system — the final quote is confirmed after an estimator checks everything properly. Happy to go ahead? Reply YES and we\'ll work out the exact figure.\n\n' +
+    'KITH Cars · Hackbridge · 020 XXXX XXXX';
+}
+
+// Share the debounced saves: outbox has its own race risk
+let _saveOutTimer = null;
+function debouncedSaveOut(){
+  if(_saveOutTimer) return;
+  _saveOutTimer = setTimeout(async () => {
+    _saveOutTimer = null;
+    try { await saveOut(); } catch(e) { console.warn('debouncedSaveOut:', e.message); }
+  }, 1200);
 }
 
 /* ---------------- loading ---------------- */
@@ -366,8 +545,27 @@ async function load(silent) {
     if (!r.ok) throw new Error('CRM returned ' + r.status);
     const rows = await r.json();
     const sys = id => ((rows || []).find(x => x.id === id) || {}).data || {};
-    LEADS = sys('__leads__').leads || []; LEADS_BASE = clone(LEADS);
-    OUT = sys('__outbox__').msgs || []; OUT_BASE = clone(OUT);
+    // Preserve in-memory triage state across reloads — the server may not yet
+    // have our latest triage result (debounced save hasn't landed yet), so
+    // merge in-memory triage onto the server lead if the server's is missing
+    // or older. Without this, every poll before the save lands re-triages and
+    // re-fires actions (acks, pings, rapid fire) — a loop we must avoid.
+    const prevTriage = {}; (LEADS || []).forEach(l => { if (l && l.id && l.triage) prevTriage[l.id] = l.triage; });
+    const serverLeads = sys('__leads__').leads || [];
+    LEADS = serverLeads.map(l => {
+      const prev = prevTriage[l && l.id];
+      if (!prev) return l;
+      if (l.triage && l.triage.text_hash === prev.text_hash) return l;  // server has fresher or equal
+      return Object.assign({}, l, { triage: prev });
+    });
+    LEADS_BASE = clone(LEADS);
+    // Same trick for the outbox — if a message is in memory (freshly queued by
+    // triage actions) but not yet on the server, keep it.
+    const serverOut = sys('__outbox__').msgs || [];
+    const serverOutIds = new Set(serverOut.map(m => m.id));
+    const localOnly = (OUT || []).filter(m => m && !serverOutIds.has(m.id));
+    OUT = localOnly.concat(serverOut);
+    OUT_BASE = clone(OUT);
     LIVE = sys('__msgcfg__').live || {};
     setSync('ok', 'Up to date ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
     render();
