@@ -251,6 +251,112 @@ const errBox = (id, m) => { const e = $(id); if (e) e.innerHTML = '<div class="n
 let ME = null, MY = null;
 let LEADS = [], LEADS_BASE = [], OUT = [], OUT_BASE = [], LIVE = {};
 let TAB = 'new', BUSY = false;
+let CAT = 'all';  // category filter: all/adviser/parts/accounts/director/ambiguous/rapidfire
+
+/* ---------------- TRIAGE ---------------- */
+// Call the triage Edge Function for a lead, write the result onto l.triage.
+// Fires in background, debounced per lead, caches so we don't re-triage the
+// same message text repeatedly. Called from render() for every un-triaged lead.
+const _triageInFlight = {};
+// Collect multiple near-simultaneous triage completions into one saveLeads
+// write, so the row's optimistic concurrency check doesn't reject collisions.
+let _saveLeadsTimer = null;
+function debouncedSaveLeads(){
+  if(_saveLeadsTimer) return;
+  _saveLeadsTimer = setTimeout(async () => {
+    _saveLeadsTimer = null;
+    try { await saveLeads(); } catch(e) { console.warn('debouncedSaveLeads:', e.message); }
+  }, 1200);
+}
+async function triageLead(l) {
+  if (!l || !l.id) return;
+  if (l.triage && l.triage.text_hash === triageHash(l)) return;  // already triaged this content
+  if (_triageInFlight[l.id]) return;
+  const text = triageText(l);
+  if (!text || text.length < 3) return;
+  _triageInFlight[l.id] = true;
+  try {
+    const res = await fetch(CFG.url + '/functions/v1/triage', {
+      method: 'POST',
+      headers: HDR(),
+      body: JSON.stringify({
+        text,
+        channel: l.channel || 'unknown',
+        sender_name: l.name || l.handle || '',
+        sender_phone: l.phone || '',
+        is_known_customer: !!l._knownCustomer,
+        prev_messages: (l.messages || []).slice(-3).map(m => ({ dir: m.dir, text: m.text }))
+      })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const r = await res.json();
+    if (r.error) throw new Error(r.error);
+    l.triage = Object.assign({}, r, { text_hash: triageHash(l) });
+    debouncedSaveLeads();
+    render();
+  } catch (e) {
+    console.warn('triage failed for', l.id, e.message);
+  } finally {
+    delete _triageInFlight[l.id];
+  }
+}
+function triageText(l) {
+  const parts = [];
+  if (l.what) parts.push(l.what);
+  const lastIn = (l.messages || []).filter(m => m.dir === 'in').slice(-1)[0];
+  if (lastIn && lastIn.text) parts.push(lastIn.text);
+  return parts.join(' — ');
+}
+function triageHash(l) {
+  const s = triageText(l);
+  let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return h + ':' + ((l.messages || []).length);
+}
+// Override: Logan picks a different category manually. Writes the correction
+// so the next triage call can learn from it.
+async function overrideTriage(leadId, newCat, newRapidFire) {
+  const l = LEADS.find(x => x.id === leadId); if (!l || !l.triage) return;
+  const orig = l.triage;
+  try {
+    await fetch(CFG.url + '/rest/v1/kith_triage_corrections', {
+      method: 'POST',
+      headers: Object.assign({}, HDR(), { Prefer: 'return=minimal' }),
+      body: JSON.stringify({
+        lead_id: l.id,
+        original_text: triageText(l),
+        original_category: orig.category,
+        corrected_category: newCat,
+        original_rapid_fire: !!orig.is_rapid_fire,
+        corrected_rapid_fire: newRapidFire == null ? !!orig.is_rapid_fire : !!newRapidFire,
+        corrected_by: (ME && ME.name) || 'director',
+        note: 'Manual override from inbox'
+      })
+    });
+  } catch (e) { console.warn('correction write failed', e.message); }
+  l.triage.category = newCat;
+  if (newRapidFire != null) l.triage.is_rapid_fire = !!newRapidFire;
+  l.triage.overridden_by = (ME && ME.name) || 'director';
+  l.triage.overridden_at = new Date().toISOString();
+  await saveLeads();
+  render();
+}
+// Category chip classes/colours. Keep in sync with the tab list below.
+const CAT_META = {
+  adviser:   { lbl: 'ADVISER',   col: '#5B9BD5' },
+  parts:     { lbl: 'PARTS',     col: '#D8A32B' },
+  accounts:  { lbl: 'ACCOUNTS',  col: '#3FB07A' },
+  director:  { lbl: 'DIRECTOR',  col: '#9B7FD4' },
+  unsure:    { lbl: 'UNSURE',    col: '#E0A030' }
+};
+function triageChip(t) {
+  if (!t) return '<span class="tag" style="opacity:.4">triaging…</span>';
+  const m = CAT_META[t.category] || CAT_META.unsure;
+  const rf = t.is_rapid_fire ? ' <span class="tag" style="background:#D8A32B;color:#000;margin-left:4px">⚡ RAPID</span>' : '';
+  const amb = t.is_ambiguous ? ' <span class="tag" style="background:#E0A030;color:#000;margin-left:4px">❓ AMBIGUOUS</span>' : '';
+  const prio = t.priority === 'urgent' ? ' <span class="tag" style="background:#E05A4C;color:#fff;margin-left:4px">URGENT</span>' : '';
+  const ov = t.overridden_by ? ' <span class="tag" style="opacity:.6;margin-left:4px">✎ override</span>' : '';
+  return '<span class="tag" style="background:' + m.col + ';color:#000;font-weight:800">' + m.lbl + '</span>' + rf + amb + prio + ov;
+}
 
 /* ---------------- loading ---------------- */
 async function load(silent) {
@@ -294,7 +400,19 @@ async function withSave(fn, okMsg) {
 const liveCount = () => ['whatsapp', 'sms', 'email'].filter(c => LIVE[c]).length;
 const queued = () => OUT.filter(B.isQueued);
 const leadsIn = st => LEADS.filter(l => B.leadState(l) === st);
+// Category filter — applies on top of the state tabs
+function catOf(l){ return (l && l.triage && l.triage.category) || null; }
+function leadsInCat(st, cat){
+  const base = leadsIn(st);
+  if(!cat || cat === 'all') return base;
+  if(cat === 'ambiguous') return base.filter(l => l.triage && l.triage.is_ambiguous);
+  if(cat === 'rapidfire') return base.filter(l => l.triage && l.triage.is_rapid_fire);
+  return base.filter(l => catOf(l) === cat);
+}
 function render() {
+  // Auto-fire triage for any un-triaged lead (background, non-blocking)
+  LEADS.forEach(l => { if (B.leadState(l) !== 'junk') triageLead(l); });
+
   const tabs = [
     { k: 'new', n: 'Needs details', c: leadsIn('new').length + ' waiting', hot: leadsIn('new').length > 0 },
     { k: 'bot', n: 'Bot asking', c: leadsIn('bot').length + ' open', hot: false },
@@ -307,6 +425,21 @@ function render() {
   $('tabs').querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { TAB = b.dataset.tab; try { localStorage.setItem('kith_inbox_tab', TAB); } catch (e) {} render(); });
   ({ new: renderLeads, bot: renderLeads, ready: renderLeads, out: renderOut })[TAB](TAB);
 }
+function catBar(kind){
+  const cats = [
+    { k: 'all',       lbl: 'All',       col: '#8A8470' },
+    { k: 'rapidfire', lbl: '⚡ Rapid fire', col: '#D8A32B' },
+    { k: 'adviser',   lbl: 'Adviser',   col: '#5B9BD5' },
+    { k: 'parts',     lbl: 'Parts',     col: '#D8A32B' },
+    { k: 'accounts',  lbl: 'Accounts',  col: '#3FB07A' },
+    { k: 'director',  lbl: 'Director',  col: '#9B7FD4' },
+    { k: 'ambiguous', lbl: '❓ Ambiguous', col: '#E0A030' }
+  ];
+  const counts = {}; cats.forEach(c => counts[c.k] = leadsInCat(kind, c.k === 'all' ? null : c.k).length);
+  return '<div class="cat-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 10px">' +
+    cats.map(c => '<button class="btn sm' + (CAT === c.k ? ' primary' : '') + '" style="' + (CAT === c.k ? 'background:' + c.col + ';color:#000;border-color:' + c.col : 'border:1px solid ' + c.col + ';color:' + c.col + ';background:transparent') + '" data-cat="' + c.k + '">' + esc(c.lbl) + ' <span style="opacity:.7">' + counts[c.k] + '</span></button>').join('') +
+  '</div>';
+}
 function banner() {
   if (liveCount() === 3) return '';
   const off = ['whatsapp', 'sms', 'email'].filter(c => !LIVE[c]).map(c => ({ whatsapp: 'WhatsApp', sms: 'text messages', email: 'email' })[c]);
@@ -315,17 +448,19 @@ function banner() {
     ' set up — until then send them by hand from there, one tap each.</div>';
 }
 function renderLeads(kind) {
-  const list = leadsIn(kind).sort((a, b) => (b.t || 0) - (a.t || 0));
+  const list = leadsInCat(kind, CAT).sort((a, b) => (b.t || 0) - (a.t || 0));
   let h = '<div class="btns" style="margin-top:0"><button class="btn primary" id="lNew">+ New enquiry</button></div>' + banner();
   h += '<p class="hint">' + ({
     new: 'Came in without enough to work with. The auto-reply asks for a name, a number and a reg — fill them in as they come back.',
     bot: 'We have their details. The bot is asking what the car is doing over WhatsApp.',
     ready: 'Name, number, reg and what they want. One button puts it in the CRM at 1 · Intake.'
   })[kind] + '</p>';
-  if (!list.length) h += '<div class="empty">Nothing here.</div>';
+  h += catBar(kind);
+  if (!list.length) h += '<div class="empty">Nothing here' + (CAT !== 'all' ? ' in this category' : '') + '.</div>';
   h += list.map(leadCard).join('');
   $('view').innerHTML = h;
   $('lNew').onclick = () => openNew();
+  document.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { CAT = b.dataset.cat; try { localStorage.setItem('kith_inbox_cat', CAT); } catch (e) {} render(); });
   wireLeadButtons();
 }
 function leadCard(l) {
@@ -333,12 +468,27 @@ function leadCard(l) {
   const last = (l.messages || []).slice(-3);
   const mine = OUT.filter(m => m.leadId === l.id);
   const q = mine.filter(B.isQueued).length;
+  const t = l.triage;
+  const triageBlock = t ? '<div style="background:var(--surface,#20242B);border:1px solid var(--border,#333A44);border-radius:4px;padding:8px 10px;margin:6px 0;font-size:11px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<div>' + triageChip(t) + '</div>' +
+        '<div><select data-ovride="' + esc(l.id) + '" style="background:var(--surface2,#262B33);border:1px solid var(--border,#333A44);color:var(--ink,#EDEFF2);padding:3px 6px;border-radius:3px;font-size:10px">' +
+          '<option value="">Override…</option>' +
+          '<option value="adviser">Adviser</option><option value="parts">Parts</option>' +
+          '<option value="accounts">Accounts</option><option value="director">Director</option>' +
+          '<option value="unsure">Unsure</option>' +
+        '</select></div>' +
+      '</div>' +
+      (t.reasoning ? '<div style="opacity:.75;margin-top:4px;line-height:1.4">→ ' + esc(t.reasoning) + '</div>' : '') +
+      (t.suggested_reply ? '<div style="opacity:.75;margin-top:3px;font-style:italic">Reply: "' + esc(t.suggested_reply) + '"</div>' : '') +
+    '</div>' : '<div style="opacity:.5;font-size:11px;margin:4px 0">' + triageChip(null) + '</div>';
   return '<div class="card" data-lead="' + esc(l.id) + '"><div class="hd">' +
     '<span class="tag gold">' + esc(B.channelLabel(l.channel)) + '</span>' +
     '<div class="t"><b>' + esc(l.name || l.handle || 'No name yet') + '</b><span>' +
       esc([l.phone, l.reg, l.email].filter(Boolean).join(' · ') || 'nothing yet') + ' · ' + esc(l.at) + '</span></div>' +
     (q ? '<span class="tag warn">' + q + ' queued</span>' : mine.length ? '<span class="tag go">sent</span>' : '') +
     '</div><div class="bd">' +
+    triageBlock +
     (l.what ? '<div class="note" style="margin-top:0"><b>What they want</b>' + esc(l.what) + '</div>' : '') +
     '<div class="need">' + B.NEEDED.map(k => '<span class="' + (miss.includes(k) ? '' : 'got') + '">' + (k === 'reg' ? 'reg' : k) + '</span>').join('') + '</div>' +
     last.map(m => '<div class="msg ' + (m.dir === 'in' ? 'in' : 'out') + '"><span class="w">' + (m.dir === 'in' ? '← ' : '→ ') +
@@ -357,6 +507,11 @@ function wireLeadButtons() {
   document.querySelectorAll('[data-lask]').forEach(b => b.onclick = () => askMore(b.dataset.lask));
   document.querySelectorAll('[data-ljob]').forEach(b => b.onclick = () => toCRM(b.dataset.ljob));
   document.querySelectorAll('[data-ljunk]').forEach(b => b.onclick = () => markJunk(b.dataset.ljunk));
+  document.querySelectorAll('[data-ovride]').forEach(sel => sel.onchange = e => {
+    const nc = e.target.value; if(!nc) return;
+    overrideTriage(e.target.dataset.ovride, nc);
+    e.target.value = '';
+  });
 }
 const leadOf = id => LEADS.find(l => l.id === id);
 
@@ -607,6 +762,7 @@ function doLogin() {
 function showMain() {
   let saved = null; try { saved = localStorage.getItem('kith_inbox_tab'); } catch (e) {}
   if (saved) TAB = saved;
+  try { const sc = localStorage.getItem('kith_inbox_cat'); if (sc) CAT = sc; } catch (e) {}
   $('scr-login').hidden = true; $('scr-main').hidden = false;
   $('whoPill').hidden = false; $('whoPill').textContent = ME; $('whoPill').className = 'pill on';
   $('btnRefresh').hidden = false;
