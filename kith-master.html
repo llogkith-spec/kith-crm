@@ -94,6 +94,28 @@ a{color:var(--gold);text-decoration:none}
 .alert-icon{font-size:16px}
 .alert-txt{flex:1}
 .alert-count{font-family:"Barlow Condensed";font-weight:700;font-size:20px;line-height:1}
+.sys-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.sys-card{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:12px 14px;cursor:default}
+.sys-card.clickable{cursor:pointer}
+.sys-card.clickable:hover{border-color:var(--gold-dim);background:var(--card-2)}
+.sys-card-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.sys-card-label{font-size:10px;text-transform:uppercase;color:var(--ink-3);letter-spacing:1px;font-weight:600}
+.sys-card-badge{font-family:"IBM Plex Mono";font-size:10px;color:var(--go);background:var(--go-bg);padding:2px 7px;border-radius:3px;font-weight:600}
+.sys-card-badge.warn{color:var(--warn);background:var(--warn-bg)}
+.sys-card-main{font-family:"Barlow Condensed";font-weight:700;font-size:22px;line-height:1;color:var(--ink);margin-bottom:4px}
+.sys-card-sub{font-size:11px;color:var(--ink-3);line-height:1.4}
+.sys-card-bars{display:flex;gap:4px;margin-top:8px}
+.sys-card-bar{flex:1;height:5px;border-radius:2px;background:var(--line-soft)}
+.sys-card-bar.on{background:var(--gold)}
+.sys-card-bar.on.green{background:var(--go)}
+.sys-card-bar.on.red{background:var(--stop)}
+.cat-row{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+.cat-chip{font-size:10px;padding:2px 7px;border-radius:3px;font-weight:600;color:#000}
+.cat-chip.adviser{background:#5B9BD5}
+.cat-chip.parts{background:#D8A32B}
+.cat-chip.accounts{background:#3FB07A}
+.cat-chip.director{background:#9B7FD4}
+.cat-chip.unsure{background:#E0A030}
 
 /* ─ Drawer ─ */
 .drawer-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:none}
@@ -170,6 +192,11 @@ a{color:var(--gold);text-decoration:none}
   <div class="alert-grid" id="alertGrid"></div>
 </div>
 
+<div class="alerts" style="border-top:0">
+  <div class="alerts-h">System status — live</div>
+  <div class="sys-grid" id="sysGrid"></div>
+</div>
+
 </div>
 
 <div class="drawer-bg" id="drawerBg" onclick="closeDrawer()"></div>
@@ -200,12 +227,17 @@ const POLL_MS = 20000;
 // boundaries that don't correspond to a CRM stage.
 const GROUPS = [
   { id:'inbox', label:'LEAD INBOX', system:'Lead Inbox', link:'kith-inbox.html', stages:[
-    { id:'_leads_new',      label:'New leads',           pseudo:true, source:'leads_new' },
-    { id:'_leads_assigned', label:'Being handled',       pseudo:true, source:'leads_assigned' },
+    { id:'_leads_new',        label:'Needs details',     pseudo:true, source:'leads_new' },
+    { id:'_leads_triaged',    label:'Triaged · 24h',     pseudo:true, source:'leads_triaged' },
+    { id:'_leads_rapid',      label:'⚡ Rapid-fire sent', pseudo:true, source:'leads_rapid' },
+    { id:'_leads_ambiguous',  label:'❓ For you',         pseudo:true, source:'leads_ambiguous' },
+    { id:'_leads_ready',      label:'Ready to send',     pseudo:true, source:'leads_ready' },
   ]},
-  { id:'brain', label:'BRAIN', system:'Supabase AI', link:null, stages:[
-    { id:'_brain_queries',  label:'AI calls · 24h',     pseudo:true, source:'brain_24h' },
-    { id:'_brain_firm',     label:'Firm from cache',     pseudo:true, source:'brain_firm' },
+  { id:'brain', label:'BRAIN', system:'Supabase AI', link:'kith-sop.html', stages:[
+    { id:'_brain_queries', label:'AI calls · 24h',   pseudo:true, source:'brain_24h' },
+    { id:'_brain_firm',    label:'Firm from cache',  pseudo:true, source:'brain_firm' },
+    { id:'_srt_cache',     label:'SRT cache size',   pseudo:true, source:'cache_srt' },
+    { id:'_parts_cache',   label:'Parts cache size', pseudo:true, source:'cache_parts' },
   ]},
   { id:'crm', label:'CRM · SALES', system:'CRM pipeline', link:'index.html', stages:[
     { id:'intake',    label:'Intake' },
@@ -221,6 +253,7 @@ const GROUPS = [
     { id:'ready',     label:'Deposit & T&Cs' },
   ]},
   { id:'ops', label:'OPERATIONS · TECHMAN', system:'TechMan + CRM', link:'index.html', stages:[
+    { id:'_techman_pending', label:'🛠 Needs TechMan', pseudo:true, source:'techman_pending' },
     { id:'booked',    label:'Booked' },
     { id:'po',        label:'POs to Raise' },
     { id:'raised',    label:'POs Raised' },
@@ -306,12 +339,50 @@ async function fetchBrainStats(){
   }catch(e){ return []; }
 }
 
+// SOP + cache sizes + triage corrections for the System Status row
+async function fetchSop(){
+  try{
+    const r = await fetch(SB_URL+'/rest/v1/kith_sop_config?id=eq.current&select=version,updated_at,updated_by,note', {headers:SB_HDR});
+    if(!r.ok) return null;
+    const rows = await r.json();
+    return rows[0] || null;
+  }catch(e){ return null; }
+}
+async function fetchCacheSizes(){
+  const out = { srt: 0, parts: 0 };
+  try{
+    const h = { ...SB_HDR, 'Range': '0-0', 'Prefer': 'count=exact' };
+    const [a,b] = await Promise.all([
+      fetch(SB_URL+'/rest/v1/kith_srt_cache?select=id', {headers:h}),
+      fetch(SB_URL+'/rest/v1/kith_parts_cache?select=id', {headers:h})
+    ]);
+    if(a.ok){ const cr = a.headers.get('content-range'); if(cr) out.srt = parseInt(cr.split('/').pop(),10) || 0; }
+    if(b.ok){ const cr = b.headers.get('content-range'); if(cr) out.parts = parseInt(cr.split('/').pop(),10) || 0; }
+  }catch(e){}
+  return out;
+}
+async function fetchTriageCorrections(){
+  try{
+    const since = new Date(Date.now() - 7*24*3600*1000).toISOString();
+    const r = await fetch(SB_URL+'/rest/v1/kith_triage_corrections?select=original_category,corrected_category,corrected_at&corrected_at=gte.'+encodeURIComponent(since)+'&order=corrected_at.desc&limit=100', {headers:SB_HDR});
+    if(!r.ok) return [];
+    return await r.json();
+  }catch(e){ return []; }
+}
+
+let SOP = null, CACHE = { srt:0, parts:0 }, CORRECTIONS = [];
 async function pollAll(){
   try{
-    const [jobs, leads, brain] = await Promise.all([fetchJobs(), fetchLeads(), fetchBrainStats()]);
+    const [jobs, leads, brain, sop, cache, corr] = await Promise.all([
+      fetchJobs(), fetchLeads(), fetchBrainStats(),
+      fetchSop(), fetchCacheSizes(), fetchTriageCorrections()
+    ]);
     JOBS = jobs;
     LEADS = Array.isArray(leads) ? leads : [];
     BRAIN = brain;
+    SOP = sop;
+    CACHE = cache;
+    CORRECTIONS = corr;
     lastPoll = Date.now();
     render();
   }catch(e){
@@ -330,12 +401,19 @@ function fmtQuote(j){
   return q > 0 ? '£'+Math.round(q).toLocaleString() : '—';
 }
 function pseudoCount(src){
-  if(src === 'leads_new')      return LEADS.filter(l => l && !l.assignedTo && !l.handledAt).length;
-  if(src === 'leads_assigned') return LEADS.filter(l => l && (l.assignedTo || l.handledAt) && !l.convertedTo).length;
-  if(src === 'brain_24h')      return BRAIN.length;
-  if(src === 'brain_firm'){
-    return BRAIN.filter(b => (b.srt_hits||0) > 0 && (b.srt_misses||0) === 0).length;
-  }
+  // Lead inbox
+  if(src === 'leads_new')       return LEADS.filter(l => l && !l.triage && (!l.jobId)).length;
+  if(src === 'leads_triaged')   return LEADS.filter(l => l && l.triage && !l.jobId).length;
+  if(src === 'leads_rapid')     return LEADS.filter(l => l && l.triage && l.triage.rapidFireSentAt && !l.jobId).length;
+  if(src === 'leads_ambiguous') return LEADS.filter(l => l && l.triage && l.triage.is_ambiguous && !l.jobId).length;
+  if(src === 'leads_ready')     return LEADS.filter(l => l && l.triage && !l.triage.is_ambiguous && !l.jobId && (l.name && l.phone && l.reg && l.what)).length;
+  // Brain
+  if(src === 'brain_24h')       return BRAIN.length;
+  if(src === 'brain_firm')      return BRAIN.filter(b => (b.srt_hits||0) > 0 && (b.srt_misses||0) === 0).length;
+  if(src === 'cache_srt')       return CACHE.srt;
+  if(src === 'cache_parts')     return CACHE.parts;
+  // TechMan
+  if(src === 'techman_pending') return JOBS.filter(j => j.customerYesAt && !j.tmJob).length;
   return 0;
 }
 
@@ -344,7 +422,85 @@ function render(){
   renderKPI();
   renderFlow();
   renderAlerts();
+  renderSystemStatus();
   document.getElementById('updatedAt').textContent = 'live · updated ' + fmtTime(lastPoll);
+}
+
+function renderSystemStatus(){
+  const cards = [];
+
+  // ── SOP ─────────────────────────────────────────────────
+  if(SOP){
+    const when = new Date(SOP.updated_at);
+    const ago = Math.round((Date.now() - when.getTime()) / 60000);
+    const agoTxt = ago < 60 ? ago+' min ago' : ago < 1440 ? Math.round(ago/60)+' h ago' : Math.round(ago/1440)+' d ago';
+    cards.push(
+      '<a class="sys-card clickable" href="kith-sop.html">'+
+        '<div class="sys-card-top"><span class="sys-card-label">📋 SOP · pricing rulebook</span><span class="sys-card-badge">v'+SOP.version+'</span></div>'+
+        '<div class="sys-card-main">v'+SOP.version+' · '+agoTxt+'</div>'+
+        '<div class="sys-card-sub">Last change: '+esc(SOP.updated_by||'?')+(SOP.note?' — '+esc(SOP.note):'')+'<br>Click to edit rates, markups, fixed prices…</div>'+
+      '</a>'
+    );
+  } else {
+    cards.push('<div class="sys-card"><div class="sys-card-label">📋 SOP</div><div class="sys-card-sub" style="margin-top:6px;color:var(--warn)">Not loaded — table missing?</div></div>');
+  }
+
+  // ── Brain cache ─────────────────────────────────────────
+  const firmN = BRAIN.filter(b => (b.srt_hits||0) > 0 && (b.srt_misses||0) === 0).length;
+  const total = BRAIN.length;
+  const firmPct = total > 0 ? Math.round(100 * firmN / total) : 0;
+  const badgeCls = firmPct >= 50 ? '' : 'warn';
+  cards.push(
+    '<div class="sys-card">'+
+      '<div class="sys-card-top"><span class="sys-card-label">🧠 Brain · pricing AI</span><span class="sys-card-badge '+badgeCls+'">'+firmPct+'% firm</span></div>'+
+      '<div class="sys-card-main">'+total+' calls · 24h</div>'+
+      '<div class="sys-card-sub">SRT cache: <strong style="color:var(--gold)">'+CACHE.srt+'</strong> entries · Parts cache: <strong style="color:var(--gold)">'+CACHE.parts+'</strong> entries<br>Learns from every verify in Labour + Parts stages.</div>'+
+      '<div class="sys-card-bars">'+ Array.from({length:20}).map((_,i)=>'<span class="sys-card-bar '+(i<Math.round(firmPct/5)?'on green':'')+'"></span>').join('') +'</div>'+
+    '</div>'
+  );
+
+  // ── Triage AI ───────────────────────────────────────────
+  const triagedLeads = LEADS.filter(l => l && l.triage);
+  const byCat = { adviser:0, parts:0, accounts:0, director:0, unsure:0 };
+  triagedLeads.forEach(l => { const c = l.triage.category; if(byCat[c] != null) byCat[c]++; });
+  const totalCorr = CORRECTIONS.length;
+  const triageRapid = triagedLeads.filter(l => l.triage.rapidFireSentAt).length;
+  const triageAck = triagedLeads.filter(l => l.triage.ackSentAt).length;
+  cards.push(
+    '<div class="sys-card">'+
+      '<div class="sys-card-top"><span class="sys-card-label">📬 Triage · inbox AI</span><span class="sys-card-badge'+(totalCorr > 5 ? ' warn':'')+'">'+totalCorr+' overrides · 7d</span></div>'+
+      '<div class="sys-card-main">'+triagedLeads.length+' triaged</div>'+
+      '<div class="sys-card-sub">'+triageRapid+' rapid-fire sent · '+triageAck+' ack sent</div>'+
+      '<div class="cat-row">'+
+        (byCat.adviser?'<span class="cat-chip adviser">Adviser · '+byCat.adviser+'</span>':'')+
+        (byCat.parts?'<span class="cat-chip parts">Parts · '+byCat.parts+'</span>':'')+
+        (byCat.accounts?'<span class="cat-chip accounts">Accounts · '+byCat.accounts+'</span>':'')+
+        (byCat.director?'<span class="cat-chip director">Director · '+byCat.director+'</span>':'')+
+        (byCat.unsure?'<span class="cat-chip unsure">Unsure · '+byCat.unsure+'</span>':'')+
+      '</div>'+
+    '</div>'
+  );
+
+  // ── Funnel (retail only, last 7 days) ─────────────────
+  const since = Date.now() - 7*24*3600*1000;
+  const inLast7 = JOBS.filter(j => j.enquiredAt && new Date(j.enquiredAt).getTime ? new Date(j.enquiredAt).getTime() >= since : (j.stageAt && j.stageAt >= since));
+  const rangeSent = JOBS.filter(j => j.rangeSentAt && new Date(j.rangeSentAt).getTime() >= since).length;
+  const customerYes = JOBS.filter(j => j.customerYesAt && new Date(j.customerYesAt).getTime() >= since).length;
+  const booked = JOBS.filter(j => ['booked','po','raised','so','soraised','checkin','inprog','done','accounts','receivable','review','followup'].includes(j.stage) && j.stageAt && j.stageAt >= since).length;
+  const conv = rangeSent > 0 ? Math.round(100 * booked / rangeSent) : 0;
+  cards.push(
+    '<div class="sys-card">'+
+      '<div class="sys-card-top"><span class="sys-card-label">📈 Funnel · last 7d</span><span class="sys-card-badge'+(conv < 30 ? ' warn':'')+'">'+conv+'% conv</span></div>'+
+      '<div class="sys-card-sub" style="margin-top:4px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0">Enquiries: <strong style="color:var(--ink);font-family:ui-monospace,monospace">'+inLast7.length+'</strong></div>'+
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0">Range sent: <strong style="color:var(--gold);font-family:ui-monospace,monospace">'+rangeSent+'</strong></div>'+
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0">Customer YES: <strong style="color:var(--go);font-family:ui-monospace,monospace">'+customerYes+'</strong></div>'+
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-top:1px solid var(--line-soft);margin-top:4px;padding-top:6px">Booked: <strong style="color:var(--go);font-family:ui-monospace,monospace">'+booked+'</strong></div>'+
+      '</div>'+
+    '</div>'
+  );
+
+  document.getElementById('sysGrid').innerHTML = cards.join('');
 }
 function fmtTime(ms){
   const d = new Date(ms);
@@ -363,15 +519,21 @@ function renderKPI(){
   const brainFirm = BRAIN.filter(b => (b.srt_hits||0) > 0 && (b.srt_misses||0) === 0).length;
   const brainTotal = BRAIN.length;
   const firmPct = brainTotal > 0 ? Math.round(100 * brainFirm / brainTotal) : 0;
+  const triagedToday = LEADS.filter(l => l && l.triage).length;
+  const rapidFireSent = LEADS.filter(l => l && l.triage && l.triage.rapidFireSentAt).length;
+  const ambiguous = pseudoCount('leads_ambiguous');
+  const techmanPending = pseudoCount('techman_pending');
 
   const tiles = [
-    {label:'Sales pipeline',     val:sales.length,                    sub:'£'+Math.round(totalValue).toLocaleString()+' at stake'},
-    {label:'In operations',       val:ops.length,                      sub:'£'+Math.round(opsValue).toLocaleString()+' booked'},
-    {label:'Won today',            val:wonToday,                        sub:'YES replies',                     cls:'good'},
-    {label:'Lost today',           val:lostToday,                       sub:'to the Lost column',              cls: lostToday>0?'warn':''},
-    {label:'Needs attention',      val:overdue,                         sub:'SLA breached',                    cls: overdue>0?'stop':''},
-    {label:'Brain · 24h',          val:brainTotal,                      sub:firmPct+'% firm from cache',       cls:'gold'},
-    {label:'Leads unhandled',      val:pseudoCount('leads_new'),        sub:'in the inbox',                    cls: pseudoCount('leads_new')>5?'warn':''},
+    {label:'Sales pipeline',    val:sales.length,  sub:'£'+Math.round(totalValue).toLocaleString()+' at stake'},
+    {label:'In operations',     val:ops.length,    sub:'£'+Math.round(opsValue).toLocaleString()+' booked'},
+    {label:'Won today',         val:wonToday,      sub:'YES replies',                     cls:'good'},
+    {label:'Lost today',        val:lostToday,     sub:'to the Lost column',              cls: lostToday>0?'warn':''},
+    {label:'Needs attention',   val:overdue,       sub:'SLA breached',                    cls: overdue>0?'stop':''},
+    {label:'Brain · 24h',       val:brainTotal,    sub:firmPct+'% firm from cache',       cls:'gold'},
+    {label:'Triaged · 24h',     val:triagedToday,  sub:rapidFireSent+' rapid-fire sent',  cls:'gold'},
+    {label:'For your decision', val:ambiguous,     sub:'ambiguous leads',                 cls: ambiguous>0?'warn':''},
+    {label:'Needs TechMan',     val:techmanPending,sub:'customer said YES',               cls: techmanPending>0?'warn':''},
   ];
   document.getElementById('kpiRow').innerHTML = tiles.map(t =>
     '<div class="kpi">'+
