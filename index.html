@@ -4889,16 +4889,188 @@ function jobH(j){
 
 function tmH(j){
   const hasTM=j.tmJob;
-  return'<div><div class="stitle">Techman</div>'+
-    '<div style="background:var(--surface2);border:1px solid '+(hasTM?'var(--blue)':'var(--border)')+';border-radius:var(--rs);padding:11px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'+
-      '<div>'+
-        '<div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px">Techman Job #</div>'+
-        '<div style="font-family:\'Courier New\',monospace;font-size:'+(hasTM?'20px':'14px')+';font-weight:800;color:'+(hasTM?'var(--blue)':'var(--faint)')+'">'+(hasTM||'Not linked yet')+'</div>'+
+  // Small card when TechMan is already linked OR customer hasn't agreed yet
+  if(hasTM || !j.customerYesAt){
+    return'<div><div class="stitle">Techman</div>'+
+      '<div style="background:var(--surface2);border:1px solid '+(hasTM?'var(--blue)':'var(--border)')+';border-radius:var(--rs);padding:11px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'+
+        '<div>'+
+          '<div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px">Techman Job #</div>'+
+          '<div style="font-family:\'Courier New\',monospace;font-size:'+(hasTM?'20px':'14px')+';font-weight:800;color:'+(hasTM?'var(--blue)':'var(--faint)')+'">'+(hasTM||'Not yet')+'</div>'+
+        '</div>'+
+        (hasTM?'<div style="font-size:11px;color:var(--green);font-weight:700">✓ Linked</div>':
+          j.customerYesAt?'<div style="font-size:11px;color:var(--amber);font-weight:700">⚠ Needs TechMan</div>':
+          '<div style="font-size:11px;color:var(--faint);font-weight:700">Waiting on customer</div>')+
       '</div>'+
-      (hasTM?'<div style="font-size:11px;color:var(--green);font-weight:700">✓ Linked</div>':'<div style="font-size:11px;color:var(--amber);font-weight:700">⚠ Not set</div>')+
-    '</div>'+
-  '</div>';
+    '</div>';
+  }
+  // BIG HANDOFF PANEL — customer said YES, TechMan not yet set
+  return techmanHandoffH(j);
 }
+
+// ── TECHMAN HANDOFF VIEW (Phase 3) ───────────────────────────────────────────
+// Fires the moment j.customerYesAt is set. Shows every field Paul / Giles need
+// to enter into TechMan to create the official estimate + job card: customer,
+// vehicle, labour lines, parts lines, totals. Print-friendly so it can go on
+// paper. "Mark as entered" captures the TechMan job number and this collapses
+// back to the small linked card above.
+function techmanHandoffH(j){
+  const cust = j.customer || j.name || '(no name)';
+  const phone = j.phone || j.tel || '';
+  const email = j.email || '';
+  const vehDesc = [j.year, j.make, j.model, j.engine].filter(Boolean).join(' ') || '(no vehicle)';
+  const reg = j.reg || '';
+  const srt = parseFloat(j.srtCharged||j.srt||0);
+  const labour = parseFloat(j.labourCost||0);
+  const parts = j.parts || [];
+  const bestPrice = p => parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
+  const bestSupplier = p => p.supplier||p.supplier1||p.supplier2||p.supplier3||'';
+  const partsCostTotal = parts.reduce((s,p) => s + bestPrice(p) * (parseInt(p.qty)||1), 0);
+  const quote = parseFloat(j.finalEst || j.est || 0);
+  const customerYes = j.customerYesAt ? fmtWhen(j.customerYesAt) : '';
+  const copyBtn = (text, label) => '<button onclick="copyToClip(this,'+JSON.stringify(text).replace(/</g,'&lt;').replace(/"/g,'&quot;')+')" style="background:var(--surface);border:1px solid var(--border);color:var(--dim);padding:2px 8px;border-radius:3px;font-size:10px;cursor:pointer" title="Copy">'+label+'</button>';
+  const row = (lbl, val, copy) =>
+    '<div style="display:grid;grid-template-columns:140px 1fr auto;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">'+
+      '<div style="font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.5px">'+escHtml(lbl)+'</div>'+
+      '<div style="font-size:13px;color:var(--fg);font-weight:600;word-break:break-word">'+escHtml(val||'—')+'</div>'+
+      (copy&&val?copyBtn(val,'Copy'):'<span></span>')+
+    '</div>';
+  const partRows = parts.map(p => {
+    const cost = bestPrice(p), qty = parseInt(p.qty)||1, sup = bestSupplier(p);
+    return '<tr>'+
+      '<td style="padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border)">'+escHtml(p.name||'—')+(p.num?' <span style="color:var(--faint);font-size:10px">('+escHtml(p.num)+')</span>':'')+'</td>'+
+      '<td style="padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border);color:var(--dim)">'+escHtml(sup||'—')+'</td>'+
+      '<td style="padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border);text-align:center">×'+qty+'</td>'+
+      '<td style="padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border);text-align:right;font-family:ui-monospace,monospace;color:var(--dim)">£'+cost.toFixed(2)+'</td>'+
+      '<td style="padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border);text-align:right;font-family:ui-monospace,monospace;font-weight:700;color:var(--gold)">£'+(cost*qty).toFixed(2)+'</td>'+
+    '</tr>';
+  }).join('');
+  return '<div><div class="stitle" style="display:flex;justify-content:space-between;align-items:center">'+
+    '<span>Techman handoff — ready to enter</span>'+
+    '<div style="display:flex;gap:6px">'+
+      '<button class="btn btn-ghost btn-sm" onclick="printTechmanHandoff(\''+j.id+'\')">Print</button>'+
+    '</div>'+
+  '</div>'+
+  '<div class="tm-handoff" style="background:var(--surface2);border:2px solid var(--amber);border-radius:var(--rs);padding:14px 16px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">'+
+      '<div style="font-size:11px;font-weight:800;color:var(--amber);text-transform:uppercase;letter-spacing:.5px">🛠 Customer agreed — create estimate in TechMan</div>'+
+      (customerYes?'<div style="font-size:10px;color:var(--dim)">✓ '+customerYes+'</div>':'')+
+    '</div>'+
+    '<div style="font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.5">'+
+      'Copy these fields into TechMan to create the official estimate + job card. Once done, enter the TechMan job number below and tick “Entered in TechMan”.'+
+    '</div>'+
+
+    // ── Customer & vehicle block ───────────────────────────
+    '<div style="font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px">Customer</div>'+
+    row('Name', cust, true)+
+    row('Phone', phone, !!phone)+
+    row('Email', email, !!email)+
+
+    '<div style="font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 4px">Vehicle</div>'+
+    row('Reg', reg, true)+
+    row('Vehicle', vehDesc, true)+
+    (j.vin?row('VIN', j.vin, true):'')+
+    (j.mileage?row('Mileage', j.mileage, true):'')+
+
+    // ── Labour ──────────────────────────────────────────────
+    '<div style="font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 4px">Labour</div>'+
+    '<div style="display:grid;grid-template-columns:140px 1fr auto;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">'+
+      '<div style="font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.5px">Hours (SRT)</div>'+
+      '<div style="font-size:13px;color:var(--fg);font-weight:600;font-family:ui-monospace,monospace">'+(srt>0?srt.toFixed(2)+' h':'—')+'</div>'+
+      (srt>0?copyBtn(srt.toFixed(2),'Copy'):'<span></span>')+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:140px 1fr auto;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">'+
+      '<div style="font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.5px">Labour £</div>'+
+      '<div style="font-size:13px;color:var(--fg);font-weight:600;font-family:ui-monospace,monospace">'+(labour>0?'£'+labour.toFixed(2):'—')+'</div>'+
+      (labour>0?copyBtn(labour.toFixed(2),'Copy'):'<span></span>')+
+    '</div>'+
+    (j.srtSource?'<div style="font-size:10px;color:var(--faint);padding:4px 0">→ '+escHtml(j.srtSource)+'</div>':'')+
+
+    // ── Parts table ─────────────────────────────────────────
+    (parts.length>0?(
+      '<div style="font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 4px">Parts ('+parts.length+')</div>'+
+      '<table style="width:100%;border-collapse:collapse;margin-bottom:6px">'+
+        '<thead><tr style="border-bottom:1px solid var(--border)">'+
+          ['Part','Supplier','Qty','Net','Line'].map(h=>'<th style="text-align:left;padding:5px 8px;font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.5px;font-weight:600">'+h+'</th>').join('')+
+        '</tr></thead>'+
+        '<tbody>'+partRows+'</tbody>'+
+        '<tfoot><tr><td colspan="4" style="padding:6px 8px;font-size:11px;color:var(--dim);text-align:right;font-weight:700">Parts net total</td><td style="padding:6px 8px;text-align:right;font-family:ui-monospace,monospace;font-weight:800;color:var(--gold)">£'+partsCostTotal.toFixed(2)+'</td></tr></tfoot>'+
+      '</table>'
+    ):'')+
+
+    // ── Totals ───────────────────────────────────────────────
+    (quote>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:2px solid var(--gold);margin-top:8px">'+
+      '<div style="font-size:11px;text-transform:uppercase;color:var(--gold);font-weight:700;letter-spacing:.5px">Quote the customer agreed to</div>'+
+      '<div style="font-family:ui-monospace,monospace;font-size:20px;font-weight:800;color:var(--gold)">£'+quote.toLocaleString()+'</div>'+
+    '</div>':'')+
+
+    // ── Mark as entered form ────────────────────────────────
+    '<div style="margin-top:14px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rs)">'+
+      '<label style="display:block;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;font-weight:600">TechMan job # (once created)</label>'+
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+        '<input id="tm-'+j.id+'" type="text" placeholder="e.g. 12345" style="background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:8px 12px;font-family:ui-monospace,monospace;font-size:14px;color:var(--fg);width:140px" value="'+escHtml(j.tmJob||'')+'">'+
+        '<button onclick="markInTechman(\''+j.id+'\')" style="background:var(--green);color:#000;border:none;padding:8px 16px;border-radius:4px;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.5px;text-transform:uppercase">✓ Entered in TechMan</button>'+
+      '</div>'+
+    '</div>'+
+  '</div></div>';
+}
+
+// Mark the job as entered in TechMan — captures the TechMan job number and
+// collapses the handoff panel back to the small "linked" card.
+window.markInTechman = function(jobId){
+  const j = _brainJob(jobId); if(!j)return;
+  const inp = document.getElementById('tm-'+jobId);
+  const num = inp && inp.value.trim();
+  if(!num){ alert('Enter the TechMan job number first'); return; }
+  j.tmJob = num;
+  j.tmJobAt = ts();
+  j.tmJobBy = brainWho();
+  save(j); renderDetail();
+};
+
+// Clipboard helper used across the handoff panel copy buttons
+window.copyToClip = function(btn, text){
+  try{
+    navigator.clipboard.writeText(String(text));
+    const o = btn.textContent; btn.textContent = '✓'; btn.style.color = 'var(--green)';
+    setTimeout(() => { btn.textContent = o; btn.style.color = ''; }, 900);
+  }catch(e){ alert('Copy failed — your browser may not allow it on this page'); }
+};
+
+// Print just the TechMan handoff — opens a clean, paper-friendly window
+window.printTechmanHandoff = function(jobId){
+  const j = _brainJob(jobId); if(!j)return;
+  const html = techmanHandoffH(j);
+  // Strip the buttons and copy helpers for paper
+  const clean = html
+    .replace(/<button[^<]*?<\/button>/g,'')
+    .replace(/<input[^>]*?>/g,'')
+    .replace(/background:var\(--amber\)/g,'')
+    .replace(/background:var\(--surface2\)/g,'background:#fff;color:#000')
+    .replace(/color:var\(--gold\)/g,'color:#000;font-weight:800')
+    .replace(/color:var\(--dim\)/g,'color:#555')
+    .replace(/color:var\(--faint\)/g,'color:#777')
+    .replace(/color:var\(--fg\)/g,'color:#000')
+    .replace(/border.*?var\(--border\)/g,'border-color:#ccc')
+    .replace(/border.*?var\(--amber\)/g,'border-color:#000');
+  const w = window.open('', '_blank', 'width=700,height=900');
+  if(!w){ alert('Pop-up blocked — allow pop-ups to print'); return; }
+  w.document.write(
+    '<!doctype html><html><head><title>TechMan handoff — '+escHtml(j.reg||j.id)+'</title>'+
+    '<style>body{font-family:system-ui,-apple-system,sans-serif;max-width:680px;margin:20px auto;padding:0 20px;color:#000;background:#fff;font-size:13px}'+
+    'h1{font-size:18px;margin:0 0 16px}'+
+    'table{width:100%;border-collapse:collapse}'+
+    'th,td{text-align:left}'+
+    '.stitle{display:none}'+
+    'div.tm-handoff{border:2px solid #000;padding:16px;border-radius:0}'+
+    '@media print{body{margin:0}}</style></head><body>'+
+    '<h1>KITH Cars — TechMan handoff for '+escHtml(j.reg||j.id)+'</h1>'+
+    clean +
+    '<div style="margin-top:20px;font-size:11px;color:#777">Printed '+ts()+' by '+escHtml(brainWho())+' · CRM job id '+escHtml(j.id)+'</div>'+
+    '<script>setTimeout(()=>window.print(),300);<\/script>'+
+    '</body></html>'
+  );
+  w.document.close();
+};
 
 function estH(j){
   if(!j.est&&!j.finalEst)return'';
