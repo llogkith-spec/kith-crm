@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="KITH Intake"/>
 <meta name="theme-color" content="#1a1a2e"/>
-<title>KITH Cars — Job Intake v2.4</title>
+<title>KITH Cars — Job Intake v2.5</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{--gold:#c9a84c;--dark:#1a1a2e;--red:#c62828;--green:#2e7d32;--amber:#e65100;--blue:#1565c0;--purple:#5b3a8c;--teal:#00695c;--border:#e0e0e0;--bg:#f0f2f5;--dim:#666;--faint:#aaa}
@@ -218,6 +218,13 @@ input:checked+.tsl:before{transform:translateX(20px)}
       <div id="opener"></div>
 
       <div class="sec" style="margin-top:4px">2 · The four essentials</div>
+      <div class="fg" id="b2b-fg" style="background:#f7f3e6;border:1.5px solid #d8c78f;border-radius:10px;padding:10px 12px">
+        <label class="fl">🏢 Business customer? Pick their account</label>
+        <input class="fi" id="f-b2b-search" placeholder="Start typing the company name…" autocomplete="off" oninput="b2bSearch(this.value)"/>
+        <div id="b2b-results"></div>
+        <div id="b2b-picked" style="display:none"></div>
+        <div class="hint">New business? Just fill it in below and tick Business on the customer step — it saves itself as an account for next time.</div>
+      </div>
       <div class="fg"><label class="fl">Customer name <span class="req">*</span></label>
         <input class="fi" id="f-name" placeholder="Full name" autocomplete="off"/></div>
       <div class="grid2">
@@ -429,7 +436,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
 var SB_URL='https://mxyrxyhvjndgjqupgstu.supabase.co';
 var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
 var SOP_VERSION='8.0';
-var INTAKE_BUILD='2.4';
+var INTAKE_BUILD='2.5';
 // The CRM keeps one row per job in `jobs` ({id, data, updated_at}).
 // Earlier builds wrote to `kith_jobs`, which nothing reads — jobs vanished.
 var JOBS_TABLE='jobs';
@@ -1185,6 +1192,7 @@ async function submitJob(){
   var saved=false;
   try{saved=await pushJob(job);}catch(e){}
   if(!saved){var q=readQueue();q.push(job);writeQueue(q);}
+  if(custType==='business'&&fval('f-company'))b2bSave(fval('f-company'),b2bContactFromForm());
   id=job.id;   // may have moved if the first number was taken
 
   btn.disabled=false;btn.textContent='✓ Submit Job';
@@ -1301,7 +1309,7 @@ async function addIntakePhotos(input){
   }
 }
 function resetForm(){
-  intakePics=[];drawPics();
+  intakePics=[];drawPics();b2bClear();
   jobType=null;area=null;mechCat=null;custType=null;curStep=0;
   safetyHits=[];diagOverride=null;warrantyState=null;triageResult=null;
   rampState={exempt:false,reason:'',pending:false};
@@ -1701,6 +1709,99 @@ function copyText(t){
 document.getElementById('f-haswa').addEventListener('change',function(){
   document.getElementById('wa-diff-fg').style.display=this.value==='diff'?'block':'none';paintEmail();updateNeeds();});
 
+// ---- B2B accounts: pick the company, contact details fill themselves ----
+// Accounts live in one shared row (jobs table, id __b2b_accounts__), topped up
+// from past B2B jobs, and saved again every time a B2B job is submitted.
+var B2B_ROW='__b2b_accounts__',b2bAccounts=null,b2bAcct=null,b2bContact=null;
+function b2bKey(c){return String(c||'').toLowerCase().replace(/\b(ltd|limited|plc|llp)\b/g,'').replace(/[^a-z0-9]/g,'');}
+async function b2bLoad(force){
+  if(b2bAccounts&&!force)return b2bAccounts;
+  var map={};
+  try{
+    var r=await fetch(SB_URL+'/rest/v1/'+JOBS_TABLE+'?id=eq.'+B2B_ROW+'&select=data',{headers:sbHdr()});
+    var rows=r.ok?await r.json():[];
+    ((rows[0]&&rows[0].data&&rows[0].data.accounts)||[]).forEach(function(a){if(a&&a.company)map[b2bKey(a.company)]=a;});
+  }catch(e){}
+  try{ // past B2B jobs that aren't in the list yet
+    var r2=await fetch(SB_URL+'/rest/v1/'+JOBS_TABLE+'?select=co:data->judgement->>company_name,name:data->>name,phone:data->>phone,'+
+      'wa:data->>waNumber,email:data->>email&data->>isB2B=eq.true&order=updated_at.desc&limit=500',{headers:sbHdr()});
+    var jr=r2.ok?await r2.json():[];
+    jr.forEach(function(j){if(!j.co)return;var k=b2bKey(j.co);if(!k)return;
+      var a=map[k]||(map[k]={company:j.co,contacts:[]});
+      if(j.name&&!a.contacts.some(function(c){return c.name.toLowerCase()===j.name.toLowerCase();}))
+        a.contacts.push({name:j.name,phone:j.phone||'',wa:j.wa||'',email:j.email||''});});
+  }catch(e){}
+  b2bAccounts=Object.keys(map).map(function(k){return map[k];})
+    .sort(function(a,b){return a.company.localeCompare(b.company);});
+  return b2bAccounts;
+}
+async function b2bSearch(q){
+  var out=document.getElementById('b2b-results');q=String(q||'').trim();
+  if(q.length<2){out.innerHTML='';return;}
+  var list=await b2bLoad(),k=b2bKey(q);
+  var hits=list.filter(function(a){return b2bKey(a.company).indexOf(k)!==-1;}).slice(0,6);
+  out.innerHTML=hits.length?hits.map(function(a){var i=list.indexOf(a);
+      return'<button class="btn btn-ghost" style="display:block;width:100%;text-align:left;margin-top:6px" onclick="b2bPick('+i+')">🏢 <b>'+esc(a.company)+'</b>'+
+        '<span style="font-size:11px;color:#666"> · '+a.contacts.length+' contact'+(a.contacts.length===1?'':'s')+'</span></button>';}).join('')
+    :'<div class="hint" style="margin-top:6px">No account called that yet — fill in the details below and it’ll be saved.</div>';
+}
+function b2bPick(i){
+  var a=b2bAccounts[i];if(!a)return;b2bAcct=a;b2bContact=null;
+  document.getElementById('b2b-results').innerHTML='';
+  document.getElementById('f-b2b-search').value=a.company;
+  // tick Business on the customer step and fill the company
+  if(document.getElementById('cu-business')){pickCust('business');
+    var co=document.getElementById('f-company');if(co)co.value=a.company;
+    var kb=document.getElementById('f-known-biz');if(kb)kb.value='Yes — regular';}
+  var el=document.getElementById('b2b-picked');el.style.display='block';
+  el.innerHTML='<div style="margin-top:8px;font-weight:700">✓ '+esc(a.company)+' <a href="#" onclick="b2bClear();return false" style="font-size:12px;font-weight:400">change</a></div>'+
+    (a.contacts.length?'<div class="hint">Who’s calling?</div>'+a.contacts.map(function(c,ci){
+      return'<button class="btn btn-ghost" style="margin:4px 6px 0 0" onclick="b2bUse('+ci+')">'+esc(c.name)+(c.phone?' · '+esc(c.phone):'')+'</button>';}).join('')+
+      '<div class="hint">Someone new? Just type their name and number below — they’ll be added to this account.</div>'
+    :'<div class="hint">No contacts saved yet — fill them in below.</div>');
+  if(a.contacts.length===1)b2bUse(0);
+  updateNeeds();
+}
+function b2bUse(ci){
+  var c=b2bAcct&&b2bAcct.contacts[ci];if(!c)return;b2bContact=c;
+  var set=function(id,v){var e=document.getElementById(id);if(e)e.value=v||'';};
+  set('f-name',c.name);set('f-phone',c.phone);set('f-email',c.email);
+  var hw=document.getElementById('f-haswa');
+  if(hw){hw.value=!c.wa?'no':(c.wa.replace(/\D/g,'')===String(c.phone).replace(/\D/g,'')?'yes':'diff');
+    set('f-wa',hw.value==='diff'?c.wa:'');hw.dispatchEvent(new Event('change'));}
+  updateNeeds();
+}
+function b2bClear(){
+  b2bAcct=null;b2bContact=null;
+  ['f-b2b-search'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+  var el=document.getElementById('b2b-picked');if(el){el.style.display='none';el.innerHTML='';}
+  var r=document.getElementById('b2b-results');if(r)r.innerHTML='';
+}
+// After a B2B job is saved: add/refresh the company and this contact in the shared list.
+async function b2bSave(company,contact){
+  if(!company||!contact||!contact.name)return;
+  try{
+    var r=await fetch(SB_URL+'/rest/v1/'+JOBS_TABLE+'?id=eq.'+B2B_ROW+'&select=data',{headers:sbHdr()});
+    if(!r.ok)return;var rows=await r.json();
+    var accts=(rows[0]&&rows[0].data&&rows[0].data.accounts)||[];
+    var k=b2bKey(company),a=accts.filter(function(x){return b2bKey(x.company)===k;})[0];
+    if(!a){a={company:company,contacts:[],created:new Date().toISOString()};accts.push(a);}
+    var c=a.contacts.filter(function(x){return x.name.toLowerCase()===contact.name.toLowerCase();})[0];
+    if(c)Object.keys(contact).forEach(function(f){if(contact[f])c[f]=contact[f];});else a.contacts.push(contact);
+    a.updated=new Date().toISOString();
+    var now=new Date().toISOString();
+    await fetch(SB_URL+'/rest/v1/'+JOBS_TABLE,{method:'POST',
+      headers:sbHdr({'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'}),
+      body:JSON.stringify({id:B2B_ROW,data:{accounts:accts},updated_at:now})});
+    b2bAccounts=null;
+  }catch(e){}
+}
+function b2bContactFromForm(){
+  var hw=fval('f-haswa');
+  return {name:fval('f-name'),phone:fval('f-phone'),
+    wa:hw==='diff'?fval('f-wa'):(hw==='yes'?fval('f-phone'):''),email:fval('f-email')};
+}
+
 // ---- returning customer: seen this reg before? ----
 function showReturning(j){
   returning=j;
@@ -2029,7 +2130,8 @@ async function submitQuick(){
       wa:fval('f-haswa')!=='no',waNumber:fval('f-haswa')==='diff'?fval('f-wa'):(fval('f-haswa')==='yes'?fval('f-phone'):''),
       email:fval('f-email'),sendEstimateBy:fval('f-haswa')!=='no'?'whatsapp':(fval('f-email')?'email':'sms/call'),make:fval('q-make'),model:fval('q-model'),
       work:'STRAIGHT — '+what,jobType:'straight',area:'mechanical',serviceType:'straight',serviceLabel:'⚡ Straight job',
-      isStraight:true,noEstimate:true,isInternal:false,custType:'Retail',
+      isStraight:true,noEstimate:true,isInternal:false,custType:b2bAcct?'':'Retail',isB2B:!!b2bAcct,
+      judgement:b2bAcct?{customer_type:'business',company_name:b2bAcct.company,trade_status:'resolve_in_crm'}:undefined,
       fixedPrice:pr?{label:what,incVat:pr.inc,exVat:pr.ex,vatFree:pr.vatFree,depositDue:pr.inc>=200?+(pr.inc/2).toFixed(2):0}:null,
       finalNotes:'Fixed price: £'+(pr?pr.inc.toFixed(2):'?')+(pr&&pr.vatFree?' (no VAT)':' inc VAT')+' — '+what,
       bookedFor:fval('q-date')||'',bookedTime:fval('q-time')||'',bookSide:'mechanical',bookLen:sp.len,bookUnit:'hours',
@@ -2056,6 +2158,7 @@ async function submitQuick(){
   job.log=[{t:ts,s:'Intake v'+INTAKE_BUILD+' by '+staffName+' — '+job.serviceLabel+' · straight to '+(job.stage==='so'?'SOs to Raise':'POs to Raise')}];
 
   var saved=false;try{saved=await pushJob(job);}catch(e){}
+  if(job.isB2B&&b2bAcct)b2bSave(b2bAcct.company,b2bContactFromForm());
   if(!saved){var q=readQueue();q.push(job);writeQueue(q);}
   btn.disabled=false;
   document.getElementById('scr-form').style.display='none';
