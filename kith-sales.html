@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>KITH Sales</title>
+<meta name="theme-color" content="#14161A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="KITH Sales">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="apple-touch-icon" href="icon-inbox-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14161A; --bg-2:#1B1E24; --card:#20242B; --card-2:#262B33;
+  --line:#333A44; --line-soft:#2A2F37;
+  --ink:#EDEFF2; --ink-2:#A8B1BD; --ink-3:#6E7885;
+  --gold:#D8A32B; --gold-bg:rgba(216,163,43,.12);
+  --go:#3FB07A; --go-bg:rgba(63,176,122,.13);
+  --warn:#E0A030; --warn-bg:rgba(224,160,48,.13);
+  --stop:#E05A4C; --stop-bg:rgba(224,90,76,.14);
+  --blue:#5B9BD5; --blue-bg:rgba(91,155,213,.13);
+  --plate:#F2C730;
+  --c-wa:#3fc57a; --c-web:#8aa6ff; --c-email:#b59cf2; --c-ig:#e2769f; --c-fb:#6f96e8; --c-tt:#cfcfcf;
+  --c-gbp:#f08b5b; --c-bmg:#4cc2d4; --c-phone:#e6b35a; --c-walk:#c7b79a; --c-sms:#9fd3c7; --muted:#6E7885;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:14px;line-height:1.5}
+h1,h2,h3{font-family:"Barlow Condensed",Impact,sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin:0}
+.mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+[hidden]{display:none!important}
+
+.top{position:sticky;top:0;z-index:40;background:var(--bg-2);border-bottom:1px solid var(--line);padding:.55rem 1rem;padding-top:calc(.55rem + env(safe-area-inset-top,0px));display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:.5rem}
+.brand h1{font-size:1.25rem;letter-spacing:.06em}
+.brand .v{font-family:"IBM Plex Mono",monospace;font-size:.66rem;color:var(--bg);background:var(--gold);padding:.1rem .35rem;border-radius:2px;font-weight:600}
+.spacer{flex:1}
+.pill{font-family:"IBM Plex Mono",monospace;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;padding:.25rem .55rem;border:1px solid var(--line);border-radius:99px;color:var(--ink-2);background:none;white-space:nowrap}
+.pill.on{border-color:var(--gold);color:var(--gold);background:var(--gold-bg)}
+.pill.go{border-color:var(--go);color:var(--go);background:var(--go-bg)}
+.pill.warn{border-color:var(--warn);color:var(--warn);background:var(--warn-bg)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ink-3);display:inline-block;flex:none}
+.dot.ok{background:var(--go)}.dot.err{background:var(--stop)}
+
+.views{display:flex;gap:.2rem;order:2;flex:1 1 100%;overflow-x:auto;scrollbar-width:none}
+.views button{flex:none;background:none;border:0;border-bottom:2px solid transparent;padding:.35rem .7rem;color:var(--ink-2);font-weight:600;font-size:.9rem}
+.views button.on{color:var(--ink);border-bottom-color:var(--gold)}
+.views .c{font-family:"IBM Plex Mono",monospace;font-size:.72rem;margin-left:.3rem;color:var(--stop)}
+@media (min-width:821px){.views{order:0;flex:0 1 auto;margin-left:1rem}}
+#scr-main .view{display:flex;flex-direction:column;flex:1;min-height:0}
+#scr-main .view[hidden]{display:none!important}
+/* login */
+#scr-login{max-width:520px;margin:2rem auto;padding:0 1rem}
+#scr-login h2{font-size:1.6rem;margin-bottom:.2rem}
+.who-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.5rem;margin:1rem 0}
+.who-btn{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:.7rem .8rem;text-align:left;display:flex;flex-direction:column}
+.who-btn.on{border-color:var(--gold);background:var(--gold-bg)}
+.who-btn .n{font-weight:600}.who-btn .r{font-size:.75rem;color:var(--ink-3)}
+.pin{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:.7rem;font-size:1.2rem;letter-spacing:.3em;text-align:center}
+
+/* main layout */
+#scr-main{display:flex;flex-direction:column;height:calc(100% - 52px)}
+.stats{display:flex;gap:1.4rem;flex-wrap:wrap;padding:.6rem 1rem;border-bottom:1px solid var(--line-soft)}
+.stat{display:flex;align-items:baseline;gap:.45rem;background:none;border:0;padding:0;text-align:left}
+.stat b{font-family:"Barlow Condensed",sans-serif;font-size:1.6rem;line-height:1;font-variant-numeric:tabular-nums}
+.stat span{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3)}
+.stat.red b{color:var(--stop)}.stat.amber b{color:var(--warn)}.stat.green b{color:var(--go)}
+.bar{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding:.55rem 1rem;border-bottom:1px solid var(--line-soft)}
+.tabs{display:flex;gap:.3rem;overflow-x:auto;flex:1 1 auto;min-width:0;scrollbar-width:none}
+.tabs button{flex:none;background:none;border:1px solid var(--line);border-radius:99px;padding:.3rem .75rem;color:var(--ink-2);font-size:.85rem;white-space:nowrap}
+.tabs button.on{border-color:var(--gold);color:var(--ink);background:var(--gold-bg)}
+.tabs .c{font-family:"IBM Plex Mono",monospace;font-size:.75rem;margin-left:.35rem;color:var(--ink-3)}
+.tabs .c.hot{color:var(--stop);font-weight:600}
+.filters{display:flex;gap:.4rem;flex-wrap:wrap}
+.filters input,.filters select{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:.3rem .55rem;font-size:.85rem}
+.filters input{width:11rem}
+.panes{flex:1;display:grid;grid-template-columns:minmax(300px,420px) 1fr;min-height:0}
+.list{border-right:1px solid var(--line);overflow-y:auto;min-height:0}
+.detail{overflow-y:auto;min-height:0;padding:1rem 1.25rem 4rem}
+
+/* list rows */
+.row{display:grid;grid-template-columns:auto 1fr auto;gap:.15rem .6rem;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line-soft);border-left:3px solid transparent;padding:.7rem .9rem}
+.row:hover{background:var(--bg-2)}
+.row.on{background:var(--card);border-left-color:var(--gold)}
+.row .dot{margin-top:.45rem;grid-row:span 3;background:var(--c,var(--muted))}
+.row .nm{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .t{font-size:.75rem;color:var(--ink-3);white-space:nowrap;font-family:"IBM Plex Mono",monospace}
+.row .t.late{color:var(--stop);font-weight:600}
+.row .snip{grid-column:2/4;color:var(--ink-2);font-size:.85rem;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .meta{grid-column:2/4;display:flex;gap:.35rem;flex-wrap:wrap;margin-top:.2rem;align-items:center}
+.tag{font-size:.72rem;border:1px solid var(--line);border-radius:3px;padding:.02rem .4rem;color:var(--ink-2);white-space:nowrap}
+.tag.you{border-color:var(--stop);color:var(--stop);background:var(--stop-bg)}
+.tag.youlite{border-color:var(--warn);color:var(--warn)}
+.tag.bot{border-color:var(--blue);color:var(--blue)}
+.tag.go{border-color:var(--go);color:var(--go)}
+.tag.own{border-color:var(--gold);color:var(--gold)}
+.tag.nobody{border-style:dashed;color:var(--ink-3)}
+.plate{font-family:"Barlow Condensed",sans-serif;font-weight:700;letter-spacing:.08em;background:var(--plate);color:#111;padding:.05rem .35rem;border-radius:2px;font-size:.85rem;white-space:nowrap}
+.empty{color:var(--ink-3);padding:2.5rem 1rem;text-align:center}
+
+/* detail */
+.back{display:none;background:none;border:0;color:var(--gold);padding:0 0 .7rem;font-weight:600}
+.dh{display:flex;gap:.8rem;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.dh h2{font-size:1.7rem;line-height:1.05}
+.dh .sub{color:var(--ink-2);font-size:.85rem;margin-top:.15rem;overflow-wrap:anywhere}
+.dh .acts{display:flex;gap:.35rem;flex-wrap:wrap;align-items:center}
+.steps{list-style:none;margin:1rem 0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.steps li{padding:.5rem .6rem;color:var(--ink-3);font-size:.78rem;min-width:0}
+.steps li+li{border-left:1px solid var(--line)}
+.steps li b{display:block;font-family:"Barlow Condensed",sans-serif;font-size:.95rem;letter-spacing:.04em;text-transform:uppercase}
+.steps li.did b{color:var(--go)}
+.steps li.now{background:var(--gold-bg);color:var(--ink)}
+.steps li.now b{color:var(--gold)}
+.steps li span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nextbox{border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:6px;padding:.7rem .9rem;margin-bottom:1rem;background:var(--bg-2)}
+.nextbox.you{border-left-color:var(--stop)}
+.nextbox.ok{border-left-color:var(--go)}
+.nextbox .k{font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3)}
+.nextbox .v{font-weight:600;font-size:1rem;margin-top:.1rem}
+.nextbox .why{font-size:.82rem;color:var(--ink-2);margin-top:.25rem}
+.grid2{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:1.25rem}
+.sec{font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);margin:0 0 .5rem;font-family:"IBM Plex Sans",sans-serif;font-weight:600}
+.thread{display:flex;flex-direction:column;gap:.5rem}
+.msg{background:var(--card);border:1px solid var(--line-soft);border-radius:8px;padding:.5rem .7rem;max-width:88%}
+.msg.out{align-self:flex-end;background:var(--go-bg);border-color:transparent}
+.msg.out.bot{background:var(--blue-bg)}
+.msg.out.held{background:var(--warn-bg);border:1px dashed var(--warn)}
+.msg .w{display:block;font-size:.72rem;color:var(--ink-3);margin-bottom:.15rem}
+.msg .w b{color:var(--ink-2)}
+.msg pre{margin:0;white-space:pre-wrap;font:inherit;overflow-wrap:anywhere}
+.msg .btns{margin-top:.4rem}
+.box{background:var(--card);border:1px solid var(--line-soft);border-radius:8px;padding:.75rem .85rem;margin-bottom:1rem}
+dl.facts{display:grid;grid-template-columns:auto 1fr;gap:.35rem .8rem;margin:0}
+dl.facts dt{color:var(--ink-3);font-size:.8rem}
+dl.facts dd{margin:0;min-width:0;overflow-wrap:anywhere}
+dd .miss{color:var(--stop);font-size:.82rem}
+.f{display:flex;flex-direction:column;gap:.2rem;min-width:0}
+.f label{font-size:.72rem;color:var(--ink-3);letter-spacing:.04em}
+.f input,.f select,.f textarea,textarea.reply{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:.45rem .6rem;width:100%}
+.f textarea,textarea.reply{min-height:4.5rem;resize:vertical}
+.frow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.6rem;margin-bottom:.6rem}
+.btns{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.6rem}
+.btn{border:1px solid var(--line);background:var(--card-2);border-radius:6px;padding:.42rem .8rem;font-weight:600;font-size:.85rem;text-decoration:none;color:var(--ink);display:inline-flex;align-items:center;gap:.35rem}
+.btn.primary{background:var(--gold);color:#16120a;border-color:var(--gold)}
+.btn.go{border-color:var(--go);color:var(--go)}
+.btn.stop{border-color:var(--stop);color:var(--stop)}
+.btn.ghost{background:none;color:var(--ink-2)}
+.btn.sm{padding:.25rem .6rem;font-size:.78rem}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.note{border:1px solid var(--line);border-radius:6px;padding:.55rem .75rem;font-size:.85rem;margin:.6rem 0}
+.note b{display:block;margin-bottom:.1rem}
+.note.warn{border-color:var(--warn);background:var(--warn-bg)}
+.note.stop{border-color:var(--stop);background:var(--stop-bg)}
+.note.go{border-color:var(--go);background:var(--go-bg)}
+.hint{color:var(--ink-3);font-size:.8rem;margin:.3rem 0}
+.rng{font-family:"Barlow Condensed",sans-serif;font-size:1.6rem;font-weight:700;color:var(--gold);line-height:1.1}
+table.k{width:100%;border-collapse:collapse;font-size:.82rem}
+table.k th,table.k td{text-align:left;padding:.35rem .4rem;border-bottom:1px solid var(--line-soft)}
+table.k th{font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);font-weight:600}
+.ck{display:flex;gap:.5rem;align-items:center;font-size:.9rem}
+
+/* sheet */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:60;display:flex;justify-content:flex-end}
+.sheet{width:min(560px,100%);height:100%;overflow-y:auto;background:var(--bg-2);border-left:1px solid var(--line);padding:1rem 1.2rem 3rem;padding-top:calc(1rem + env(safe-area-inset-top,0px))}
+.sheet h2{font-size:1.5rem;margin-bottom:.4rem}
+.sheet .x{float:right}
+.toast{position:fixed;left:50%;bottom:calc(1.2rem + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--card-2);border:1px solid var(--go);border-radius:6px;padding:.55rem 1rem;z-index:80;max-width:calc(100% - 2rem)}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:sp 1s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+@media (max-width:820px){
+  #scr-main{height:auto;min-height:calc(100% - 52px)}
+  .panes{grid-template-columns:1fr}
+  .panes.show .list{display:none}
+  .panes:not(.show) .detail{display:none}
+  .list{border-right:0}
+  .back{display:block}
+  .grid2{grid-template-columns:1fr}
+  .detail{padding:1rem}
+  .steps{grid-template-columns:1fr}
+  .steps li+li{border-left:0;border-top:1px solid var(--line)}
+  .filters input{width:9rem}
+}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+
+#scr-main{height:auto;min-height:calc(100% - 52px)}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><h1>KITH Sales</h1><span class="v">v1.0</span></div>
+  <nav class="views" id="views" hidden aria-label="Sections">
+    <button data-v="pipeline" class="on">Pipeline</button>
+    <button data-v="customers">Customers</button>
+    <button data-v="campaigns">Campaigns</button>
+    <button data-v="b2b">B2B<span class="c" id="vcB2b"></span></button>
+    <a href="kith-inbox.html" style="flex:none;color:var(--ink-2);font-weight:600;font-size:.9rem;padding:.35rem .7rem;text-decoration:none">Inbox ↗</a>
+  </nav>
+  <div class="spacer"></div>
+  <span class="dot" id="sync" title="Not loaded yet"></span>
+  <button class="pill" id="whoPill" hidden></button>
+</header>
+
+<div id="scr-login">
+  <h2>Who's on sales?</h2>
+  <p class="hint">Your name goes on every campaign you send and every company you work.</p>
+  <div class="who-grid" id="whoGrid"></div>
+  <div id="pinBox" hidden>
+    <div class="f"><label for="pinIn">PIN</label>
+    <input type="password" inputmode="numeric" maxlength="6" class="pin" id="pinIn" placeholder="····"></div>
+    <button class="btn primary" id="btnLogin" style="margin-top:.6rem;width:100%;justify-content:center">Sign in</button>
+    <div id="loginErr"></div>
+  </div>
+</div>
+
+<main id="scr-main" hidden>
+  <div id="view-sales" class="view"></div>
+</main>
+<div id="sheetHost"></div>
+
+<script src="kith-range.js"></script>
+<script src="kith-flow.js"></script>
+<script src="kith-sales.js"></script>
+<script>
+'use strict';
+/* ===========================================================================
+   KITH SALES — Pipeline · Customers · Campaigns · B2B
+   Reads the same data as everything else: CRM jobs, the live inbox's leads
+   (jobs row __leads__), the CRM's B2B board (kith_b2b) and kith_sales for
+   campaigns, sends, consent and accounts. It never writes to the inbox's
+   leads — the live inbox and its triage own those.
+   The screens are in kith-sales-ui.js; the rules in kith-sales.js.
+   =========================================================================== */
+const F = window.KITHFlow, R = window.KITHRange, S0 = window.KITHSales;
+const CFG = {
+  url: localStorage.getItem('kith_crm_url') || 'https://mxyrxyhvjndgjqupgstu.supabase.co',
+  key: localStorage.getItem('kith_crm_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog'
+};
+const REST = () => CFG.url.replace(/\/$/, '') + '/rest/v1/';
+const HDR = x => Object.assign({ apikey: CFG.key, Authorization: 'Bearer ' + CFG.key, 'Content-Type': 'application/json' }, x || {});
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clone = o => JSON.parse(JSON.stringify(o));
+function toast(msg, ms) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), ms || 3200); }
+
+let ME = null, MY = null, STAFF = [], PICKED = null, EDITING = false;
+let LEADS = [], JOBS_ALL = [], BOOK_AT = 0, TAB = '';
+
+async function get(path, extra) {
+  const r = await fetch(REST() + path, { headers: HDR(extra) });
+  if (!r.ok) { const e = new Error('CRM returned ' + r.status); e.status = r.status; throw e; }
+  return r.json();
+}
+// Read, change, write back only if nobody wrote in between
+async function cas(table, id, fn) {
+  for (let i = 0; i < 6; i++) {
+    const rows = await get(table + '?id=eq.' + encodeURIComponent(id) + '&select=id,data,updated_at');
+    const row = rows && rows[0];
+    const data = fn(row ? clone(row.data) : null);
+    if (data === undefined) return row ? row.data : null;
+    const now = new Date().toISOString();
+    if (!row) {
+      const ins = await fetch(REST() + table, { method: 'POST', headers: HDR({ Prefer: 'resolution=merge-duplicates' }), body: JSON.stringify([{ id, data, updated_at: now }]) });
+      if (!ins.ok) throw new Error('Could not save (' + ins.status + ')');
+      return data;
+    }
+    const res = await fetch(REST() + table + '?id=eq.' + encodeURIComponent(id) + '&updated_at=eq.' + encodeURIComponent(row.updated_at),
+      { method: 'PATCH', headers: HDR({ Prefer: 'return=representation' }), body: JSON.stringify({ data, updated_at: now }) });
+    if (!res.ok) throw new Error('Could not save (' + res.status + ')');
+    const out = await res.json();
+    if (Array.isArray(out) && out.length) return data;
+    await new Promise(z => setTimeout(z, 60 + Math.random() * 200));
+  }
+  throw new Error('Could not save after several tries — someone else keeps changing it');
+}
+function sheet(html) {
+  EDITING = true;
+  $('sheetHost').innerHTML = '<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true">' + html + '</div></div>';
+  $('scrim').addEventListener('click', e => { if (e.target.id === 'scrim') closeSheet(); });
+  $('sheetHost').querySelectorAll('[data-close]').forEach(b => b.onclick = closeSheet);
+}
+function closeSheet() { $('sheetHost').innerHTML = ''; EDITING = false; if (window.KSalesUI) window.KSalesUI.reload(); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('sheetHost').innerHTML) closeSheet(); });
+function setSync(k, title) { const s = $('sync'); s.className = 'dot ' + k; s.title = title || ''; }
+
+/* ---- the data ---- */
+const JOB_FIELDS = ['work', 'quote', 'stage', 'custType', 'signedOff', 'make', 'model', 'fleetAccount', 'mergedInto', 'name', 'phone', 'email', 'reg',
+  'createdAt', 'stageAt', 'completedAt', 'bookedFor', 'marketingOptIn', 'marketingOptInAt', 'referralCode', 'reviewSentAt', 'isTest', 'estApproved',
+  'fromLead', 'leadId', 'finalEst', 'rangeLow', 'rangeHigh', 'historic', 'assignedEstimator', 'source']
+  .map(f => f + ':data->>' + f).join(',').replace(/^/, 'id,');
+async function loadHistory() {
+  const all = [];
+  for (let from = 0; from < 60000; from += 1000) {
+    const rows = await get('jobs?select=' + JOB_FIELDS + '&id=not.like.__*&order=id.asc', { Range: from + '-' + (from + 999), 'Range-Unit': 'items' });
+    (rows || []).forEach(r => all.push(Object.assign(r, { signedOff: r.signedOff === 'true', fleetAccount: r.fleetAccount === 'true',
+      stageAt: +r.stageAt || r.stageAt, completedAt: +r.completedAt || r.completedAt })));
+    if (!rows || rows.length < 1000) break;
+  }
+  JOBS_ALL = all; BOOK_AT = Date.now();
+}
+// The live inbox's leads, read-only
+async function refreshLeads() {
+  try {
+    const rows = await get('jobs?select=data&id=eq.__leads__');
+    LEADS = (((rows || [])[0] || {}).data || {}).leads || [];
+    LEADS = LEADS.map(S0.fromLive).filter(Boolean);
+    setSync('ok', 'Up to date ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+  } catch (e) { setSync('err', e.message); }
+}
+// The CRM stage of a lead's job, for the Pipeline
+function jobOf(l) {
+  if (!l || !l.jobId) return null;
+  const j = JOBS_ALL.find(x => x.id === l.jobId);
+  return j ? { id: j.id, stage: j.stage, quote: j.quote } : null;
+}
+
+/* ---- who is using it ---- */
+const FALLBACK_STAFF = [{ name: 'Ali', role: 'adviser' }, { name: 'Logkith', role: 'director' }];
+const ROLES = ['adviser', 'director', 'accounts', 'parts'];
+const canUse = x => ROLES.includes(x.role) || ROLES.includes(x.filter) || (Array.isArray(x.roles) && x.roles.some(r => ROLES.concat('sales', 'inbox').includes(r)));
+const roleName = p => ({ director: 'Director', adviser: 'Service adviser', accounts: 'Accounts', parts: 'Parts' })[p.role || p.filter] || 'Staff';
+async function loadStaff() {
+  try {
+    const rows = await get('kith_staff?select=id,data&limit=100');
+    STAFF = (rows || []).map(x => Object.assign({ id: x.id }, x.data || {})).filter(x => x.name && x.active !== false && canUse(x));
+    if (!STAFF.length) throw new Error('empty');
+  } catch (e) { STAFF = FALLBACK_STAFF.slice(); }
+  renderWho();
+}
+function renderWho() {
+  $('whoGrid').innerHTML = STAFF.map((p, i) => '<button class="who-btn ' + (PICKED === p ? 'on' : '') + '" data-i="' + i + '"><span class="n">' + esc(p.name) + '</span><span class="r">' + esc(roleName(p)) + '</span></button>').join('');
+  $('whoGrid').querySelectorAll('[data-i]').forEach(b => b.onclick = () => {
+    PICKED = STAFF[+b.dataset.i]; renderWho(); $('pinBox').hidden = false; $('pinIn').value = ''; $('pinIn').focus();
+    $('loginErr').innerHTML = PICKED.pin ? '' : '<div class="note warn"><b>No PIN set for ' + esc(PICKED.name) + '</b>Anyone can sign in as them.</div>';
+  });
+}
+function doLogin() {
+  if (!PICKED) return;
+  if (PICKED.pin && String($('pinIn').value) !== String(PICKED.pin)) { $('loginErr').innerHTML = '<div class="note stop"><b>Wrong PIN</b>Try again.</div>'; $('pinIn').value = ''; return; }
+  ME = PICKED.name; MY = PICKED;
+  try { localStorage.setItem('kith_sales_me', ME); } catch (e) {}
+  showMain();
+}
+function showMain() {
+  $('scr-login').hidden = true; $('scr-main').hidden = false; $('views').hidden = false;
+  $('whoPill').hidden = false; $('whoPill').textContent = ME; $('whoPill').className = 'pill on';
+}
+$('btnLogin').onclick = doLogin;
+$('pinIn').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+$('whoPill').onclick = () => {
+  if (!confirm('Sign out ' + ME + '?')) return;
+  ME = null; MY = null; try { localStorage.removeItem('kith_sales_me'); } catch (e) {}
+  ['scr-main', 'whoPill', 'views'].forEach(k => $(k).hidden = true); $('scr-login').hidden = false; PICKED = null; renderWho();
+};
+(function start() {
+  let saved = null; try { saved = localStorage.getItem('kith_sales_me'); } catch (e) {}
+  loadStaff().then(() => { const p = saved && STAFF.find(s => s.name === saved); if (p) { ME = p.name; MY = p; showMain(); } });
+})();
+</script>
+<script src="kith-sales-ui.js"></script>
+</body>
+</html>

@@ -194,7 +194,7 @@
       'Happy to go ahead? Reply YES and we\'ll get you booked in. Any questions, just ask.'),
     // and the same thing in one line, for a text message
     quoteSms: j => 'KITH Cars: your quote for ' + vehicle(j) + ' is £' + money(j.quote) + ' inc VAT' +
-      (str(j.work) ? ' (' + shorten(j.work, 60) + ')' : '') + '. Reply YES to book in, or call us on 020 8123 4567.',
+      (str(j.work) ? ' (' + shorten(j.work, 60) + ')' : '') + '. Reply YES to book in, or call us on 020 4629 9469.',
     confirm: j => sign('Booked in ✅\n\n' + vehicle(j) + '\n' + (j.bookedFor ? 'Date: ' + j.bookedFor + '\n' : '') +
       (str(j.work) ? 'Work: ' + j.work + '\n' : '') + 'Total: £' + money(j.quote) + ' inc VAT\n\nSee you then.')
   };
