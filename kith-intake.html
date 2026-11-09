@@ -686,7 +686,7 @@ function motRef(){return'<div class="ref"><b>MOT — one of only two prices you 
   '<div style="margin-top:6px;color:#666">No VAT on an MOT. The price you say is the price they pay.</div></div>';}
 function diagRef(){return'<div class="ref"><b>Diagnostics — the other price you quote</b>'+
   Object.keys(PRICES.diagnostic).map(function(k){return'<div class="ref-row"><span>'+k+'</span><b>£'+PRICES.diagnostic[k]+' + VAT</b></div>';}).join('')+
-  '<div style="margin-top:6px;color:#666">If it starts at one tier and has to go deeper, the customer pays for both. Say that up front.</div></div>';}
+  '<div style="margin-top:6px;color:#666">If it has to go deeper, they don’t pay both tiers — they pay the difference. E.g. £60 diagnostic moving up to the £120 one = the £60 plus another £60. Say that up front.</div></div>';}
 
 // =============================================================================
 // STATE
@@ -1880,7 +1880,7 @@ var STRAIGHT=[
   {k:'remap1',n:'Remap — Stage 1',      s:'Software only',                inc:240, len:2},
   {k:'remap2',n:'Remap — Stage 2',      s:'Software only — hardware is quoted, not here', inc:360, len:2},
   {k:'diag',  n:'Diagnostic',           s:'Pick the tier below',          inc:null,len:1},
-  {k:'tyrefit',n:'Tyre fit',            s:'£20 per tyre, labour only',    inc:20,  len:1},
+  {k:'tyrefit',n:'Tyre fit',            s:'£20 + VAT per tyre, labour only', inc:24,  len:1},
   {k:'other', n:'Other fixed-price job',s:'Only a price Logan has set',   inc:null,len:1}
 ];
 var straightK=null;
@@ -1933,7 +1933,7 @@ function pickStraight(k){
   STRAIGHT.forEach(function(x){var b=document.getElementById('st-'+x.k);if(b)b.classList.toggle('sel',x.k===k);});
   var ex=document.getElementById('st-extra'),h='';
   if(k==='diag')h=fld('Diagnostic tier','q-diag','select',Object.keys(PRICES.diagnostic).map(function(t){return t+' — £'+PRICES.diagnostic[t]+' + VAT';}))+
-    note('n-amber','If it has to go deeper, the customer pays for both tiers. Say that up front.');
+    note('n-amber','If it has to go deeper, they don’t pay both tiers — they pay the difference. E.g. £60 diagnostic moving up to the £120 one = the £60 plus another £60. Say that up front.');
   if(k==='other')h=fld('What is the job?','q-other','text','e.g. Headlight bulb fit')+
     fld('Agreed price, inc VAT (£)','q-price','text','e.g. 45')+
     note('n-amber','Only use a price Logan has set. If you’re not sure, it needs an estimate — use the full intake.');
