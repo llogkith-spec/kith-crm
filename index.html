@@ -798,7 +798,6 @@ const AI_PROXY='https://script.google.com/macros/s/AKfycbyUGppzV1hOyq-9U4-k60lz6
 const STAFF=[
   {name:'Ali',            icon:'📞', filter:'adviser',   wa:'2348126024190', pin:'7777', roles:['adviser','parts']},
   {name:'Joel',           icon:'📋', filter:'estimator', wa:'639072943859',  pin:'2222'},
-  {name:'Sesugh',         icon:'📋', filter:'estimator', wa:'2348065966028', pin:'9999'},
   {name:'Paul',           icon:'📋', filter:'estimator', wa:'',              pin:'3333', roles:['estimator','parts']},
   {name:'Elvis',          icon:'📞', filter:'adviser',   wa:'',              pin:'8888', roles:['adviser','estimator']},
   {name:'Sudha',          icon:'🔩', filter:'parts',     wa:'447514422991',  pin:'6666', roles:['parts','accounts','onsite']},
@@ -5200,7 +5199,7 @@ function testPhonePing(){
 let _pingWarned=false;
 function queuePhonePing(n){
   if(!n)return;
-  const toEst=n.role==='estimator'||['Sesugh','Joel','Harith','Paul','Elvis'].indexOf(n.to)>-1;
+  const toEst=n.role==='estimator'||['Joel','Harith','Paul','Elvis'].indexOf(n.to)>-1;
   const url=(toEst&&n.jobId?'kith-estimator.html':'./')+(n.poId&&!n.jobId?'?po='+encodeURIComponent(n.poId):(n.jobId?'?job='+encodeURIComponent(n.jobId):''));
   fetch(SB_URL+'/rest/v1/kith_pings',{method:'POST',headers:SB_HDR,body:JSON.stringify([{
     id:n.id,to_name:n.to||null,role:n.role||null,title:String(n.title||'').slice(0,200),
@@ -13766,7 +13765,6 @@ function renderB2BList(){renderB2BBoard();}
 // ── SETTINGS ─────────────────────────────────────────────
 const STAFF_TIMINGS=[
   {name:'Ali',            role:'Service Adviser + Parts',        days:'Mon–Fri', hours:'8am–5pm'},
-  {name:'Sesugh',         role:'Estimator',                      days:'Mon–Fri', hours:'8am–5pm'},
   {name:'Joel',           role:'Estimator',                      days:'Mon–Fri', hours:'12pm–5pm'},
   {name:'Paul',           role:'Estimator (parts + labour)',     days:'Mon–Fri', hours:'8am–5pm'},
   {name:'Elvis',          role:'Service Adviser + Estimator',    days:'Mon–Fri', hours:'8am–5pm'},

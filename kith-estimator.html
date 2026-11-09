@@ -1115,7 +1115,7 @@ function needsPricing(j){
   return true;
 }
 
-const ESTIMATORS=['Sesugh','Joel','Ian','Muhammad Talha','Harith'];
+const ESTIMATORS=['Joel','Paul','Elvis'];
 let ME=localStorage.getItem('kith_estimator')||null;
 let JOBS=[], JOB=null, QTAB='mine';
 
@@ -1658,8 +1658,7 @@ const ROLES={
 // Only used if the kith_staff table can't be read. Names match the CRM,
 // so assignments and pings line up.
 const FALLBACK_STAFF=[
-  {name:'Sesugh',role:'estimator'},{name:'Joel',role:'estimator'},{name:'Ian',role:'estimator'},
-  {name:'Muhammad Talha',role:'estimator'},{name:'Harith',role:'estimator'},
+  {name:'Joel',role:'estimator'},{name:'Paul',role:'estimator'},{name:'Elvis',role:'estimator'},
   {name:'Logkith',role:'director'}
 ];
 let STAFF=[], PICKED=null, SECTION='labour';
@@ -1834,7 +1833,7 @@ async function finishSection(k){
    =========================================================================== */
 const VAPID_PUBLIC='BJo3ZdHwoTxIeQkJBB2Vw6o7ELkgiWPEDKytOGFjZsp5B1tIMh9U3MiFazsC3Y5Ac9MRbBno93OmkO2qZ0ldMaU';
 const APP_ID='estimator';
-const EST_NAMES=['Sesugh','Joel','Ian','Muhammad Talha','Harith'];
+const EST_NAMES=['Joel','Paul','Elvis'];
 function sbHeaders(extra){return Object.assign({apikey:CRM.key,Authorization:'Bearer '+CRM.key,'Content-Type':'application/json'},extra||{});}
 const SBU=()=>CRM.url.replace(/\/$/,'');
 function pingUrl(role,to){
