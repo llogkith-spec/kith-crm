@@ -215,6 +215,7 @@ table.t tr[data-open]:hover td{background:var(--card-2)}
 </head>
 <body>
 <header class="top">
+  <a class="pill" id="btnBack" href="kith-master.html" style="text-decoration:none">&#8249; Back</a>
   <div class="brand"><h1>KITH Dashboard</h1><span class="v">v1.0</span></div>
   <div class="spacer"></div>
   <span class="dot" id="sync" title="Not loaded yet" style="border-radius:50%"></span>
@@ -258,6 +259,13 @@ const CFG = {
   key: localStorage.getItem('kith_crm_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog'
 };
 const REST = () => CFG.url.replace(/\/$/, '') + '/rest/v1/';
+// Every call gives up after 12 seconds, so a slow signal never leaves a blank screen
+function fetchT(url, opts, ms) {
+  const c = new AbortController(); const t = setTimeout(() => c.abort(), ms || 12000);
+  return fetch(url, Object.assign({}, opts, { signal: c.signal }))
+    .catch(e => { throw new Error(e.name === 'AbortError' ? 'The CRM took too long to answer. Check your signal and tap Try again.' : 'Could not connect. Check your signal and tap Try again.'); })
+    .finally(() => clearTimeout(t));
+}
 const HDR = () => ({ apikey: CFG.key, Authorization: 'Bearer ' + CFG.key, 'Content-Type': 'application/json' });
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -276,7 +284,7 @@ const FIELDS = 'id,work:data->>work,notes:data->>notes,stage:data->>stage,quote:
 async function load(silent) {
   if (!silent) $('view').innerHTML = '<div class="empty"><span class="spin"></span> Adding it all up…</div>';
   try {
-    const r = await fetch(REST() + 'jobs?select=' + encodeURIComponent(FIELDS) + '&order=updated_at.desc',
+    const r = await fetchT(REST() + 'jobs?select=' + encodeURIComponent(FIELDS) + '&order=updated_at.desc',
       { headers: Object.assign(HDR(), { Range: '0-9999', 'Range-Unit': 'items', Prefer: 'count=none' }) });
     if (!r.ok) throw new Error('CRM returned ' + r.status);
     const rows = await r.json();
@@ -288,7 +296,7 @@ async function load(silent) {
     render();
   } catch (e) {
     setSync('err', e.message);
-    if (!silent) $('view').innerHTML = '<div class="note stop"><b>Could not reach the CRM</b>' + esc(e.message) + '</div>';
+    if (!silent) { $('view').innerHTML = '<div class="note stop"><b>Could not reach the CRM</b>' + esc(e.message) + '</div><button class="btn primary" id="btnRetry" style="margin-top:.6rem">Try again</button>'; $('btnRetry').onclick = () => load(); }
   }
 }
 function setSync(k, t) { const s = $('sync'); s.className = 'dot ' + k; s.title = t || ''; }
@@ -452,7 +460,7 @@ const canUse = x => DASH_ROLES.includes(x.role) || (Array.isArray(x.roles) && x.
 let STAFF = [], PICKED = null;
 async function loadStaff() {
   try {
-    const r = await fetch(REST() + 'kith_staff?select=id,data&limit=100', { headers: HDR() });
+    const r = await fetchT(REST() + 'kith_staff?select=id,data&limit=100', { headers: HDR() });
     if (!r.ok) throw new Error('staff');
     STAFF = ((await r.json()) || []).map(x => Object.assign({ id: x.id }, x.data || {})).filter(x => x.name && x.active !== false && canUse(x));
     if (!STAFF.length) throw new Error('empty');
@@ -487,8 +495,16 @@ $('whoPill').onclick = () => { if (!confirm('Sign out ' + ME + '?')) return; ME 
   $('scr-main').hidden = true; $('scr-login').hidden = false; $('whoPill').hidden = true; $('btnRefresh').hidden = true; PICKED = null; renderWho(); };
 // it can sit on a screen all day without asking the server every minute
 setInterval(() => { if (ME && document.visibilityState !== 'hidden') load(true); }, 5 * 60000);
+// Back goes to wherever you came from inside KITH, otherwise to the Master pipeline
+(function () {
+  try { const r = document.referrer && new URL(document.referrer); if (r && r.origin === location.origin && !/kith-dash\.html/.test(r.pathname)) $('btnBack').href = r.pathname + r.search; } catch (e) {}
+})();
 (function start() {
   let saved = null; try { saved = localStorage.getItem('kith_dash_me'); } catch (e) {}
+  // Already let in by the director PIN on KITH Master: no second sign-in
+  let viaMaster = false; try { viaMaster = sessionStorage.getItem('kmaster') === '1'; } catch (e) {}
+  if (viaMaster) { ME = saved || 'Logkith'; showMain(); loadStaff(); return; }
+  STAFF = FALLBACK_STAFF.slice(); renderWho();
   loadStaff().then(() => { const p = saved && STAFF.find(s => s.name === saved); if (p) { ME = p.name; showMain(); } });
 })();
 </script>
