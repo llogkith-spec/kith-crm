@@ -1739,7 +1739,7 @@ async function b2bSearch(q){
   var out=document.getElementById('b2b-results');q=String(q||'').trim();
   if(q.length<2){out.innerHTML='';return;}
   var list=await b2bLoad(),k=b2bKey(q);
-  var hits=list.filter(function(a){return b2bKey(a.company).indexOf(k)!==-1;}).slice(0,6);
+  var hits=list.filter(function(a){return b2bKey(a.company).indexOf(k)!==-1||a.contacts.some(function(c){return b2bKey(c.name).indexOf(k)!==-1;});}).slice(0,6);
   out.innerHTML=hits.length?hits.map(function(a){var i=list.indexOf(a);
       return'<button class="btn btn-ghost" style="display:block;width:100%;text-align:left;margin-top:6px" onclick="b2bPick('+i+')">🏢 <b>'+esc(a.company)+'</b>'+
         '<span style="font-size:11px;color:#666"> · '+a.contacts.length+' contact'+(a.contacts.length===1?'':'s')+'</span></button>';}).join('')
