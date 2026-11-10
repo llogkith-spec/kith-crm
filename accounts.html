@@ -4310,7 +4310,11 @@ var bankLastMsg = '';       // result of the last upload, kept across redraws
 // treated like own-account transfers everywhere money is totalled.
 var CAT_CASH_BANKED = 'Cash banked (from tin)';
 var CAT_CASH_DRAWN  = 'Cash withdrawn (to tin)';
-var BANK_OUT_CATS = ['Wages'].concat(BILL_CATS).concat(['Transfer (own account)', CAT_CASH_DRAWN, 'Director / personal']);
+// Metro -> Revolut: that money is going out to be spent, so it counts as money
+// out — until a Revolut statement covering that date is uploaded, when the
+// itemised Revolut payments take over and this becomes a plain transfer.
+var CAT_TO_REVOLUT  = 'Sent to Revolut (spending)';
+var BANK_OUT_CATS = [CAT_TO_REVOLUT, 'Wages'].concat(BILL_CATS).concat(['Transfer (own account)', CAT_CASH_DRAWN, 'Director / personal']);
 var BANK_IN_CATS  = ['Customer payment','Card machine payout','Insurance / fleet payment','Refund received','Transfer (own account)', CAT_CASH_BANKED,'Director loan in','Other income'];
 var BANK_CASH_IN_RE  = /^cash\b|\bcash (deposit|paid in|credit|lodge?ment)|counter credit|paid in at|lodge?ment|\bcdm\b|deposit machine|post office.*(deposit|cash)/i;
 var BANK_CASH_OUT_RE = /\batm\b|cash withdrawal|cash wdl|cashpoint|\bcash machine\b|^cash\b/i;
@@ -4321,7 +4325,7 @@ var BANK_IN_RULES = [
 
 // Starting rules, from your August statement. Your own choices override these.
 var BANK_DEFAULT_RULES = [
-  [/^money added from kith cars|^to kith cars\b|^kith cars ltd$/i, 'Transfer (own account)'],
+  [/^money added from kith cars|^to kith cars\b|^kith cars ltd$|^account to account transfer kith cars/i, 'Transfer (own account)'],
   [/jemca|parts ?panel|partspanel|properkeys|\bgsf\b|euro ?car ?parts|\becp\b|jayar|parts plus|alliance automotive|andrew page|mgp\*bumper|bumper|s v a car lamps|car lamps|autodoc|\bebay\b/i, 'Parts'],
   [/auto colou?rs|autocolour|paint|refinish|\bpnt\b/i, 'Paint & materials'],
   [/\bmfg\b|motor fuel|apcoa|\bncp\b|\btps\b|parking|\bpfs\b|rontec|\bshell\b|\besso\b|texaco|\bbp\b|jet |fuel|petrol/i, 'Vehicle & fuel'],
@@ -4480,6 +4484,7 @@ function _parseMetro(lines) {
   lines.forEach(function(l){
     var text = l.items.map(function(i){return i.s;}).join(' ');
     if (!R.account) { var am = text.match(/^Business ([A-Za-z ]*?)(?: Deposit)? Account/); if (am) R.account = am[1]; }
+    if (!R.acctNo) { var an = text.match(/Account (?:Number|No\.?)\s*:?\s*(\d{8})\b/i); if (an) R.acctNo = an[1]; }
     var v;
     if (!isNaN(v = valueAfter(l, 'Opening Balance'))) R.opening = v;
     if (!isNaN(v = valueAfter(l, 'Total Money In')))  R.moneyIn = v;
@@ -4661,8 +4666,9 @@ function classifyBankTx(t) {
   if (t.type === 'FEE') { t.cat = 'Bank & finance charges'; t.status = 'auto'; t.how = 'bank fee'; return t; }
   // 1. your own rule for this payee
   if (bankRules[key]) { t.cat = bankRules[key]; t.status = 'auto'; t.how = 'your rule'; }
-  // 2. own-account transfers
-  else if (/^money added from kith cars/i.test(t.desc) || /^to kith cars\b/i.test(t.desc) || /^kith cars( ltd)?\.?$/i.test(sp.payee)) { t.cat = 'Transfer (own account)'; t.status = 'auto'; t.how = 'own account'; }
+  // 2. Metro -> Revolut, then other own-account transfers
+  else if (t.bank === 'Metro' && t.dir === 'out' && /^kith cars( ltd)?\.?$/i.test(sp.payee)) { t.cat = CAT_TO_REVOLUT; t.status = 'auto'; t.how = 'Metro → Revolut'; }
+  else if (/^money added from kith cars/i.test(t.desc) || /^to kith cars\b/i.test(t.desc) || /^kith cars( ltd)?\.?$/i.test(sp.payee) || /account to account transfer\s+kith cars/i.test(sp.payee + ' ' + t.desc)) { t.cat = 'Transfer (own account)'; t.status = 'auto'; t.how = 'own account'; }
   // 3. wages: a staff name, or the reference says so
   else if (t.dir === 'out' && (/\bwages?\b|salary|payroll/i.test(sp.ref) || _staffMatch(sp.payee))) {
     t.cat = 'Wages'; t.status = 'auto'; var st = _staffMatch(sp.payee); t.how = st ? 'staff: ' + st.name : 'reference says wages';
@@ -4760,7 +4766,65 @@ function rejectJobMatch(id) {
 }
 function noJobOk(id) { var t = _bankTxById(id); if (!t) return; t.noJobOk = true; t.confirmed = true; persistBankTx(t); rBank(); }
 
-function _isTransfer(t) { return t.cat === 'Transfer (own account)' || t.cat === CAT_CASH_BANKED || t.cat === CAT_CASH_DRAWN; }
+function _revolutCovers(d) { return bankStmts.some(function(s){ return s.bank === 'Revolut' && s.from <= d && d <= s.to; }); }
+function _isTransfer(t) { return t.cat === 'Transfer (own account)' || t.cat === CAT_CASH_BANKED || t.cat === CAT_CASH_DRAWN || (t.cat === CAT_TO_REVOLUT && _revolutCovers(t.date)); }
+// How KITH banks: customers pay into the two Metro accounts, and everything
+// is paid out of the one Revolut account. Money moving Metro -> Revolut is a
+// transfer, not spending.
+var BANK_ROLE = {
+  Metro:   {label:'money in',  slots:2, icon:'⬇', col:'#2e7d32', note:'Customer payments land here'},
+  Revolut: {label:'money out', slots:1, icon:'⬆', col:'#c62828', note:'Bills, parts and wages are paid from here'}
+};
+function _stmtAcctNo(s) { if (s.acctNo) return s.acctNo; var m = String(s.file||'').match(/^(\d{8})\b/); return m ? m[1] : ''; }
+// Same label as before for an account already on file; if a second account of
+// the same bank would get the same name, tell them apart by the last 4 digits.
+function _bankAcctLabel(R) {
+  var base = (R.bank + ' ' + (R.account||'')).trim();
+  if (!R.acctNo) return base;
+  var same = bankStmts.filter(function(s){ return s.acct === base; });
+  if (!same.length || same.some(function(s){ return _stmtAcctNo(s) === R.acctNo; })) return base;
+  if (same.every(function(s){ return !_stmtAcctNo(s); })) return base;
+  return base + ' ··' + R.acctNo.slice(-4);
+}
+// The three accounts, with what's been uploaded for each
+function _bankAccounts() {
+  var by = {};
+  bankStmts.forEach(function(s){
+    var a = by[s.acct] = by[s.acct] || {acct:s.acct, bank:s.bank, no:'', last:null};
+    a.no = a.no || _stmtAcctNo(s);
+    if (!a.last || String(s.to) > String(a.last.to)) a.last = s;
+  });
+  var out = [];
+  Object.keys(BANK_ROLE).forEach(function(bank){
+    var got = Object.keys(by).map(function(k){ return by[k]; }).filter(function(a){ return a.bank === bank; });
+    got.sort(function(a,b){ return a.acct.localeCompare(b.acct); });
+    for (var i = 0; i < Math.max(BANK_ROLE[bank].slots, got.length); i++) out.push(got[i] || {bank:bank, missing:true, n:i+1});
+  });
+  return out;
+}
+function _bankAccountsCard() {
+  var today = _bkToday();
+  var cards = _bankAccounts().map(function(a){
+    var R = BANK_ROLE[a.bank];
+    var head = '<div style="font-size:10px;font-weight:800;color:'+R.col+';text-transform:uppercase;letter-spacing:.06em">'+R.icon+' '+R.label+'</div>';
+    if (a.missing) return '<div style="border:2px dashed #ffcc80;background:#fff8e1;border-radius:10px;padding:12px">'+head+
+      '<div style="font-weight:800;font-size:14px;margin-top:4px">'+a.bank+(R.slots>1?' account '+a.n:'')+'</div>'+
+      '<div style="font-size:12px;color:#e65100;margin-top:4px">No statement uploaded yet</div>'+
+      '<div style="font-size:11px;color:#888;margin-top:2px">'+R.note+'</div></div>';
+    var days = daysBetween(String(a.last.to), today);
+    var stale = days > 35;
+    return '<div style="border:1.5px solid #e0e0e0;background:#fff;border-radius:10px;padding:12px">'+head+
+      '<div style="font-weight:800;font-size:14px;margin-top:4px">'+escapeHtml(a.acct)+(a.no?' <span style="font-size:11px;color:#888;font-weight:600">'+escapeHtml(a.no)+'</span>':'')+'</div>'+
+      '<div style="font-size:12px;margin-top:4px;color:'+(stale?'#e65100':'#555')+'">Statements up to '+escapeHtml(prettyYmd(a.last.to))+(stale?' — upload the latest':'')+'</div>'+
+      '<div style="font-size:12px;color:#555">Balance then '+_gbp(a.last.closing)+'</div>'+
+      '<div style="font-size:11px;color:#888;margin-top:2px">'+R.note+'</div></div>';
+  }).join('');
+  return '<div style="'+cardStyle()+'margin-bottom:14px">'+
+    '<div style="font-size:11px;font-weight:800;color:#aaa;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Your bank accounts</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">'+cards+'</div>'+
+    '<div style="font-size:11px;color:#888;margin-top:10px">Money moved from Metro to Revolut, or between the two Metro accounts, counts as a transfer, not spending or income.</div>'+
+  '</div>';
+}
 function _isCashMove(t) { return t.cat === CAT_CASH_BANKED || t.cat === CAT_CASH_DRAWN; }
 // What a transaction needs from you, if anything
 function bankNeed(t) {
@@ -4775,7 +4839,7 @@ function bankNeed(t) {
   if (t.billId) return '';
   if (t.suggestBill) return 'confirm';
   if (!t.cat) return 'category';
-  if (t.cat === 'Wages' || t.cat === 'Loan / finance repayment' || t.cat === 'Director / personal' || t.cat === 'Customer refunds') return '';
+  if (t.cat === CAT_TO_REVOLUT || t.cat === 'Wages' || t.cat === 'Loan / finance repayment' || t.cat === 'Director / personal' || t.cat === 'Customer refunds') return '';
   if (t.noReceiptOk) return '';
   return 'receipt';
 }
@@ -4798,7 +4862,8 @@ async function uploadBankStatement(file) {
           '<br><br>Nothing has been changed. Send this statement to Claude so the reader can be fixed.', '#ffebee', '#c62828');
       return;
     }
-    var acct = (R.bank + ' ' + (R.account||'')).trim();
+    if (!R.acctNo) { var fnNo = String(file.name).match(/^(\d{8})\b/); if (fnNo) R.acctNo = fnNo[1]; }
+    var acct = _bankAcctLabel(R);
     var have = {}; bankTx.forEach(function(t){ have[t.id] = true; });
     var seen = {}, fresh = [];
     R.tx.forEach(function(t, idx){
@@ -4813,7 +4878,7 @@ async function uploadBankStatement(file) {
       classifyBankTx(row);
       fresh.push(row);
     });
-    var stmt = {kind:'stmt', id:'STMT-' + _bkHash(acct + R.from + R.to), bank:R.bank, acct:acct, from:R.from, to:R.to,
+    var stmt = {kind:'stmt', id:'STMT-' + _bkHash(acct + R.from + R.to), bank:R.bank, acct:acct, acctNo:R.acctNo||'', from:R.from, to:R.to,
                 opening:R.opening, closing:R.closing, moneyIn:R.moneyIn, moneyOut:R.moneyOut, count:R.tx.length,
                 file:file.name, uploadedAt: ts(), uploadedBy: user};
     // keep the PDF itself with the documents
@@ -4825,7 +4890,7 @@ async function uploadBankStatement(file) {
     bankStmts = bankStmts.filter(function(s){ return s.id !== stmt.id; }).concat([stmt]);
     bankMonth = R.to.slice(0,7);
     var dupes = R.tx.length - fresh.length;
-    say('<strong>✓ ' + escapeHtml(acct) + ' · ' + escapeHtml(prettyYmd(R.from)) + ' – ' + escapeHtml(prettyYmd(R.to)) + '</strong><br>' +
+    say('<strong>✓ ' + escapeHtml(acct) + ' (' + escapeHtml(BANK_ROLE[R.bank] ? BANK_ROLE[R.bank].label : '') + ') · ' + escapeHtml(prettyYmd(R.from)) + ' – ' + escapeHtml(prettyYmd(R.to)) + '</strong><br>' +
         'All ' + R.tx.length + ' transactions read, and they match the statement: in ' + _gbp(chk.sumIn) + ', out ' + _gbp(chk.sumOut) +
         ', closing balance ' + _gbp(R.closing) + '.<br>' +
         fresh.length + ' new' + (dupes ? ', ' + dupes + ' already imported and skipped' : '') + '.', '#e8f5e9', '#1b5e20');
@@ -4843,7 +4908,7 @@ function _bankTxById(id) { return bankTx.filter(function(t){ return t.id === id;
 function setBankCat(id, cat) {
   var t = _bankTxById(id); if (!t || !cat) return;
   t.cat = cat; t.status = 'set'; t.confirmed = true; t.how = 'set by ' + (user||'');
-  if (cat === 'Transfer (own account)' || cat === 'Wages' || cat === CAT_CASH_BANKED || cat === CAT_CASH_DRAWN) { t.suggestBill = null; t.suggestJob = null; }
+  if (cat === CAT_TO_REVOLUT || cat === 'Transfer (own account)' || cat === 'Wages' || cat === CAT_CASH_BANKED || cat === CAT_CASH_DRAWN) { t.suggestBill = null; t.suggestJob = null; }
   persistBankTx(t);
   // remember it for this payee, and apply to the others still undecided
   var key = _payeeKey(t.payee);
@@ -5050,10 +5115,11 @@ async function rBank(skipLoad, keepFocus) {
         '<input type="file" id="bank-file" accept="application/pdf,.pdf" style="display:none" onchange="uploadBankStatement(this.files[0]);this.value=\'\'"/>'+
         '<div style="font-size:26px;margin-bottom:4px">🏦</div>'+
         '<div style="font-size:14px;font-weight:700">Upload bank statement (PDF)</div>'+
-        '<div style="font-size:11px;color:#888">Revolut Business or Metro Bank. Uploading the same period twice is safe — repeats are skipped.</div>'+
+        '<div style="font-size:11px;color:#888">Metro Bank (both accounts) or Revolut Business. Uploading the same period twice is safe — repeats are skipped.</div>'+
       '</div>'+
       '<div id="bank-up-out">'+bankLastMsg+'</div>'+
     '</div>'+
+    _bankAccountsCard()+
     '<div id="bank-toast" style="display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;z-index:500;max-width:90vw"></div>'+
 
     (!bankTx.length ? '<div style="'+cardStyle()+'color:#888;text-align:center;padding:30px">No statements uploaded yet.</div>' :
@@ -6092,7 +6158,9 @@ async function rCashFlow(skipLoad) {
   var today = _bkToday(), upTo = R.end < today ? R.end : today;
   var behind = accts.filter(function(a){ return cov[a] < upTo; });
   var covHtml = !accts.length
-    ? '<div style="background:#ffebee;border:1px solid #ef9a9a;color:#c62828;border-radius:10px;padding:12px 14px;font-size:13px;margin-bottom:14px;line-height:1.5"><strong>No bank statements uploaded.</strong> Money out comes from the Revolut and Metro statements — upload them in the 🏦 Bank tab, or this page can only show cash.</div>'
+    ? '<div style="background:#ffebee;border:1px solid #ef9a9a;color:#c62828;border-radius:10px;padding:12px 14px;font-size:13px;margin-bottom:14px;line-height:1.5"><strong>No bank statements uploaded.</strong> Money comes in on the two Metro accounts and goes out from Revolut — upload them in the 🏦 Bank tab, or this page can only show cash.</div>'
+    : (!bankStmts.some(function(s){ return s.bank === 'Revolut'; }))
+      ? '<div style="background:#ffebee;border:1px solid #ef9a9a;color:#c62828;border-radius:10px;padding:12px 14px;font-size:13px;margin-bottom:14px;line-height:1.5"><strong>No Revolut statement uploaded.</strong> Everything is paid out of Revolut, so most spending is missing here. Upload it in the 🏦 Bank tab.</div>'
     : behind.length
       ? '<div style="background:#fff3e0;border:1px solid #ffcc80;color:#e65100;border-radius:10px;padding:12px 14px;font-size:13px;margin-bottom:14px;line-height:1.5"><strong>Not the full picture yet.</strong> '+
           behind.map(function(a){ return escapeHtml(a)+' statements only go up to '+escapeHtml(prettyYmd(cov[a])); }).join('; ')+
