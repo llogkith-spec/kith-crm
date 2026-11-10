@@ -4521,14 +4521,15 @@ function _parseRevolut(lines) {
     var text = l.items.map(function(i){return i.s;}).join(' ');
     var first = l.items[0];
     // the address shares these lines, so read the item after the label
-    l.items.forEach(function(it, ix){ if (it.s === 'Account name' && l.items[ix+1]) R.account = l.items[ix+1].s; });
+    l.items.forEach(function(it, ix){ if (it.s === 'Account name' && l.items[ix+1]) R.account = l.items[ix+1].s; if (it.s === 'Account number' && l.items[ix+1] && !R.acctNo) R.acctNo = l.items[ix+1].s.replace(/\s/g,''); });
     if (/^Opening balance/.test(text)) R.opening = _gbpNum(text);
     if (/^Money in\b/.test(text) && isNaN(R.moneyIn)) R.moneyIn = _gbpNum(text);
     if (/^Money out\b/.test(text) && isNaN(R.moneyOut)) R.moneyOut = Math.abs(_gbpNum(text));
     if (/^Closing balance/.test(text)) R.closing = _gbpNum(text);
-    var per = text.match(/^Transactions from (\d{1,2} \w+ \d{4}) to (\d{1,2} \w+ \d{4})/);
+    // Revolut writes the period as "1 October 2026" or "October 1, 2026"
+    var per = text.match(/^Transactions from (\d{1,2} \w+ \d{4}|\w+ \d{1,2}, \d{4}) to (\d{1,2} \w+ \d{4}|\w+ \d{1,2}, \d{4})/);
     if (per) {
-      var fx = function(s){ var m=s.match(/^(\d{1,2}) (\w+) (\d{4})$/); var mo={january:1,february:2,march:3,april:4,may:5,june:6,july:7,august:8,september:9,october:10,november:11,december:12}[m[2].toLowerCase()]; return m[3]+'-'+String(mo).padStart(2,'0')+'-'+String(m[1]).padStart(2,'0'); };
+      var fx = function(s){ var m=s.match(/^(\d{1,2}) (\w+) (\d{4})$/); if (!m) { var u=s.match(/^(\w+) (\d{1,2}), (\d{4})$/); m=[s,u[2],u[1],u[3]]; } var mo={january:1,february:2,march:3,april:4,may:5,june:6,july:7,august:8,september:9,october:10,november:11,december:12}[m[2].toLowerCase()]; return m[3]+'-'+String(mo).padStart(2,'0')+'-'+String(m[1]).padStart(2,'0'); };
       R.from = fx(per[1]); R.to = fx(per[2]); inTx = true; return;
     }
     if (/^Transaction types\b/.test(text) || /^Pending\b/.test(text)) { inTx = false; cur = null; return; }
@@ -4555,9 +4556,11 @@ function _parseRevolut(lines) {
     }
     // continuation of the row above: wrapped description or the fee line
     if (cur && l.page === cur.page && cur.y - l.y < 22 && first && cols && first.x >= cols.desc - 5 && first.x < cols.out - 20) {
-      var fm = text.match(/^Fee: (£[\d ,]+\.\d\d)$/);
+      // "Fee: £0.20", "Fee:£0.20" or "FX rate GBP 1 = PHP 85.08, Fee:£7.89"
+      var fm = text.match(/Fee: ?(£[\d ,]+\.\d\d)/);
       if (fm) cur.fee = Math.abs(_gbpNum(fm[1]));
-      else cur.desc += ' ' + text;
+      var rest = fm ? text.replace(/,?\s*Fee: ?£[\d ,]+\.\d\d/, '').trim() : text;
+      if (rest) cur.desc += ' ' + rest;
       return;
     }
     cur = null;
@@ -4575,6 +4578,8 @@ function _num(s) {
 function _parseMetro(lines) {
   var all = lines.map(function(l){ return l.items.map(function(i){return i.s;}).join(' '); }).join('\n');
   if (!/Metro ?bank|metrobank/i.test(all) || !/MONEY OUT/i.test(all)) return null;
+  // Two layouts: the Instant Access statement (DATE / MONEY OUT in capitals) and the
+  // current account ("Business Bank Account": Date / Money out (£) / End balance)
   var R = {bank:'Metro', account:'', opening:NaN, moneyIn:NaN, moneyOut:NaN, closing:NaN, from:'', to:'', tx:[], newestFirst:false};
   var cols = null, cur = null;
   var valueAfter = function(l, label){
@@ -4589,24 +4594,25 @@ function _parseMetro(lines) {
   var right  = function(i){ return i.x + (i.w||0); };
   lines.forEach(function(l){
     var text = l.items.map(function(i){return i.s;}).join(' ');
-    if (!R.account) { var am = text.match(/^Business ([A-Za-z ]*?)(?: Deposit)? Account/); if (am) R.account = am[1]; }
+    if (!R.account) { var am = text.match(/^Business ([A-Za-z ]*?)(?: Deposit)? Account/); if (am) R.account = am[1] === 'Bank' ? 'Current' : am[1]; }
     if (!R.acctNo) { var an = text.match(/Account (?:Number|No\.?)\s*:?\s*(\d{8})\b/i); if (an) R.acctNo = an[1]; }
     var v;
     if (!isNaN(v = valueAfter(l, 'Opening Balance'))) R.opening = v;
     if (!isNaN(v = valueAfter(l, 'Total Money In')))  R.moneyIn = v;
     if (!isNaN(v = valueAfter(l, 'Total Money Out'))) R.moneyOut = Math.abs(v);
     if (!isNaN(v = valueAfter(l, 'Closing Balance'))) R.closing = v;
+    if (!isNaN(v = valueAfter(l, 'End balance'))) R.closing = v;
     var per = text.match(/(\d{1,2} [A-Za-z]{3} \d{4})\s+To\s+(\d{1,2} [A-Za-z]{3} \d{4})/i);
     if (per && !R.from) { R.from = _ukDate(per[1]); R.to = _ukDate(per[2]); }
 
     // column headings repeat on every page
-    if (/^DATE\b/.test(text) && /MONEY OUT/.test(text) && /BALANCE/.test(text)) {
+    if (/^DATE\b/i.test(text) && /MONEY OUT/i.test(text) && /BALANCE/i.test(text)) {
       cols = {};
       l.items.forEach(function(i){
         if (/^TRANSACTION$/i.test(i.s)) cols.desc = i.x;
-        if (/^MONEY OUT$/i.test(i.s)) cols.out = right(i);
-        if (/^MONEY IN$/i.test(i.s))  cols.in  = right(i);
-        if (/^BALANCE$/i.test(i.s))   cols.bal = right(i);
+        if (/^MONEY OUT( \(£\))?$/i.test(i.s)) cols.out = right(i);
+        if (/^MONEY IN( \(£\))?$/i.test(i.s))  cols.in  = right(i);
+        if (/^BALANCE( \(£\))?$/i.test(i.s))   cols.bal = right(i);
       });
       cur = null;
       return;
