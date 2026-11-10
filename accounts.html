@@ -683,6 +683,34 @@ async function mPaid(id) {
   _rerenderCurrent(true);
 }
 
+// Mark POs as arrived (Received) — writes to the CRM, same as Parts pressing Received
+async function mArrived(ids) {
+  ids = (ids||[]).filter(function(id){ var p = POs.find(function(x){ return x.id === id; }); return p && !poArrived(p) && !/cancel/i.test(p.status||''); });
+  if (!ids.length) return;
+  var at = ts();
+  try {
+    await casUpdate('__pos__', function(d){
+      var hit = 0;
+      (d.pos||[]).forEach(function(t){
+        if (ids.indexOf(t.id) < 0 || /receiv|deliver|collect|fitted|arrived|complete|paid|cancel|return/i.test(t.status||'')) return;
+        t.status = 'Received';
+        t.statusLog = t.statusLog || [];
+        t.statusLog.push(at + ' → Received [' + user + ', accounts app]');
+        hit++;
+      });
+      if (!hit) return false;
+    });
+    POs.forEach(function(p){ if (ids.indexOf(p.id) >= 0) p.status = 'Received'; });
+  } catch(e) { alert('Could not save: '+e.message); }
+  _rerenderCurrent(true);
+}
+function mArrivedShown() {
+  var list = POs.filter(PO_FILTERS[poFilter].f).filter(function(p){ return !poArrived(p) && !/cancel/i.test(p.status||''); });
+  if (!list.length) return;
+  if (!confirm('Mark all ' + list.length + ' POs shown as arrived?\n\nOnly do this if every one of these parts is actually here.')) return;
+  mArrived(list.map(function(p){ return p.id; }));
+}
+
 // Mark a Return Order as credit received — same pattern, writes to CRM
 async function mROCredit(id) {
   var r = ROs.find(function(x){return x.id===id;});
@@ -705,7 +733,7 @@ async function mROCredit(id) {
       target.statusLog.push(ts() + ' ✓ Credit £' + amt.toFixed(2) + ' received (' + user + ', accounts app)');
     });
   } catch(e) { alert('Could not save: '+e.message); }
-  rDash(); rROs();
+  rDash(); rROs(); if (_curTab() === 'pos') rPOs();
 }
 
 // ---- PO filters + stock ----
@@ -714,13 +742,15 @@ function setPoFilter(f) { poFilter = f; rPOs(); }
 function poHasBill(p) {
   return (p.invoices && p.invoices.length) || invs.some(function(i){ return i.matchedPO && (i.matchedPO === p.num || i.matchedPO === p.id); });
 }
-function poArrived(p) { return /receiv|deliver|collect|fitted|arrived|complete/i.test(p.status || ''); }
+// 'Paid' in the CRM means received AND paid (Parts' "all done" button)
+function poArrived(p) { return /receiv|deliver|collect|fitted|arrived|complete|^paid$/i.test(p.status || ''); }
 var PO_FILTERS = {
   all:     {t:'All',                    f:function(){ return true; }},
   waiting: {t:'Not arrived yet',        f:function(p){ return !poArrived(p) && !/cancel/i.test(p.status||''); }},
   topay:   {t:'Arrived, not paid',      f:function(p){ return poArrived(p) && !p.paid; }},
   nobill:  {t:'No supplier invoice',    f:function(p){ return !poHasBill(p) && !/cancel/i.test(p.status||''); }},
-  paid:    {t:'Paid',                   f:function(p){ return p.paid; }}
+  paid:    {t:'Paid',                   f:function(p){ return p.paid; }},
+  returns: {t:'↩ Return orders',        f:function(){ return false; }, ro:true}
 };
 
 // Stock lives in the Stock app (kith-stock.html, the __stock__ row). Accounts
@@ -834,10 +864,17 @@ function rPOs() {
     monthCard('📅 POs raised — by month', monthlyGroups, '#c62828')+
 
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
-      Object.keys(PO_FILTERS).map(function(k){ var on = poFilter === k, n = POs.filter(PO_FILTERS[k].f).length;
+      Object.keys(PO_FILTERS).map(function(k){ var on = poFilter === k, n = PO_FILTERS[k].ro ? ROs.length : POs.filter(PO_FILTERS[k].f).length;
         return '<button onclick="setPoFilter(\''+k+'\')" style="border:1.5px solid #1a1a2e;background:'+(on?'#1a1a2e':'#fff')+';color:'+(on?'#fff':'#1a1a2e')+';padding:6px 12px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">'+PO_FILTERS[k].t+' ('+n+')</button>'; }).join('')+
     '</div>'+
 
+    (PO_FILTERS[poFilter].ro
+      ? '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
+        '<div style="padding:12px 14px;font-size:13px;color:#555">'+ROs.length+' return'+(ROs.length===1?'':'s')+' · credit still due <strong style="color:#e65100">'+_gbp(ROs.filter(function(r){return !r.creditReceived;}).reduce(function(t,r){return t+(+r.price||0);},0))+'</strong></div>'+
+        (ROs.length ? '<table style="width:100%;border-collapse:collapse">'+th(['RO#','Reg','Part','Supplier','Reason','Value','Status','Credit',''])+'<tbody>'+ROs.map(_roRow).join('')+'</tbody></table>'
+                    : '<div style="padding:20px;text-align:center;color:#888">No return orders.</div>')+'</div>'
+      : (function(){ var nArr = POs.filter(PO_FILTERS[poFilter].f).filter(function(p){ return !poArrived(p) && !/cancel/i.test(p.status||''); }).length;
+          return nArr ? '<div style="margin-bottom:10px"><button onclick="mArrivedShown()" style="'+btnStyle('#1565c0','#fff')+'">📦 Mark all '+nArr+' shown as arrived</button></div>' : ''; })()+
     '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
     '<table style="width:100%;border-collapse:collapse">'+th(['PO#','Reg','Part(s)','Supplier','Status','ex-VAT','VAT 20%','Total inc-VAT','ETA','Paid'])+
     '<tbody>'+POs.filter(PO_FILTERS[poFilter].f).map(function(p){
@@ -855,15 +892,30 @@ function rPOs() {
           (p.vat===0?'<div style="font-size:10px;color:#e65100">No VAT charged</div>':''))+
         td(escapeHtml(p.supplier||''))+
         td('<span style="font-size:11px;font-weight:700;color:'+(poArrived(p)?'#2e7d32':/cancel/i.test(p.status||'')?'#888':'#1565c0')+'">'+escapeHtml(p.status||'Ordered')+'</span>'+
-           (poHasBill(p) ? '<div style="font-size:10px;color:#2e7d32">🧾 invoice in</div>' : '<div style="font-size:10px;color:#e65100">no invoice yet</div>'))+
+           (poHasBill(p) ? '<div style="font-size:10px;color:#2e7d32">🧾 invoice in</div>' : '<div style="font-size:10px;color:#e65100">no invoice yet</div>')+
+           (!poArrived(p) && !/cancel/i.test(p.status||'') ? '<button onclick="mArrived([\''+p.id+'\'])" style="'+btnStyle('#fff','#1565c0',true)+'padding:2px 8px;font-size:10px;margin-top:3px">📦 Arrived</button>' : ''))+
         td('<strong>£'+n.toFixed(2)+'</strong>')+
         td('<span style="color:#888">£'+v.toFixed(2)+'</span>')+
         td('<strong style="color:#1565c0">£'+(n+v).toFixed(2)+'</strong>')+
         td('<span style="font-size:12px;color:#888">'+escapeHtml(p.eta||'—')+'</span>')+
         td(p.paid?'<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700">PAID</span>':'<button onclick="mPaid(\''+p.id+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:4px 10px;font-size:11px">✓ Paid</button>');
-    }).join('')+'</tbody></table></div>'+
+    }).join('')+'</tbody></table></div>')+
     '<p style="margin-top:10px;font-size:13px;color:#888">'+POs.length+' POs · ex-VAT: <strong>£'+exVat.toFixed(2)+'</strong> · inc-VAT: <strong style="color:#1565c0">£'+incVat.toFixed(2)+'</strong></p>';
 }
+
+function _roRow(r) { return '<tr>'+
+      td('<span style="font-family:monospace;font-weight:700;color:#b8860b">'+escapeHtml(r.num||r.id)+'</span>')+
+      td('<span style="font-family:monospace">'+escapeHtml(r.jobReg||'—')+'</span>')+
+      td('<strong>'+escapeHtml(r.partName||'—')+'</strong>')+
+      td(escapeHtml(r.supplier||''))+
+      td(escapeHtml(r.reason||''))+
+      td('<strong>£'+(+r.price||0).toFixed(2)+'</strong>')+
+      td('<span style="font-size:11px">'+escapeHtml(r.status||'—')+'</span>')+
+      td(r.creditReceived
+         ? '<span style="color:#2e7d32;font-weight:700">✓ £'+((parseFloat(r.creditAmount)||parseFloat(r.price))||0).toFixed(2)+'</span>'
+         : '<span style="color:#c62828">Pending</span>')+
+      td(r.creditReceived?'':'<button onclick="mROCredit(\''+r.id+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:4px 10px;font-size:11px">✓ Credit</button>')+
+    '</tr>'; }
 
 function rROs() {
   var pend = ROs.filter(function(r){return !r.creditReceived;});
@@ -895,19 +947,7 @@ function rROs() {
 
     '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
     '<table style="width:100%;border-collapse:collapse">'+th(['RO#','Reg','Part','Supplier','Reason','Value','Status','Credit',''])+
-    '<tbody>'+ROs.map(function(r){return'<tr>'+
-      td('<span style="font-family:monospace;font-weight:700;color:#b8860b">'+escapeHtml(r.num||r.id)+'</span>')+
-      td('<span style="font-family:monospace">'+escapeHtml(r.jobReg||'—')+'</span>')+
-      td('<strong>'+escapeHtml(r.partName||'—')+'</strong>')+
-      td(escapeHtml(r.supplier||''))+
-      td(escapeHtml(r.reason||''))+
-      td('<strong>£'+(+r.price||0).toFixed(2)+'</strong>')+
-      td('<span style="font-size:11px">'+escapeHtml(r.status||'—')+'</span>')+
-      td(r.creditReceived
-         ? '<span style="color:#2e7d32;font-weight:700">✓ £'+((parseFloat(r.creditAmount)||parseFloat(r.price))||0).toFixed(2)+'</span>'
-         : '<span style="color:#c62828">Pending</span>')+
-      td(r.creditReceived?'':'<button onclick="mROCredit(\''+r.id+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:4px 10px;font-size:11px">✓ Credit</button>')+
-    '</tr>';}).join('')+'</tbody></table></div>';
+    '<tbody>'+ROs.map(_roRow).join('')+'</tbody></table></div>';
 }
 
 // ---- Period switch for Bills & Expenses: today / week / month / all time ----
