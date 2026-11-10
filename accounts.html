@@ -6133,13 +6133,72 @@ var mnAnchor = null;
 function mnSetPeriod(p) { mnPeriod = p; rCashFlow(true); }
 function mnShift(d) {
   var a = new Date((mnAnchor || _bkToday()) + 'T00:00:00');
-  if (mnPeriod === 'week') a.setDate(a.getDate() + 7*d); else a = new Date(a.getFullYear(), a.getMonth() + d, 1);
+  if (mnPeriod === 'day') a.setDate(a.getDate() + d);
+  else if (mnPeriod === 'week') a.setDate(a.getDate() + 7*d);
+  else if (mnPeriod === 'year') a = new Date(a.getFullYear() + d, 0, 1);
+  else a = new Date(a.getFullYear(), a.getMonth() + d, 1);
   mnAnchor = _ymdL(a); rCashFlow(true);
 }
 function mnToday() { mnAnchor = null; rCashFlow(true); }
+function mnGo(period, anchor) { mnPeriod = period; mnAnchor = anchor; rCashFlow(true); }
+
+// In / out / net split into smaller periods: a year by month, a month by week
+// or by day, a week by day. Click a row to open that period.
+var mnSplit = 'week';
+function mnSetSplit(v) { mnSplit = v; rCashFlow(true); }
+function _mnBreakdown(R, M) {
+  if (mnPeriod === 'day') return '';
+  var unit = mnPeriod === 'year' ? 'month' : mnPeriod === 'week' ? 'day' : mnSplit;
+  var buckets = [], by = {};
+  var d = new Date(R.start + 'T00:00:00'), end = new Date(R.end + 'T00:00:00');
+  if (unit === 'week') d.setDate(d.getDate() - ((d.getDay()+6) % 7));
+  while (d <= end) {
+    var k = _ymdL(d), lab, nxt = new Date(d);
+    if (unit === 'month') { lab = d.toLocaleDateString('en-GB',{month:'long'}); nxt = new Date(d.getFullYear(), d.getMonth()+1, 1); }
+    else if (unit === 'week') { nxt.setDate(d.getDate()+7); var we = new Date(d); we.setDate(d.getDate()+6);
+      lab = 'Week ' + d.toLocaleDateString('en-GB',{day:'numeric',month:'short'}) + ' – ' + we.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); }
+    else { nxt.setDate(d.getDate()+1); lab = d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}); }
+    var b = {key:k, label:lab, in:0, out:0, n:0}; buckets.push(b); by[k] = b; d = nxt;
+  }
+  var keyOf = function(day){
+    if (unit === 'month') return day.slice(0,7) + '-01';
+    if (unit === 'week') return _weekStart(day);
+    return day;
+  };
+  M.lines.forEach(function(l){ var b = l.date && by[keyOf(l.date)]; if (!b) return; b.in += l.inA||0; b.out += l.outA||0; b.n++; });
+  var today = _bkToday();
+  var shown = buckets.filter(function(b){ return b.n || b.key <= today; });
+  var mx = Math.max.apply(null, [1].concat(shown.map(function(b){ return Math.max(b.in, b.out); })));
+  var openP = unit === 'month' ? 'month' : unit;
+  var cell = function(c, right){ return '<td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;font-size:13px'+(right?';text-align:right;white-space:nowrap':'')+'">'+c+'</td>'; };
+  var rows = shown.map(function(b){ var n = b.in - b.out;
+    return '<tr onclick="mnGo(\''+openP+'\',\''+b.key+'\')" style="cursor:pointer'+(b.n?'':';color:#bbb')+'" onmouseover="this.style.background=\'#f7f9ff\'" onmouseout="this.style.background=\'\'">'+
+      cell('<strong>'+escapeHtml(b.label)+'</strong>'+(b.key===today||(unit!=='day'&&b.key<=today&&today<(buckets[buckets.indexOf(b)+1]||{key:'9999'}).key)?' <span style="font-size:10px;color:#1565c0;font-weight:700">NOW</span>':''))+
+      cell(b.in ? '<span style="color:#2e7d32;font-weight:700">'+_gbp(b.in)+'</span>' : '—',1)+
+      cell(b.out ? '<span style="color:#c62828;font-weight:700">'+_gbp(b.out)+'</span>' : '—',1)+
+      cell(b.n ? '<strong style="color:'+(n>=0?'#2e7d32':'#c62828')+'">'+(n>=0?'+':'−')+_gbp(Math.abs(n))+'</strong>' : '—',1)+
+      cell(b.n ? '<div style="min-width:110px">'+_bkBar(b.in, mx, '#2e7d32')+'<div style="height:3px"></div>'+_bkBar(b.out, mx, '#c62828')+'</div>' : '')+
+    '</tr>'; }).join('');
+  var sw = mnPeriod === 'month'
+    ? '<div style="display:flex;gap:6px">'+['week','day'].map(function(v){ var on = mnSplit === v;
+        return '<button onclick="mnSetSplit(\''+v+'\')" style="border:1.5px solid #1a1a2e;background:'+(on?'#1a1a2e':'#fff')+';color:'+(on?'#fff':'#1a1a2e')+';padding:4px 11px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">By '+v+'</button>'; }).join('')+'</div>'
+    : '';
+  return '<div style="'+cardStyle()+'margin-bottom:14px;padding:0;overflow-x:auto">'+
+    '<div style="padding:14px 14px 10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'+
+      '<div><div style="'+stitle()+'margin:0">📊 Breakdown by '+unit+'</div><div style="font-size:11px;color:#888;margin-top:2px">Click a row to open that '+unit+'</div></div>'+sw+'</div>'+
+    '<table style="width:100%;border-collapse:collapse">'+th(['','In','Out','Net',''])+'<tbody>'+rows+
+    '<tr style="background:#eef2ff">'+cell('<strong>Total</strong>')+cell('<strong style="color:#2e7d32">'+_gbp(M.totIn)+'</strong>',1)+cell('<strong style="color:#c62828">'+_gbp(M.totOut)+'</strong>',1)+
+      cell('<strong>'+(M.totIn-M.totOut>=0?'+':'−')+_gbp(Math.abs(M.totIn-M.totOut))+'</strong>',1)+cell('')+'</tr>'+
+    '</tbody></table></div>';
+}
 function _mnRange(anchor, period) {
   var d = new Date((anchor || _bkToday()) + 'T00:00:00'), s, e, label;
-  if (period === 'week') {
+  if (period === 'day') {
+    s = e = _ymdL(d);
+    label = d.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  } else if (period === 'year') {
+    s = d.getFullYear() + '-01-01'; e = d.getFullYear() + '-12-31'; label = String(d.getFullYear());
+  } else if (period === 'week') {
     var mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay()+6) % 7));
     var sun = new Date(mon); sun.setDate(mon.getDate() + 6);
     s = _ymdL(mon); e = _ymdL(sun);
@@ -6356,7 +6415,7 @@ async function rCashFlow(skipLoad) {
     '<div style="font-size:12px;color:#888;margin-bottom:14px">Money actually received and actually paid out — from jobs, both bank accounts and the cash tin. Transfers between your own accounts are left out.</div>'+
 
     '<div style="display:flex;justify-content:center;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">'+
-      pchip('week','Week')+pchip('month','Month')+
+      pchip('day','Day')+pchip('week','Week')+pchip('month','Month')+pchip('year','Year')+
       '<span style="width:10px"></span>'+
       '<button onclick="mnShift(-1)" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:7px 13px">←</button>'+
       '<div style="font-size:17px;font-weight:800;min-width:190px;text-align:center">'+escapeHtml(R.label)+'</div>'+
@@ -6374,6 +6433,7 @@ async function rCashFlow(skipLoad) {
       sc('Cash tin now', L.started ? _gbp(L.balance) : 'not counted', '#1a1a2e')+
     '</div>'+
 
+    _mnBreakdown(R, M)+
     _mnCashBook(R, M)+
 
     _bkTable('💰 Where the money came from', 'Customer payments on the day they were taken, by how they paid',
