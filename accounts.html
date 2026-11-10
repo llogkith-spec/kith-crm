@@ -6173,7 +6173,7 @@ function _mnBreakdown(R, M) {
   var cell = function(c, right){ return '<td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;font-size:13px'+(right?';text-align:right;white-space:nowrap':'')+'">'+c+'</td>'; };
   var rows = shown.map(function(b){ var n = b.in - b.out;
     return '<tr onclick="mnGo(\''+openP+'\',\''+b.key+'\')" style="cursor:pointer'+(b.n?'':';color:#bbb')+'" onmouseover="this.style.background=\'#f7f9ff\'" onmouseout="this.style.background=\'\'">'+
-      cell('<strong>'+escapeHtml(b.label)+'</strong>'+(b.key===today||(unit!=='day'&&b.key<=today&&today<(buckets[buckets.indexOf(b)+1]||{key:'9999'}).key)?' <span style="font-size:10px;color:#1565c0;font-weight:700">NOW</span>':''))+
+      cell('<strong>'+escapeHtml(b.label)+'</strong>'+(b.key===today||(unit!=='day'&&today<=R.end&&b.key<=today&&today<(buckets[buckets.indexOf(b)+1]||{key:'9999'}).key)?' <span style="font-size:10px;color:#1565c0;font-weight:700">NOW</span>':''))+
       cell(b.in ? '<span style="color:#2e7d32;font-weight:700">'+_gbp(b.in)+'</span>' : '—',1)+
       cell(b.out ? '<span style="color:#c62828;font-weight:700">'+_gbp(b.out)+'</span>' : '—',1)+
       cell(b.n ? '<strong style="color:'+(n>=0?'#2e7d32':'#c62828')+'">'+(n>=0?'+':'−')+_gbp(Math.abs(n))+'</strong>' : '—',1)+
