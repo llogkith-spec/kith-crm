@@ -4677,6 +4677,7 @@ function classifyBankTx(t) {
   else if (t.dir === 'in' && BANK_CASH_IN_RE.test(t.desc || '')) { t.cat = CAT_CASH_BANKED; t.status = 'auto'; t.how = 'cash paid in'; }
   else if (t.dir === 'out' && (t.type === 'ATM' || BANK_CASH_OUT_RE.test(t.desc || ''))) { t.cat = CAT_CASH_DRAWN; t.status = 'auto'; t.how = 'cash withdrawal'; }
   else if (t.dir === 'out' && /refund/i.test(sp.ref)) { t.cat = 'Customer refunds'; t.status = 'auto'; t.how = 'reference says refund'; }
+  else if (t.dir === 'in' && /rejected faster payment|returned payment|payment returned/i.test(t.desc)) { t.cat = 'Refund received'; t.status = 'auto'; t.how = 'a payment out bounced back'; }
   else if (t.dir === 'in' && /^refund from|refund/i.test(t.desc)) { t.cat = 'Refund received'; t.status = 'auto'; t.how = 'refund'; }
   else if (t.dir === 'in' && BANK_IN_RULES.some(function(r){ if (r[0].test(sp.payee + ' ' + sp.ref)) { t.cat = r[1]; return true; } return false; })) { t.status = 'auto'; t.how = 'known payer'; }
   // 4. built-in payee list
@@ -6056,6 +6057,7 @@ function _moneyFor(R, ledger) {
   var M = {inMethods:{}, otherIn:{}, unmatchedIn:[], cardPayouts:0, out:{}, payees:{}, totIn:0, totOut:0,
            cashTaken:0, cashBanked:0, paidBillsNoTrace:[], uncatOut:0, uncatOutN:0, lines:[]};
   var line = function(day, t, detail, via, inA, outA){ M.lines.push({date:day, t:t||0, detail:detail, via:via, inA:inA||0, outA:outA||0}); };
+  var crmPays = [];
   // money in from jobs
   (sales || []).forEach(function(s){
     (s.payments || []).forEach(function(p){
@@ -6068,6 +6070,7 @@ function _moneyFor(R, ledger) {
       else line(pd, typeof p.ts === 'number' ? p.ts : 0, escapeHtml(who) + ' <span style="font-size:11px;color:#888">refund</span>', m, 0, -amt);
       if (!M.inMethods[m]) M.inMethods[m] = {n:0, amt:0};
       M.inMethods[m].n++; M.inMethods[m].amt += amt; M.totIn += amt;
+      if (amt > 0 && !/cash|card/i.test(m)) crmPays.push({day:pd, amt:amt, used:false});
     });
   });
   // bank
@@ -6081,7 +6084,16 @@ function _moneyFor(R, ledger) {
       if (t.jobId) return;                                   // already on the job
       if (!t.cat || t.cat === 'Customer payment' || t.cat === 'Insurance / fleet payment') {
         if (t.noJobOk && t.cat) { var k0 = t.cat; M.otherIn[k0] = (M.otherIn[k0]||0) + t.amount; M.totIn += t.amount; line(t.date, 0, escapeHtml(t.payee||t.desc||k0)+' <span style="font-size:11px;color:#888">'+escapeHtml(k0)+'</span>', t.acct||'Bank', t.amount, 0); }
-        else M.unmatchedIn.push(t);
+        else {
+          // Count it — unless a job already has a bank payment of the same
+          // amount within a week, which is probably this one recorded by staff.
+          var dup = crmPays.filter(function(c){ return !c.used && Math.abs(c.amt - t.amount) < 0.011 && Math.abs(daysBetween(c.day, t.date)) <= 7; })[0];
+          if (dup) { dup.used = true; return; }
+          M.unmatchedIn.push(t);
+          var ku = 'Not linked to a job yet';
+          M.otherIn[ku] = (M.otherIn[ku]||0) + t.amount; M.totIn += t.amount;
+          line(t.date, 0, escapeHtml(t.payee||t.desc||'?')+' <span style="font-size:11px;color:#e65100">not linked to a job</span>', t.acct||'Bank', t.amount, 0);
+        }
         return;
       }
       M.otherIn[t.cat] = (M.otherIn[t.cat]||0) + t.amount; M.totIn += t.amount;
@@ -6208,7 +6220,7 @@ async function rCashFlow(skipLoad) {
     'The difference should be what was spent from the tin or is still in it — see the 💵 Cash Tin tab.']);
   if (L.started) checks.push(['Should be in the cash tin right now', _gbp(L.balance), L.lastCount ? 'Last counted '+escapeHtml(prettyYmd(L.lastCount.date))+(Math.abs(L.lastCount._diff||0)>=0.01?' — it was '+(L.lastCount._diff<0?'short ':'over ')+_gbp(Math.abs(L.lastCount._diff)):'')+'.' : '']);
   if (M.unmatchedIn.length) checks.push(['Money into the bank not linked to a job ('+M.unmatchedIn.length+')', _gbp(unmatchedTot),
-    'Not added to money in above in case staff already recorded it on the job. Link them in the 🏦 Bank tab.']);
+    'Counted in money in above. Link each one to its job in the 🏦 Bank tab so the job shows as paid.']);
   if (M.paidBillsNoTrace.length) checks.push(['Bills marked paid that aren\'t on a statement or in the cash tin ('+M.paidBillsNoTrace.length+')', _gbp(noTraceTot),
     'Paid from another card or account? If so, that account isn\'t being tracked.']);
 
