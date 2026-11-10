@@ -743,7 +743,7 @@ function poHasBill(p) {
   return (p.invoices && p.invoices.length) || invs.some(function(i){ return i.matchedPO && (i.matchedPO === p.num || i.matchedPO === p.id); });
 }
 // 'Paid' in the CRM means received AND paid (Parts' "all done" button)
-function poArrived(p) { return /receiv|deliver|collect|fitted|arrived|complete|^paid$/i.test(p.status || ''); }
+function poArrived(p) { var st = p.status || ''; return !/awaiting|not in stock|ordered/i.test(st) && /receiv|deliver|collect|fitted|arrived|complete|^paid$/i.test(st); }
 var PO_FILTERS = {
   all:     {t:'All',                    f:function(){ return true; }},
   waiting: {t:'Not arrived yet',        f:function(p){ return !poArrived(p) && !/cancel/i.test(p.status||''); }},
