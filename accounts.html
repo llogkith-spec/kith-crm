@@ -2672,6 +2672,42 @@ async function wageRunRate() {
 }
 
 // Recurring bills that will fall due between two dates and haven't been raised yet.
+// Bars for money in / out each week, line for the running total
+function _cfChart(weeks) {
+  var W = 760, H = 300, L = 64, R = 16, T = 30, B = 44;
+  var run = 0, pts = weeks.map(function(w){ run += w.inAmt - w.outAmt; return run; });
+  var hi = Math.max.apply(null, [0].concat(weeks.map(function(w){ return Math.max(w.inAmt, w.outAmt); }), pts));
+  var lo = Math.min.apply(null, [0].concat(pts));
+  var step = function(v){ var m = Math.pow(10, Math.floor(Math.log10(v||1))); var n = v/m; return (n<=1?1:n<=2?2:n<=5?5:10)*m; };
+  var tick = step((hi - lo) / 5 || 1);
+  hi = Math.ceil(hi / tick) * tick || tick; lo = Math.floor(lo / tick) * tick;
+  var y = function(v){ return T + (hi - v) / (hi - lo) * (H - T - B); };
+  var cw = (W - L - R) / weeks.length, bw = Math.min(18, cw * 0.32);
+  var money = function(v){ var a = Math.abs(v); return (v<0?'−':'')+'£'+(a>=1000?(a/1000).toFixed(a>=10000?0:1)+'k':a.toFixed(0)); };
+  var g = '';
+  for (var v = lo; v <= hi + 0.001; v += tick) {
+    g += '<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="'+(Math.abs(v)<0.001?'#9ca3af':'#eef0f3')+'" stroke-width="1"/>'+
+         '<text x="'+(L-8)+'" y="'+(y(v)+4)+'" text-anchor="end" font-size="11" fill="#6b7280">'+money(v)+'</text>';
+  }
+  weeks.forEach(function(w, i){
+    var cx = L + cw*i + cw/2;
+    var d = new Date(w.start+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+    var tip = 'Week '+(i+1)+' ('+d+'): in £'+w.inAmt.toFixed(2)+', out £'+w.outAmt.toFixed(2)+', running total £'+pts[i].toFixed(2);
+    if (w.inAmt > 0) g += '<rect x="'+(cx-bw-1)+'" y="'+y(w.inAmt)+'" width="'+bw+'" height="'+(y(0)-y(w.inAmt))+'" rx="2" fill="#2e7d32"><title>'+tip+'</title></rect>';
+    if (w.outAmt > 0) g += '<rect x="'+(cx+1)+'" y="'+y(w.outAmt)+'" width="'+bw+'" height="'+(y(0)-y(w.outAmt))+'" rx="2" fill="#c62828"><title>'+tip+'</title></rect>';
+    g += '<text x="'+cx+'" y="'+(H-B+16)+'" text-anchor="middle" font-size="11" fill="#6b7280">'+d+'</text>';
+  });
+  var line = pts.map(function(v, i){ return (i?'L':'M')+(L + cw*i + cw/2).toFixed(1)+','+y(v).toFixed(1); }).join(' ');
+  g += '<path d="'+line+'" fill="none" stroke="#1565c0" stroke-width="2.5"/>';
+  pts.forEach(function(v, i){ g += '<circle cx="'+(L + cw*i + cw/2)+'" cy="'+y(v)+'" r="3.5" fill="'+(v<0?'#c62828':'#1565c0')+'" stroke="#fff" stroke-width="1.5"><title>Running total after week '+(i+1)+': £'+v.toFixed(2)+'</title></circle>'; });
+  var leg = function(c, t, ln){ return '<span style="display:inline-flex;align-items:center;gap:6px;margin-right:16px">'+(ln?'<span style="width:18px;height:3px;background:'+c+';border-radius:2px"></span>':'<span style="width:11px;height:11px;background:'+c+';border-radius:2px"></span>')+t+'</span>'; };
+  return '<div style="'+cardStyle()+'margin-bottom:14px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px">'+
+      '<div style="'+stitle()+'margin:0">📈 Next 12 weeks</div>'+
+      '<div style="font-size:12px;color:#555">'+leg('#2e7d32','Money in')+leg('#c62828','Money out')+leg('#1565c0','Running total',1)+'</div></div>'+
+    '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block" role="img" aria-label="Cash flow forecast chart">'+g+'</svg>'+
+    '<div style="font-size:11px;color:#888;margin-top:4px">Hover a bar or dot for the exact figures. Below the grey line = more going out than coming in so far.</div></div>';
+}
 function _recurringDue(startYmd, endYmd) {
   var out = [];
   if (typeof recurring === 'undefined') return out;
@@ -3475,6 +3511,7 @@ async function _renderForecast() {
 
   var running = 0;
   var totalIn = 0, totalOut = 0;
+  var chart = _cfChart(weeks);
   var rows = weeks.map(function(w){
     var net = w.inAmt - w.outAmt;
     running += net;
@@ -3502,6 +3539,7 @@ async function _renderForecast() {
       sc('12wk OUT', '£'+totalOut.toFixed(2), '#c62828')+
       sc('12wk NET', (netTotal>=0?'+':'')+'£'+netTotal.toFixed(2), netTotal>=0?'#2e7d32':'#c62828')+
     '</div>'+
+    chart+
     '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
     '<table style="width:100%;border-collapse:collapse">'+
       th(['Week','Money IN','Money OUT','Net','Running total'])+
