@@ -78,6 +78,21 @@ window.addEventListener('DOMContentLoaded', autoLogin);
 
 // SUPABASE
 var SB = 'https://mxyrxyhvjndgjqupgstu.supabase.co';
+// Build stamp: bumped on every release. An open tab checks every few minutes
+// whether a newer one is live and asks to reload, so nobody keeps working on
+// an old copy (e.g. a statement reader that has since been fixed).
+var BUILD = '2026-11-10-2315';
+setInterval(async function(){
+  try {
+    var t = await fetch(location.pathname + '?nc=' + Date.now(), {cache:'no-store'}).then(function(r){ return r.text(); });
+    var m = t.match(/var BUILD = '([^']+)'/);
+    if (!m || m[1] === BUILD || document.getElementById('upd-bar')) return;
+    var b = document.createElement('div'); b.id = 'upd-bar';
+    b.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#1565c0;color:#fff;padding:12px 18px;border-radius:10px;font:600 14px system-ui;box-shadow:0 6px 24px rgba(0,0,0,.25);z-index:99999;display:flex;gap:12px;align-items:center';
+    b.innerHTML = 'A new version of the accounts app is ready. <button onclick="location.reload()" style="background:#fff;color:#1565c0;border:none;border-radius:6px;padding:6px 12px;font-weight:800;cursor:pointer">Reload</button>';
+    document.body.appendChild(b);
+  } catch(e) {}
+}, 3 * 60 * 1000);
 var SK = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
 var SH = {apikey:SK, Authorization:'Bearer '+SK, 'Content-Type':'application/json', Prefer:'resolution=merge-duplicates'};
 
