@@ -582,12 +582,12 @@ function _rDash() {
 
   // AP + AR headline numbers
   var apUnpaid = invs.filter(function(i){return i.status!=='paid';});
-  var apTotal = apUnpaid.reduce(function(s,i){return s+(parseFloat(i.net)||0)+(parseFloat(i.vat)||0);},0);
+  var apTotal = apUnpaid.reduce(function(s,i){return s+_billLeft(i);},0);
   var today = new Date().toISOString().slice(0,10);
   var apOverdue = apUnpaid.filter(function(i){
     var d = i.due || (i.date ? shiftDate(i.date, 30) : '');
     return d && d < today;
-  }).reduce(function(s,i){return s+(parseFloat(i.net)||0)+(parseFloat(i.vat)||0);},0);
+  }).reduce(function(s,i){return s+_billLeft(i);},0);
 
   var arUnpaid = sales.filter(function(s){return !s.paid;});
   var arTotal = arUnpaid.reduce(function(s,x){return s+(parseFloat(x.amount)||0);},0);
@@ -929,6 +929,8 @@ function _exRange() {
 }
 function _billDay(i) { return normDate(i.date) || _bkDay(i.createdAt) || ''; }
 function _billInc(i) { return (parseFloat(i.net)||0) + (parseFloat(i.vat)||0); }
+// What's still owed on a bill once part payments are taken off
+function _billLeft(i) { return Math.max(0, +(_billInc(i) - (parseFloat(i.partPaid)||0)).toFixed(2)); }
 
 function exPeriodBar(R) {
   var chip = function(p, l){ return _periodChip(exPeriod === p, l, 'exSetPeriod(\''+p+'\')'); };
@@ -950,7 +952,7 @@ function exMonthsCard(list) {
     var k = (_billDay(i) || '').slice(0,7) || 'unknown';
     if (!M[k]) M[k] = {n:0, net:0, vat:0, unpaid:0};
     M[k].n++; M[k].net += parseFloat(i.net)||0; M[k].vat += parseFloat(i.vat)||0;
-    if (i.status !== 'paid') M[k].unpaid += _billInc(i);
+    if (i.status !== 'paid') M[k].unpaid += _billLeft(i);
   });
   var keys = Object.keys(M).sort().reverse();
   if (!keys.length) return '';
@@ -1535,7 +1537,7 @@ function payablesBySupplier() {
   };
   invs.forEach(function(inv){
     if (inv.status === 'paid') return;
-    var g = get(inv.supplier), t = (parseFloat(inv.net)||0) + (parseFloat(inv.vat)||0), due = billDue(inv);
+    var g = get(inv.supplier), t = _billLeft(inv), due = billDue(inv);
     g.owed += t; g.bills++;
     if (due && due < today) { g.overdue += t; g.oldestDays = Math.max(g.oldestDays, daysBetween(due, today)); }
     else if (due && due <= week) g.dueWeek += t;
@@ -1578,6 +1580,7 @@ function payRemindersCard(compact) {
         '<div><span style="color:'+col[r.lvl]+'">'+ic[r.lvl]+'</span> '+r.txt+'</div>'+
         '<div style="white-space:nowrap">'+
           '<button onclick="openSupPay(\''+sup+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:3px 10px;font-size:11px">✓ Paid</button> '+
+          '<button onclick="openSupPart(\''+sup+'\')" style="'+btnStyle('#fff','#e65100',true)+'padding:3px 10px;font-size:11px" title="Paid some of it — enter what you paid or the balance still owed">½ Part paid</button> '+
           '<button onclick="snoozeSup(\''+sup+'\')" style="'+btnStyle('#fff','#888',true)+'padding:3px 10px;font-size:11px" title="Hide this reminder for 7 days">Hide 7 days</button>'+
         '</div></div>'; }).join('')+
     (compact && R.length > 5 ? '<div style="font-size:12px;margin-top:6px"><a onclick="showTab(\'ap\')" style="color:#1565c0;cursor:pointer;text-decoration:underline">See all '+R.length+' in To Pay →</a></div>' : '')+
@@ -1595,22 +1598,85 @@ function openSupPay(name) {
     var due = billDue(i), late = due && due < today;
     return '<tr>'+td('<strong>'+escapeHtml(i.num||'—')+'</strong><div style="font-size:11px;color:#888">'+escapeHtml(i.date||'')+'</div>')+
       td('<span style="font-size:12px;color:'+(late?'#c62828':'#555')+'">'+(due?escapeHtml(prettyYmd(due)):'—')+(late?' · late':'')+'</span>')+
-      td('<strong>'+_gbp(_billInc(i))+'</strong>')+
+      td('<strong>'+_gbp(_billLeft(i))+'</strong>'+(i.partPaid?'<div style="font-size:10px;color:#888">of '+_gbp(_billInc(i))+' · '+_gbp(i.partPaid)+' paid</div>':''))+
       td('<button onclick="supPayBill(\''+i.id+'\',\''+escapeHtml(String(name).replace(/'/g,"\\'"))+'\')" style="'+btnStyle('#2e7d32','#fff')+'padding:3px 10px;font-size:11px">✓ Paid</button>')+'</tr>';
   }).concat(pos.map(function(p){
     return '<tr>'+td('<strong>'+escapeHtml(p.num||p.id)+'</strong><div style="font-size:11px;color:#888">PO from the CRM</div>')+td('—')+
       td('<strong>'+_gbp(p.gross||p.price)+'</strong>')+
       td('<button onclick="mPaid(\''+escapeHtml(p.id)+'\');setTimeout(function(){openSupPay(\''+escapeHtml(String(name).replace(/'/g,"\\'"))+'\')},600)" style="'+btnStyle('#2e7d32','#fff')+'padding:3px 10px;font-size:11px">✓ Paid</button>')+'</tr>';
   })).join('');
-  var total = bills.reduce(function(t,i){ return t + _billInc(i); }, 0);
+  var total = bills.reduce(function(t,i){ return t + _billLeft(i); }, 0);
   _checkModal('<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">✓ Pay '+escapeHtml(name)+'</h3>'+
     '<button onclick="closeBillCheck();_rerenderPay()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888">✕</button></div>'+
     '<div style="font-size:12px;color:#888;margin:4px 0 10px">Tick off what you\'ve paid. The reminder clears once nothing is late or due this week.</div>'+
+    (bills.length ? '<button onclick="openSupPart(\''+escapeHtml(String(name).replace(/'/g,"\\'"))+'\')" style="'+btnStyle('#fff','#e65100',true)+'margin-bottom:10px">½ Part paid / enter balance</button>' : '')+
     (rows ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+th(['Bill','Due','Amount',''])+'<tbody>'+rows+'</tbody></table></div>'+
       (bills.length > 1 ? '<button onclick="supPayAll(\''+escapeHtml(String(name).replace(/'/g,"\\'"))+'\')" style="'+btnStyle('#2e7d32','#fff')+'margin-top:12px">✓ Mark all '+bills.length+' bills paid ('+_gbp(total)+')</button>' : '')
           : '<div style="padding:20px;text-align:center;color:#2e7d32">✓ Nothing left to pay '+escapeHtml(name)+'.</div>'));
 }
 function _markBillPaid(inv) { inv.status = 'paid'; inv.paidAt = ts(); inv.paidBy = user; persistInv(inv); }
+// Part payment to a supplier: enter what was paid OR the balance still owed.
+// The money clears the oldest bills first; the bill it runs out on keeps the rest.
+function _supOpenBills(name) {
+  var k = _supKey(name);
+  return invs.filter(function(i){ return i.status !== 'paid' && _supKey(i.supplier) === k && _billLeft(i) > 0.005; })
+             .sort(function(a,b){ return (billDue(a)||a.date||'').localeCompare(billDue(b)||b.date||''); });
+}
+function openSupPart(name) {
+  var bills = _supOpenBills(name);
+  var owed = +bills.reduce(function(t,i){ return t + _billLeft(i); }, 0).toFixed(2);
+  var q = escapeHtml(String(name).replace(/'/g,"\\'"));
+  var inp = 'width:100%;padding:10px;border:1.5px solid #ddd;border-radius:8px;font-size:15px;margin-top:4px';
+  _checkModal('<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:17px;font-weight:800">½ Part paid — '+escapeHtml(name)+'</h3>'+
+    '<button onclick="closeBillCheck()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888">✕</button></div>'+
+    (!bills.length ? '<div style="padding:20px;text-align:center;color:#888">No unpaid bills from '+escapeHtml(name)+' in the system.</div>' :
+    '<div style="font-size:13px;color:#555;margin:6px 0 14px">Bills in the system: <strong>'+_gbp(owed)+'</strong> across '+bills.length+' bill'+(bills.length>1?'s':'')+'. Fill in <strong>one</strong> of these:</div>'+
+    '<label style="font-size:12px;font-weight:700;color:#555">Amount you paid (£)</label>'+
+    '<input id="pp-paid" type="number" step="0.01" min="0" style="'+inp+'" oninput="_ppPreview('+owed+')" placeholder="e.g. 500">'+
+    '<div style="text-align:center;font-size:12px;color:#aaa;margin:8px 0">— or —</div>'+
+    '<label style="font-size:12px;font-weight:700;color:#555">Balance still owed after paying (£)</label>'+
+    '<input id="pp-bal" type="number" step="0.01" min="0" style="'+inp+'" oninput="_ppPreview('+owed+')" placeholder="e.g. what their statement says">'+
+    '<label style="font-size:12px;font-weight:700;color:#555;display:block;margin-top:10px">Date paid</label>'+
+    '<input id="pp-date" type="date" value="'+_bkToday()+'" style="'+inp+'">'+
+    '<div id="pp-prev" style="font-size:13px;margin-top:12px;min-height:18px"></div>'+
+    '<button onclick="saveSupPart(\''+q+'\')" style="'+btnStyle('#2e7d32','#fff')+'margin-top:12px;width:100%">Save</button>'));
+}
+function _ppAmount(owed) {
+  var p = parseFloat((document.getElementById('pp-paid')||{}).value), b = parseFloat((document.getElementById('pp-bal')||{}).value);
+  if (!isNaN(p) && p > 0) return {paid:+p.toFixed(2)};
+  if (!isNaN(b) && b >= 0) return {paid:+(owed - b).toFixed(2)};
+  return null;
+}
+function _ppPreview(owed) {
+  var el = document.getElementById('pp-prev'); if (!el) return;
+  var a = _ppAmount(owed);
+  if (!a) { el.innerHTML = ''; return; }
+  if (a.paid <= 0) { el.innerHTML = '<span style="color:#c62828">That balance is the same as or more than the bills in the system ('+_gbp(owed)+'), so there is nothing to take off. Some bills may be missing.</span>'; return; }
+  var left = +(owed - a.paid).toFixed(2);
+  el.innerHTML = left < -0.005
+    ? '<span style="color:#e65100">Paid '+_gbp(a.paid)+', which is '+_gbp(-left)+' more than the bills in the system. All of them will be marked paid.</span>'
+    : '<span style="color:#2e7d32">Paid <strong>'+_gbp(a.paid)+'</strong> · still owed <strong>'+_gbp(left)+'</strong></span>';
+}
+function saveSupPart(name) {
+  var bills = _supOpenBills(name);
+  var owed = +bills.reduce(function(t,i){ return t + _billLeft(i); }, 0).toFixed(2);
+  var a = _ppAmount(owed);
+  if (!a || a.paid <= 0) { alert('Enter the amount you paid, or the balance still owed.'); return; }
+  var day = (document.getElementById('pp-date')||{}).value || _bkToday();
+  var left = a.paid, cleared = 0;
+  bills.forEach(function(inv){
+    if (left <= 0.005) return;
+    var due = _billLeft(inv), take = Math.min(due, left);
+    inv.partPays = (inv.partPays||[]).concat([{amount:+take.toFixed(2), date:day, by:user||'', at:ts()}]);
+    if (take >= due - 0.005) { _markBillPaid(inv); cleared++; }
+    else { inv.partPaid = +((parseFloat(inv.partPaid)||0) + take).toFixed(2); persistInv(inv); }
+    left = +(left - take).toFixed(2);
+  });
+  closeBillCheck();
+  _rerenderPay();
+  var still = Math.max(0, +(owed - a.paid).toFixed(2));
+  alert('Saved: paid ' + _gbp(a.paid) + ' to ' + name + '.\n' + cleared + ' bill' + (cleared===1?'':'s') + ' cleared · ' + _gbp(still) + ' still owed.' + (left > 0.005 ? '\n(' + _gbp(left) + ' more than the bills in the system — check for missing bills.)' : ''));
+}
 function supPayBill(id, name) { var inv = _billById(id); if (inv) _markBillPaid(inv); openSupPay(name); }
 function supPayAll(name) {
   var k = _supKey(name);
@@ -1705,7 +1771,7 @@ function rAP() {
     var dueDate = billDue(inv);
     inv._due = dueDate;
     inv._daysOverdue = dueDate ? daysBetween(dueDate, today) : 0;
-    inv._total = (parseFloat(inv.net)||0) + (parseFloat(inv.vat)||0);
+    inv._total = _billLeft(inv);
   });
 
   // Sort oldest-due first
@@ -2720,7 +2786,7 @@ function _bkData(R) {
     var k = supKey(b.supplier);
     if (!bySup[k]) bySup[k] = {name:b.supplier||'(no supplier)', bills:0, amt:0, unpaid:0, poN:0, poAmt:0};
     var t = (parseFloat(b.net)||0)+(parseFloat(b.vat)||0);
-    bySup[k].bills++; bySup[k].amt += t; if (b.status !== 'paid') bySup[k].unpaid += t;
+    bySup[k].bills++; bySup[k].amt += t; if (b.status !== 'paid') bySup[k].unpaid += _billLeft(b);
   });
   SOs.forEach(function(x){
     if (x.status === 'Cancelled' || !inMonth(_bkDay(x.date || x.createdAt))) return;
@@ -2977,7 +3043,7 @@ function _bkWagesHtml(W, RR, payRecs, R, pName, D, profit, salesNet, billsNet) {
       var due = i.due || (i.date ? shiftDate(i.date, 30) : '');
       if (!due) return t;
       // anything already overdue lands in the first window
-      if ((due >= s && due <= e) || (s === t0 && due < t0)) return t + (parseFloat(i.net)||0) + (parseFloat(i.vat)||0);
+      if ((due >= s && due <= e) || (s === t0 && due < t0)) return t + _billLeft(i);
       return t;
     }, 0);
   };
@@ -3347,7 +3413,7 @@ async function _renderForecast() {
     if (!due) return;
     weeks.forEach(function(w){
       if (due >= w.start && due <= w.end) {
-        w.outAmt += (parseFloat(i.net)||0)+(parseFloat(i.vat)||0);
+        w.outAmt += _billLeft(i);
         w.outItems.push(i);
       }
     });
