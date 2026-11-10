@@ -81,7 +81,7 @@ var SB = 'https://mxyrxyhvjndgjqupgstu.supabase.co';
 // Build stamp: bumped on every release. An open tab checks every few minutes
 // whether a newer one is live and asks to reload, so nobody keeps working on
 // an old copy (e.g. a statement reader that has since been fixed).
-var BUILD = '2026-11-10-2315';
+var BUILD = '2026-11-10-2330';
 setInterval(async function(){
   try {
     var t = await fetch(location.pathname + '?nc=' + Date.now(), {cache:'no-store'}).then(function(r){ return r.text(); });
@@ -542,7 +542,7 @@ function saveSales() {
 function _curTab() { var el = document.querySelector('.tab.on'); return el ? el.id.replace(/^tab-/,'') : ''; }
 function showTab(tab) {
   var _onEl = document.querySelector('.tab.on'); var _tabWas = _onEl ? _onEl.id.replace(/^tab-/,'') : '';
-  ['dash','pos','ro','sos','ap','ar','expenses','recurring','bank','payroll','reports','search','cash','cashbook','sales'].forEach(function(t){
+  ['dash','pos','ro','sos','ap','suppliers','ar','expenses','recurring','bank','payroll','reports','search','cash','cashbook','sales'].forEach(function(t){
     var el = document.getElementById('v-'+t);
     if (el) el.style.display = t===tab?'block':'none';
   });
@@ -554,6 +554,7 @@ function showTab(tab) {
   if(tab==='ro') rROs();
   if(tab==='sos') rSOs();
   if(tab==='ap') rAP();
+  if(tab==='suppliers') rSuppliers();
   if(tab==='ar') rAR();
   if(tab==='expenses') rExp();
   if(tab==='recurring') rRecurring();
@@ -1812,7 +1813,69 @@ async function saveSupAcct(name) {
   supAccts[_supKey(canon)] = d;
   await sbUp('kith_bank_tx', {id: d.id, data: d, updated_at: new Date().toISOString()});
   closeBillCheck();
-  rAP();
+  if (_curTab() === 'suppliers') rSuppliers(); else rAP();
+}
+
+// ---- SUPPLIERS: every supplier we deal with and their terms ----
+// Everyone from the CRM supplier list, bills and POs, so Sudha can see who
+// still has no terms set and fill them in. Terms live in SUPACCT- rows.
+var supSearch = '';
+function _allSuppliers() {
+  var G = {};
+  var add = function(name, src){
+    var n = normalizeSupplier(name || '').trim(); if (!n || n === '—') return;
+    var k = _supKey(n); if (!G[k]) G[k] = {name:n, src:{}, owed:0, bills:0, pos:0, last:''};
+    G[k].src[src] = 1; return G[k];
+  };
+  supDir.forEach(function(d){ add(d.name, 'crm'); });
+  Object.keys(supAccts).forEach(function(k){ add(supAccts[k].name, 'terms'); });
+  invs.forEach(function(i){ var g = add(i.supplier, 'bill'); if (!g) return; g.bills++; if (i.status !== 'paid') g.owed += _billLeft(i); if ((i.date||'') > g.last) g.last = i.date; });
+  POs.forEach(function(p){ var g = add(p.supplier, 'po'); if (!g) return; g.pos++; var d = normDate(p.date||'') || ''; if (d > g.last) g.last = d; });
+  return Object.keys(G).map(function(k){ return G[k]; });
+}
+function rSuppliers() {
+  var el = document.getElementById('v-suppliers'); if (!el) return;
+  if (!supAcctsLoaded) { el.innerHTML = '<div style="padding:40px;text-align:center;color:#888">Loading suppliers…</div>'; loadSupAccts().then(function(){ if (_curTab() === 'suppliers') rSuppliers(); }); return; }
+  var all = _allSuppliers();
+  var noTerms = all.filter(function(g){ return !supAcct(g.name); });
+  var q = supSearch.trim().toLowerCase();
+  var list = all.filter(function(g){ return !q || g.name.toLowerCase().indexOf(q) >= 0; })
+    .sort(function(a,b){ var A = supAcct(a.name) ? 1 : 0, B = supAcct(b.name) ? 1 : 0; return A - B || b.owed - a.owed || (b.bills+b.pos) - (a.bills+a.pos) || a.name.localeCompare(b.name); });
+  var esc = function(n){ return escapeHtml(String(n).replace(/'/g,"\\'")); };
+  var rows = list.map(function(g){
+    var a = supAcct(g.name), st = supStatus(g.name);
+    var badge = st.acct ? '<span style="font-size:10px;font-weight:800;color:'+ACCT_LABEL[st.acct].c+'">'+ACCT_LABEL[st.acct].t+'</span>' : '';
+    return '<tr'+(a?'':' style="background:#fffbea"')+'>'+
+      td('<strong>'+escapeHtml(g.name)+'</strong><div>'+badge+'</div>')+
+      td(a ? '<span style="font-size:12px">'+escapeHtml(supTermsText(a))+'</span>' : '<span style="font-size:12px;color:#e65100;font-weight:700">Not set</span>')+
+      td(a && a.credit && +a.limit ? _gbp(a.limit) : '<span style="color:#ccc">—</span>')+
+      td('<span style="font-size:12px">'+escapeHtml((a&&a.accountNo)||'')+'</span>')+
+      td('<span style="font-size:12px">'+escapeHtml((a&&a.contact)||'')+'</span>')+
+      td(g.owed > 0.005 ? '<strong>'+_gbp(g.owed)+'</strong>' : '<span style="color:#ccc">—</span>')+
+      td('<span style="font-size:11px;color:#888">'+g.bills+' bill'+(g.bills===1?'':'s')+' · '+g.pos+' PO'+(g.pos===1?'':'s')+(g.last?'<br>last '+escapeHtml(prettyYmd(g.last)):'')+'</span>')+
+      td('<button onclick="editSupAcct(\''+esc(g.name)+'\')" style="'+btnStyle(a?'#fff':'#e65100', a?'#1a1a2e':'#fff', !!a)+'padding:4px 10px;font-size:11px">'+(a?'Edit':'Set terms')+'</button>')+
+    '</tr>';
+  }).join('');
+  el.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">'+
+      '<div><h2 style="font-size:20px;font-weight:800">🏭 Suppliers</h2><div style="font-size:12px;color:#888;margin-top:2px">Every supplier we buy from and their payment terms</div></div>'+
+      '<button onclick="addSupplierTerms()" style="'+btnStyle('#1a1a2e','#fff')+'">+ Add supplier</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:14px 0">'+
+      sc('Suppliers', String(all.length), '#1a1a2e')+
+      sc('Terms set', String(all.length - noTerms.length), '#2e7d32')+
+      sc('Terms not set yet', String(noTerms.length), noTerms.length ? '#e65100' : '#2e7d32')+
+    '</div>'+
+    '<input id="sup-q" value="'+escapeHtml(supSearch)+'" oninput="supSearch=this.value;rSuppliers();var e=document.getElementById(\'sup-q\');e.focus();e.setSelectionRange(e.value.length,e.value.length)" placeholder="🔍 Search suppliers" style="width:100%;max-width:360px;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;margin-bottom:12px">'+
+    '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
+      '<table style="width:100%;border-collapse:collapse">'+th(['Supplier','Terms','Credit limit','Our account no.','Accounts contact','Owed now','History',''])+
+      '<tbody>'+(rows || '<tr><td colspan="8" style="padding:20px;text-align:center;color:#888">No suppliers match.</td></tr>')+'</tbody></table></div>'+
+    '<p style="font-size:12px;color:#888;margin-top:10px">Suppliers with no terms are listed first, highlighted. Without terms a bill is treated as due 30 days after its date. OK / cash only / on stop is set in the CRM.</p>';
+}
+function addSupplierTerms() {
+  var n = prompt('Supplier name:');
+  if (!n || !n.trim()) return;
+  editSupAcct(n.trim());
 }
 
 // ---- ACCOUNTS PAYABLE (bills we owe suppliers) ----
@@ -7257,6 +7320,7 @@ body{background:#f0f2f5;color:#1a1a2e;font-family:-apple-system,BlinkMacSystemFo
     <button class="tab" id="tab-ro" onclick="showTab('ro')">↩ Return Orders</button>
     <button class="tab" id="tab-sos" onclick="showTab('sos')">🔧 SOs</button>
     <button class="tab" id="tab-ap" onclick="showTab('ap')">💳 To Pay</button>
+    <button class="tab" id="tab-suppliers" onclick="showTab('suppliers')">🏭 Suppliers</button>
     <button class="tab" id="tab-ar" onclick="showTab('ar')">💰 To Collect</button>
     <button class="tab" id="tab-expenses" onclick="showTab('expenses')">🧾 Bills &amp; Expenses</button>
     <button class="tab" id="tab-recurring" onclick="showTab('recurring')">🔁 Recurring</button>
@@ -7272,6 +7336,7 @@ body{background:#f0f2f5;color:#1a1a2e;font-family:-apple-system,BlinkMacSystemFo
     <div id="v-ro" style="display:none"></div>
     <div id="v-sos" style="display:none"></div>
     <div id="v-ap" style="display:none"></div>
+    <div id="v-suppliers" style="display:none"></div>
     <div id="v-ar" style="display:none"></div>
     <div id="v-expenses" style="display:none"></div>
     <div id="v-recurring" style="display:none"></div>
