@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="KITH Intake"/>
 <meta name="theme-color" content="#1a1a2e"/>
-<title>KITH Cars — Job Intake v2.5</title>
+<title>KITH Cars — Job Intake v2.6</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{--gold:#c9a84c;--dark:#1a1a2e;--red:#c62828;--green:#2e7d32;--amber:#e65100;--blue:#1565c0;--purple:#5b3a8c;--teal:#00695c;--border:#e0e0e0;--bg:#f0f2f5;--dim:#666;--faint:#aaa}
@@ -436,7 +436,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
 var SB_URL='https://mxyrxyhvjndgjqupgstu.supabase.co';
 var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
 var SOP_VERSION='8.0';
-var INTAKE_BUILD='2.5';
+var INTAKE_BUILD='2.6';
 // The CRM keeps one row per job in `jobs` ({id, data, updated_at}).
 // Earlier builds wrote to `kith_jobs`, which nothing reads — jobs vanished.
 var JOBS_TABLE='jobs';
@@ -1075,8 +1075,8 @@ function collectAnswers(){
 async function submitJob(){
   var btn=document.getElementById('sub-btn');
   if(needsCustomer()){
-    if(!fval('f-name')){alert('Customer name required.');return;}
-    if(!fval('f-phone')){alert('Phone number required.');return;}
+    if(!fval('f-name')&&!b2bAcct){alert('Customer name required.');return;}
+    if(!fval('f-phone')&&!b2bAcct){alert('Phone number required.');return;}
   }
   var stillMissing=missingList();
   var mustMissing=stillMissing.filter(function(x){return x.lvl==='must';}).map(function(x){return x.l;});
@@ -1152,7 +1152,7 @@ async function submitJob(){
 
   var job={
     id:id,reg:reg,
-    name:needsCustomer()?fval('f-name'):'INTERNAL — stock',
+    name:needsCustomer()?(fval('f-name')||(b2bAcct?b2bAcct.company:'')):'INTERNAL — stock',
     phone:needsCustomer()?fval('f-phone'):'',
     wa:needsCustomer()&&fval('f-haswa')!=='no',
     waNumber:fval('f-haswa')==='diff'?fval('f-wa'):(fval('f-haswa')==='yes'?fval('f-phone'):''),
@@ -1758,7 +1758,7 @@ function b2bPick(i){
     (a.contacts.length?'<div class="hint">Who’s calling?</div>'+a.contacts.map(function(c,ci){
       return'<button class="btn btn-ghost" style="margin:4px 6px 0 0" onclick="b2bUse('+ci+')">'+esc(c.name)+(c.phone?' · '+esc(c.phone):'')+'</button>';}).join('')+
       '<div class="hint">Someone new? Just type their name and number below — they’ll be added to this account.</div>'
-    :'<div class="hint">No contacts saved yet — fill them in below.</div>');
+    :'<div class="hint">No contact saved — you can leave name and phone blank, it goes on their account.</div>');
   if(a.contacts.length===1)b2bUse(0);
   updateNeeds();
 }
@@ -1827,9 +1827,9 @@ function useReturning(){
 function essentialsMissing(){
   var m=[];
   if(jobType!=='sale'){
-    if(!fval('f-name'))m.push('customer name');
-    if(!fval('f-phone'))m.push('phone number');
-    if(!emailOk())m.push('email (no WhatsApp) — or tick "no email either"');
+    if(!fval('f-name')&&!b2bAcct)m.push('customer name');
+    if(!fval('f-phone')&&!b2bAcct)m.push('phone number');
+    if(!emailOk()&&!b2bAcct)m.push('email (no WhatsApp) — or tick "no email either"');
   }
   if(!fval('f-reg'))m.push('reg');
   if(!fval('f-words')&&!mechCat&&area!=='bodywork'&&!jobType)m.push('what they want');
@@ -1864,9 +1864,9 @@ function needGroups(){
   }
   var cust=jobType!=='sale';
   G.push({g:'The four essentials',items:[
-    cust?it('Customer name',fval('f-name'),'must','Who we’re dealing with'):null,
-    cust?it('Phone number',fval('f-phone'),'must',noWA()?'We\u2019ll text or call on this':'The estimate goes to this number on WhatsApp'):null,
-    cust&&noWA()?it('Email address',emailOk(),'must','No WhatsApp — the estimate goes by email'):null,
+    cust?it('Customer name',fval('f-name')||(b2bAcct&&b2bAcct.company),'must','Who we’re dealing with'):null,
+    cust?it('Phone number',fval('f-phone')||(b2bAcct?'On their account':''),'must',noWA()?'We\u2019ll text or call on this':'The estimate goes to this number on WhatsApp'):null,
+    cust&&noWA()&&!b2bAcct?it('Email address',emailOk(),'must','No WhatsApp — the estimate goes by email'):null,
     it('Reg',fval('f-reg'),'must','Pulls up the car and any history'),
     quickMode==='straight'?null:it('What they want — in their words',fval('f-words')||mechCat||area==='bodywork'||jobType==='recovery','must'),
     it('How they got in touch',channel,'ask','Tells us where our work comes from')].filter(Boolean)});
@@ -2126,7 +2126,7 @@ async function submitQuick(){
     var what=sp.k==='diag'?'Diagnostic — '+fval('q-diag'):sp.k==='other'?fval('q-other'):
       sp.k==='tyrefit'?'Tyre fit ×'+(fval('q-tyres')||'1'):sp.n;
     job=Object.assign(base,{
-      reg:fval('f-reg').toUpperCase(),name:fval('f-name'),phone:fval('f-phone'),
+      reg:fval('f-reg').toUpperCase(),name:fval('f-name')||(b2bAcct?b2bAcct.company:''),phone:fval('f-phone'),
       wa:fval('f-haswa')!=='no',waNumber:fval('f-haswa')==='diff'?fval('f-wa'):(fval('f-haswa')==='yes'?fval('f-phone'):''),
       email:fval('f-email'),sendEstimateBy:fval('f-haswa')!=='no'?'whatsapp':(fval('f-email')?'email':'sms/call'),make:fval('q-make'),model:fval('q-model'),
       work:'STRAIGHT — '+what,jobType:'straight',area:'mechanical',serviceType:'straight',serviceLabel:'⚡ Straight job',
