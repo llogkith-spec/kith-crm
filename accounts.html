@@ -81,7 +81,7 @@ var SB = 'https://mxyrxyhvjndgjqupgstu.supabase.co';
 // Build stamp: bumped on every release. An open tab checks every few minutes
 // whether a newer one is live and asks to reload, so nobody keeps working on
 // an old copy (e.g. a statement reader that has since been fixed).
-var BUILD = '2026-11-11-1510';
+var BUILD = '2026-11-11-1600';
 setInterval(async function(){
   try {
     var t = await fetch(location.pathname + '?nc=' + Date.now(), {cache:'no-store'}).then(function(r){ return r.text(); });
@@ -1054,6 +1054,7 @@ function rExp() {
         (invs.length?'<button class="sheets-btn" onclick="syncToSheets()" style="'+btnStyle('#fff','#1a1a2e',true)+'">📊 Sync all to Sheets</button>':'')+
         (invs.length?'<button onclick="expInvsCSV()" style="'+btnStyle('#fff','#1a1a2e',true)+'">⬇ CSV</button>':'')+
         (invs.length>1?'<button onclick="dedupInvs()" style="'+btnStyle('#fff','#888',true)+'font-size:12px">🧹 Clean duplicates</button>':'')+
+        (invs.some(function(i){ return !i.cat; })?'<button onclick="runAutoSort()" style="'+btnStyle('#e65100','#fff')+'">🗂 Sort '+invs.filter(function(i){ return !i.cat; }).length+' uncategorised</button>':'')+
         '<button onclick="openOv(\'ov-inv\')" style="'+btnStyle('#1a1a2e','#fff')+'">+ Add manually</button>'+
       '</div>'+
     '</div>'+
@@ -2553,6 +2554,7 @@ function rReports() {
       _reportChip('breakdown','📅 Day / Week / Month')+
       _reportChip('pnl',      '💷 P&L Monthly')+
       _reportChip('vat',      '📋 VAT Return')+
+      _reportChip('plforecast','📈 12-Month Forecast')+
       _reportChip('forecast', '🔮 Cash Flow Forecast')+
       _reportChip('jobs',     '💵 Job Profit')+
     '</div>'+
@@ -2561,6 +2563,7 @@ function rReports() {
   if (reportView === 'pnl')      _renderPnL();
   if (reportView === 'vat')      _renderVAT();
   if (reportView === 'forecast') _renderForecast();
+  if (reportView === 'plforecast') _renderPLForecast();
   if (reportView === 'jobs')     _renderJobProfit();
 }
 function _reportChip(v, label) {
@@ -2569,6 +2572,148 @@ function _reportChip(v, label) {
     'border:1.5px solid #1a1a2e;background:'+(active?'#1a1a2e':'#fff')+
     ';color:'+(active?'#fff':'#1a1a2e')+
     ';padding:8px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">'+label+'</button>';
+}
+
+// ---- 12-MONTH FORECAST (P&L) ----
+// What the next 12 months look like if things carry on: sales at the level
+// you set (default: last 3 full months' average), parts/paint/tyres/MOTs at
+// the same share of sales as recently, your overheads list, wages from the
+// clock-ins, and anything already billed that covers future months.
+var FC_VAR_CATS = ['Parts','Paint & materials','Consumables','Subcontractor','Tyres'];
+var FC_SKIP_CATS = ['Vehicle stock purchases','Loan / finance repayment','Customer refunds'];   // not running costs
+var fcSet = null;      // {sales, growth, wages} — shared, kept in kith_bank_tx
+async function _fcLoadSet() {
+  if (fcSet) return fcSet;
+  try { var r = await sbAll('kith_bank_tx?select=id,data&id=eq.FCAST-SETTINGS'); fcSet = (r && r[0] && r[0].data) || {}; } catch(e) { fcSet = {}; }
+  return fcSet;
+}
+function fcSave(k, v) {
+  fcSet = fcSet || {}; var n = parseFloat(String(v).replace(/[£,\s]/g,''));
+  if (v === '' || isNaN(n)) delete fcSet[k]; else fcSet[k] = n;
+  fcSet.kind = 'fcset'; fcSet.at = ts(); fcSet.by = user || '';
+  sbUp('kith_bank_tx', {id:'FCAST-SETTINGS', data:fcSet, updated_at:new Date().toISOString()});
+  _renderPLForecast();
+}
+function _fcRevenue(ym) {
+  return sales.reduce(function(t,s){ var d = normDate(s.date || s.createdAt || s.paidAt); return d && d.slice(0,7) === ym ? t + (parseFloat(s.amount)||0)/1.2 : t; }, 0);
+}
+async function _renderPLForecast() {
+  var view = document.getElementById('report-view');
+  if (view && !view.dataset.fc) view.innerHTML = '<div style="padding:30px;text-align:center;color:#888">Working out the forecast…</div>';
+  var set = await _fcLoadSet(), RR = null;
+  try { RR = await wageRunRate(); } catch(e) {}
+  if (reportView !== 'plforecast') return;
+  var now = _thisMonthKey();
+  // Last 3 full months
+  var hist = [shiftMonth(now,-3), shiftMonth(now,-2), shiftMonth(now,-1)];
+  var tmplCats = {}; recurring.forEach(function(t){ if (t.active) tmplCats[t.cat] = 1; });
+  var H = hist.map(function(ym){
+    var r = {ym:ym, rev:_fcRevenue(ym), vari:0, other:0};
+    invs.forEach(function(i){
+      if (billSpread(i) || i.recurringId) return;              // counted on their own below
+      var c = billCostInMonth(i, ym); if (!c) return;
+      if (FC_VAR_CATS.indexOf(i.cat) >= 0) r.vari += c;
+      else if (FC_SKIP_CATS.indexOf(i.cat) < 0 && !tmplCats[i.cat]) r.other += c;
+    });
+    return r;
+  });
+  var hRev = H.reduce(function(t,r){ return t + r.rev; }, 0);
+  var avgRev = hRev / 3;
+  var varPct = hRev ? H.reduce(function(t,r){ return t + r.vari; }, 0) / hRev : 0;
+  var avgOther = H.reduce(function(t,r){ return t + r.other; }, 0) / 3;
+  var wagesAuto = RR ? RR.weekly * 52 / 12 : 0;
+  var base = set.sales != null ? set.sales : avgRev;
+  var growth = (set.growth || 0) / 100;
+  var wages = set.wages != null ? set.wages : wagesAuto;
+
+  var months = [];
+  for (var k = 0; k < 12; k++) {
+    var ym = shiftMonth(now, k);
+    var m = {ym:ym, sales: base * Math.pow(1 + growth, k)};
+    m.vari = m.sales * varPct;
+    m.over = recurring.filter(function(t){ return t.active && (!t.startMonth || ym >= t.startMonth || recEvery(t) > 1); })
+                      .reduce(function(t,x){ return t + recMonthlyNet(x); }, 0);
+    m.spread = invs.reduce(function(t,i){ return billSpread(i) && !i.recurringId && FC_SKIP_CATS.indexOf(i.cat) < 0 ? t + billCostInMonth(i, ym) : t; }, 0);
+    m.other = avgOther; m.wages = wages;
+    m.costs = m.vari + m.over + m.spread + m.other + m.wages;
+    m.profit = m.sales - m.costs;
+    months.push(m);
+  }
+  var T = months.reduce(function(a,m){ ['sales','vari','over','spread','other','wages','costs','profit'].forEach(function(k){ a[k] = (a[k]||0) + m[k]; }); return a; }, {});
+  var g0 = function(v){ return '£' + Math.round(v).toLocaleString('en-GB'); };
+  var row = function(label, key, sub, col, bold){
+    return '<tr style="'+(bold?'background:#fafafa;font-weight:800':'')+'"><td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;font-size:13px;white-space:nowrap;position:sticky;left:0;background:'+(bold?'#fafafa':'#fff')+'">'+label+(sub?'<div style="font-size:10px;color:#888;font-weight:400">'+sub+'</div>':'')+'</td>'+
+      months.map(function(m){ var v = m[key]; return '<td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;font-size:12px;text-align:right;white-space:nowrap;color:'+(col==='pl'?(v>=0?'#2e7d32':'#c62828'):col)+'">'+(Math.abs(v)<0.5?'—':(key!=='sales'&&key!=='profit'?'−':'')+g0(Math.abs(v)))+'</td>'; }).join('')+
+      '<td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;font-size:12px;text-align:right;font-weight:800;white-space:nowrap;color:'+(col==='pl'?(T[key]>=0?'#2e7d32':'#c62828'):col)+'">'+g0(Math.abs(T[key]))+'</td></tr>';
+  };
+  var inp = function(k, val, ph, hint){
+    return '<div style="flex:1;min-width:170px"><label style="display:block;font-size:11px;font-weight:700;color:#888;margin-bottom:4px">'+hint+'</label>'+
+      '<input inputmode="decimal" value="'+(set[k]!=null?set[k]:'')+'" placeholder="'+escapeHtml(ph)+'" onchange="fcSave(\''+k+'\', this.value)" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:14px"></div>';
+  };
+  var warn = [];
+  if (!recurring.some(function(t){ return t.active; })) warn.push('No overheads set up yet — add rent, rates, insurance and utilities in the <a href="#" onclick="showTab(\'recurring\');return false">🔁 Overheads</a> tab.');
+  if (!wages && set.wages == null) warn.push('Wages are £0 — no hourly rates in Payroll yet. Type your monthly wage bill in the box above.');
+  var unc = invs.filter(function(i){ return !i.cat; }).length;
+  if (unc) warn.push(unc + ' bills have no category, so they\'re left out of the cost split. Use 🗂 Sort in Bills & Expenses.');
+
+  view.dataset.fc = 1;
+  view.innerHTML =
+    '<div style="'+cardStyle()+'margin-bottom:14px">'+
+      '<div style="'+stitle()+'margin:0 0 10px">⚙ Assumptions — change any of these</div>'+
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+        inp('sales', '', 'last 3 months: '+g0(avgRev), 'Sales per month (ex VAT)')+
+        inp('growth', '', '0', 'Growth per month %')+
+        inp('wages', '', wagesAuto ? 'from clock-ins: '+g0(wagesAuto) : 'e.g. 9000', 'Wages per month')+
+      '</div>'+
+      '<div style="font-size:12px;color:#666;margin-top:10px;line-height:1.6">'+
+        'Parts, paint, consumables, tyres and MOTs ran at <strong>'+Math.round(varPct*100)+'% of sales</strong> over '+hist.map(monthLabel).join(', ')+', so they scale with sales. '+
+        'Other running costs (fuel, tools, phone and the like without an overhead set up) averaged <strong>'+g0(avgOther)+' a month</strong>. Leave a box empty to use the figure worked out from your records.</div>'+
+    '</div>'+
+    (warn.length ? '<div style="background:#fff8e1;border:1px solid #ffcc80;border-radius:10px;padding:10px 14px;font-size:12px;color:#8a5300;margin-bottom:14px;line-height:1.7">'+warn.map(function(w){ return '⚠ ' + w; }).join('<br>')+'</div>' : '')+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px">'+
+      sc('12-month sales', g0(T.sales), '#2e7d32')+sc('12-month costs', g0(T.costs), '#c62828')+
+      sc(T.profit>=0?'12-month profit':'12-month loss', (T.profit<0?'−':'')+g0(Math.abs(T.profit)), T.profit>=0?'#2e7d32':'#c62828')+
+      sc('Average a month', (T.profit<0?'−':'')+g0(Math.abs(T.profit/12)), T.profit>=0?'#2e7d32':'#c62828')+
+    '</div>'+
+    _fcChart(months)+
+    '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
+      '<table style="border-collapse:collapse;min-width:100%"><thead><tr><th style="padding:8px 10px;text-align:left;font-size:11px;color:#888;border-bottom:2px solid #eee;position:sticky;left:0;background:#fff"></th>'+
+        months.map(function(m){ return '<th style="padding:8px 10px;text-align:right;font-size:11px;color:#888;border-bottom:2px solid #eee;white-space:nowrap">'+monthLabel(m.ym).replace(/ 20(\d\d)$/,' ’$1')+'</th>'; }).join('')+
+        '<th style="padding:8px 10px;text-align:right;font-size:11px;color:#1a1a2e;border-bottom:2px solid #eee">12 months</th></tr></thead><tbody>'+
+      row('Sales', 'sales', 'ex VAT', '#2e7d32')+
+      row('Parts, paint, tyres, MOTs', 'vari', Math.round(varPct*100)+'% of sales', '#c62828')+
+      row('Overheads', 'over', 'from your overheads list', '#c62828')+
+      row('Already billed, spread', 'spread', 'e.g. quarterly rent', '#c62828')+
+      row('Other running costs', 'other', '3-month average', '#c62828')+
+      row('Wages', 'wages', '', '#c62828')+
+      row('Profit', 'profit', '', 'pl', true)+
+      '</tbody></table></div>'+
+    '<p style="font-size:11px;color:#888;margin-top:8px">All ex VAT. This is the P&L view; for when money actually moves, see 🔮 Cash Flow Forecast. Vehicle stock purchases and loan repayments are not running costs and are left out.</p>';
+}
+function _fcChart(months) {
+  var W = 760, H = 260, L = 64, R = 16, T = 26, B = 40;
+  var cum = 0, pts = months.map(function(m){ cum += m.profit; return cum; });
+  var hi = Math.max.apply(null, [0].concat(months.map(function(m){ return Math.max(m.sales, m.costs); }), pts));
+  var lo = Math.min.apply(null, [0].concat(pts));
+  var stepf = function(v){ var p = Math.pow(10, Math.floor(Math.log10(v||1))), n = v/p; return (n<=1?1:n<=2?2:n<=5?5:10)*p; };
+  var tick = stepf((hi - lo) / 5 || 1); hi = Math.ceil(hi/tick)*tick || tick; lo = Math.floor(lo/tick)*tick;
+  var y = function(v){ return T + (hi - v) / (hi - lo) * (H - T - B); };
+  var cw = (W - L - R) / months.length, bw = Math.min(16, cw * 0.3);
+  var money = function(v){ var a = Math.abs(v); return (v<0?'−':'')+'£'+(a>=1000?(a/1000).toFixed(a>=10000?0:1)+'k':a.toFixed(0)); };
+  var g = '';
+  for (var v = lo; v <= hi + 0.001; v += tick) g += '<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="'+(Math.abs(v)<0.001?'#9ca3af':'#eef0f3')+'"/><text x="'+(L-8)+'" y="'+(y(v)+4)+'" text-anchor="end" font-size="11" fill="#6b7280">'+money(v)+'</text>';
+  months.forEach(function(m, i){
+    var cx = L + cw*i + cw/2, tip = monthLabel(m.ym)+': sales £'+m.sales.toFixed(0)+', costs £'+m.costs.toFixed(0)+', profit £'+m.profit.toFixed(0);
+    if (m.sales > 0) g += '<rect x="'+(cx-bw-1)+'" y="'+y(m.sales)+'" width="'+bw+'" height="'+(y(0)-y(m.sales))+'" rx="2" fill="#2e7d32"><title>'+tip+'</title></rect>';
+    if (m.costs > 0) g += '<rect x="'+(cx+1)+'" y="'+y(m.costs)+'" width="'+bw+'" height="'+(y(0)-y(m.costs))+'" rx="2" fill="#c62828"><title>'+tip+'</title></rect>';
+    g += '<text x="'+cx+'" y="'+(H-B+16)+'" text-anchor="middle" font-size="11" fill="#6b7280">'+monthLabel(m.ym).slice(0,3)+'</text>';
+  });
+  g += '<path d="'+pts.map(function(v,i){ return (i?'L':'M')+(L+cw*i+cw/2).toFixed(1)+','+y(v).toFixed(1); }).join(' ')+'" fill="none" stroke="#1565c0" stroke-width="2.5"/>';
+  pts.forEach(function(v,i){ g += '<circle cx="'+(L+cw*i+cw/2)+'" cy="'+y(v)+'" r="3.5" fill="'+(v<0?'#c62828':'#1565c0')+'" stroke="#fff" stroke-width="1.5"><title>Profit so far after '+monthLabel(months[i].ym)+': £'+v.toFixed(0)+'</title></circle>'; });
+  var leg = function(c, t, ln){ return '<span style="display:inline-flex;align-items:center;gap:6px;margin-right:14px">'+(ln?'<span style="width:18px;height:3px;background:'+c+'"></span>':'<span style="width:11px;height:11px;background:'+c+';border-radius:2px"></span>')+t+'</span>'; };
+  return '<div style="'+cardStyle()+'margin-bottom:14px"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px"><div style="'+stitle()+'margin:0">📈 Next 12 months</div>'+
+    '<div style="font-size:12px;color:#555">'+leg('#2e7d32','Sales')+leg('#c62828','Costs')+leg('#1565c0','Profit so far',1)+'</div></div>'+
+    '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block" role="img" aria-label="12-month forecast chart">'+g+'</svg></div>';
 }
 
 // ---- P&L MONTHLY ----
@@ -2801,7 +2946,7 @@ function _recurringDue(startYmd, endYmd) {
   while (d <= endD) {
     var ym = _ymdL(d).slice(0,7);
     recurring.forEach(function(t){
-      if (!t.active) return;
+      if (!t.active || !recDueIn(t, ym)) return;
       var due = ym + '-' + String(Math.min(parseInt(t.day,10)||1, 28)).padStart(2,'0');
       if (due < startYmd || due > endYmd) return;
       if (t.lastRaised === ym) return;
@@ -3545,6 +3690,8 @@ async function _renderJobProfit() {
 }
 
 // ---- CASH FLOW FORECAST (12 weeks forward) ----
+var cfOverdue = true;
+function cfToggleOverdue() { cfOverdue = !cfOverdue; _renderForecast(); }
 async function _renderForecast() {
   var view0 = document.getElementById('report-view');
   if (view0) view0.innerHTML = '<div style="padding:30px;text-align:center;color:#888">Working out the forecast…</div>';
@@ -3594,6 +3741,21 @@ async function _renderForecast() {
     });
   });
 
+  // Already overdue: bills past their due date and customers past 14 days.
+  // Not in any future week by date, so they're put into week 1 (pay / chase now).
+  var odOut = 0, odOutN = 0, odIn = 0, odInN = 0, t0 = weeks[0].start;
+  invs.filter(function(i){ return i.status !== 'paid'; }).forEach(function(i){
+    var due = i.due || (i.date ? shiftDate(i.date, 30) : ''); if (!due || due >= t0) return;
+    odOut += _billLeft(i); odOutN++;
+  });
+  sales.filter(function(s){ return !s.paid; }).forEach(function(s){
+    var d = normDate(s.date); if (!d) return;
+    if (shiftDate(d, AR_PAYMENT_TERMS_DAYS) >= t0) return;
+    var owed = s._crm ? Math.max(0, parseFloat(s.balance)||0) : (parseFloat(s.amount)||0);
+    if (owed > 0) { odIn += owed; odInN++; }
+  });
+  if (cfOverdue) { weeks[0].inAmt += odIn; weeks[0].outAmt += odOut; weeks[0].od = true; }
+
   var running = 0;
   var totalIn = 0, totalOut = 0;
   var chart = _cfChart(weeks);
@@ -3606,7 +3768,7 @@ async function _renderForecast() {
     var wEndD   = new Date(w.end   + 'T00:00:00');
     var label = wStartD.toLocaleDateString('en-GB',{day:'numeric',month:'short'}) + ' – ' + wEndD.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
     return '<tr>'+
-      td('<strong>Week '+(weeks.indexOf(w)+1)+'</strong><div style="font-size:10px;color:#888">'+label+'</div>')+
+      td('<strong>Week '+(weeks.indexOf(w)+1)+'</strong><div style="font-size:10px;color:#888">'+label+'</div>'+(w.od?'<div style="font-size:10px;color:#e65100;font-weight:700">+ everything overdue</div>':''))+
       td(w.inAmt>0?'<span style="color:#2e7d32;font-weight:700">+£'+w.inAmt.toFixed(2)+'</span><div style="font-size:10px;color:#888">'+w.inItems.length+' invoice'+(w.inItems.length===1?'':'s')+'</div>':'<span style="color:#ccc">—</span>')+
       td(w.outAmt>0?'<span style="color:#c62828;font-weight:700">−£'+w.outAmt.toFixed(2)+'</span><div style="font-size:10px;color:#888">'+
          [w.outItems.length?w.outItems.length+' bill'+(w.outItems.length===1?'':'s'):'',
@@ -3624,6 +3786,10 @@ async function _renderForecast() {
       sc('12wk OUT', '£'+totalOut.toFixed(2), '#c62828')+
       sc('12wk NET', (netTotal>=0?'+':'')+'£'+netTotal.toFixed(2), netTotal>=0?'#2e7d32':'#c62828')+
     '</div>'+
+    '<div style="'+cardStyle()+'margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">'+
+      '<div style="font-size:13px;line-height:1.6"><strong>Already overdue:</strong> <span style="color:#c62828">£'+odOut.toFixed(2)+' to pay</span> ('+odOutN+' bills) · <span style="color:#2e7d32">£'+odIn.toFixed(2)+' to collect</span> ('+odInN+' customers)'+
+        '<div style="font-size:11px;color:#888">'+(cfOverdue?'Counted in week 1, as money you need to pay or chase now.':'Left out — the weeks below only show what falls due from today.')+'</div></div>'+
+      '<button onclick="cfToggleOverdue()" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:6px 12px;font-size:12px">'+(cfOverdue?'Leave overdue out':'Put overdue in week 1')+'</button></div>'+
     chart+
     '<div style="'+cardStyle()+'overflow-x:auto;padding:0">'+
     '<table style="width:100%;border-collapse:collapse">'+
@@ -3873,6 +4039,75 @@ var BILL_CATS = [
   'Vehicle stock purchases','Customer refunds','Other'
 ];
 var BILL_DIVS = ['Bodywork','Mechanical','Tyres','Tuning','Exhaust','Recovery','Overheads'];
+
+// ---- AUTO-SORT BILLS ----
+// Category + division worked out from who the bill is from (and what's on it),
+// so the P&L and forecast can split costs properly. Anything sorted this way
+// is marked catAuto so it shows as "auto" and can be changed by hand.
+var SORT_RULES = [
+  // [supplier / text pattern, category, division]
+  [/property management|landlord|letting|\brent for\b/i,                         'Rent', 'Overheads'],
+  [/business rates|nndr|council tax|borough of/i,                                'Business rates', 'Overheads'],
+  [/insurance|aviva|axa|zurich|hiscox|ageas|towergate|markerstudy/i,             'Insurance', 'Overheads'],
+  [/\bbt\b|british telecom|vodafone|\bee\b|virgin media|\bedf\b|british gas|octopus|thames water|sutton.*water|waste managed|eco rubber|scrap tyre|biffa|veolia/i, 'Utilities', 'Overheads'],
+  [/godad|go ?daddy|lexcom|web seller pro|createpay|techman|haynes|autodata|google|microsoft|adobe|zoho|jotform|canva|openai|anthropic|github|supabase|apple\.com|subscription/i, 'Software & subscriptions', 'Overheads'],
+  [/motorists organisation|bookmygarage|book my garage|\bbmg\b|facebook|meta platforms|instagram|tiktok|google ads|yell\b|checkatrade/i, 'Marketing', 'Overheads'],
+  [/accountant|solicitor|legal|companies house|\bhmrc\b/i,                       'Professional fees', 'Overheads'],
+  [/close brother|funding circle|iwoca|capital on tap|finance plan/i,           'Loan / finance repayment', 'Overheads'],
+  [/british car auctions|britishcarauctions|\bbca\b|copart|manheim|aston barclay|vehicle purchase/i, 'Vehicle stock purchases', ''],
+  [/auto ?colou?rs|car colou?rs|autocolour|refinish|paint ?supplies|lacquer|thinner/i, 'Paint & materials', 'Bodywork'],
+  [/sva car lamps|car lamps|car panels|parts ?panel|partspanel|bumper|body panels/i, 'Parts', 'Bodywork'],
+  [/\btyres?\b|flatfix|grouptyre|tyre wholesale/i,                               'Tyres', 'Tyres'],
+  [/^hh$|pd vehicle services|\bmot test\b|^mot$/i,                               'Subcontractor', 'Mechanical'],
+  [/certas|lubricant|castrol|brake cleaner|antifreeze|screenwash|adblue|\bboc\b/i, 'Consumables', 'Mechanical'],
+  [/screwfix|toolstation|machine mart|rs components|noz-alls|wurth|würth|currys|first-for-diy|snap.?on|sealey|laser tools|heating heater|polish(er|r)|rivet|tin snip|socket|wrench/i, 'Tools & equipment', 'Overheads'],
+  [/\bshell\b|\bbp\b|esso|texaco|rontec|\bmfg\b|motor fuel|service station|sf connect|unleaded|diesel fuel|\bfuel\b|short stay|parking|churchill square|\bncp\b|apcoa/i, 'Vehicle & fuel', 'Overheads'],
+  [/lidl|sainsbury|tesco|aldi|asda|co-?op|milk|toilet tissue|water\b/i,          'Consumables', 'Overheads'],
+  [/gsf|parts ?plus|jayar|southeast motors|berry|napa|\btps\b|pace|stellantis|ford|land rover|toyota|jemca|craddock|ancaster|emberton|imperial|bison|green parts|intapart|autoteda|select ?vehicle ?spares|selectvehiclespares|express-spares|vans_direct|classic|land ?rover ?spares|t ?& ?b motors|reliance|first diesel|autopoint|euro ?car ?parts|\becp\b|andrew page|alliance automotive|motor ?factors|oil filter|brake|tensioner|gasket|filter\b|bearing|shock|suspension|mirror|seat belt|injector/i, 'Parts', 'Mechanical']
+];
+function suggestBillCat(inv) {
+  var text = (inv.supplier||'') + ' ' + (Array.isArray(inv.items) ? inv.items.map(function(it){ return it.description||''; }).join(' ') : '');
+  // supplier name first, so a parts supplier's "oil" doesn't become consumables
+  for (var pass = 0; pass < 2; pass++) {
+    var hay = pass === 0 ? (inv.supplier||'') : text;
+    for (var i = 0; i < SORT_RULES.length; i++) if (SORT_RULES[i][0].test(hay)) return {cat:SORT_RULES[i][1], div:SORT_RULES[i][2]};
+  }
+  return null;
+}
+// Sort every bill that has no category yet. Returns {done, left}.
+function autoSortBills(dryRun) {
+  var done = 0, left = [], by = {};
+  invs.forEach(function(inv){
+    if (inv.cat) return;
+    var s = suggestBillCat(inv);
+    if (!s) { left.push(inv); return; }
+    by[s.cat] = (by[s.cat]||0) + 1;
+    if (dryRun) { done++; return; }
+    inv.cat = s.cat; if (!inv.div && s.div) inv.div = s.div; inv.catAuto = true;
+    // A rent / rates / insurance bill covering a stated period spreads over it
+    if (!inv.spreadMonths) {
+      var txt = Array.isArray(inv.items) ? inv.items.map(function(it){ return it.description||''; }).join(' ') : '';
+      var m = txt.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s*to\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (m) {
+        var a = new Date(+m[3], +m[2]-1, +m[1]), b = new Date(+m[6], +m[5]-1, +m[4]);
+        var months = Math.max(1, Math.round((b - a) / (1000*60*60*24*30.44)));
+        if (months > 1) { inv.spreadMonths = months; var mid = new Date(a.getTime() + 5*86400000); inv.spreadFrom = mid.getFullYear()+'-'+String(mid.getMonth()+1).padStart(2,'0'); }
+      } else if (SPREAD_DEFAULT[s.cat]) { inv.spreadMonths = SPREAD_DEFAULT[s.cat]; }
+    }
+    persistInv(inv);
+    done++;
+  });
+  return {done:done, left:left, by:by};
+}
+function runAutoSort() {
+  var dry = autoSortBills(true);
+  if (!dry.done) { alert('Nothing to sort — every bill the rules recognise already has a category.' + (dry.left.length ? '\n\n' + dry.left.length + ' bill(s) need sorting by hand.' : '')); return; }
+  var lines = Object.keys(dry.by).sort(function(a,b){ return dry.by[b]-dry.by[a]; }).map(function(k){ return '  ' + k + ': ' + dry.by[k]; }).join('\n');
+  if (!confirm('Sort ' + dry.done + ' bills by supplier?\n\n' + lines + '\n\n' + (dry.left.length ? dry.left.length + ' bill(s) the rules don\'t recognise will stay uncategorised.\n\n' : '') + 'Each one is marked "auto" and can be changed.')) return;
+  var r = autoSortBills(false);
+  rExp();
+  alert('✓ Sorted ' + r.done + ' bills.' + (r.left.length ? '\n' + r.left.length + ' still need a category — they\'re flagged amber in Bills & Expenses.' : ''));
+}
 
 // ---- SPREAD COSTS (prepayments) ----
 // A bill that pays for several months (annual insurance, business rates, a
@@ -4141,7 +4376,7 @@ function saveInv() {
 function catChips(inv) {
   var out = '';
   if (inv.cat) {
-    out += '<span style="background:#eef2ff;color:#3730a3;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;margin-right:4px">'+escapeHtml(inv.cat)+'</span>';
+    out += '<span style="background:#eef2ff;color:#3730a3;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;margin-right:4px" title="'+(inv.catAuto?'Sorted automatically from the supplier — open the bill to change it':'')+'">'+escapeHtml(inv.cat)+(inv.catAuto?' <span style="font-weight:400;opacity:.7">auto</span>':'')+'</span>';
   } else {
     out += '<span style="background:#fff3e0;color:#e65100;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;margin-right:4px">⚠ No category</span>';
   }
@@ -4406,6 +4641,24 @@ async function syncToSheets() {
 // nobody hands you a receipt for a direct debit.
 
 var recurring = [];
+// How often an overhead is paid: every month, quarter or year, from startMonth
+var REC_EVERY = {1:'Monthly', 3:'Quarterly', 6:'Every 6 months', 12:'Yearly'};
+function recEvery(t) { return parseInt(t.every, 10) || 1; }
+function recDueIn(t, ym) {
+  var n = recEvery(t); if (n === 1) return !t.startMonth || ym >= t.startMonth;
+  var st = t.startMonth || ym; if (ym < st) return false;
+  var a = st.split('-'), b = ym.split('-');
+  return ((+b[0] - +a[0]) * 12 + (+b[1] - +a[1])) % n === 0;
+}
+// What an overhead costs per month on average (ex VAT), for the forecast
+function recMonthlyNet(t) { return (parseFloat(t.net)||0) / recEvery(t); }
+// Common overheads offered as one-tap starters
+var OVERHEAD_STARTERS = [
+  ['Rent','Rent',3,true], ['Business rates','Business rates',12,false], ['Insurance','Insurance',12,false],
+  ['Electricity','Utilities',1,true], ['Water','Utilities',1,false], ['Phone & broadband','Utilities',1,true],
+  ['Waste collection','Utilities',1,true], ['TechMan','Software & subscriptions',1,true], ['HaynesPro','Software & subscriptions',1,true],
+  ['Accountant','Professional fees',1,true], ['Finance / loan','Loan / finance repayment',1,false], ['Card machine fees','Bank & finance charges',1,true]
+];
 
 async function fetchRecurring() {
   try {
@@ -4434,6 +4687,7 @@ function raiseRecurring(t, monthKey, silent) {
 
   var entry = {
     id: 'INV' + Date.now() + Math.floor(Math.random()*1000),
+    spreadMonths: recEvery(t) > 1 ? recEvery(t) : undefined, spreadFrom: recEvery(t) > 1 ? monthKey : undefined,
     num: (t.ref||'REC') + '-' + monthKey,
     supplier: t.supplier||t.name||'Recurring',
     cat: t.cat||'Other', div: t.div||'Overheads',
@@ -4462,6 +4716,7 @@ function autoRaiseDue() {
   recurring.forEach(function(t){
     if (!t.active) return;
     if (t.lastRaised === monthKey) return;
+    if (!recDueIn(t, monthKey)) return;
     var already = invs.some(function(i){
       return i.recurringId === t.id && i.recurringMonth === monthKey;
     });
@@ -4489,7 +4744,9 @@ function delRecurring(id) {
   rRecurring();
 }
 
-function openRecForm() {
+var recEditId = null;
+function openRecForm(id, starter) {
+  recEditId = id || null;
   var c = document.getElementById('r-cat');
   if (c && !c.options.length) c.innerHTML = BILL_CATS.map(function(x){return '<option>'+escapeHtml(x)+'</option>';}).join('');
   var d = document.getElementById('r-div');
@@ -4501,6 +4758,16 @@ function openRecForm() {
     dv.innerHTML = o;
   }
   if (d) d.value = 'Overheads';
+  var t = id ? recurring.filter(function(x){ return x.id === id; })[0] : null;
+  var set = function(k, v){ var e = document.getElementById(k); if (e) { if (e.type === 'checkbox') e.checked = !!v; else e.value = v; } };
+  set('r-name', t ? t.name : (starter ? starter[0] : '')); set('r-sup', t ? t.supplier : '');
+  if (t || starter) set('r-cat', t ? t.cat : starter[1]);
+  if (t) set('r-div', t.div || 'Overheads');
+  set('r-net', t ? t.net : ''); set('r-day', t ? (t.day||1) : 1);
+  set('r-every', String(t ? recEvery(t) : (starter ? starter[2] : 1)));
+  set('r-start', t ? (t.startMonth || _thisMonthKey()) : _thisMonthKey());
+  set('r-vat', t ? !!parseFloat(t.vat) : (starter ? starter[3] : true));
+  var ti = document.getElementById('r-title'); if (ti) ti.textContent = t ? 'Edit ' + (t.name||'overhead') : 'New overhead / recurring bill';
   openOv('ov-rec');
 }
 
@@ -4511,8 +4778,11 @@ function saveRecurring() {
   var net = parseFloat((document.getElementById('r-net')||{}).value)||0;
   var hasVat = (document.getElementById('r-vat')||{}).checked;
 
+  var old = recEditId ? recurring.filter(function(x){ return x.id === recEditId; })[0] : null;
   var t = {
-    id: 'REC' + Date.now() + Math.floor(Math.random()*1000),
+    id: old ? old.id : 'REC' + Date.now() + Math.floor(Math.random()*1000),
+    every: parseInt((document.getElementById('r-every')||{}).value,10) || 1,
+    startMonth: (document.getElementById('r-start')||{}).value || _thisMonthKey(),
     name: name, supplier: sup,
     ref: name.replace(/[^A-Za-z0-9]/g,'').slice(0,8).toUpperCase() || 'REC',
     cat: (document.getElementById('r-cat')||{}).value||'Other',
@@ -4520,10 +4790,11 @@ function saveRecurring() {
     net: net,
     vat: hasVat ? +(net*0.2).toFixed(2) : 0,
     day: parseInt((document.getElementById('r-day')||{}).value,10)||1,
-    active: true, lastRaised: null,
-    createdAt: ts(), createdBy: user
+    active: old ? old.active : true, lastRaised: old ? old.lastRaised : null,
+    createdAt: old ? old.createdAt : ts(), createdBy: old ? old.createdBy : user
   };
-  recurring.unshift(t);
+  if (old) recurring = recurring.map(function(x){ return x.id === old.id ? t : x; }); else recurring.unshift(t);
+  recEditId = null;
   persistRecurring(t);
   cx('ov-rec');
   ['r-name','r-sup','r-net'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
@@ -4537,24 +4808,28 @@ function rRecurring() {
   var monthKey = _thisMonthKey();
   var today = new Date().getDate();
   var active = recurring.filter(function(t){return t.active;});
-  var monthlyTotal = active.reduce(function(s,t){return s+(parseFloat(t.net)||0)+(parseFloat(t.vat)||0);},0);
-  var upcoming = active.filter(function(t){ return t.lastRaised !== monthKey && (parseInt(t.day,10)||1) > today; });
+  var monthlyTotal = active.reduce(function(s,t){return s+recMonthlyNet(t);},0);
+  var upcoming = active.filter(function(t){ return t.lastRaised !== monthKey && recDueIn(t, monthKey) && (parseInt(t.day,10)||1) > today; });
   var upcomingTotal = upcoming.reduce(function(s,t){return s+(parseFloat(t.net)||0)+(parseFloat(t.vat)||0);},0);
 
   el.innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
-      '<h2 style="font-size:20px;font-weight:800">🔁 Recurring Bills</h2>'+
-      '<button onclick="openRecForm()" style="'+btnStyle('#1a1a2e','#fff')+'">+ Add recurring bill</button>'+
+      '<h2 style="font-size:20px;font-weight:800">🔁 Overheads & recurring bills</h2>'+
+      '<button onclick="openRecForm()" style="'+btnStyle('#1a1a2e','#fff')+'">+ Add overhead</button>'+
     '</div>'+
-    '<div style="font-size:12px;color:#888;margin-bottom:14px">Raised automatically as unpaid bills on their due day, and included in the cash flow forecast.</div>'+
+    '<div style="font-size:12px;color:#888;margin-bottom:10px">Your fixed costs: rent, rates, insurance, utilities, software, finance. Each is raised as an unpaid bill when it\'s due, spread over the months it covers in the P&L, and used in the forecasts.</div>'+
+    (function(){ var have = {}; recurring.forEach(function(t){ have[(t.name||'').toLowerCase()] = 1; });
+      var left = OVERHEAD_STARTERS.filter(function(x){ return !have[x[0].toLowerCase()]; });
+      return left.length ? '<div style="'+cardStyle()+'margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#555;margin-bottom:8px">Quick add — tap one, then fill in the amount:</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+
+        left.map(function(x){ return '<button onclick="openRecForm(null, OVERHEAD_STARTERS['+OVERHEAD_STARTERS.indexOf(x)+'])" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:5px 11px;font-size:12px">+ '+escapeHtml(x[0])+'</button>'; }).join('')+'</div></div>' : ''; })()+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">'+
       sc('Active templates', String(active.length), '#1a1a2e')+
-      sc('Committed per month', '£'+monthlyTotal.toFixed(2), '#c62828')+
+      sc('Overheads per month (ex VAT, averaged)', '£'+monthlyTotal.toFixed(2), '#c62828')+
       sc('Still to come this month', '£'+upcomingTotal.toFixed(2), '#e65100')+
     '</div>'+
     (recurring.length
       ? '<div style="'+cardStyle()+'overflow-x:auto;padding:0"><table style="width:100%;border-collapse:collapse">'+
-        th(['Name','Supplier','Category','Due','Amount','This month',''])+'<tbody>'+
+        th(['Name','Supplier','Category','When','Amount','Per month','This month',''])+'<tbody>'+
         recurring.map(function(t){
           var tot = (parseFloat(t.net)||0)+(parseFloat(t.vat)||0);
           var done = t.lastRaised === monthKey;
@@ -4564,16 +4839,18 @@ function rRecurring() {
             td(escapeHtml(t.supplier||'—'))+
             td('<span style="background:#eef2ff;color:#3730a3;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700">'+escapeHtml(t.cat||'Other')+'</span>'+
                (t.div?' <span style="background:#f1f5f9;color:#475569;padding:2px 7px;border-radius:4px;font-size:10px">'+escapeHtml(t.div)+'</span>':''))+
-            td('<span style="font-size:12px;color:#888">Day '+escapeHtml(String(t.day||1))+'</span>')+
+            td('<span style="font-size:12px">'+escapeHtml(REC_EVERY[recEvery(t)]||('Every '+recEvery(t)+' months'))+'</span><div style="font-size:11px;color:#888">day '+escapeHtml(String(t.day||1))+(recEvery(t)>1&&t.startMonth?' · from '+escapeHtml(monthLabel(t.startMonth)):'')+'</div>')+
             td('<strong>£'+tot.toFixed(2)+'</strong>'+(parseFloat(t.vat)?'<div style="font-size:10px;color:#888">inc £'+(parseFloat(t.vat)||0).toFixed(2)+' VAT</div>':'<div style="font-size:10px;color:#888">no VAT</div>'))+
-            td(done
+            td('<span style="font-size:12px">£'+recMonthlyNet(t).toFixed(2)+'</span>')+
+            td(!recDueIn(t, monthKey) ? '<span style="font-size:11px;color:#aaa">not due</span>' : done
                ? '<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700">RAISED</span>'
                : '<button onclick="raiseRecurring(recurring.filter(function(x){return x.id===\''+idEsc+'\'})[0])" style="'+btnStyle('#fff','#1565c0',true)+'padding:3px 8px;font-size:11px">Raise now</button>')+
-            td('<button onclick="setRecActive(\''+idEsc+'\','+(t.active?'false':'true')+')" style="'+btnStyle('#fff','#888',true)+'padding:3px 8px;font-size:11px">'+(t.active?'Pause':'Resume')+'</button> '+
+            td('<button onclick="openRecForm(\''+idEsc+'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:3px 8px;font-size:11px">Edit</button> '+
+               '<button onclick="setRecActive(\''+idEsc+'\','+(t.active?'false':'true')+')" style="'+btnStyle('#fff','#888',true)+'padding:3px 8px;font-size:11px">'+(t.active?'Pause':'Resume')+'</button> '+
                '<button onclick="delRecurring(\''+idEsc+'\')" style="'+btnStyle('#fff','#888',true)+'padding:3px 8px;font-size:11px">✕</button>')+
           '</tr>';
         }).join('')+'</tbody></table></div>'
-      : '<div style="'+cardStyle()+'color:#888;text-align:center;padding:30px">No recurring bills set up yet. Add insurance, ramp finance, VAT software, water and electricity.</div>');
+      : '<div style="'+cardStyle()+'color:#888;text-align:center;padding:30px">No overheads set up yet. Use Quick add above — rent, rates, insurance, utilities, software.</div>');
 }
 
 // ========== BANK STATEMENTS & RECONCILIATION ==========
@@ -5738,6 +6015,10 @@ async function openBillCheck(id) {
         f('supplier','Supplier')+f('num','Invoice / receipt number')+f('date','Invoice date','date')+f('due','Due date','date')+
         '<div style="display:flex;gap:8px"><div style="flex:1">'+f('net','Net (ex VAT) £')+'</div><div style="flex:1">'+f('vat','VAT £')+'</div></div>'+
         '<div style="font-size:13px;margin-top:8px">Total inc VAT: <strong id="bc-tot">£'+tot.toFixed(2)+'</strong></div>'+
+        '<div style="display:flex;gap:8px;margin-top:8px"><div style="flex:1"><label style="display:block;font-size:11px;font-weight:700;color:#888">Category</label>'+
+          '<select id="bc-cat" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;background:#fff"><option value="">— pick —</option>'+BILL_CATS.map(function(c){ return '<option'+(inv.cat===c?' selected':'')+'>'+escapeHtml(c)+'</option>'; }).join('')+'</select></div>'+
+          '<div style="flex:1"><label style="display:block;font-size:11px;font-weight:700;color:#888">Division</label>'+
+          '<select id="bc-div" style="width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;background:#fff"><option value="">—</option>'+BILL_DIVS.map(function(c){ return '<option'+(inv.div===c?' selected':'')+'>'+escapeHtml(c)+'</option>'; }).join('')+'</select></div></div>'+
         spreadFields('bc', inv)+
         items+
         (inv.checked ? '<div style="font-size:12px;color:#2e7d32;margin-top:10px">✓ Checked by '+escapeHtml(inv.checkedBy||'')+' '+escapeHtml(String(inv.checkedAt||'').slice(0,16))+'</div>' : '')+
@@ -5770,6 +6051,10 @@ function saveBillCheck(id) {
   });
   if (Math.abs((parseFloat(inv.net)||0) - net) > 0.004) { changed.push('Net'); inv.net = net.toFixed(2); }
   if (Math.abs((parseFloat(inv.vat)||0) - vat) > 0.004) { changed.push('VAT'); inv.vat = vat.toFixed(2); }
+  var nc = g('cat'), nd = g('div');
+  if (nc && nc !== (inv.cat||'')) { changed.push('Category'); inv.cat = nc; delete inv.catAuto; }
+  else if (nc && inv.catAuto) delete inv.catAuto;      // confirmed by a person
+  if (nd !== (inv.div||'')) { changed.push('Division'); inv.div = nd; }
   var spBefore = (inv.spreadMonths||1) + '|' + (inv.spreadFrom||'');
   readSpread('bc', inv);
   if ((inv.spreadMonths||1) + '|' + (inv.spreadFrom||'') !== spBefore) changed.push('Spread');
@@ -7394,7 +7679,7 @@ body{background:#f0f2f5;color:#1a1a2e;font-family:-apple-system,BlinkMacSystemFo
     <button class="tab" id="tab-suppliers" onclick="showTab('suppliers')">🏭 Suppliers</button>
     <button class="tab" id="tab-ar" onclick="showTab('ar')">💰 To Collect</button>
     <button class="tab" id="tab-expenses" onclick="showTab('expenses')">🧾 Bills &amp; Expenses</button>
-    <button class="tab" id="tab-recurring" onclick="showTab('recurring')">🔁 Recurring</button>
+    <button class="tab" id="tab-recurring" onclick="showTab('recurring')">🔁 Overheads</button>
     <button class="tab" id="tab-bank" onclick="showTab('bank')">🏦 Bank</button>
     <button class="tab" id="tab-payroll" onclick="showTab('payroll')">💷 Payroll</button>
     <button class="tab" id="tab-reports" onclick="showTab('reports')">📊 Reports</button>
@@ -7507,7 +7792,7 @@ body{background:#f0f2f5;color:#1a1a2e;font-family:-apple-system,BlinkMacSystemFo
 <div class="overlay" id="ov-rec" onclick="if(event.target===this)cx('ov-rec')">
 <div class="panel" style="margin:20px auto;max-width:460px">
   <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid #eee;background:#fafafa;border-radius:12px 12px 0 0">
-    <div style="font-size:18px;font-weight:800">New Recurring Bill</div>
+    <div id="r-title" style="font-size:18px;font-weight:800">New overhead / recurring bill</div>
     <button onclick="cx('ov-rec')" style="background:none;border:1.5px solid #ddd;color:#888;font-size:16px;cursor:pointer;padding:4px 10px;border-radius:6px">✕</button>
   </div>
   <div style="padding:20px;display:flex;flex-direction:column;gap:12px">
@@ -7525,6 +7810,13 @@ body{background:#f0f2f5;color:#1a1a2e;font-family:-apple-system,BlinkMacSystemFo
       <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Amount ex-VAT</label><input id="r-net" type="number" step="0.01" placeholder="0.00" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"/></div>
       <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Day of month</label>
         <select id="r-day" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;background:#fff"></select></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">How often</label>
+        <select id="r-every" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;background:#fff">
+          <option value="1">Monthly</option><option value="3">Quarterly</option><option value="6">Every 6 months</option><option value="12">Yearly</option></select></div>
+      <div><label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px">Next payment month</label>
+        <input id="r-start" type="month" style="width:100%;padding:8px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"></div>
     </div>
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
       <input type="checkbox" id="r-vat" checked style="width:16px;height:16px"/> VAT at 20% applies
