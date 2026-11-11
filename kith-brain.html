@@ -59,7 +59,15 @@ textarea{min-height:70px;resize:vertical}
 input:focus,select:focus,textarea:focus{border-color:var(--gold);outline:none}
 .row{display:grid;gap:.6rem;margin-bottom:.65rem}
 .r2{grid-template-columns:1fr 1fr}.r3{grid-template-columns:1fr 1fr 1fr}
-@media(max-width:640px){.r2,.r3{grid-template-columns:1fr}}
+@media(max-width:640px){
+  .r2,.r3{grid-template-columns:1fr}
+  .btn,.btn.sm{min-height:42px;padding:10px 14px;font-size:13px}
+  .btn.sm{min-height:38px;padding:8px 12px;font-size:12px}
+  input,select,textarea{font-size:16px!important;min-height:42px}
+  .topbar{padding:10px 12px;flex-wrap:wrap;gap:8px}
+  .wrap{padding:10px 8px 80px}
+  .pill{font-size:.78rem;padding:.6rem .9rem;min-height:44px;display:inline-flex;align-items:center;letter-spacing:.04em}
+}
 .btn{background:var(--card-2);border:1px solid var(--line);border-radius:5px;
   padding:.45rem .8rem;cursor:pointer;font-size:.85rem}
 .btn:hover{border-color:var(--gold);color:var(--gold)}

@@ -192,32 +192,59 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 
 /* ── MOBILE ── */
 @media(max-width:600px){
-  .topbar{height:48px;padding:0 12px}
-  .brand{font-size:13px}
+  .topbar{height:52px;padding:0 10px;gap:4px}
+  .brand{font-size:13px;gap:6px}
   .brand-sub{display:none}
+  .topbar-right{gap:2px}
   .topbar-right .btn-ghost#vtog{display:none}
+  .topbar-right .btn{min-height:40px;min-width:40px;padding:8px 10px;font-size:12px}
+  .user-chip{padding:7px 8px 7px 8px;font-size:12px;min-height:40px}
+  #q-btn{min-width:40px;min-height:40px;padding:8px 6px;font-size:16px}
+  #build-tag{display:none}
+  .sb-dot{margin:0 2px}
   .board-wrap{padding:10px 6px}
   .col{width:200px}
-  .panel{border-radius:var(--r) var(--r) 0 0;position:fixed;bottom:0;left:0;right:0;max-height:90vh;overflow-y:auto;max-width:100%}
+  .panel{border-radius:var(--r) var(--r) 0 0;position:fixed;bottom:0;left:0;right:0;max-height:92vh;overflow-y:auto;max-width:100%!important;width:100%!important}
   .overlay.open{align-items:flex-end;padding:0}
   .pb{padding:14px}
   .two-col{grid-template-columns:1fr}
   .sheets-bar{padding:5px 12px;font-size:10px}
-  .tabs{padding:0 8px}
-  .tab{padding:8px 10px;font-size:11px}
+  .tabs{display:none}
   .fr2,.fr3{grid-template-columns:1fr}
   .preg{font-size:18px}
   .eamt{font-size:22px}
   .prow{grid-template-columns:2fr 1fr 1fr;font-size:11px}
   .prow .ps:last-child{display:none}
+  /* Transform the job list into card rows on phone */
+  .ltable{font-size:13px}
+  .ltable thead{display:none}
+  .ltable,.ltable tbody,.ltable tr,.ltable td{display:block;width:100%;box-sizing:border-box}
+  .ltable tr{background:var(--surface);border:1px solid var(--border);border-radius:10px;margin:0 10px 8px;padding:10px 12px;border-bottom:1px solid var(--border)}
+  .ltable tr:hover td{background:transparent}
+  .ltable td{border:none;padding:3px 0;font-size:13px}
+  .ltable td:nth-child(1){font-size:17px;font-weight:800}
+  .ltable td:nth-child(2){font-size:13px}
+  .ltable td:nth-child(3){font-size:12px;color:var(--dim)}
+  .ltable td:nth-child(5){font-size:11px;color:var(--blue)}
+  .ltable td:nth-child(6){font-size:12px;color:var(--dim);max-width:none}
+  .ltable td:nth-child(7){display:none}
+  .list-wrap{padding:8px 0}
+  #search-bar{font-size:16px!important}
+  .fi,.fi2,.fsel,input[type=text],input[type=number],input[type=email],input[type=tel],textarea,select{font-size:16px!important}
 }
 .mob-nav{display:none}
 @media(max-width:600px){
-  .mob-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);z-index:150;justify-content:space-around;padding:6px 0 env(safe-area-inset-bottom)}
-  .mob-nav button{background:none;border:none;color:var(--dim);font-size:10px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 8px;cursor:pointer;flex:1}
+  .mob-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);z-index:150;justify-content:space-around;padding:4px 0 env(safe-area-inset-bottom);box-shadow:0 -2px 10px rgba(0,0,0,.25)}
+  .mob-nav button{background:none;border:none;color:var(--dim);font-size:10px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 6px;cursor:pointer;flex:1;min-height:52px;letter-spacing:.02em}
   .mob-nav button.on{color:var(--gold)}
-  .mob-nav button span{font-size:18px;line-height:1}
-  body{padding-bottom:60px}
+  .mob-nav button span{font-size:20px;line-height:1}
+  body{padding-bottom:64px}
+  .mob-group{font-size:10px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:.1em;margin:18px 0 8px;padding:0 2px}
+  .mob-group:first-child{margin-top:4px}
+  .mob-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .mob-grid button{background:var(--surface2);border:1px solid var(--border2);border-radius:12px;padding:16px 12px;color:var(--text);font-size:13px;font-weight:700;cursor:pointer;text-align:left;min-height:62px;line-height:1.3;display:flex;flex-direction:column;justify-content:center;gap:2px}
+  .mob-grid button:active{background:var(--surface3);border-color:var(--gold)}
+  .mob-grid button .mg-c{font-size:10px;font-weight:600;color:var(--dim);margin-top:2px}
 }
 
 /* ── LOGIN ── */
@@ -356,11 +383,77 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <div id="v-list" style="display:none"><div class="list-wrap"><table class="ltable"><thead><tr><th>Reg</th><th>Customer</th><th>Vehicle</th><th>Stage</th><th>Techman</th><th>Work</th><th></th></tr></thead><tbody id="list-body"></tbody></table></div></div>
 
 <div class="mob-nav" id="mob-nav">
-  <button onclick="setFilter('all',this);mobNav(this)" class="on"><span>📋</span>All</button>
-  <button onclick="setFilter('estimator',this);mobNav(this)"><span>🔧</span>Estimator</button>
-  <button onclick="setFilter('parts',this);mobNav(this)"><span>🔩</span>Parts</button>
-  <button onclick="setFilter('adviser',this);mobNav(this)"><span>📞</span>Adviser</button>
-  <button onclick="openPOView();mobNav(this)"><span>📦</span>POs</button>
+  <button onclick="mobGo(this,()=>setFilter('all',null))" class="on"><span>📋</span>All</button>
+  <button onclick="mobGo(this,()=>openInbox())"><span>📨</span>Inbox</button>
+  <button onclick="mobGo(this,()=>setFilter('action',null))"><span>⚡</span>Action</button>
+  <button onclick="mobGo(this,()=>openDayView())"><span>📆</span>Today</button>
+  <button onclick="openMobMore()"><span>⋯</span>More</button>
+</div>
+
+<!-- MOBILE MORE SHEET — every tab/view in one grouped grid -->
+<div class="overlay" id="ov-mobmore">
+  <div class="panel" style="width:100%;max-width:100%;border-radius:14px 14px 0 0;max-height:88vh;display:flex;flex-direction:column">
+    <div class="pb" style="flex-shrink:0;border-bottom:1px solid var(--border);padding-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <div style="font-weight:800;font-size:17px">All views</div>
+        <button class="btn btn-ghost btn-sm" style="min-height:40px;min-width:40px;padding:8px 12px;font-size:16px" onclick="cx('ov-mobmore')">✕</button>
+      </div>
+    </div>
+    <div style="flex:1;overflow:auto;padding:4px 14px 24px">
+      <div class="mob-group">Jobs</div>
+      <div class="mob-grid">
+        <button onclick="mobMoreGo(()=>setFilter('all',null))">📋 All Jobs<span class="mg-c" id="m-cnt-all"></span></button>
+        <button onclick="mobMoreGo(()=>setFilter('action',null))">⚡ Needs Action</button>
+        <button onclick="mobMoreGo(()=>setFilter('waiting',null))">⏳ Awaiting Cust</button>
+        <button onclick="mobMoreGo(()=>setFilter('parts',null))">🔩 Parts</button>
+        <button onclick="mobMoreGo(()=>setFilter('estimator',null))">📋 Estimator</button>
+        <button onclick="mobMoreGo(()=>setFilter('adviser',null))">📞 Adviser</button>
+        <button onclick="mobMoreGo(()=>setFilter('lost',null))">✕ Lost</button>
+        <button onclick="mobMoreGo(()=>setFilter('checkin',null))">🚗 Check-In<span class="mg-c" id="m-cnt-ci"></span></button>
+      </div>
+      <div class="mob-group">Leads</div>
+      <div class="mob-grid">
+        <button onclick="mobMoreGo(()=>openInbox())">📨 Inbox<span class="mg-c" id="m-cnt-lead"></span></button>
+        <button onclick="mobMoreGo(()=>setFilter('inbox',null))">📥 New Intake<span class="mg-c" id="m-cnt-inb"></span></button>
+        <button onclick="mobMoreGo(()=>openB2BView())">🏢 B2B Leads</button>
+        <button onclick="mobMoreGo(()=>openAwaitingDash())">🤝 Awaiting Decision</button>
+      </div>
+      <div class="mob-group">Calendar</div>
+      <div class="mob-grid">
+        <button onclick="mobMoreGo(()=>openDayView())">📆 Today</button>
+        <button onclick="mobMoreGo(()=>openWeekView('mechanical'))">📅 Mechanical</button>
+        <button onclick="mobMoreGo(()=>openWeekView('bodywork'))">🎨 Bodywork</button>
+        <button onclick="mobMoreGo(()=>openTimings())">⏱ Timings</button>
+      </div>
+      <div class="mob-group">Operations</div>
+      <div class="mob-grid">
+        <button onclick="mobMoreGo(()=>openPOView())">📦 Purchase Orders</button>
+        <button onclick="mobMoreGo(()=>openSubView())">🔧 Subcontractors</button>
+        <button onclick="mobMoreGo(()=>openReturnsView())">↩ Returns</button>
+        <button onclick="mobMoreGo(()=>openChaseList())">💬 Chase List<span class="mg-c" id="m-cnt-ch"></span></button>
+      </div>
+      <div class="mob-group">Admin</div>
+      <div class="mob-grid">
+        <button onclick="mobMoreGo(()=>openAssignNotices())">📣 Hand Out<span class="mg-c" id="m-cnt-as"></span></button>
+        <button onclick="mobMoreGo(()=>openUnapprovedSweep())">⛔ Unapproved<span class="mg-c" id="m-cnt-un"></span></button>
+        <button onclick="mobMoreGo(()=>openDupeScan())">⚠ Duplicates<span class="mg-c" id="m-cnt-du"></span></button>
+        <button onclick="mobMoreGo(()=>openBulkStage())">⚡ Bulk Update</button>
+        <button onclick="mobMoreGo(()=>openAccountsView())">📊 Accounts</button>
+        <button onclick="mobMoreGo(()=>openNew())" style="background:var(--gold);color:#000;border-color:var(--gold)">+ New Job</button>
+      </div>
+      <div class="mob-group">Related apps</div>
+      <div class="mob-grid">
+        <button onclick="window.location.href='kith-master.html'">🎯 Master Pipeline</button>
+        <button onclick="window.location.href='kith-inbox.html'">📨 Unified Inbox</button>
+        <button onclick="window.location.href='kith-sop.html'">⚙ SOP Editor</button>
+        <button onclick="window.location.href='kith-parts.html'">🔩 Parts App</button>
+        <button onclick="window.location.href='kith-estimator.html'">📋 Estimator App</button>
+        <button onclick="window.location.href='kith-adviser.html'">📞 Adviser App</button>
+        <button onclick="window.location.href='kith-stock.html'">📦 Stock</button>
+        <button onclick="window.location.href='accounts.html'">💷 Accounts</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- B2B LEADS OVERLAY -->
@@ -784,6 +877,20 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script>
 const BUILD='v8.2 \u00b7 22 Sep';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
+// On phone, boot into the list view, not the 27-column Kanban board.
+try{document.addEventListener('DOMContentLoaded',()=>{
+  if(!window.matchMedia('(max-width:600px)').matches) return;
+  const show=()=>{
+    const vBoard=document.getElementById('v-board');
+    const vList=document.getElementById('v-list');
+    if(vBoard) vBoard.style.display='none';
+    if(vList) vList.style.display='block';
+    try{ if(typeof renderList==='function') renderList(); }catch(e){}
+  };
+  show();
+  // re-apply after initial render passes (sheets load triggers renderAll etc.)
+  setTimeout(show,800); setTimeout(show,2200);
+});}catch(e){}
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 // ── CONFIG ──────────────────────────────────────────────
 const INTAKE_ID  = '1nXknyg5zjP8d6W4EfU4e8i8iU6wytqSDUw86wSAodck';
@@ -13136,11 +13243,16 @@ function setFilter(f,btn){
   const vBoard=document.getElementById('v-board');
   const vList=document.getElementById('v-list');
   const vInbox=document.getElementById('v-inbox');
-  if(vBoard) vBoard.style.display=(f==='inbox'||f==='list')?'none':'block';
-  if(vList) vList.style.display=f==='list'?'block':'none';
+  // On phone the 27-column Kanban is unusable — force the list for every filter but inbox.
+  const isPhone = window.matchMedia('(max-width:600px)').matches;
+  if(isPhone && f!=='inbox') f='list_mobile';
+  const showList = (f==='list' || f==='list_mobile');
+  if(vBoard) vBoard.style.display=(f==='inbox'||showList)?'none':'block';
+  if(vList) vList.style.display=showList?'block':'none';
   if(vInbox) vInbox.style.display=f==='inbox'?'block':'none';
   if(f==='inbox') renderInbox();
-  if(f!=='inbox'&&f!=='list') renderBoard();
+  if(f!=='inbox' && !showList) renderBoard();
+  if(showList && typeof renderList==='function') renderList();
 }
 
 
@@ -13148,6 +13260,51 @@ function cx(id){
   const el=document.getElementById(id);
   if(el){el.classList.remove('open');}
   if(id==='ov-detail'){curId=null;}
+}
+
+// ── MOBILE NAV HELPERS ──
+// Mark a bottom-nav button active and run its action.
+function mobGo(btn,fn){
+  try{
+    document.querySelectorAll('.mob-nav button').forEach(b=>b.classList.remove('on'));
+    if(btn) btn.classList.add('on');
+  }catch(e){}
+  try{ fn(); }catch(e){ console.warn('mobGo fail',e); }
+}
+function openMobMore(){
+  const el=document.getElementById('ov-mobmore');
+  if(el) el.classList.add('open');
+  // refresh counts so the sheet mirrors the top tabs
+  try{ refreshMobMoreCounts(); }catch(e){}
+}
+function mobMoreGo(fn){
+  cx('ov-mobmore');
+  // clear active state on primary mob-nav — the chosen view might not be one of the five
+  try{ document.querySelectorAll('.mob-nav button').forEach(b=>b.classList.remove('on')); }catch(e){}
+  setTimeout(()=>{ try{ fn(); }catch(e){ console.warn('mobMoreGo fail',e); } }, 60);
+}
+function refreshMobMoreCounts(){
+  const mirror=[
+    ['m-cnt-all','cnt-all'],
+    ['m-cnt-ci','cnt-checkin'],
+    ['m-cnt-lead','cnt-leads'],
+    ['m-cnt-inb','cnt-inbox'],
+    ['m-cnt-ch','cnt-chase'],
+    ['m-cnt-as','cnt-assign'],
+    ['m-cnt-un','cnt-unap'],
+    ['m-cnt-du','cnt-dupe'],
+  ];
+  for(const [dst,src] of mirror){
+    const d=document.getElementById(dst), s=document.getElementById(src);
+    if(d && s){ const t=(s.textContent||'').trim(); d.textContent = t ? ' '+t : ''; }
+  }
+}
+// Back-compat: anything that still calls mobNav(btn) just toggles 'on'.
+function mobNav(btn){
+  try{
+    document.querySelectorAll('.mob-nav button').forEach(b=>b.classList.remove('on'));
+    if(btn) btn.classList.add('on');
+  }catch(e){}
 }
 
 function openNew(){

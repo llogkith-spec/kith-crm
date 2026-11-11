@@ -148,10 +148,30 @@ a{color:var(--gold);text-decoration:none}
 .pin-wall input:focus{border-color:var(--gold)}
 .pin-wall-msg{font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.5px}
 
+@media(max-width:900px){
+  .topbar{padding:10px 12px;gap:8px}
+  .topbar .brand-sub{display:none}
+  .btn-link{padding:8px 10px;font-size:13px;min-height:38px;display:inline-flex;align-items:center;background:var(--card);border:1px solid var(--line)}
+  .kpi-row{grid-template-columns:repeat(2,1fr);padding:10px 12px;gap:8px}
+}
 @media(max-width:600px){
-  .kpi-val{font-size:20px}
-  .stage{min-width:100px;padding:8px 10px}
-  .stage-count{font-size:22px}
+  .kpi-val{font-size:22px}
+  .kpi-row{grid-template-columns:repeat(2,1fr);padding:10px 10px;gap:6px}
+  .kpi{padding:10px}
+  .kpi-label{font-size:9px}
+  .stage{min-width:120px;padding:12px 14px;min-height:60px}
+  .stage-count{font-size:24px}
+  .drawer{width:100%!important}
+  .drawer-h{padding:14px 16px}
+  .drawer-title{font-size:19px}
+  .drawer-x{font-size:28px;padding:8px 14px;min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center}
+  .drawer-body{padding:12px 16px 80px}
+  .sys-grid{grid-template-columns:1fr;gap:8px}
+  .sys-card{padding:14px}
+  .sys-card-main{font-size:20px}
+  .section-h{font-size:12px;padding:12px 14px 6px}
+  .section{padding:0 10px 14px}
+  input,select,textarea{font-size:16px!important}
 }
 </style>
 </head>

@@ -109,7 +109,24 @@ a{color:var(--gold);text-decoration:none}
 .pin-wall input:focus{border-color:var(--gold)}
 .pin-wall-msg{font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.5px}
 
-@media(max-width:600px){ .field{grid-template-columns:1fr} .grid3,.grid4{grid-template-columns:repeat(2,1fr)} }
+@media(max-width:900px){
+  .topbar{padding:10px 12px;gap:8px}
+  .tabs{padding:0 6px}
+  .tab{padding:14px 12px;font-size:11px;min-height:46px;display:flex;align-items:center}
+}
+@media(max-width:600px){
+  .field{grid-template-columns:1fr}
+  .grid3,.grid4{grid-template-columns:repeat(2,1fr)}
+  .history-panel{width:100%!important;padding:16px}
+  .toast{top:auto;bottom:20px;left:20px;right:20px;transform:translateY(200px);text-align:center}
+  .toast.show{transform:translateY(0)}
+  .btn,.btn-primary,.btn-ghost{min-height:44px;padding:12px 16px;font-size:14px}
+  input,select,textarea{font-size:16px!important;min-height:44px}
+  .section{padding:14px}
+  h2{font-size:18px}
+  h3{font-size:16px}
+  body{padding-bottom:40px}
+}
 </style>
 </head>
 <body>
