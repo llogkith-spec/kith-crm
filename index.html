@@ -1493,6 +1493,7 @@ async function loadFromSupabase(){
       if(sysPos&&sysPos.data){ pos=sysPos.data.pos||[]; POS_BASE=clone(pos); POS_MAXNUM=Math.max(POS_MAXNUM,Number(sysPos.data.maxNum)||0); }
       if(sysB2B&&sysB2B.data&&!b2bLeads.length) b2bLeads=sysB2B.data.b2bLeads||[]; // only as a fallback - never clobber a loaded list
       if(sysSubs&&sysSubs.data){ subs=sysSubs.data.subs||[]; SUBS_BASE=clone(subs); }
+      try{ const sd=rows.find(r=>r.id==='__directory__'); adoptServerDirectory(sd&&sd.data?sd.data.DIRECTORY:undefined); }catch(e){console.warn('directory load',e);}
       if(jobs&&jobs.length)snapshotJobs('before server load');
       rows.forEach(r=>{ if(r.data&&r.id&&!r.id.startsWith('__'))BASE[r.id]=JSON.stringify(r.data); });
       const remote=rows.filter(r=>r.data&&r.id&&!r.id.startsWith('__')).map(r=>migrateJob(r.data)).filter(Boolean);
@@ -1522,6 +1523,7 @@ async function loadFromSupabase(){
     setSbStatus('err');
   }
   renderAll();
+  try{autoImportIntake();}catch(x){console.warn(x);}
 }
 
 function subscribeRealtime(){
@@ -1739,6 +1741,7 @@ async function refreshSheets(){
   try{_intakeSig=_intakeSigOf(intakeData);_intakeRedrawDue=false;}catch(x){}
   updateInboxBadge();
   renderAll();
+  try{autoImportIntake();}catch(x){console.warn(x);}
   // Never re-render detail panel from sheet refresh — would wipe parts/labour form data
 }
 
@@ -1776,6 +1779,7 @@ async function autoRefreshIntake(){
     if(sig!==_intakeSig||_intakeRedrawDue){
       intakeData=rows;_intakeSig=sig;
       updateInboxBadge();
+  try{autoImportIntake();}catch(x){console.warn(x);}
       if(_userIsTyping()){_intakeRedrawDue=true;}
       else{_intakeRedrawDue=false;try{renderInbox();}catch(e){console.warn('renderInbox:',e);}}
     }
@@ -1995,16 +1999,24 @@ function importRow(ts,force){
   // Block if the reg is already live. Every stage except Lost counts —
   // the old version skipped Booked and POs/SOs, which is exactly where
   // the second MOT kept slipping in.
-  const cleanR=r=>(r||'').toUpperCase().replace(/[^A-Z0-9]/g,'').substring(0,7);
-  const cleanW=w=>String(w||'').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,20);
   // force = the person has looked at it and said it is a different job
   if(!force&&!d.additional&&!duplicateGate({reg:d.reg,work:d.work,tmJob:d.tmJob}))return;
   if(force){
     // Still worth a line in the log so it's traceable
     window._forcedAdd=true;
   }
+  const job=createIntakeJob(raw,ts,'Imported from Intake Google Form by '+(currentUser?currentUser.name:'Form'));
+  renderAll();updateInboxBadge();renderInbox();
+  openJob(job.id);
+}
+
+// Builds the job from one form row and puts it at 1 · Intake. Shared by
+// the manual Add button and the automatic hand-off below.
+function createIntakeJob(raw,ts,logLine,fixedId){
+  const d=mapIntake(raw);
+  const cleanR=r=>(r||'').toUpperCase().replace(/[^A-Z0-9]/g,'').substring(0,7);
   const job={
-    id:nid(),name:d.name,phone:d.phone,wa:false,email:d.email,
+    id:fixedId||nid(),name:d.name,phone:d.phone,wa:false,email:d.email,
     reg:d.reg,make:d.make,model:d.model,ramp:d.ramp,
     work:d.work,photos:d.photos,source:d.source,by:d.by||'Form',
     custType:d.custType||'',
@@ -2013,7 +2025,7 @@ function importRow(ts,force){
     parts:[],finalNotes:'',fromForm:true,
     additionalWork:!!d.additional,
     stageAt:Date.now(),
-    log:[{t:ts2(),s:'Imported from Intake Google Form by '+(currentUser?currentUser.name:'Form')}]
+    log:[{t:ts2(),s:logLine}]
   };
   if(d.additional){
     // Link back to the most recent earlier job on the same reg so the
@@ -2025,18 +2037,80 @@ function importRow(ts,force){
       job.linkedRef=prior.tmJob||prior.id;
       prior.hasAdditional=true;
       prior.log=prior.log||[];
-      prior.log.push({t:ts2(),s:'\u2795 Additional work raised for this vehicle'+(prior.tmJob?'':'')});
+      prior.log.push({t:ts2(),s:'➕ Additional work raised for this vehicle'});
       save(prior);
     }
-    job.log.push({t:ts2(),s:'\u2795 ADDITIONAL WORK'+(prior?' \u2014 follows on from '+(prior.tmJob||prior.reg):'')+' \u2014 accounts to bill with the original'});
+    job.log.push({t:ts2(),s:'➕ ADDITIONAL WORK'+(prior?' — follows on from '+(prior.tmJob||prior.reg):'')+' — accounts to bill with the original'});
   }
   jobs.unshift(job);
   imported.add(ts);
   job.srcTs=ts;                 // so closing the job can close the row too
   try{ if(autoAssignEstimator(job)) pingEstimator(job); }catch(e){}
   save(job);saveImp();
-  renderAll();updateInboxBadge();renderInbox();
-  openJob(job.id);
+  return job;
+}
+
+// ── FORM → PIPELINE, NO INBOX STOP (2 Nov 2026) ────────────────────
+// Form submissions used to sit in "New Intake" until someone pressed Add,
+// so leads waited there unseen. Every new submission now goes straight
+// onto the board at 1 · Intake and gets an estimator.
+// It only runs once the board has loaded from the server and the form
+// sheet is fresh (not an old saved copy), so it never doubles anything up.
+// Left in the inbox for a person to decide:
+//  · the same reg and the same work is already live (a real duplicate)
+//  · rows marked added before but with no job (something went wrong)
+//  · rows older than 14 days (old leads nobody added at the time)
+//  · rows with no name and no reg
+const AUTO_INTAKE_DAYS=14;
+let _autoIntakeBusy=false;
+function _autoIntakeId(ts){
+  // the same row gets the same job number on every device, so two
+  // screens doing this at once land on one job, not two
+  let h=0;const k=String(tsKey(ts)||ts);
+  for(let i=0;i<k.length;i++){h=((h<<5)-h+k.charCodeAt(i))|0;}
+  return 'JF'+(h>>>0).toString(36).toUpperCase();
+}
+function autoImportIntake(){
+  if(_autoIntakeBusy)return 0;
+  if(typeof sbReady==='undefined'||!sbReady)return 0;           // board not loaded yet
+  if(typeof currentUser==='undefined'||!currentUser)return 0;
+  if(window._intakeStale||!intakeData||!intakeData.length)return 0;
+  _autoIntakeBusy=true;
+  let n=0;
+  try{
+    const cutoff=Date.now()-AUTO_INTAKE_DAYS*86400000;
+    newIntakeRows().forEach(raw=>{
+      const t=raw['Timestamp']||raw['timestamp']||'';
+      if(!t)return;
+      let st;try{st=intakeRowStatus(raw);}catch(e){return;}
+      if(st.state!=='pending'||st.missing)return;
+      const when=tsDate(t).getTime();
+      if(!(when>=cutoff))return;
+      const d=st.d;
+      if(!d.name&&!d.reg)return;
+      const fid=_autoIntakeId(t);
+      if(jobs.some(j=>j&&j.id===fid))return;                     // another screen already did it
+      if(!d.additional){
+        const dd=findDupes({reg:d.reg,work:d.work,tmJob:d.tmJob});
+        if(dd.same.length)return;                                 // stays in the inbox for a person
+      }
+      const job=createIntakeJob(raw,t,'⚡ Came in from the intake form — put straight on the board',fid);
+      try{
+        const dd=findDupes({reg:d.reg,work:d.work,tmJob:d.tmJob},job.id);
+        if(dd.similar.length){
+          job.log.push({t:ts2(),s:'⚠ Same vehicle already live: '+dd.similar.slice(0,3).map(x=>(x.tmJob||x.id)+' at '+stg(x.stage).label).join(', ')+' — check it is different work'});
+          save(job);
+        }
+      }catch(e){}
+      n++;
+    });
+  }catch(e){console.warn('auto intake:',e);}
+  finally{_autoIntakeBusy=false;}
+  if(n){
+    try{renderAll();updateInboxBadge();}catch(e){}
+    if(typeof toast==='function')toast('📥 '+n+' new job'+(n===1?'':'s')+' from the intake form → 1 · Intake');
+  }
+  return n;
 }
 
 function ts2(){return new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});}
@@ -2259,7 +2333,10 @@ function renderInbox(){
     });
     pendingTotal=Object.values(pendingByDay).flat().length;
   }
-  el.innerHTML=staleBanner+jobHint+(dupCount?'<div style="font-size:11px;margin-bottom:10px;padding:7px 10px;background:var(--surface2);border-radius:var(--rs);border-left:3px solid var(--red)">'+
+  const autoNote='<div style="font-size:11px;margin-bottom:10px;padding:7px 10px;background:var(--surface2);border-radius:var(--rs);border-left:3px solid var(--green)">'+
+      '<strong style="color:var(--green)">New form submissions now go straight onto the board at 1 \u00b7 Intake.</strong> '+
+      '<span style="color:var(--dim)">Anything left under \u201cNot Yet Added\u201d needs a person: a likely duplicate, older than '+AUTO_INTAKE_DAYS+' days, or missing a name and reg.</span></div>';
+  el.innerHTML=staleBanner+jobHint+autoNote+(dupCount?'<div style="font-size:11px;margin-bottom:10px;padding:7px 10px;background:var(--surface2);border-radius:var(--rs);border-left:3px solid var(--red)">'+
       '<strong style="color:var(--red)">'+dupCount+' submission'+(dupCount===1?'':'s')+' already in the pipeline</strong> '+
       '<span style="color:var(--dim)">\u2014 same reg and same work submitted more than once.</span> '+
       '<button class="btn btn-ghost btn-xs" style="margin-left:6px" onclick="toggleHideDupes()">'+(hideDupes?'Show them':'Hide them')+'</button></div>':'')+
@@ -4249,6 +4326,7 @@ function cardH(j){
     (function(){const c=(typeof posForJob==='function')?posForJob(j.id).length:0;
       return c>1?'<div style="font-size:9px;font-weight:800;color:var(--gold);margin-bottom:4px">\ud83d\udce6 '+c+' POs RAISED</div>':'';})()+
     (j.stage==='signoff'?'<div style="font-size:9px;font-weight:800;color:var(--amber);margin-bottom:4px">\u23f3 AWAITING SIGN-OFF</div>':'')+
+    (Array.isArray(j.damage)&&j.damage.length?'<div style="font-size:9px;font-weight:800;color:var(--red);margin-bottom:4px">\ud83d\ude97 '+j.damage.length+' PANEL'+(j.damage.length===1?'':'S')+(j.bodySize?' \u00b7 '+escHtml(String((BODY_SIZES.find(z=>z.k===j.bodySize)||{}).label||'').toUpperCase()):'')+'</div>':'')+
     (j.partsLate&&!j.partsLate.clearedAt?'<div style="font-size:9px;font-weight:800;color:var(--red);margin-bottom:4px">\u26a0 PARTS LATE \u2014 REBOOK</div>':'')+
     (j.orderNeeded&&j.orderNeeded.pingedAt&&!j.orderNeeded.doneAt?'<div style="font-size:9px;font-weight:800;color:var(--amber);margin-bottom:4px">\ud83d\udce6 ORDER PARTS NOW</div>':'')+
     (j.stage==='ready'?'<div style="font-size:9px;font-weight:800;color:'+(readyToBook(j)?'var(--green)':'var(--amber)')+';margin-bottom:4px">'+
@@ -6076,6 +6154,7 @@ function actH(j){
               '<div style="font-size:12px;font-weight:800;color:var(--amber)">\ud83d\udce3 Assigned to '+escHtml(j.assignedEstimator)+' \u2014 not told yet</div>'+
               '<button class="btn btn-green btn-sm btn-full" style="margin-top:6px" onclick="sendAssignNotice(\''+j.id+'\')">\ud83d\udcac Send them the job</button></div>'
             : (j.notifiedAt?'<div style="font-size:11px;color:var(--green);margin-bottom:8px">\u2713 '+escHtml(j.assignedEstimator||'')+' told '+escHtml(j.notifiedAt)+'</div>':''))+
+        damageMapCrmH(j)+bodySizeH(j)+
         (photoStripH(j,true)||'<div style="background:var(--surface2);border:1px dashed var(--border);border-radius:var(--r);padding:9px 11px;margin-bottom:10px;font-size:11px;color:var(--dim)">\ud83d\udcf8 No photos yet. '+photoAddBtnH(j)+'</div>')+
         (skipsRange(j)
           ?'<div class="notice n-blue" style="margin-bottom:12px">New job in. '+escHtml(skipsRange(j))+' \u2014 no price range, straight to the full estimate.</div>'+
@@ -6086,10 +6165,10 @@ function actH(j){
         '<div style="margin-top:8px">'+notifyRole('estimator','New job — '+j.reg+' '+j.make+' '+j.model+'. Please start labour estimate.')+'</div>';
       break;
     case 'range':
-      h+=rangePanelH(j);
+      h+=damageMapCrmH(j)+bodySizeH(j)+rangePanelH(j);
       break;
     case 'labour':
-      h+=photoStripH(j,true)+estimateSummaryH(j)+estimateDocsH(j,false);
+      h+=damageMapCrmH(j)+photoStripH(j,true)+bodySizeH(j)+estimateSummaryH(j)+estimateDocsH(j,false);
       h+='<div class="notice n-blue" style="margin-bottom:12px">Estimator: enter Techman number, labour hours, and list any parts needed for the Parts team to price.</div>'+
         '<div class="fg" style="margin-bottom:8px"><label class="fl2">Assign to Estimator <span class="req">*</span></label>'+
         '<select class="fsel" id="a-estimator">'+
@@ -6556,6 +6635,58 @@ function photoFallback(img){
 
 // Compact photo strip for the actions column, so the adviser sees the
 // damage next to the message rather than having to scroll for it.
+// ── BODYWORK VEHICLE SIZE (2 Nov 2026) ─────────────────────────────
+// The estimator says what size the vehicle is: Small, Medium, Large or
+// Van. Each maps to a SOP panel column, so panel prices are unchanged.
+const BODY_SIZES=[
+  {k:'small', label:'Small',  hint:'Hatchback / saloon / estate', cat:'5-seater'},
+  {k:'medium',label:'Medium', hint:'SUV, 4x4, pickup, 7-seater',  cat:'7-seater / SUV'},
+  {k:'large', label:'Large',  hint:'9-seater people carrier',     cat:'9-seater van'},
+  {k:'van',   label:'Van',    hint:'Panel van',                   cat:'Large van'}
+];
+function isBodyJob(j){return !!j&&((Array.isArray(j.damage)&&j.damage.length)||isBodywork(j));}
+function bodySizeH(j){
+  if(!isBodyJob(j))return '';
+  const cur=j.bodySize||'';
+  return '<div style="background:var(--surface2);border:1px solid '+(cur?'var(--border)':'var(--amber)')+';border-radius:var(--r);padding:10px 12px;margin-bottom:10px">'+
+    '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:'+(cur?'var(--faint)':'var(--amber)')+';font-weight:800;margin-bottom:6px">🚐 Vehicle size'+(cur?'':' — pick one before pricing')+'</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">'+
+    BODY_SIZES.map(z=>'<button class="btn btn-sm '+(cur===z.k?'btn-gold':'btn-ghost')+'" style="flex-direction:column;align-items:flex-start;text-align:left;line-height:1.2;padding:7px 8px;height:auto" onclick="setBodySize(\''+j.id+'\',\''+z.k+'\')">'+
+      '<b>'+z.label+'</b><span style="font-size:9px;font-weight:500;opacity:.8">'+z.hint+'</span></button>').join('')+
+    '</div></div>';
+}
+function setBodySize(id,k){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const z=BODY_SIZES.find(x=>x.k===k);if(!z||j.bodySize===k)return;
+  j.bodySize=k;
+  j.log=j.log||[];j.log.push({t:ts(),s:'🚐 Vehicle size: '+z.label+' ('+z.cat+' panel column)'+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);renderDetail();renderAll();
+}
+
+// ── WHERE THE DAMAGE IS (2 Nov 2026) ─────────────────────────────
+// The intake app marks damaged panels on the same car drawing the
+// website uses. Show it to the estimator above the photos.
+const DMG_PANELS={fbumper:'M62 14 Q130 -2 198 14 L204 46 L56 46 Z',bonnet:'M60 50 L200 50 L196 150 L64 150 Z',roof:'M70 196 L190 196 L190 318 L70 318 Z',
+  boot:'M64 362 L196 362 L200 448 L60 448 Z',rbumper:'M56 452 L204 452 L198 486 Q130 500 62 486 Z',lfwing:'M22 60 Q30 40 56 46 L60 150 L22 150 Z',
+  rfwing:'M238 60 Q230 40 204 46 L200 150 L238 150 Z',lfdoor:'M22 154 L62 154 L66 256 L22 256 Z',rfdoor:'M238 154 L198 154 L194 256 L238 256 Z',
+  lrdoor:'M22 260 L66 260 L66 350 L22 350 Z',rrdoor:'M238 260 L194 260 L194 350 L238 350 Z',lrq:'M22 354 L62 354 L56 452 Q30 460 22 440 Z',
+  rrq:'M238 354 L198 354 L204 452 Q230 460 238 440 Z'};
+function damageMapCrmH(j){
+  const d=Array.isArray(j.damage)?j.damage.filter(x=>x&&x.panel):[];
+  if(!d.length)return '';
+  const on=new Set(d.map(x=>x.panel));
+  const svg='<div style="font-size:9px;color:var(--faint);text-align:center;max-width:110px;margin-bottom:2px">\u25b2 front</div><svg viewBox="0 0 260 516" style="width:100%;max-width:110px;height:auto;display:block" aria-label="Damaged panels">'+
+    '<rect x="18" y="8" width="224" height="500" rx="70" fill="var(--surface3)" stroke="var(--border)" stroke-width="2"/>'+
+    '<path d="M66 154 L194 154 L188 192 L72 192 Z" fill="var(--surface)"/><path d="M72 322 L188 322 L194 358 L66 358 Z" fill="var(--surface)"/>'+
+    Object.keys(DMG_PANELS).map(k=>'<path d="'+DMG_PANELS[k]+'" fill="'+(on.has(k)?'var(--red)':'var(--surface2)')+'" stroke="'+(on.has(k)?'#fff':'var(--border)')+'" stroke-width="2"/>').join('')+
+    '</svg><div style="font-size:9px;color:var(--faint);text-align:center;max-width:110px;margin-top:2px">rear \u25bc</div>';
+  return '<div style="display:flex;gap:12px;align-items:flex-start;background:var(--surface2);border:1px solid var(--red);border-radius:var(--r);padding:10px 12px;margin-bottom:10px">'+
+    '<div style="flex:0 0 110px">'+svg+'</div>'+
+    '<div style="min-width:0"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--red);font-weight:800;margin-bottom:5px">\ud83d\ude97 Where the damage is ('+d.length+' panel'+(d.length===1?'':'s')+')</div>'+
+      d.map(x=>'<div style="font-size:12px;padding:3px 0;border-bottom:1px solid var(--border)"><strong>'+escHtml(x.label||x.panel)+'</strong>'+
+        (x.typeLabel?' \u2014 <span style="color:var(--dim)">'+escHtml(x.typeLabel)+'</span>':' \u2014 <span style="color:var(--amber)">type not given</span>')+'</div>').join('')+
+    '</div></div>';
+}
 function photoStripH(j,big){
   const raw=j.photos||'';
   const links=[...new Set([...(j.photoLinks||[]),...[...String(raw).matchAll(/https?:\/\/[^\s,;]+/g)].map(m=>m[0])])].filter(Boolean);
@@ -10492,6 +10623,8 @@ function syncSubs(){
 // Pull other people's order changes in without waiting for a reload
 function pullSysLists(rows){
   try{
+    const sdir=rows.find(r=>r.id==='__directory__');
+    if(sdir&&sdir.data&&Array.isArray(sdir.data.DIRECTORY)){ try{adoptServerDirectory(sdir.data.DIRECTORY);}catch(e){console.warn('directory pull',e);} }
     const sp=rows.find(r=>r.id==='__pos__');
     if(sp&&sp.data&&Array.isArray(sp.data.pos)){
       const server=sp.data.pos;
@@ -10812,6 +10945,7 @@ function labourDone(){
   const desc=document.getElementById('a-labour-desc')?.value.trim();
   const cost=parseFloat(document.getElementById('a-labour-cost')?.value);
   if(!estimator){alert('Assign to an estimator first.');return;}
+  if(isBodyJob(j)&&!j.bodySize){alert('Bodywork: pick the vehicle size first \u2014 Small, Medium, Large or Van.');return;}
   if(!tj&&!j.privatePlate){alert('Enter Techman Job # first. If this is a private plate tap the Private Plate button.');return;}
   const fixedLab=!!document.getElementById('a-fixed')?.checked;
   const srt=parseFloat(document.getElementById('a-srt')?.value);
@@ -13640,10 +13774,60 @@ let DIRECTORY=JSON.parse(localStorage.getItem('kith_directory')||'null')||[
   {id:'d28',name:'UMA Bodyworks',       type:'subcontractor',  phone:'',      email:'',    account:'', notes:'',                             cat:'Bodywork', active:true},
   {id:'d29',name:'Certified Plates',    type:'subcontractor',  phone:'',      email:'',    account:'', notes:'',                             cat:'Other', active:true},
 ];
+// ── SHARED SUPPLIER / SUBCONTRACTOR LIST (2 Nov 2026) ─────────────
+// The list used to be written to the server but never read back, so
+// each phone and computer kept its own copy: a supplier added on one
+// device never appeared for anyone else. It is now one shared list.
+// Saves merge with what is on the server (nobody's edit is lost), and
+// other people's changes are pulled in on the normal poll.
+let DIR_BASE=null, DIR_Q=Promise.resolve();
+function _dirKey(d){return String((d&&d.name)||'').trim().toLowerCase();}
+function applyDirectory(list){
+  if(!Array.isArray(list))return;
+  DIRECTORY.length=0;
+  list.forEach(d=>{ if(d&&d.name)DIRECTORY.push(d); });
+  SUPPLIERS=DIRECTORY.filter(d=>d.active&&(d.type==='supplier'||d.type==='both')).map(d=>d.name);
+  safeSet('kith_directory',JSON.stringify(DIRECTORY));
+  try{ if(document.getElementById('ov-settings')?.classList.contains('open')&&typeof renderSettings==='function')renderSettings(); }catch(e){}
+}
 function saveDirectory(){
   safeSet('kith_directory',JSON.stringify(DIRECTORY));
-  // Sync to Supabase
-  sbUpsert([{id:'__directory__',data:{DIRECTORY},updated_at:new Date().toISOString()}]).catch(()=>{});
+  DIR_Q=DIR_Q.then(async()=>{
+    const mine=clone(DIRECTORY);
+    const written=await casWrite('__directory__',server=>{
+      const sl=server&&Array.isArray(server.DIRECTORY)?server.DIRECTORY:null;
+      if(!sl)return Object.assign({},server||{},{DIRECTORY:mine});
+      return Object.assign({},server,{DIRECTORY:mergeList(DIR_BASE===null?[]:DIR_BASE,mine,sl,x=>x.id,(b,m,t)=>mergeObj(b,m,t,{}))});
+    });
+    if(written&&Array.isArray(written.DIRECTORY)){ DIR_BASE=clone(written.DIRECTORY); applyDirectory(clone(written.DIRECTORY)); }
+  }).catch(e=>{console.warn('Directory save:',e);setTimeout(()=>{try{saveDirectory();}catch(x){}},15000);});
+  return DIR_Q;
+}
+// First load: the server list wins for anything it already has. Anything
+// that only exists on this device (added before the fix) is added to the
+// shared list rather than lost.
+function adoptServerDirectory(serverList){
+  if(!Array.isArray(serverList)){
+    if(DIR_BASE!==null)return;
+    // not in the page of rows we got — ask for it directly before deciding
+    fetchServerRow('__directory__').then(d=>{
+      if(d&&Array.isArray(d.DIRECTORY))adoptServerDirectory(d.DIRECTORY);
+      else if(DIR_BASE===null){DIR_BASE=[];saveDirectory();}   // nobody has shared one yet
+    }).catch(e=>console.warn('directory fetch',e));
+    return;
+  }
+  if(DIR_BASE===null){
+    const ids=new Set(serverList.map(d=>d&&d.id)), names=new Set(serverList.map(_dirKey));
+    const localOnly=DIRECTORY.filter(d=>d&&d.name&&!ids.has(d.id)&&!names.has(_dirKey(d)));
+    DIR_BASE=clone(serverList);
+    applyDirectory(clone(serverList).concat(clone(localOnly)));
+    if(localOnly.length)saveDirectory();
+    return;
+  }
+  if(JSON.stringify(serverList)===JSON.stringify(DIR_BASE))return;
+  const merged=mergeList(DIR_BASE,DIRECTORY,serverList,x=>x.id,(b,m,t)=>mergeObj(b,m,t,{}));
+  DIR_BASE=clone(serverList);
+  applyDirectory(merged);
 }
 // Derive SUPPLIERS list from active supplier/both entries
 let SUPPLIERS=DIRECTORY.filter(d=>d.active&&(d.type==='supplier'||d.type==='both')).map(d=>d.name);

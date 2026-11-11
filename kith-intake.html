@@ -80,6 +80,22 @@ input:checked+.tsl:before{transform:translateX(20px)}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .chip{background:#f0f0f0;border:1.5px solid var(--border);border-radius:20px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all .12s}
 .chip.sel{background:rgba(201,168,76,.2);border-color:var(--gold);color:#7a5c00}
+/* damage map (2 Nov 2026) — same car diagram as the website quote */
+.dm-wrap{display:grid;grid-template-columns:minmax(0,200px) minmax(0,1fr);gap:16px;align-items:start;margin-bottom:12px}
+@media(max-width:560px){.dm-wrap{grid-template-columns:1fr}.dm-svg{max-width:200px;margin:0 auto;display:block}}
+.dm-svg{width:100%;height:auto;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.dm-glass{fill:#e8ecf3}
+.dm-p{fill:#fff;stroke:#c9cfd9;stroke-width:2;cursor:pointer;transition:fill .12s}
+.dm-p.on{fill:var(--red);stroke:#8e1c1c}
+.dm-p.on.typed{fill:#e57373}
+.dm-card{border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:#fff}
+.dm-card.need{border-color:var(--amber)}
+.dm-h{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:14px;margin-bottom:6px}
+.dm-x{background:none;border:none;font-size:20px;color:var(--dim);cursor:pointer;line-height:1;padding:0 4px}
+.dm-pills{display:flex;flex-wrap:wrap;gap:6px}
+.dm-pill{background:#f0f0f0;border:1.5px solid var(--border);border-radius:10px;padding:6px 9px;font-size:12px;font-weight:700;cursor:pointer;text-align:left;color:var(--dark)}
+.dm-pill small{display:block;font-weight:500;font-size:10.5px;color:var(--dim)}
+.dm-pill.sel{background:rgba(198,40,40,.1);border-color:var(--red);color:var(--red)}
 .safety-row{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #f0f0f0;cursor:pointer}
 .safety-row:last-child{border-bottom:none}
 .safety-box{width:24px;height:24px;border:2px solid var(--border);border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;margin-top:1px}
@@ -601,19 +617,88 @@ var MECH={
 // BODYWORK — one flow, no sub-categories
 var BODY_FLOW=function(){
   return card('Bodywork — ask the customer',
-    script(['Which panels are damaged? Be specific — front bumper, driver door, rear quarter.',
-      'Is it a dent, a scratch, or does the whole panel need repainting?',
-      'How many panels altogether?','Insurance, or are they paying themselves?'])+
-    note('n-blue','<strong>Take photos.</strong> The bodywork estimator quotes from photos and can ask for better ones. Attach them to the job in the CRM.')+
+    script(['Where on the car is the damage? Tap each panel on the car below.',
+      'What does it look like — a scuff, a dent, or is the panel cracked?',
+      'Insurance, or are they paying themselves?'])+
+    '<label class="fl">Where is the damage? <span style="color:var(--red)">*</span> <span style="font-weight:500">Tap each damaged panel</span></label>'+
+    '<div id="dm-box">'+damageMapH()+'</div>'+
+    chipGroup('Not on the drawing','body-extra',['Sliding door','Trim / moulding','Alloy wheels','Brake calipers','Mirror','Sill','Whole car'])+
+    note('n-blue','<strong>Photos:</strong> whole car, each damaged panel close up, and the reg plate. Add them with <strong>📷 Add photos</strong> at the top — they upload straight away and land on the job.')+
     '<div class="tog-row" style="margin-bottom:12px"><label class="tog"><input type="checkbox" id="f-photos"><span class="tsl"></span></label>'+
     '<div><div style="font-size:14px;font-weight:700">Photos taken, or customer is sending them on WhatsApp</div>'+
     '<div style="font-size:11px;color:#888">Whole car, each damaged panel close up, and the reg plate</div></div></div>'+
-    chipGroup('Panels affected','panels',['Front bumper','Rear bumper','Bonnet','Boot / tailgate','Roof','Front door (L)','Front door (R)','Rear door (L)','Rear door (R)','Front quarter','Rear quarter','Sliding door','Trim / moulding'])+
-    chipGroup('Type of repair','body-type',['Full panel repaint','Dent repair only','SMART repair','Dent and repaint','Welding / rust','Full respray','Alloy wheel refurb','Caliper respray'])+
-    fld('Damage description','f-body-desc','textarea','Size, depth, where on the panel...')+
+    chipGroup('Type of repair (only if you know)','body-type',['Full panel repaint','Dent and repaint','SMART repair','Welding / rust','Full respray','Alloy wheel refurb','Caliper respray'])+
+    fld('Anything else about the damage','f-body-desc','textarea','Size, depth, where on the panel...')+
     fld('Insurance or private pay?','f-body-pay','select',['Private pay','Insurance claim','Not confirmed'])+
     note('n-red','Insurance and accident work goes straight to <strong>Logan</strong> — we have no insurer process or rates.'));
 };
+
+// ── DAMAGE MAP (2 Nov 2026) ───────────────────────────────────────
+// The same car drawing and damage types as the website quote, so what
+// the customer picked online and what we pick at intake mean the same.
+var CAR_PANELS=[
+  {id:'fbumper',label:'Front bumper',d:'M62 14 Q130 -2 198 14 L204 46 L56 46 Z'},
+  {id:'bonnet',label:'Bonnet',d:'M60 50 L200 50 L196 150 L64 150 Z'},
+  {id:'roof',label:'Roof',d:'M70 196 L190 196 L190 318 L70 318 Z'},
+  {id:'boot',label:'Boot / tailgate',d:'M64 362 L196 362 L200 448 L60 448 Z'},
+  {id:'rbumper',label:'Rear bumper',d:'M56 452 L204 452 L198 486 Q130 500 62 486 Z'},
+  {id:'lfwing',label:'Left front wing',d:'M22 60 Q30 40 56 46 L60 150 L22 150 Z'},
+  {id:'rfwing',label:'Right front wing',d:'M238 60 Q230 40 204 46 L200 150 L238 150 Z'},
+  {id:'lfdoor',label:'Left front door',d:'M22 154 L62 154 L66 256 L22 256 Z'},
+  {id:'rfdoor',label:'Right front door',d:'M238 154 L198 154 L194 256 L238 256 Z'},
+  {id:'lrdoor',label:'Left rear door',d:'M22 260 L66 260 L66 350 L22 350 Z'},
+  {id:'rrdoor',label:'Right rear door',d:'M238 260 L194 260 L194 350 L238 350 Z'},
+  {id:'lrq',label:'Left rear quarter',d:'M22 354 L62 354 L56 452 Q30 460 22 440 Z'},
+  {id:'rrq',label:'Right rear quarter',d:'M238 354 L198 354 L204 452 Q230 460 238 440 Z'}
+];
+var DMG_TYPES=[
+  {id:'smart',label:'Light scuff or scratch',size:'Smaller than a phone'},
+  {id:'scuff',label:'Scuff or scratch',size:'Bigger than a phone'},
+  {id:'dent',label:'Dent, paint not broken',size:'Paint still intact'},
+  {id:'dentp',label:'Dent, paint broken',size:'Cracked, flaked or bare metal'},
+  {id:'replace',label:'Cracked, split or hanging off',size:'The panel itself is damaged'}
+];
+var DMG={};         // panel id → damage type id ('' until chosen)
+var DMG_ORDER=[];   // in the order they were tapped
+function _dmgPanel(id){return CAR_PANELS.filter(function(p){return p.id===id;})[0];}
+function _dmgType(id){return DMG_TYPES.filter(function(t){return t.id===id;})[0];}
+function damageMapH(){
+  var lbl='font-size:10px;font-weight:800;color:var(--faint);letter-spacing:.08em;text-transform:uppercase;text-align:center;max-width:200px;margin:0 auto';
+  var svg='<div style="'+lbl+';margin-bottom:3px">\u25b2 Front of car</div><svg class="dm-svg" viewBox="0 0 260 516" role="group" aria-label="Car seen from above: tap the damaged panels">'+
+    '<rect x="18" y="8" width="224" height="500" rx="70" fill="#f7f8fa" stroke="#dde1e8" stroke-width="2"/>'+
+    '<path class="dm-glass" d="M66 154 L194 154 L188 192 L72 192 Z"/><path class="dm-glass" d="M72 322 L188 322 L194 358 L66 358 Z"/>'+
+    CAR_PANELS.map(function(p){var on=(p.id in DMG);
+      return '<path class="dm-p'+(on?' on':'')+(on&&DMG[p.id]?' typed':'')+'" d="'+p.d+'" onclick="dmgTap(\''+p.id+'\')" tabindex="0" role="button" aria-pressed="'+on+'"><title>'+p.label+'</title></path>';}).join('')+
+    '</svg>'+
+    '<div style="'+lbl+';margin-top:3px">Rear of car \u25bc</div>';
+  var side=DMG_ORDER.length?DMG_ORDER.map(function(id){
+    var p=_dmgPanel(id);if(!p)return'';
+    return '<div class="dm-card'+(DMG[id]?'':' need')+'"><div class="dm-h"><span>'+p.label+'</span>'+
+      '<button type="button" class="dm-x" onclick="dmgTap(\''+id+'\')" aria-label="Remove '+p.label+'">×</button></div>'+
+      '<div class="dm-pills">'+DMG_TYPES.map(function(t){
+        return '<button type="button" class="dm-pill'+(DMG[id]===t.id?' sel':'')+'" onclick="dmgType(\''+id+'\',\''+t.id+'\')">'+t.label+'<small>'+t.size+'</small></button>';
+      }).join('')+'</div></div>';
+  }).join(''):'<div class="notice n-blue" style="margin:0">Nothing picked yet. Tap the damaged panels on the car.</div>';
+  return '<div class="dm-wrap"><div>'+svg+'</div><div>'+side+'</div></div>';
+}
+function dmgPaint(){var b=document.getElementById('dm-box');if(b)b.innerHTML=damageMapH();}
+function dmgTap(id){
+  if(id in DMG){delete DMG[id];DMG_ORDER=DMG_ORDER.filter(function(x){return x!==id;});}
+  else{DMG[id]='';DMG_ORDER.push(id);}
+  dmgPaint();
+}
+function dmgType(id,t){DMG[id]=(DMG[id]===t?'':t);dmgPaint();}
+function damageList(){
+  return DMG_ORDER.filter(function(id){return id in DMG;}).map(function(id){
+    var p=_dmgPanel(id),t=_dmgType(DMG[id]);
+    return {panel:id,label:p?p.label:id,type:DMG[id]||'',typeLabel:t?t.label:''};
+  });
+}
+function damageText(){
+  var parts=damageList().map(function(d){return d.label+(d.typeLabel?' ('+d.typeLabel.toLowerCase()+')':'');});
+  var ex=_getChipsRaw('body-extra');if(ex)parts.push(ex);
+  return parts.join(', ');
+}
 
 // RECOVERY — its own flow
 var RECOVERY_FLOW=function(){
@@ -683,7 +768,10 @@ function fld(l,id,t,o){var e='';
 function chipGroup(l,g,items){return'<div class="fg"><label class="fl">'+l+'</label><div class="chips">'+
   items.map(function(i){return'<div class="chip" data-group="'+g+'" onclick="this.classList.toggle(\'sel\')">'+i+'</div>';}).join('')+
   '</div></div>';}
-function getChips(g){return Array.from(document.querySelectorAll('.chip[data-group="'+g+'"].sel')).map(function(c){return c.textContent;}).join(', ');}
+function _getChipsRaw(g){return Array.from(document.querySelectorAll('.chip[data-group="'+g+'"].sel')).map(function(c){return c.textContent;}).join(', ');}
+// 'panels' is the damage map now, so everything that asked for the panel
+// chips (the checklist, the work text) keeps working unchanged
+function getChips(g){if(g==='panels')return damageText();return _getChipsRaw(g);}
 function fval(id){var e=document.getElementById(id);return e?String(e.value).trim():'';}
 function fchk(id){var e=document.getElementById(id);return e?e.checked:false;}
 function motRef(){return'<div class="ref"><b>MOT — one of only two prices you quote at the door</b>'+
@@ -1171,6 +1259,7 @@ async function submitJob(){
     source:fval('f-source'),notes:fval('f-notes'),by:staffName,
     asap:fchk('f-asap'),priority:fchk('f-asap'),
     stage:'intake',stageAt:Date.now(),
+    damage:area==='bodywork'?damageList():[],
     custType:needsCustomer()?(CRM_CUST[custType]||''):'Internal (stock)',
     fleetAccount:false,fromIntakeApp:true,intakeKey:newIntakeKey(),
     tmJob:'',tmPart:'',est:null,finalEst:null,parts:[],finalNotes:'',fromForm:false,
@@ -1314,6 +1403,7 @@ function resetForm(){
   safetyHits=[];diagOverride=null;warrantyState=null;triageResult=null;
   rampState={exempt:false,reason:'',pending:false};
   window._bodyCat=null;window._motClass=null;
+  DMG={};DMG_ORDER=[];
   document.querySelectorAll('.big-btn,.svc-btn').forEach(function(b){b.classList.remove('sel');});
   ['f-reg','f-make','f-model','f-year','f-mileage','f-engine','f-name','f-phone','f-notes','f-words']
     .forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});

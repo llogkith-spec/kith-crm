@@ -380,13 +380,16 @@ details .dbody{padding:0 .6rem .6rem}
           <select id="fixedPick"><option value="">Choose…</option></select></div>
         <div><label class="f">&nbsp;</label><button class="btn" id="btnAddFixed" style="width:100%">Add to quote</button></div>
       </div>
-      <details><summary>Panel painting</summary><div class="dbody">
+      <details id="panelDetails"><summary>Panel painting</summary><div class="dbody">
+        <label class="f" style="margin-top:.5rem">Vehicle size <span style="color:#c62828">*</span></label>
+        <div id="sizeBtns" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px;margin-bottom:.3rem"></div>
+        <div id="sizeNote" class="hint" style="margin-bottom:.4rem"></div>
         <div class="row r2" style="margin-top:.5rem">
-          <div><label class="f">Vehicle category</label><select id="panelCat"></select></div>
+          <div><label class="f">Panel column (follows the size)</label><select id="panelCat" disabled></select></div>
           <div><label class="f">Panel</label><select id="panelPick"></select></div>
         </div>
         <button class="btn sm" id="btnAddPanel">Add panel</button>
-        <p class="hint" style="margin-top:.5rem">Add every panel, then the dearest is charged in full and the rest come off 20% each. SUVs and pickups use the 7-seater column whatever the seat count.</p>
+        <p class="hint" style="margin-top:.5rem">Add every panel, then the dearest is charged in full and the rest come off 20% each. SUVs and pickups are Medium whatever the seat count.</p>
       </div></details>
       <div class="lines" id="fixedList" style="margin-top:.6rem"></div>
     </div>
@@ -1059,11 +1062,43 @@ $('fixedPick').innerHTML='<option value="">Choose…</option>'+
 $('btnAddFixed').onclick=()=>{const v=$('fixedPick').value;if(!v)return;
   S.fixed.push({type:'fixed',label:v});renderFixed();renderAll();$('fixedPick').value='';};
 
-$('panelCat').innerHTML=Object.keys(KITH.PANEL_UPLIFT).map(k=>`<option>${esc(k)}</option>`).join('');
+// ── VEHICLE SIZE (2 Nov 2026) ──────────────────────────────────────
+// The estimator says what size the vehicle is — four sizes. Each maps onto
+// a SOP panel column, so the panel prices themselves don't change.
+const BODY_SIZES=[
+  {k:'small', label:'Small',  hint:'Hatchback / saloon / estate (5 seats)', cat:'5-seater'},
+  {k:'medium',label:'Medium', hint:'SUV, 4x4, pickup or 7-seater',          cat:'7-seater / SUV'},
+  {k:'large', label:'Large',  hint:'9-seater people carrier / minibus van', cat:'9-seater van'},
+  {k:'van',   label:'Van',    hint:'Panel van — Transit, Sprinter size',     cat:'Large van'}
+];
+const sizeOf=k=>BODY_SIZES.find(x=>x.k===k)||null;
+const sizeFromCat=c=>(BODY_SIZES.find(x=>x.cat===c)||{}).k||'';
+$('panelCat').innerHTML=BODY_SIZES.map(z=>`<option value="${esc(z.cat)}">${esc(z.label)} — ${esc(z.hint)}</option>`).join('');
+function paintSize(){
+  const box=$('sizeBtns');if(!box)return;
+  const cur=JOB&&JOB.bodySize||'';
+  box.innerHTML=BODY_SIZES.map(z=>`<button type="button" class="btn sm${cur===z.k?' primary':''}" data-size="${z.k}" style="text-align:left;line-height:1.25"><b>${esc(z.label)}</b><br><span style="font-size:.72rem;opacity:.8">${esc(z.hint)}</span></button>`).join('');
+  const n=$('sizeNote');if(n)n.innerHTML=cur?'':'<span style="color:var(--amber,#e6a23c)">Pick the vehicle size before adding panels.</span>';
+}
+function setBodySize(k){
+  const z=sizeOf(k);if(!z)return;
+  if(JOB)JOB.bodySize=k;
+  $('panelCat').value=z.cat;
+  // every panel already on the quote follows the new size
+  let moved=0;
+  S.fixed.forEach(f=>{if(f.type==='panel'&&f.cat!==z.cat){f.cat=z.cat;f.label=f.panel+' — '+z.label+' ('+z.cat+')';moved++;}});
+  paintSize();renderFixed();renderAll();
+  if(moved)toast(moved+' panel'+(moved===1?'':'s')+' moved to '+z.label+'.');
+  try{if(typeof saveDraft==='function')saveDraft();}catch(e){}
+}
+document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-size]');if(b)setBodySize(b.getAttribute('data-size'));});
 $('panelPick').innerHTML=[...Object.keys(KITH.PANEL_BASE),'Sliding door']
   .map(k=>`<option>${esc(k)}</option>`).join('');
-$('btnAddPanel').onclick=()=>{const cat=$('panelCat').value,panel=$('panelPick').value;
-  S.fixed.push({type:'panel',cat,panel,label:panel+' — '+cat});renderFixed();renderAll();};
+$('btnAddPanel').onclick=()=>{
+  if(JOB&&!JOB.bodySize){alert('Pick the vehicle size first \u2014 Small, Medium, Large or Van.');return;}
+  const cat=$('panelCat').value,panel=$('panelPick').value;
+  const z=BODY_SIZES.find(x=>x.cat===cat);
+  S.fixed.push({type:'panel',cat,panel,label:panel+' — '+(z?z.label+' ('+cat+')':cat)});renderFixed();renderAll();};
 
 $('btnReset').onclick=()=>{if(!confirm('Clear this quote and start again?'))return;
   S.labour=[];S.parts=[];S.fixed=[];S.checks={};S.rampExempt=false;
@@ -1163,7 +1198,7 @@ async function crmGet(){
 const APP_FIELDS=['stage','stageAt','stageHistory','sectionDone','estimateDraft','estimate','quote',
   'finalEst','approval','estimateApproved','signedOff','signOffNote','labourCost','labourDesc','labourFixed',
   'srt','srtCharged','srtLines','srtSource','parts','partsBy','assignedEstimator','assignedAt','tmJob',
-  'startedAt','custType','sopRulesSig','sopRulesAt'];
+  'startedAt','custType','sopRulesSig','sopRulesAt','bodySize'];
 async function crmFetchOne(id){
   const r=await fetch(CRM.url.replace(/\/$/,'')+'/rest/v1/'+CRM.table+'?id=eq.'+encodeURIComponent(id)+'&select=data',
     {headers:{apikey:CRM.key,Authorization:'Bearer '+CRM.key}});
@@ -1316,6 +1351,12 @@ function openJob(id){
   $('workDesc').value=intakeAsText();
   $('ckRamp').checked=S.rampExempt;
 
+  // vehicle size: what the estimator chose before, else what the intake's
+  // four shape questions worked out (a suggestion — the estimator confirms)
+  if(!JOB.bodySize&&g.bodywork_category&&g.bodywork_category!=='ESCALATE'){JOB._sizeSuggest=sizeFromCat(g.bodywork_category);}
+  {const z=sizeOf(JOB.bodySize||JOB._sizeSuggest);$('panelCat').value=z?z.cat:BODY_SIZES[0].cat;}
+  paintSize();
+  if(!JOB.bodySize&&JOB._sizeSuggest){const n=$('sizeNote');if(n)n.innerHTML='Intake thinks <b>'+esc(sizeOf(JOB._sizeSuggest).label)+'</b> \u2014 tap it to confirm.';}
   renderInherit(g);
   renderIntakeDetail();
   applyJobMode();
