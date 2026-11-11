@@ -94,6 +94,28 @@ a{color:var(--gold);text-decoration:none}
 .alert-icon{font-size:16px}
 .alert-txt{flex:1}
 .alert-count{font-family:"Barlow Condensed";font-weight:700;font-size:20px;line-height:1}
+.src-table{width:100%;border-collapse:collapse;font-size:13px}
+.src-table th{text-align:left;font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-3);font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line)}
+.src-table td{padding:7px 8px;border-bottom:1px solid var(--line-soft);font-variant-numeric:tabular-nums}
+.src-table tr:last-child td{border-bottom:0}
+.src-bar{height:6px;background:var(--card-2);border-radius:3px;overflow:hidden;min-width:60px}
+.src-bar i{display:block;height:100%;background:var(--gold)}
+.src-wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.reg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.reg-card{display:flex;flex-direction:column;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px 12px;color:var(--ink)}
+a.reg-card:hover{border-color:var(--gold-dim);background:var(--card-2)}
+.reg-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.reg-name{font-weight:600}
+.reg-badge{font-size:10.5px;padding:1px 8px;border-radius:999px;font-weight:600;white-space:nowrap}
+.reg-badge.live{background:var(--go-bg);color:var(--go)}
+.reg-badge.proto{background:var(--warn-bg);color:var(--warn)}
+.reg-badge.none{background:var(--stop-bg);color:var(--stop)}
+.reg-badge.ext{background:var(--card-2);color:var(--ink-3)}
+.reg-role{font-size:11.5px;color:var(--ink-3)}
+.reg-stat{font-size:12.5px;color:var(--ink-2)}
+.reg-stat b{color:var(--gold);font-family:"IBM Plex Mono",monospace;font-weight:600}
+.sec-note{font-size:11.5px;color:var(--ink-3);margin:-4px 0 10px}
+.g-lost .sysgroup-h{color:var(--stop)}
 .sys-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
 .sys-card{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:12px 14px;cursor:default}
 .sys-card.clickable{cursor:pointer}
@@ -213,6 +235,18 @@ a{color:var(--gold);text-decoration:none}
 </div>
 
 <div class="alerts" style="border-top:0">
+  <div class="alerts-h">Where the work comes from</div>
+  <div class="sec-note" id="srcNote">Jobs that came in, by source, and how many turned into bookings</div>
+  <div class="src-wrap"><table class="src-table" id="srcTable"></table></div>
+</div>
+
+<div class="alerts" style="border-top:0">
+  <div class="alerts-h">Every system</div>
+  <div class="sec-note">Live = in daily use · Prototype = built, not fully in use · Not built = planned · External = outside software</div>
+  <div class="reg-grid" id="regGrid"></div>
+</div>
+
+<div class="alerts" style="border-top:0">
   <div class="alerts-h">System status — live</div>
   <div class="sys-grid" id="sysGrid"></div>
 </div>
@@ -231,8 +265,10 @@ a{color:var(--gold);text-decoration:none}
   <div class="drawer-body" id="drBody"></div>
 </div>
 
+<script src="kith-lines.js"></script>
 <script>
 'use strict';
+const KL = window.KITHLines || null;
 
 // ── CONFIG ──────────────────────────────────────────────
 const SB_URL = 'https://mxyrxyhvjndgjqupgstu.supabase.co';
@@ -248,8 +284,8 @@ const POLL_MS = 20000;
 const GROUPS = [
   { id:'inbox', label:'LEAD INBOX', system:'Lead Inbox', link:'kith-inbox.html', stages:[
     { id:'_leads_new',        label:'Needs details',     pseudo:true, source:'leads_new' },
-    { id:'_leads_triaged',    label:'Triaged · 24h',     pseudo:true, source:'leads_triaged' },
-    { id:'_leads_rapid',      label:'⚡ Rapid-fire sent', pseudo:true, source:'leads_rapid' },
+    { id:'_leads_triaged',    label:'Triaged · open',    pseudo:true, source:'leads_triaged' },
+    { id:'_leads_rapid',      label:'⚡ Range sent · open', pseudo:true, source:'leads_rapid' },
     { id:'_leads_ambiguous',  label:'❓ For you',         pseudo:true, source:'leads_ambiguous' },
     { id:'_leads_ready',      label:'Ready to send',     pseudo:true, source:'leads_ready' },
   ]},
@@ -266,6 +302,7 @@ const GROUPS = [
     { id:'parts',     label:'Parts Est.' },
     { id:'financial', label:'Final Est.' },
     { id:'signoff',   label:'Logan Sign-Off' },
+    { id:'disapproved', label:'Disapproved' },
     { id:'contact',   label:'Service Adv.' },
     { id:'contacted', label:'Contacted' },
     { id:'waiting',   label:'Awaiting D1' },
@@ -292,12 +329,17 @@ const GROUPS = [
     { id:'review',   label:'Review / Referral' },
     { id:'followup', label:'Follow-up Call' },
   ]},
+  { id:'lost', label:'LOST', system:'CRM', link:'index.html', stages:[
+    { id:'_lost_range', label:'Lost at range · 30d', pseudo:true, source:'lost_range' },
+    { id:'_lost_quote', label:'Lost after quote · 30d', pseudo:true, source:'lost_quote' },
+    { id:'lost',        label:'All lost (total)' },
+  ]},
 ];
 
 // ── Per-stage SLA targets (minutes) — anything older in-stage is flagged
 const SLA = {
   intake:60, range:2*60, labour:4*60, parts:6*60, financial:4*60,
-  signoff:2*60, contact:30, contacted:24*60, waiting:24*60, waiting2:24*60,
+  signoff:2*60, disapproved:4*60, contact:30, contacted:24*60, waiting:24*60, waiting2:24*60,
   ready:48*60, booked:72*60, po:24*60, raised:7*24*60, so:24*60, soraised:7*24*60,
   checkin:60, authwait:24*60, inprog:3*24*60, done:24*60,
   accounts:7*24*60, receivable:14*24*60, review:7*24*60, followup:30*24*60,
@@ -336,11 +378,17 @@ async function fetchJobs(){
   // filter used __*__ (a wildcard syntax PostgREST doesn't understand) which
   // silently passed everything through — including the inbox / outbox / config
   // rows, which don't belong in the pipeline view.
-  const r = await fetch(SB_URL+'/rest/v1/jobs?select=id,data,updated_at&order=updated_at.desc.nullslast', {
-    headers: SB_HDR
-  });
-  if(!r.ok) throw new Error('jobs HTTP '+r.status);
-  const rows = await r.json();
+  // Read in pages of 1,000 — the database never sends more than that in one go
+  const rows = [];
+  for(let from = 0; from < 50000; from += 1000){
+    const r = await fetch(SB_URL+'/rest/v1/jobs?select=id,data,updated_at&order=updated_at.desc.nullslast', {
+      headers: { ...SB_HDR, 'Range-Unit':'items', 'Range': from+'-'+(from+999) }
+    });
+    if(!r.ok && r.status !== 206) throw new Error('jobs HTTP '+r.status);
+    const page = await r.json();
+    rows.push(...page);
+    if(page.length < 1000) break;
+  }
   return rows
     .filter(r => r && r.id && !/^__.+__$/.test(r.id))  // drop system rows (__leads__, __outbox__, __pos__ etc.)
     .map(r => ({...(r.data||{}), id:r.id, updated_at:r.updated_at}))
@@ -398,13 +446,33 @@ async function fetchTriageCorrections(){
   }catch(e){ return []; }
 }
 
-let SOP = null, CACHE = { srt:0, parts:0 }, CORRECTIONS = [];
+async function fetchRow(id){
+  try{
+    const r = await fetch(SB_URL+'/rest/v1/jobs?id=eq.'+id+'&select=data', {headers:SB_HDR});
+    if(!r.ok) return null;
+    const rows = await r.json();
+    return rows[0] ? rows[0].data : null;
+  }catch(e){ return null; }
+}
+async function fetchOnShift(){
+  try{
+    const r = await fetch(SB_URL+'/rest/v1/kith_shifts?select=id&clock_out=is.null&clock_in=gte.'+encodeURIComponent(new Date(Date.now()-16*3600*1000).toISOString()), {headers:{...SB_HDR,'Range':'0-0','Prefer':'count=exact'}});
+    if(!r.ok) return null;
+    const cr = r.headers.get('content-range');
+    return cr ? (parseInt(cr.split('/').pop(),10) || 0) : null;
+  }catch(e){ return null; }
+}
+let SOP = null, CACHE = { srt:0, parts:0 }, CORRECTIONS = [], POS = null, STOCK = null, ONSHIFT = null;
 async function pollAll(){
   try{
-    const [jobs, leads, brain, sop, cache, corr] = await Promise.all([
+    const [jobs, leads, brain, sop, cache, corr, pos, stock, onShift] = await Promise.all([
       fetchJobs(), fetchLeads(), fetchBrainStats(),
-      fetchSop(), fetchCacheSizes(), fetchTriageCorrections()
+      fetchSop(), fetchCacheSizes(), fetchTriageCorrections(),
+      fetchRow('__pos__'), fetchRow('__stock__'), fetchOnShift()
     ]);
+    POS = pos && Array.isArray(pos.pos) ? pos.pos : null;
+    STOCK = stock;
+    ONSHIFT = onShift;
     JOBS = jobs;
     LEADS = Array.isArray(leads) ? leads : [];
     BRAIN = brain;
@@ -421,9 +489,26 @@ async function pollAll(){
 // ── HELPERS ──────────────────────────────────────────
 function jobsIn(stageId){ return JOBS.filter(j => j.stage === stageId); }
 function minsInStage(j){
-  const t = j.stageAt ? new Date(j.stageAt).getTime() : (j.updated_at ? new Date(j.updated_at).getTime() : Date.now());
+  // stageAt is set on every move. Old jobs without it fall back to when they came in,
+  // never to "last edited", so a note or a photo doesn't reset the clock.
+  let t = j.stageAt ? new Date(j.stageAt).getTime() : cameIn(j);
+  if(!t || isNaN(t)) t = j.updated_at ? new Date(j.updated_at).getTime() : Date.now();
   return (Date.now() - t) / 60000;
 }
+const WON_ST = ['booked','po','raised','so','soraised','checkin','authwait','inprog','done','accounts','receivable','review','followup'];
+function cameIn(j){
+  if(KL) return KL.cameIn(j);
+  const t = Date.parse(j.createdAt || j.enquiredAt || ''); if(!isNaN(t)) return t;
+  const m = String(j.id||'').match(/^J(\d{13})/); if(m) return +m[1];
+  return j.stageAt || 0;
+}
+const isWon  = j => KL ? KL.isWon(j)  : WON_ST.includes(j.stage);
+const isLostJ = j => KL ? KL.isLost(j) : (j.stage==='lost' || j.stage==='disapproved');
+const leadAt = l => l ? (l.t || Date.parse(l.at || '') || 0) : 0;
+const DAY = 24*3600*1000;
+// Did the customer get past the range? (lost before = lost at range)
+const pastRange = j => !!(j.customerYesAt || j.quoteSentAt || j.finalEst || ['contact','contacted','waiting','waiting2','ready'].includes(j.prevStage));
+function lostAt(j){ return j.lostAt || j.stageAt || 0; }
 function fmtQuote(j){
   const q = parseFloat(j.quote || j.rangeHigh || 0);
   return q > 0 ? '£'+Math.round(q).toLocaleString() : '—';
@@ -440,6 +525,9 @@ function pseudoCount(src){
   if(src === 'brain_firm')      return BRAIN.filter(b => (b.srt_hits||0) > 0 && (b.srt_misses||0) === 0).length;
   if(src === 'cache_srt')       return CACHE.srt;
   if(src === 'cache_parts')     return CACHE.parts;
+  // Lost — split by where the customer dropped out
+  if(src === 'lost_range') return JOBS.filter(j => j.stage==='lost' && lostAt(j) >= Date.now()-30*DAY && !pastRange(j)).length;
+  if(src === 'lost_quote') return JOBS.filter(j => j.stage==='lost' && lostAt(j) >= Date.now()-30*DAY &&  pastRange(j)).length;
   // TechMan
   if(src === 'techman_pending') return JOBS.filter(j => j.customerYesAt && !j.tmJob).length;
   return 0;
@@ -450,6 +538,8 @@ function render(){
   renderKPI();
   renderFlow();
   renderAlerts();
+  renderSources();
+  renderRegister();
   renderSystemStatus();
   document.getElementById('updatedAt').textContent = 'live · updated ' + fmtTime(lastPoll);
 }
@@ -509,27 +599,135 @@ function renderSystemStatus(){
     '</div>'
   );
 
-  // ── Funnel (retail only, last 7 days) ─────────────────
-  const since = Date.now() - 7*24*3600*1000;
-  const inLast7 = JOBS.filter(j => j.enquiredAt && new Date(j.enquiredAt).getTime ? new Date(j.enquiredAt).getTime() >= since : (j.stageAt && j.stageAt >= since));
-  const rangeSent = JOBS.filter(j => j.rangeSentAt && new Date(j.rangeSentAt).getTime() >= since).length;
-  const customerYes = JOBS.filter(j => j.customerYesAt && new Date(j.customerYesAt).getTime() >= since).length;
-  const booked = JOBS.filter(j => ['booked','po','raised','so','soraised','checkin','inprog','done','accounts','receivable','review','followup'].includes(j.stage) && j.stageAt && j.stageAt >= since).length;
-  const conv = rangeSent > 0 ? Math.round(100 * booked / rangeSent) : 0;
+  // ── Funnel: jobs that came in during the window, and how far each got ──
+  const cohort = days => {
+    const since = Date.now() - days*DAY;
+    const js = JOBS.filter(j => cameIn(j) >= since);
+    const ranged = js.filter(j => j.rangeSentAt || j.customerYesAt || j.quote || isWon(j)).length;
+    const yes = js.filter(j => j.customerYesAt || isWon(j)).length;
+    const won = js.filter(isWon).length;
+    const lost = js.filter(isLostJ).length;
+    return { n: js.length, ranged, yes, won, lost, conv: js.length ? Math.round(100*won/js.length) : 0 };
+  };
+  const c7 = cohort(7), c30 = cohort(30);
+  const row = (l, a, b, col) => '<div style="display:grid;grid-template-columns:1fr 44px 44px;gap:6px;align-items:baseline;padding:3px 0">'+l+
+    '<strong style="color:'+col+';font-family:ui-monospace,monospace;text-align:right">'+a+'</strong>'+
+    '<strong style="color:'+col+';font-family:ui-monospace,monospace;text-align:right">'+b+'</strong></div>';
   cards.push(
     '<div class="sys-card">'+
-      '<div class="sys-card-top"><span class="sys-card-label">📈 Funnel · last 7d</span><span class="sys-card-badge'+(conv < 30 ? ' warn':'')+'">'+conv+'% conv</span></div>'+
+      '<div class="sys-card-top"><span class="sys-card-label">📈 Funnel · enquiries that came in</span><span class="sys-card-badge'+(c30.conv < 30 ? ' warn':'')+'">'+c30.conv+'% booked · 30d</span></div>'+
       '<div class="sys-card-sub" style="margin-top:4px">'+
-        '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0">Enquiries: <strong style="color:var(--ink);font-family:ui-monospace,monospace">'+inLast7.length+'</strong></div>'+
-        '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0">Range sent: <strong style="color:var(--gold);font-family:ui-monospace,monospace">'+rangeSent+'</strong></div>'+
-        '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0">Customer YES: <strong style="color:var(--go);font-family:ui-monospace,monospace">'+customerYes+'</strong></div>'+
-        '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-top:1px solid var(--line-soft);margin-top:4px;padding-top:6px">Booked: <strong style="color:var(--go);font-family:ui-monospace,monospace">'+booked+'</strong></div>'+
+        '<div style="display:grid;grid-template-columns:1fr 44px 44px;gap:6px;font-size:10px;letter-spacing:1px;color:var(--ink-3)"><span></span><span style="text-align:right">7D</span><span style="text-align:right">30D</span></div>'+
+        row('Enquiries', c7.n, c30.n, 'var(--ink)')+
+        row('Priced', c7.ranged, c30.ranged, 'var(--gold)')+
+        row('Customer YES', c7.yes, c30.yes, 'var(--go)')+
+        row('Booked', c7.won, c30.won, 'var(--go)')+
+        row('Lost', c7.lost, c30.lost, 'var(--stop)')+
+        '<div style="font-size:11px;color:var(--ink-3);margin-top:6px">Each job counts once, by the day it came in. Recent ones may still be open.</div>'+
       '</div>'+
     '</div>'
   );
 
   document.getElementById('sysGrid').innerHTML = cards.join('');
 }
+// ── WHERE THE WORK COMES FROM ───────────────────────
+const CHANNEL_NAMES = { whatsapp:'WhatsApp', web:'Website', website:'Website', email:'Email', phone:'Phone', instagram:'Instagram', facebook:'Facebook', tiktok:'TikTok', gbp:'Google Business', google:'Google', bmg:'Book My Garage', bookmygarage:'Book My Garage', walkin:'Walk-in', 'walk-in':'Walk-in', referral:'Referral', b2b:'B2B / fleet' };
+function srcName(raw){
+  const s = String(raw||'').trim();
+  if(!s) return 'Not recorded';
+  const k = s.toLowerCase().replace(/[^a-z-]/g,'');
+  if(CHANNEL_NAMES[k]) return CHANNEL_NAMES[k];
+  if(/whats/i.test(s)) return 'WhatsApp';
+  if(/web|site|form/i.test(s)) return 'Website';
+  if(/insta/i.test(s)) return 'Instagram';
+  if(/face|fb/i.test(s)) return 'Facebook';
+  if(/tik/i.test(s)) return 'TikTok';
+  if(/google|gbp|maps/i.test(s)) return 'Google Business';
+  if(/book ?my ?garage|bmg/i.test(s)) return 'Book My Garage';
+  if(/phone|call|rang/i.test(s)) return 'Phone';
+  if(/mail/i.test(s)) return 'Email';
+  if(/walk/i.test(s)) return 'Walk-in';
+  if(/refer|friend|word/i.test(s)) return 'Referral';
+  if(/b2b|trade|fleet|account|dealer/i.test(s)) return 'B2B / fleet';
+  return s.length > 22 ? s.slice(0,22)+'…' : s;
+}
+function renderSources(){
+  const since = Date.now() - 30*DAY;
+  const m = {};
+  const add = k => (m[k] = m[k] || { leads:0, jobs:0, won:0, value:0 });
+  LEADS.filter(l => l && leadAt(l) >= since).forEach(l => add(srcName(l.channel)).leads++);
+  JOBS.filter(j => cameIn(j) >= since).forEach(j => {
+    const r = add(srcName(j.source || j.channel));
+    r.jobs++;
+    if(isWon(j)){ r.won++; r.value += parseFloat(j.quote||0) || 0; }
+  });
+  const rows = Object.entries(m).sort((a,b) => (b[1].jobs+b[1].leads) - (a[1].jobs+a[1].leads));
+  const max = Math.max(1, ...rows.map(r => r[1].jobs));
+  const notRec = m['Not recorded'] ? m['Not recorded'].jobs : 0;
+  const totalJobs = rows.reduce((a,r) => a + r[1].jobs, 0);
+  document.getElementById('srcNote').textContent = 'Last 30 days. Inbox leads by channel, jobs by the source on the job card, and how many of those jobs were booked.' +
+    (notRec ? ' ' + notRec + ' of ' + totalJobs + ' jobs have no source recorded.' : '');
+  document.getElementById('srcTable').innerHTML = rows.length ?
+    '<thead><tr><th>Source</th><th style="text-align:right">Inbox leads</th><th style="text-align:right">Jobs</th><th style="width:28%"></th><th style="text-align:right">Booked</th><th style="text-align:right">Conv.</th><th style="text-align:right">Booked £</th></tr></thead><tbody>'+
+    rows.map(([k,v]) => '<tr><td>'+esc(k)+'</td><td style="text-align:right">'+(v.leads||'—')+'</td><td style="text-align:right">'+v.jobs+'</td>'+
+      '<td><div class="src-bar"><i style="width:'+(v.jobs/max*100)+'%"></i></div></td><td style="text-align:right">'+v.won+'</td>'+
+      '<td style="text-align:right">'+(v.jobs ? Math.round(100*v.won/v.jobs)+'%' : '—')+'</td><td style="text-align:right">£'+Math.round(v.value).toLocaleString()+'</td></tr>').join('')+'</tbody>'
+    : '<tbody><tr><td style="color:var(--ink-3)">No enquiries in the last 30 days.</td></tr></tbody>';
+}
+
+// ── EVERY SYSTEM ────────────────────────────────────
+function renderRegister(){
+  const n = (v, w) => '<b>'+v+'</b> '+w;
+  const openPOs = POS ? POS.filter(p => p && !/^(received|paid|returned|cancelled|part returned)$/i.test(String(p.status||''))).length : null;
+  const stockItems = STOCK ? (Array.isArray(STOCK.items) ? STOCK.items : Array.isArray(STOCK) ? STOCK : []) : null;
+  const lowStock = stockItems && stockItems.length ? stockItems.filter(i => i && Number(i.min) > 0 && Number(i.qty||0) <= Number(i.min)).length : null;
+  const toCollect = JOBS.filter(j => j.stage === 'receivable');
+  const toCollectVal = toCollect.reduce((a,j) => a + (parseFloat(j.quote||0)||0), 0);
+  const leadsOpen = LEADS.filter(l => l && !l.jobId).length;
+  const inEst = JOBS.filter(j => ['range','labour','financial'].includes(j.stage)).length;
+  const inParts = JOBS.filter(j => j.stage === 'parts').length;
+  const advQ = JOBS.filter(j => ['contact','contacted','waiting','waiting2','ready'].includes(j.stage)).length;
+  const noTM = JOBS.filter(j => j.customerYesAt && !j.tmJob).length;
+  const intake7 = JOBS.filter(j => cameIn(j) >= Date.now()-7*DAY).length;
+  const SYS = [
+    // Sales
+    { n:'Lead Inbox', role:'Every channel into one place', st:'live', link:'kith-inbox.html', stat:n(leadsOpen,'leads not yet a job') },
+    { n:'Website form', role:'Enquiries from kithcars.com', st:'live', link:'kith-website-form.html' },
+    { n:'Intake form', role:'Turns a lead into a job card', st:'live', link:'kith-intake.html', stat:n(intake7,'jobs in · 7 days') },
+    { n:'Brain + SOP', role:'Pricing rules and AI', st:'live', link:'kith-sop.html', stat:n(BRAIN.length,'AI calls · 24h') },
+    { n:'Estimator app', role:'Range, labour and final estimate', st:'live', link:'kith-estimator.html', stat:n(inEst,'jobs with estimators') },
+    { n:'Parts app', role:'Supplier prices, POs and returns', st:'live', link:'kith-parts.html', stat: openPOs==null ? n(inParts,'jobs at parts estimate') : n(inParts,'at parts estimate')+' · '+n(openPOs,'open POs') },
+    { n:'CRM board', role:'The team pipeline', st:'live', link:'index.html', stat:n(JOBS.filter(j=>j.stage!=='lost').length,'live jobs') },
+    { n:'Adviser app', role:'Quotes out, chasing and booking', st:'live', link:'kith-adviser.html', stat:n(advQ,'with the adviser') },
+    { n:'WhatsApp Business API', role:'Auto-send, delivered and read ticks', st:'none', stat:'Messages still open WhatsApp to send' },
+    { n:'Booking calendars', role:'Mechanical and bodywork diaries', st:'none' },
+    { n:'T&C sign-off (Jotform)', role:'Customer signature before work', st:'ext' },
+    // Operations
+    { n:'TechMan', role:'Final estimate and invoice', st:'ext', stat:n(noTM,'said YES, not in TechMan') },
+    { n:'Stock', role:'Paint, materials, parts, consumables', st:'live', link:'kith-stock.html', stat: lowStock==null ? '' : n(lowStock,'items at or below minimum') },
+    { n:'Workshop app', role:'Check-in, work in progress, ready gate', st:'none', stat:'Done on the CRM board for now' },
+    { n:'Video health check', role:'Customer videos and red/amber/green work', st:'proto' },
+    { n:'Diagnostic app', role:'Scan reports for customers', st:'proto' },
+    // Accounts
+    { n:'Accounts', role:'Money in, money out, cash book, payroll', st:'live', link:'accounts.html', stat:n('£'+Math.round(toCollectVal).toLocaleString(),'to collect ('+toCollect.length+')') },
+    { n:'Clock-in', role:'Staff hours for payroll', st:'live', link:'clock.html', stat: ONSHIFT==null ? '' : n(ONSHIFT,'clocked in now') },
+    // Marketing + aftercare
+    { n:'Lead Gen', role:'Where leads come from, ad spend', st:'live', link:'leadgen.html' },
+    { n:'Marketing Hub', role:'Content and campaigns', st:'live', link:'kith-marketing-hub.html' },
+    { n:'Referral & loyalty', role:'Points, vouchers, reviews', st:'proto' },
+    { n:'Director dash', role:'Weekly numbers by service line', st:'live', link:'kith-dash.html' },
+  ];
+  const lbl = { live:'Live', proto:'Prototype', none:'Not built', ext:'External' };
+  document.getElementById('regGrid').innerHTML = SYS.map(x => {
+    const tag = x.link ? 'a' : 'div';
+    return '<'+tag+' class="reg-card"'+(x.link?' href="'+x.link+'"':'')+'>'+
+      '<div class="reg-top"><span class="reg-name">'+esc(x.n)+(x.link?' →':'')+'</span><span class="reg-badge '+x.st+'">'+lbl[x.st]+'</span></div>'+
+      '<div class="reg-role">'+esc(x.role)+'</div>'+
+      (x.stat ? '<div class="reg-stat">'+x.stat+'</div>' : '')+
+    '</'+tag+'>';
+  }).join('');
+}
+
 function fmtTime(ms){
   const d = new Date(ms);
   return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
@@ -542,13 +740,13 @@ function renderKPI(){
   const opsValue   = ops.reduce((s,j) => s + (parseFloat(j.quote||0) || 0), 0);
   const today = new Date(); today.setHours(0,0,0,0);
   const wonToday = JOBS.filter(j => j.customerYesAt && new Date(j.customerYesAt) >= today).length;
-  const lostToday = JOBS.filter(j => j.stage==='lost' && j.stageAt && new Date(j.stageAt) >= today).length;
+  const lostToday = JOBS.filter(j => isLostJ(j) && lostAt(j) && new Date(lostAt(j)) >= today).length;
   const overdue = countOverdue();
   const brainFirm = BRAIN.filter(b => (b.srt_hits||0) > 0 && (b.srt_misses||0) === 0).length;
   const brainTotal = BRAIN.length;
   const firmPct = brainTotal > 0 ? Math.round(100 * brainFirm / brainTotal) : 0;
-  const triagedToday = LEADS.filter(l => l && l.triage).length;
-  const rapidFireSent = LEADS.filter(l => l && l.triage && l.triage.rapidFireSentAt).length;
+  const triagedToday = LEADS.filter(l => l && l.triage && leadAt(l) >= Date.now()-DAY).length;
+  const rapidFireSent = LEADS.filter(l => l && l.triage && l.triage.rapidFireSentAt && Date.parse(l.triage.rapidFireSentAt) >= Date.now()-DAY).length;
   const ambiguous = pseudoCount('leads_ambiguous');
   const techmanPending = pseudoCount('techman_pending');
 
@@ -556,10 +754,10 @@ function renderKPI(){
     {label:'Sales pipeline',    val:sales.length,  sub:'£'+Math.round(totalValue).toLocaleString()+' at stake'},
     {label:'In operations',     val:ops.length,    sub:'£'+Math.round(opsValue).toLocaleString()+' booked'},
     {label:'Won today',         val:wonToday,      sub:'YES replies',                     cls:'good'},
-    {label:'Lost today',        val:lostToday,     sub:'to the Lost column',              cls: lostToday>0?'warn':''},
+    {label:'Lost today',        val:lostToday,     sub:'lost or disapproved',              cls: lostToday>0?'warn':''},
     {label:'Needs attention',   val:overdue,       sub:'SLA breached',                    cls: overdue>0?'stop':''},
     {label:'Brain · 24h',       val:brainTotal,    sub:firmPct+'% firm from cache',       cls:'gold'},
-    {label:'Triaged · 24h',     val:triagedToday,  sub:rapidFireSent+' rapid-fire sent',  cls:'gold'},
+    {label:'New leads · 24h',   val:triagedToday,  sub:rapidFireSent+' ranges sent · 24h',  cls:'gold'},
     {label:'For your decision', val:ambiguous,     sub:'ambiguous leads',                 cls: ambiguous>0?'warn':''},
     {label:'Needs TechMan',     val:techmanPending,sub:'customer said YES',               cls: techmanPending>0?'warn':''},
   ];
@@ -626,7 +824,7 @@ function countOverdue(){
   let n = 0;
   JOBS.forEach(j => {
     const t = SLA[j.stage];
-    if(t && minsInStage(j) > t) n++;
+    if(t && j.stage !== 'lost' && minsInStage(j) > t) n++;
   });
   return n;
 }
@@ -644,6 +842,11 @@ function renderAlerts(){
   if(signoff.length >= 3){
     alerts.push({cls: signoff.length >= 5 ? 'stop' : 'warn', icon:'⭐', txt:signoff.length+' waiting your sign-off', n:signoff.length, action:()=>openStage('signoff','crm','')});
   }
+  // Sent back from sign-off
+  const dis = jobsIn('disapproved');
+  if(dis.length > 0){
+    alerts.push({cls:'warn', icon:'↩', txt:dis.length+' estimate'+(dis.length===1?'':'s')+' sent back for re-pricing', n:dis.length, action:()=>openStage('disapproved','crm','')});
+  }
   // Awaiting day 2
   const w2 = jobsIn('waiting2');
   if(w2.length > 0){
@@ -651,7 +854,7 @@ function renderAlerts(){
   }
   // Booked with no TechMan reference
   const booked = jobsIn('booked');
-  const noTM = booked.filter(j => !j.techmanJobNo);
+  const noTM = booked.filter(j => !j.tmJob);
   if(noTM.length > 0){
     alerts.push({cls:'warn', icon:'🛠', txt:noTM.length+' booked job'+(noTM.length===1?'':'s')+' not yet in TechMan', n:noTM.length, action:()=>openStage('booked','ops','')});
   }
