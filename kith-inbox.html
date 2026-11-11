@@ -187,6 +187,7 @@ table.t tr:last-child td{border-bottom:0}
 <body>
 <header class="top">
   <div class="brand"><h1>KITH Inbox</h1><span class="v">v1.0</span></div>
+  <a class="pill" href="kith-sales.html" title="Pipeline, customers, campaigns and B2B" style="text-decoration:none">Sales ↗</a>
   <div class="spacer"></div>
   <span class="dot" id="sync" title="Not loaded yet"></span>
   <button class="pill" id="btnRefresh" hidden>Refresh</button>
@@ -390,8 +391,17 @@ const STAFF_BY_ROLE = {
   director: [{name:'Logan', wa:''}]
 };
 
+// "STOP", "unsubscribe" and the like: the customer has asked us to stop.
+// No acknowledgement, no range, no staff ping — the campaign sender
+// (kith-feeds.gs) records the opt-out.
+function isStopReply(l) {
+  const last = (l.messages || []).filter(m => m && m.dir === 'in').slice(-1)[0];
+  const t = String((last && last.text) || '').replace(/^subject:.*\n/i, '').trim().split(/\n/)[0];
+  return /^\s*(stop|stop all|unsubscribe|unsub|opt ?out|remove me|take me off|end|quit)\b(\s+(please|pls|thanks|thank you|now|it))*[\s.!]*$/i.test(t);
+}
 async function fireTriageActions(l) {
   if (!l || !l.triage) return;
+  if (isStopReply(l)) { l.triage.optedOut = l.triage.optedOut || new Date().toISOString(); return; }
   const t = l.triage;
   if (t.is_ambiguous) return;                             // Logan handles ambiguous
   if (t.is_rapid_fire && !t.rapidFireSentAt) {
@@ -530,7 +540,7 @@ function rapidFireText(l, brain) {
   return 'Hi ' + name + ' — thanks for your enquiry about the ' + veh + '.\n\n' +
     'Based on what you\'ve described, our instant estimate is £' + lo + '–£' + hi + ' (inc VAT).\n\n' +
     'This is a range from our pricing system — the final quote is confirmed after an estimator checks everything properly. Happy to go ahead? Reply YES and we\'ll work out the exact figure.\n\n' +
-    'KITH Cars · Hackbridge · 020 XXXX XXXX';
+    'KITH Cars · Hackbridge · 020 4629 9469';
 }
 
 // Share the debounced saves: outbox has its own race risk
