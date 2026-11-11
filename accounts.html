@@ -81,7 +81,7 @@ var SB = 'https://mxyrxyhvjndgjqupgstu.supabase.co';
 // Build stamp: bumped on every release. An open tab checks every few minutes
 // whether a newer one is live and asks to reload, so nobody keeps working on
 // an old copy (e.g. a statement reader that has since been fixed).
-var BUILD = '2026-11-11-1600';
+var BUILD = '2026-11-11-1615';
 setInterval(async function(){
   try {
     var t = await fetch(location.pathname + '?nc=' + Date.now(), {cache:'no-store'}).then(function(r){ return r.text(); });
@@ -4057,8 +4057,9 @@ var SORT_RULES = [
   [/british car auctions|britishcarauctions|\bbca\b|copart|manheim|aston barclay|vehicle purchase/i, 'Vehicle stock purchases', ''],
   [/auto ?colou?rs|car colou?rs|autocolour|refinish|paint ?supplies|lacquer|thinner/i, 'Paint & materials', 'Bodywork'],
   [/sva car lamps|car lamps|car panels|parts ?panel|partspanel|bumper|body panels/i, 'Parts', 'Bodywork'],
+  // MOT testers first: "HH Tyres MOT & Service" bills are MOTs, not tyres
+  [/^hh\b|pd vehicle services|\bmot test\b|^mot$/i,                             'Subcontractor', 'Mechanical'],
   [/\btyres?\b|flatfix|grouptyre|tyre wholesale/i,                               'Tyres', 'Tyres'],
-  [/^hh$|pd vehicle services|\bmot test\b|^mot$/i,                               'Subcontractor', 'Mechanical'],
   [/certas|lubricant|castrol|brake cleaner|antifreeze|screenwash|adblue|\bboc\b/i, 'Consumables', 'Mechanical'],
   [/screwfix|toolstation|machine mart|rs components|noz-alls|wurth|würth|currys|first-for-diy|snap.?on|sealey|laser tools|heating heater|polish(er|r)|rivet|tin snip|socket|wrench/i, 'Tools & equipment', 'Overheads'],
   [/\bshell\b|\bbp\b|esso|texaco|rontec|\bmfg\b|motor fuel|service station|sf connect|unleaded|diesel fuel|\bfuel\b|short stay|parking|churchill square|\bncp\b|apcoa/i, 'Vehicle & fuel', 'Overheads'],
