@@ -9252,10 +9252,27 @@ function waTickH(m){
   return '<span style="color:var(--faint)">\u2713 Sent \u2014 waiting for WhatsApp to confirm</span>';
 }
 // Customer messages since we last sent them something
+// Unified Inbox leads (jobs row '__leads__'), loaded when Awaiting
+// Decision opens, so WhatsApp replies from the relay show on the job.
+var UNI_LEADS=[];
+async function loadUnifiedLeads(){
+  try{
+    const r=await fetch(SB_URL+'/rest/v1/jobs?id=eq.__leads__&select=data',{headers:SB_HDR});
+    if(!r.ok)return false;
+    const rows=await r.json();
+    UNI_LEADS=(rows[0]&&rows[0].data&&rows[0].data.leads)||[];
+    return true;
+  }catch(e){return false;}
+}
 function repliesSince(j,ms){
   const ph=String(j.phone||'').replace(/\D/g,'').replace(/^44/,'0');
   if(!ph)return [];
   const out=[];
+  UNI_LEADS.forEach(l=>{
+    const lp=String((l&&l.phone)||'').replace(/\D/g,'').replace(/^44/,'0');
+    if(!l||lp!==ph)return;
+    (l.messages||[]).forEach(m=>{if(m.dir==='in'&&(m.t||0)>=(ms||0))out.push({text:m.text,ts:m.t,at:new Date(m.t).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})});});
+  });
   (typeof LEADS!=='undefined'?LEADS:[]).forEach(l=>{
     if(!l||l.source!=='whatsapp')return;
     const lp=String((l.from||{}).phone||'').replace(/\D/g,'').replace(/^44/,'0');
@@ -13794,7 +13811,7 @@ function viewAccJob(id){cx('ov-accounts');openJob(id);}
 function openAwaitingDash(){
   document.getElementById('ov-awaiting').classList.add('open');
   renderAwaitingDash();
-  Promise.all([loadWaStatus(),(typeof loadLeads==='function'?loadLeads():null)]).then(()=>renderAwaitingDash()).catch(()=>{});
+  Promise.all([loadWaStatus(),loadUnifiedLeads(),(typeof loadLeads==='function'?loadLeads():null)]).then(()=>renderAwaitingDash()).catch(()=>{});
 }
 
 // ══════════════════════════════════════════════════════════════════

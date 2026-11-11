@@ -12,8 +12,9 @@
      2. STATUS    Meta tells this script when each message is sent, delivered
                   and read. Kept in the CRM database (jobs row '__wa_status__')
                   so the Awaiting Decision screen can show ✓ / ✓✓ / blue ✓✓.
-     3. REPLIES   customer messages land in the CRM Inbox (table kith_leads),
-                  so a "YES" shows up against the job it answers.
+     3. REPLIES   customer messages land in the unified Inbox (through the
+                  inbox-ingest function), so a "YES" shows up against the job
+                  it answers in Awaiting Decision.
 
    Script Properties (Project Settings → Script properties)
      META_TOKEN      permanent access token from Meta (System User token)
@@ -177,14 +178,35 @@ function saveStatus(id, status, at, to, err) {
   } finally { lock.releaseLock(); }
 }
 
-// A customer message → the CRM Inbox, added to their open conversation
+// A customer message → the unified Inbox. It goes through the inbox-ingest
+// Edge Function (the single door every channel uses) so it lands beside
+// website, Instagram and phone leads. If that function is not deployed,
+// it falls back to the CRM's own kith_leads table.
 function saveIncoming(m, name) {
+  var seen = CacheService.getScriptCache(), key = 'in-' + m.id;
+  if (m.id && seen.get(key)) return;            // Meta sometimes sends the same message twice
+  if (m.id) seen.put(key, '1', 21600);
+  var text0 = msgText(m);
+  try {
+    var res = UrlFetchApp.fetch(P('SB_URL') + '/functions/v1/inbox-ingest', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { Authorization: 'Bearer ' + P('SB_KEY'), apikey: P('SB_KEY'), 'x-caller': 'kith-relay' },
+      payload: JSON.stringify({ channel: 'whatsapp', sender_name: name, sender_phone: '+' + String(m.from || '').replace(/\D/g, ''),
+        message_text: text0, received_at: new Date((parseInt(m.timestamp, 10) * 1000) || Date.now()).toISOString(), wa_message_id: m.id }) });
+    if (res.getResponseCode() < 300) return;
+    console.warn('inbox-ingest said ' + res.getResponseCode() + ' — using kith_leads');
+  } catch (err) { console.warn('inbox-ingest failed — using kith_leads', err); }
+  saveIncomingTable(m, name);
+}
+function msgText(m) {
+  if (m.type === 'text') return (m.text && m.text.body) || '';
+  if (m.type === 'button') return (m.button && m.button.text) || '';
+  if (m.type === 'interactive') return ((m.interactive && (m.interactive.button_reply || m.interactive.list_reply)) || {}).title || '';
+  return '[' + m.type + ']';
+}
+function saveIncomingTable(m, name) {
   if (!P('SB_URL')) return;
-  var text = '';
-  if (m.type === 'text') text = (m.text && m.text.body) || '';
-  else if (m.type === 'button') text = (m.button && m.button.text) || '';
-  else if (m.type === 'interactive') text = ((m.interactive && (m.interactive.button_reply || m.interactive.list_reply)) || {}).title || '';
-  else text = '[' + m.type + ']';
+  var text = msgText(m);
   var phone = ukPhone(m.from);
   var ms = parseInt(m.timestamp, 10) * 1000 || Date.now();
   var msg = { dir: 'in', text: text, at: Utilities.formatDate(new Date(ms), 'Europe/London', 'dd MMM yyyy, HH:mm'), ts: ms, channel: 'whatsapp', waId: m.id };
