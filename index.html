@@ -6463,12 +6463,13 @@ function actH(j){
       h+=unreadyBandH(j)+
         '<div class="notice" style="margin-bottom:10px">Workshop: check the vehicle over before any work starts.</div>'+
         vehicleCheckH(j)+
+        healthCheckH(j)+
         extraWorkH(j)+
         '<button class="btn btn-gold btn-full" style="margin-top:10px" onclick="startWorkGuard(\''+j.id+'\')">\u2192 Checked in, start work</button>';
             h+=jobDocsH(j);
       break;
     case 'authwait':
-      h+=authWaitingH(j)+
+      h+=authWaitingH(j)+healthCheckH(j)+
         '<div class="notice" style="margin-bottom:10px">Work is on hold until the customer confirms.</div>'+
         extraWorkH(j)+
         '<button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="mv(\'inprog\',\'Back on the job\')">\u2192 Back to In Progress</button>';
@@ -6479,6 +6480,7 @@ function actH(j){
         extraWorkH(j)+
         updatesH(j)+
         vehicleCheckH(j)+
+        healthCheckH(j)+
         '<button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--amber);border-color:var(--amber)" onclick="holdForAuth(\''+j.id+'\')">\u23f8 Hold \u2014 needs customer authority</button>'+
         '<button class="btn btn-gold btn-full" style="margin-top:8px" onclick="mv(\'done\',\'Work finished\')">\u2192 Work complete</button>';
             h+=jobDocsH(j);
@@ -12059,6 +12061,31 @@ function vehicleCheckH(j){
       : '<div style="font-size:11px;color:var(--amber);margin-bottom:6px">\u26a0 Not checked in yet \u2014 5 photos of the car, the dash and the diagnostic report before work starts.</div>'+
         '<button class="btn btn-gold btn-sm btn-full" onclick="openVehicleCheck(\''+j.id+'\')">\ud83d\ude97 Check the vehicle in</button>')+
   '</div>';
+}
+
+// ── HEALTH CHECK (20/40/60 point, done on the mechanic's phone) ────
+// The check lives on j.healthCheck, written by kith-healthcheck.html.
+function healthCheckH(j){
+  const h=j.healthCheck;
+  const url='kith-healthcheck.html?job='+encodeURIComponent(j.id);
+  const box=inner=>'<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">'+
+    '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin-bottom:6px">Health check \u00b7 workshop</div>'+inner+'</div>';
+  if(!h)return box('<div style="font-size:11px;color:var(--dim);margin-bottom:6px">No health check done yet.</div>'+
+    '<a class="btn btn-ghost btn-sm btn-full" href="'+url+'" target="_blank" rel="noopener">\ud83e\ude7a Start 20 / 40 / 60 point check</a>');
+  if(h.status!=='sent'){
+    const done=Object.values(h.items||{}).filter(e=>e&&(e.rag||e.reading)).length;
+    return box('<div style="font-size:11px;color:var(--amber);margin-bottom:6px">\u23f3 '+escHtml(h.level)+'-point check in progress \u00b7 '+done+'/'+escHtml(h.level)+' \u00b7 '+escHtml(h.startedBy||'')+'</div>'+
+      '<a class="btn btn-ghost btn-sm btn-full" href="'+url+'" target="_blank" rel="noopener">Open health check</a>');
+  }
+  const s=h.summary||{};
+  const col=s.red?'var(--red)':s.amber?'var(--amber)':'var(--green)';
+  const items=Object.entries(h.items||{}).filter(([k,e])=>e&&e.decision);
+  const dec={yes:0,no:0,later:0};items.forEach(([k,e])=>{if(dec[e.decision.d]!=null)dec[e.decision.d]++;});
+  return box('<div style="background:var(--surface2);border-left:3px solid '+col+';border-radius:var(--rs);padding:8px 10px;font-size:11px">'+
+    '<strong style="color:'+col+'">'+escHtml(h.level)+'-point \u00b7 '+(s.red||0)+' urgent \u00b7 '+(s.amber||0)+' advisory \u00b7 '+(s.green||0)+' OK</strong>'+
+    '<div style="color:var(--dim);margin-top:2px">'+escHtml((h.completedBy||'')+' \u00b7 '+(h.completedAt||'')+(h.mileage?' \u00b7 '+h.mileage+' miles':''))+'</div>'+
+    (items.length?'<div style="color:var(--dim);margin-top:2px">Customer: '+dec.yes+' authorised \u00b7 '+dec.no+' declined \u00b7 '+dec.later+' next visit</div>':'')+
+    '<a class="btn btn-ghost btn-xs" style="margin-top:5px" href="'+url+'" target="_blank" rel="noopener">View report & photos</a></div>');
 }
 
 // ── CUSTOMER UPDATES WHILE IN ──────────────────────────────────────

@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>KITH Health Check</title>
+<link rel="manifest" href="manifest-healthcheck.json">
+<meta name="theme-color" content="#14161A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Health Check">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="apple-touch-icon" href="icon-hc-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14161A; --bg-2:#1B1E24; --card:#20242B; --card-2:#262B33;
+  --line:#333A44; --line-soft:#2A2F37;
+  --ink:#EDEFF2; --ink-2:#A8B1BD; --ink-3:#6E7885;
+  --gold:#D8A32B; --gold-bg:rgba(216,163,43,.10);
+  --go:#3FB07A; --go-bg:rgba(63,176,122,.14);
+  --warn:#E0A030; --warn-bg:rgba(224,160,48,.14);
+  --stop:#E05A4C; --stop-bg:rgba(224,90,76,.14);
+  --blue:#5B9BD5; --blue-bg:rgba(91,155,213,.12);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:15px;line-height:1.45}
+h1,h2,h3{font-family:"Barlow Condensed",Impact,sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin:0}
+.mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+[hidden]{display:none!important}
+
+.top{position:sticky;top:0;z-index:40;background:var(--bg-2);border-bottom:1px solid var(--line);padding:.55rem 1rem;padding-top:calc(.55rem + env(safe-area-inset-top));display:flex;align-items:center;gap:.6rem}
+.brand h1{font-size:1.2rem;letter-spacing:.06em}
+.brand .v{font-family:"IBM Plex Mono",monospace;font-size:.62rem;color:var(--bg);background:var(--gold);padding:.08rem .32rem;border-radius:2px;font-weight:600;margin-left:.35rem;vertical-align:middle}
+.spacer{flex:1}
+.pill{font-family:"IBM Plex Mono",monospace;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;padding:.3rem .6rem;border:1px solid var(--line);border-radius:99px;color:var(--ink-2);background:none;cursor:pointer}
+.pill.on{border-color:var(--gold);color:var(--gold);background:var(--gold-bg)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--ink-3);display:inline-block}
+.dot.ok{background:var(--go)}.dot.err{background:var(--stop)}.dot.busy{background:var(--warn)}
+.back{background:none;border:0;color:var(--ink-2);font-size:1.4rem;padding:0 .3rem;cursor:pointer;line-height:1}
+
+main{max-width:720px;margin:0 auto;padding:1rem 1rem 8rem}
+.hint{color:var(--ink-3);font-size:.85rem;margin:.2rem 0 .8rem}
+h2.sec{font-size:1rem;letter-spacing:.06em;color:var(--ink-2);margin:1.1rem 0 .5rem}
+.note{border-radius:8px;padding:.7rem .85rem;margin:.6rem 0;font-size:.9rem;border:1px solid var(--line);background:var(--card)}
+.note b{display:block;margin-bottom:.15rem}
+.note.stop{border-color:var(--stop);background:var(--stop-bg)}
+.note.warn{border-color:var(--warn);background:var(--warn-bg)}
+.note.go{border-color:var(--go);background:var(--go-bg)}
+.empty{text-align:center;color:var(--ink-3);padding:2.5rem 1rem}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:sp 1s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;border:1px solid var(--line);background:var(--card-2);border-radius:8px;padding:.7rem 1rem;cursor:pointer;font-weight:600;min-height:46px}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:#14161A}
+.btn.ghost{background:none}
+.btn.wide{width:100%}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* login */
+.who{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.5rem}
+.who button{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.8rem;text-align:left;cursor:pointer;min-height:64px}
+.who button.on{border-color:var(--gold);background:var(--gold-bg)}
+.who .n{font-weight:600;display:block}.who .r{font-size:.75rem;color:var(--ink-3)}
+input.field,textarea.field,select.field{width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:.7rem .8rem;min-height:46px}
+textarea.field{min-height:70px;resize:vertical}
+label.lbl{display:block;font-size:.78rem;color:var(--ink-2);margin:.7rem 0 .3rem;text-transform:uppercase;letter-spacing:.05em}
+
+/* tabs */
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin-bottom:.8rem}
+.tabs button{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.6rem;cursor:pointer;font-weight:600}
+.tabs button.on{border-color:var(--gold);background:var(--gold-bg);color:var(--gold)}
+.tabs .c{font-family:"IBM Plex Mono",monospace;font-size:.75rem;color:var(--ink-3);margin-left:.3rem}
+
+/* job cards */
+.job{display:flex;align-items:center;gap:.8rem;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.8rem .9rem;margin-bottom:.55rem;cursor:pointer;width:100%;text-align:left}
+.job:active{background:var(--card-2)}
+.reg{font-family:"IBM Plex Mono",monospace;font-weight:600;background:#F2C230;color:#111;padding:.15rem .45rem;border-radius:3px;letter-spacing:.05em;font-size:.95rem;white-space:nowrap}
+.job .mid{flex:1;min-width:0}
+.job .sub{color:var(--ink-2);font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.job .stg{color:var(--ink-3);font-size:.75rem;font-family:"IBM Plex Mono",monospace}
+.chip{font-family:"IBM Plex Mono",monospace;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;padding:.2rem .45rem;border-radius:4px;border:1px solid var(--line);color:var(--ink-2);white-space:nowrap}
+.chip.go{color:var(--go);border-color:var(--go)}.chip.warn{color:var(--warn);border-color:var(--warn)}.chip.stop{color:var(--stop);border-color:var(--stop)}.chip.gold{color:var(--gold);border-color:var(--gold)}
+
+/* level picker */
+.levels{display:grid;gap:.6rem}
+.lvl{display:flex;align-items:center;gap:1rem;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem;cursor:pointer;text-align:left;width:100%}
+.lvl.on{border-color:var(--gold);background:var(--gold-bg)}
+.lvl .big{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:2.2rem;color:var(--gold);min-width:3.2rem;line-height:1}
+.lvl .t{font-weight:600}.lvl .d{color:var(--ink-3);font-size:.85rem}
+
+/* checklist */
+.jobhead{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.8rem .9rem;margin-bottom:.8rem}
+.jobhead .row{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.bar{height:6px;background:var(--line-soft);border-radius:3px;overflow:hidden;margin-top:.6rem;display:flex}
+.bar i{display:block;height:100%}
+.secblock{margin-bottom:.6rem;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card)}
+.sechead{display:flex;align-items:center;gap:.6rem;width:100%;background:none;border:0;padding:.85rem .9rem;cursor:pointer;text-align:left}
+.sechead h3{font-size:1.05rem;flex:1}
+.sechead .cnt{font-family:"IBM Plex Mono",monospace;font-size:.78rem;color:var(--ink-3)}
+.sechead .cnt.done{color:var(--go)}
+.secbody{border-top:1px solid var(--line-soft)}
+.item{padding:.75rem .9rem;border-bottom:1px solid var(--line-soft)}
+.item:last-child{border-bottom:0}
+.item.red{box-shadow:inset 4px 0 0 var(--stop)}.item.amber{box-shadow:inset 4px 0 0 var(--warn)}.item.green{box-shadow:inset 4px 0 0 var(--go)}.item.na{box-shadow:inset 4px 0 0 var(--ink-3)}
+.item.flag{background:var(--stop-bg)}
+.item .nm{font-weight:600;margin-bottom:.5rem;display:flex;gap:.4rem;align-items:baseline}
+.item .nm .lv{font-family:"IBM Plex Mono",monospace;font-size:.65rem;color:var(--ink-3);font-weight:400}
+.rag{display:grid;grid-template-columns:1fr 1fr 1fr 56px;gap:.35rem}
+.rag button{border:1px solid var(--line);background:var(--bg-2);border-radius:8px;min-height:48px;font-weight:600;cursor:pointer;font-size:.9rem}
+.rag button[data-r=green].on{background:var(--go);border-color:var(--go);color:#0d1a12}
+.rag button[data-r=amber].on{background:var(--warn);border-color:var(--warn);color:#1d1404}
+.rag button[data-r=red].on{background:var(--stop);border-color:var(--stop);color:#fff}
+.rag button[data-r=na].on{background:var(--ink-3);border-color:var(--ink-3);color:#111}
+.rag button.lock{opacity:.35}
+.meas{display:grid;grid-template-columns:repeat(3,1fr);gap:.35rem;margin-bottom:.5rem}
+.meas.two{grid-template-columns:repeat(2,1fr)}
+.meas label{font-size:.7rem;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em}
+.meas input{width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:.55rem;min-height:46px;font-family:"IBM Plex Mono",monospace;font-size:1.05rem;text-align:center}
+.auto{font-size:.78rem;color:var(--ink-3);margin:-.2rem 0 .5rem}
+.more{margin-top:.55rem;display:grid;gap:.45rem}
+.photos{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+.ph{position:relative;width:72px;height:72px;border-radius:6px;overflow:hidden;border:1px solid var(--line);background:var(--bg-2)}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph .x{position:absolute;top:2px;right:2px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.7);color:#fff;font-size:.8rem;cursor:pointer}
+.ph .up{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}
+.ph.fail{border-color:var(--stop)}
+.camera{display:inline-flex;align-items:center;justify-content:center;gap:.35rem;width:72px;height:72px;border:1px dashed var(--ink-3);border-radius:6px;color:var(--ink-2);font-size:.75rem;cursor:pointer;flex-direction:column}
+.camera input{display:none}
+.why{font-size:.78rem;color:var(--stop);margin-top:.35rem}
+.allok{font-size:.8rem;background:none;border:1px solid var(--line);color:var(--ink-2);border-radius:6px;padding:.35rem .6rem;cursor:pointer;margin:.6rem .9rem}
+
+/* bottom bar */
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--bg-2);border-top:1px solid var(--line);padding:.6rem 1rem;padding-bottom:calc(.6rem + env(safe-area-inset-bottom))}
+.dock .in{max-width:720px;margin:0 auto;display:flex;gap:.6rem;align-items:center}
+.counts{display:flex;gap:.5rem;font-family:"IBM Plex Mono",monospace;font-size:.85rem;flex:1;flex-wrap:wrap}
+.counts .g{color:var(--go)}.counts .a{color:var(--warn)}.counts .r{color:var(--stop)}.counts .t{color:var(--ink-3)}
+
+/* report */
+.find{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.8rem .9rem;margin-bottom:.6rem}
+.find.red{border-left:4px solid var(--stop)}.find.amber{border-left:4px solid var(--warn)}
+.find .h{display:flex;gap:.5rem;align-items:center;margin-bottom:.3rem}
+.find .h b{flex:1}
+.find .photos .ph{width:96px;height:96px}
+.dec{display:grid;grid-template-columns:repeat(3,1fr);gap:.35rem;margin-top:.6rem}
+.dec button{border:1px solid var(--line);background:var(--bg-2);border-radius:8px;min-height:42px;cursor:pointer;font-weight:600;font-size:.85rem}
+.dec button.on[data-d=yes]{background:var(--go);color:#0d1a12;border-color:var(--go)}
+.dec button.on[data-d=no]{background:var(--stop);color:#fff;border-color:var(--stop)}
+.dec button.on[data-d=later]{background:var(--blue);color:#0a1420;border-color:var(--blue)}
+.greens{columns:2;column-gap:1rem;font-size:.85rem;color:var(--ink-2)}
+@media(max-width:420px){.greens{columns:1}}
+.greens div{break-inside:avoid;padding:.12rem 0}
+
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:60;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--bg-2);border:1px solid var(--line);border-radius:14px 14px 0 0;width:100%;max-width:720px;max-height:90vh;overflow:auto;padding:1rem 1rem calc(1rem + env(safe-area-inset-bottom))}
+.lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:70;display:flex;align-items:center;justify-content:center}
+.lightbox img{max-width:100%;max-height:100%}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(5.5rem + env(safe-area-inset-bottom));background:var(--card-2);border:1px solid var(--gold);padding:.6rem 1rem;border-radius:8px;z-index:80;font-size:.9rem;max-width:90vw}
+.check{display:flex;gap:.6rem;align-items:flex-start;padding:.6rem 0}
+.check input{width:22px;height:22px;margin-top:.1rem;accent-color:var(--gold)}
+
+@media print{
+  .top,.dock,.no-print,.dec{display:none!important}
+  body{background:#fff;color:#111}
+  main{padding:0}
+  .find,.jobhead{background:#fff;border-color:#ccc;color:#111}
+  .greens{color:#333}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <button class="back" id="btnBack" hidden aria-label="Back">‹</button>
+  <div class="brand"><h1>KITH Health Check<span class="v">v1.0</span></h1></div>
+  <span class="spacer"></span>
+  <span class="dot" id="sync" title=""></span>
+  <button class="pill" id="whoPill" hidden></button>
+</header>
+
+<!-- LOGIN -->
+<main id="scr-login">
+  <h2 class="sec">Who's checking?</h2>
+  <p class="hint">Same names and PINs as the CRM.</p>
+  <div class="who" id="whoGrid"><div class="empty"><span class="spin"></span></div></div>
+  <div id="otherBox" hidden>
+    <label class="lbl" for="otherName">Your name</label>
+    <input class="field" id="otherName" autocomplete="name" placeholder="Your first name">
+  </div>
+  <div id="pinBox" hidden>
+    <label class="lbl" for="pinIn">PIN</label>
+    <input class="field mono" id="pinIn" type="password" inputmode="numeric" autocomplete="off">
+  </div>
+  <div id="loginErr"></div>
+  <p><button class="btn gold wide" id="btnLogin" hidden>Start</button></p>
+</main>
+
+<!-- JOB LIST -->
+<main id="scr-list" hidden>
+  <nav class="tabs" id="tabs"></nav>
+  <input class="field" id="search" type="search" placeholder="Search reg, make or customer" autocapitalize="characters">
+  <div id="list" style="margin-top:.7rem"></div>
+</main>
+
+<!-- ONE JOB -->
+<main id="scr-job" hidden><div id="jobView"></div></main>
+
+<div class="dock" id="dock" hidden><div class="in" id="dockIn"></div></div>
+<div id="sheetHost"></div>
+
+<script src="kith-hc.js"></script>
+<script>
+'use strict';
+/* ===========================================================================
+   KITH HEALTH CHECK — 20 / 40 / 60 point vehicle checks on the mechanic's
+   phone, with photos, written straight onto the CRM job.
+
+   Reads and writes the same Supabase "jobs" table as the CRM. The check is
+   saved at jobs.data.healthCheck; photos go to the "job-sheets" bucket in
+   the job's folder; finishing a check pings the service adviser through the
+   CRM's own notification row (__notifs__) and writes a line in the job log.
+   All the rules (lists, colours, what blocks sending) are in kith-hc.js.
+   =========================================================================== */
+const H = window.KITHHC;
+const CFG = {
+  url: localStorage.getItem('kith_crm_url') || 'https://mxyrxyhvjndgjqupgstu.supabase.co',
+  key: localStorage.getItem('kith_crm_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog',
+  bucket: 'job-sheets'
+};
+const REST = () => CFG.url.replace(/\/$/, '') + '/rest/v1/';
+const HDR = () => ({ apikey: CFG.key, Authorization: 'Bearer ' + CFG.key, 'Content-Type': 'application/json' });
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }, del(k) { try { localStorage.removeItem(k); } catch (e) {} } };
+function toast(msg, ms) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), ms || 3000); }
+
+const STAGE_LABEL = { booked: 'Booked', po: 'POs to raise', raised: 'POs raised', so: 'SOs to raise', soraised: 'SOs raised', checkin: 'Check-in', authwait: 'Awaiting authority', inprog: 'In progress', done: 'Work complete' };
+// Stages where the car is (or is about to be) in the workshop
+const WORK_STAGES = ['booked', 'po', 'raised', 'so', 'soraised', 'checkin', 'authwait', 'inprog', 'done'];
+const LEVEL_TEXT = {
+  20: ['Quick check', 'Fluids, lights, tyres, pads, wipers, screen, belts. About 10 minutes — do it on every car.'],
+  40: ['Standard check', 'Adds discs, belts and hoses, shocks, track rods, exhaust, clutch and a road test.'],
+  60: ['Full inspection', 'Everything: suspension joints and bushes, steering rack, underbody, filters, cambelt due.']
+};
+
+/* ---------------- state ---------------- */
+let ME = null, MY_ROLE = '', JOBS = [], TAB = 'todo', JOB = null, HC = null, OPEN = {}, DIRTY = false, SAVING = false, SHOW_WHY = false, VIEW = 'check';
+const UPLOADS = {}; // key -> {itemId, dataUrl, state:'up'|'fail', err}
+const canDecide = () => /advis|director|manager|workshop/i.test(MY_ROLE) || /^(logkith|logan)$/i.test(ME || '');
+
+/* ---------------- who ---------------- */
+// Same people and PINs as the CRM (index.html STAFF). Used when the
+// kith_staff table is empty. Mechanics sign in with "Mechanic" + their name.
+const FALLBACK_STAFF = [
+  { name: 'Ali', role: 'Service Adviser', pin: '7777' }, { name: 'Elvis', role: 'Service Adviser', pin: '8888' },
+  { name: 'Giles', role: 'Parts / Workshop', pin: '4444' }, { name: 'Logkith', role: 'Director', pin: '0000' }];
+let STAFF = [], PICKED = null;
+async function loadStaff() {
+  try {
+    const r = await fetch(REST() + 'kith_staff?select=id,data&limit=200', { headers: HDR() });
+    if (!r.ok) throw new Error('staff ' + r.status);
+    STAFF = ((await r.json()) || []).map(x => Object.assign({ id: x.id }, x.data || {})).filter(x => x.name && x.active !== false);
+    if (!STAFF.length) throw new Error('empty');
+  } catch (e) { STAFF = FALLBACK_STAFF.slice(); }
+  // Mechanics first, then everyone else
+  const rank = x => /mech|tech|workshop/i.test(x.role || '') ? 0 : /advis|director|manager/i.test(x.role || '') ? 1 : 2;
+  STAFF.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  renderWho();
+}
+function renderWho() {
+  $('whoGrid').innerHTML = STAFF.map((p, i) => '<button class="' + (PICKED === p ? 'on' : '') + '" data-i="' + i + '"><span class="n">' + esc(p.name) + '</span><span class="r">' + esc(p.role || 'Staff') + '</span></button>').join('') +
+    '<button class="' + (PICKED === 'other' ? 'on' : '') + '" data-i="other"><span class="n">Mechanic</span><span class="r">Type your name</span></button>';
+  $('whoGrid').querySelectorAll('[data-i]').forEach(b => b.onclick = () => {
+    PICKED = b.dataset.i === 'other' ? 'other' : STAFF[+b.dataset.i]; renderWho();
+    $('otherBox').hidden = PICKED !== 'other'; $('btnLogin').hidden = false;
+    $('pinBox').hidden = !(PICKED !== 'other' && PICKED.pin); $('pinIn').value = '';
+    $('loginErr').innerHTML = '';
+    if (PICKED === 'other') $('otherName').focus(); else if (PICKED.pin) $('pinIn').focus();
+  });
+}
+function doLogin() {
+  if (!PICKED) return;
+  if (PICKED === 'other') {
+    const n = $('otherName').value.trim();
+    if (n.length < 2) { $('loginErr').innerHTML = '<div class="note stop"><b>Type your name</b>So the check shows who did it.</div>'; return; }
+    ME = n; MY_ROLE = 'Mechanic';
+  } else {
+    if (PICKED.pin && String($('pinIn').value) !== String(PICKED.pin)) { $('loginErr').innerHTML = '<div class="note stop"><b>Wrong PIN</b>Try again.</div>'; $('pinIn').value = ''; return; }
+    ME = PICKED.name; MY_ROLE = PICKED.role || '';
+  }
+  store.set('kith_hc_me', JSON.stringify({ name: ME, role: MY_ROLE }));
+  showList();
+}
+$('btnLogin').onclick = doLogin;
+$('pinIn').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+$('whoPill').onclick = () => {
+  if (!confirm('Sign out ' + ME + '?')) return;
+  ME = null; store.del('kith_hc_me'); PICKED = null;
+  show('login'); $('whoPill').hidden = true; renderWho();
+};
+
+/* ---------------- screens ---------------- */
+function show(which) {
+  ['login', 'list', 'job'].forEach(s => $('scr-' + s).hidden = s !== which);
+  $('btnBack').hidden = which !== 'job';
+  $('dock').hidden = which !== 'job';
+  window.scrollTo(0, 0);
+}
+function showList() {
+  JOB = null; HC = null; VIEW = 'check';
+  $('whoPill').hidden = false; $('whoPill').textContent = ME; $('whoPill').className = 'pill on';
+  show('list'); load();
+}
+$('btnBack').onclick = async () => { if (DIRTY) await syncNow(); showList(); };
+
+/* ---------------- loading ---------------- */
+function setSync(k, title) { $('sync').className = 'dot ' + k; $('sync').title = title || ''; }
+async function load(silent) {
+  if (!silent) $('list').innerHTML = '<div class="empty"><span class="spin"></span> Loading jobs from the CRM…</div>';
+  try {
+    const q = REST() + 'jobs?select=id,data,updated_at&data->>stage=in.(' + WORK_STAGES.join(',') + ')&order=updated_at.desc';
+    const r = await fetch(q, { headers: Object.assign(HDR(), { Range: '0-999', 'Range-Unit': 'items' }) });
+    if (!r.ok) throw new Error('CRM returned ' + r.status);
+    JOBS = ((await r.json()) || []).filter(x => x.id && x.id.indexOf('__') !== 0 && x.data).map(x => Object.assign({}, x.data, { id: x.id }));
+    setSync('ok', 'Up to date ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    renderList();
+  } catch (e) {
+    setSync('err', e.message);
+    if (!silent) $('list').innerHTML = '<div class="note stop"><b>Could not reach the CRM</b>' + esc(e.message) + ' — check the phone has signal or wi-fi, then pull down to refresh.</div>';
+  }
+}
+const hcOf = j => j.healthCheck || null;
+const hcStatus = j => { const h = hcOf(j); return !h ? 'none' : h.status === 'sent' ? 'sent' : 'draft'; };
+function statusChip(j) {
+  const h = hcOf(j), st = hcStatus(j);
+  if (st === 'none') return '<span class="chip">Not started</span>';
+  const s = H.summary(h);
+  if (st === 'draft') return '<span class="chip gold">' + h.level + 'pt · ' + (s.total - s.todo) + '/' + s.total + '</span>';
+  return '<span class="chip ' + (s.red ? 'stop' : s.amber ? 'warn' : 'go') + '">' + h.level + 'pt · ' + (s.red ? s.red + ' urgent' : s.amber ? s.amber + ' advisory' : 'all OK') + '</span>';
+}
+function renderList() {
+  const q = $('search').value.trim().toLowerCase().replace(/\s+/g, '');
+  const match = j => !q || [j.reg, j.make, j.model, j.name, j.tmJob].some(v => String(v || '').toLowerCase().replace(/\s+/g, '').includes(q));
+  const todo = JOBS.filter(j => hcStatus(j) !== 'sent' && j.stage !== 'done');
+  const sent = JOBS.filter(j => hcStatus(j) === 'sent');
+  const counts = { todo: todo.length, sent: sent.length };
+  $('tabs').innerHTML = [['todo', 'To check'], ['sent', 'Results']].map(([k, n]) => '<button data-t="' + k + '" class="' + (TAB === k ? 'on' : '') + '">' + n + '<span class="c">' + counts[k] + '</span></button>').join('');
+  $('tabs').querySelectorAll('[data-t]').forEach(b => b.onclick = () => { TAB = b.dataset.t; renderList(); });
+  let rows = (TAB === 'todo' ? todo : sent).filter(match);
+  // Cars physically in first, then drafts, then the rest
+  const pri = j => (j.stage === 'checkin' || j.stage === 'inprog' ? 0 : 2) - (hcStatus(j) === 'draft' ? 1 : 0);
+  if (TAB === 'todo') rows.sort((a, b) => pri(a) - pri(b));
+  // Searching also finds a job on the other tab
+  if (q && !rows.length) rows = JOBS.filter(match);
+  $('list').innerHTML = rows.length ? rows.map(j => '<button class="job" data-id="' + esc(j.id) + '"><span class="reg">' + esc(j.reg || '—') + '</span><span class="mid"><div class="sub">' +
+    esc([[j.make, j.model].filter(Boolean).join(' '), j.name].filter(Boolean).join(' · ') || 'No vehicle details') + '</div><div class="stg">' + esc(STAGE_LABEL[j.stage] || j.stage || '') +
+    (j.bookedFor ? ' · ' + esc(String(j.bookedFor).slice(0, 10)) : '') + '</div></span>' + statusChip(j) + '</button>').join('')
+    : '<div class="empty">' + (q ? 'No job matches “' + esc(q) + '”.' : TAB === 'todo' ? 'No cars waiting for a health check.' : 'No finished checks yet.') + '</div>';
+  $('list').querySelectorAll('[data-id]').forEach(b => b.onclick = () => openJob(b.dataset.id));
+}
+$('search').addEventListener('input', renderList);
+
+/* ---------------- one job ---------------- */
+const draftKey = id => 'kith_hc_draft_' + id;
+async function openJob(id) {
+  const j = JOBS.find(x => x.id === id); if (!j) return;
+  JOB = j; SHOW_WHY = false; OPEN = {};
+  const local = (() => { try { return JSON.parse(store.get(draftKey(id)) || 'null'); } catch (e) { return null; } })();
+  HC = local ? H.mergeHC(j.healthCheck, local) : (j.healthCheck ? H.clone(j.healthCheck) : null);
+  if (local) DIRTY = true;
+  VIEW = HC && HC.status === 'sent' ? 'report' : 'check';
+  show('job'); render();
+  if (DIRTY) queueSync();
+}
+function render() {
+  if (!JOB) return;
+  if (!HC) return renderStart();
+  if (VIEW === 'report') return renderReport();
+  renderCheck();
+}
+function jobHead(extra) {
+  const j = JOB;
+  return '<div class="jobhead"><div class="row"><span class="reg">' + esc(j.reg || '—') + '</span><b style="flex:1">' + esc([j.make, j.model].filter(Boolean).join(' ') || 'Vehicle') + '</b>' +
+    (HC ? '<span class="chip gold">' + HC.level + '-point</span>' : '') + '</div>' +
+    '<div class="hint" style="margin:.35rem 0 0">' + esc([j.name, STAGE_LABEL[j.stage] || j.stage, j.tmJob ? 'TM ' + j.tmJob : ''].filter(Boolean).join(' · ')) + '</div>' + (extra || '') + '</div>';
+}
+
+/* ---- start: choose 20 / 40 / 60 ---- */
+let PICK_LEVEL = 20;
+function renderStart() {
+  $('jobView').innerHTML = jobHead() +
+    '<h2 class="sec">Which check?</h2><div class="levels">' + H.LEVELS.map(l => '<button class="lvl ' + (PICK_LEVEL === l ? 'on' : '') + '" data-l="' + l + '"><span class="big">' + l + '</span><span><div class="t">' + LEVEL_TEXT[l][0] + '</div><div class="d">' + LEVEL_TEXT[l][1] + '</div></span></button>').join('') + '</div>' +
+    '<label class="lbl" for="mileIn">Mileage on the clock</label><input class="field mono" id="mileIn" inputmode="numeric" placeholder="e.g. 84210" value="' + esc(JOB.mileage || '') + '">';
+  $('jobView').querySelectorAll('[data-l]').forEach(b => b.onclick = () => { PICK_LEVEL = +b.dataset.l; renderStart(); });
+  $('dockIn').innerHTML = '<button class="btn gold wide" id="btnStart">Start ' + PICK_LEVEL + '-point check</button>';
+  $('btnStart').onclick = () => {
+    HC = { v: H.VERSION, level: PICK_LEVEL, status: 'draft', mileage: $('mileIn').value.trim(), startedBy: ME, startedAt: H.ts(), items: {} };
+    OPEN = { [H.sectionsFor(PICK_LEVEL)[0].id]: true };
+    changed(); render();
+  };
+}
+
+/* ---- the checklist ---- */
+function entry(id) { HC.items = HC.items || {}; return HC.items[id] = HC.items[id] || {}; }
+function renderCheck() {
+  const probs = H.problems(HC), probIds = new Set(probs.map(p => p.id));
+  const sections = H.sectionsFor(HC.level);
+  if (!Object.keys(OPEN).length) { const first = sections.find(s => s.items.some(i => !H.effectiveRag(i, (HC.items || {})[i.id]))); if (first) OPEN[first.id] = true; }
+  let html = jobHead('<div style="margin-top:.6rem;display:flex;gap:.5rem;align-items:end"><div style="flex:1"><label class="lbl" for="mileIn" style="margin-top:0">Mileage</label><input class="field mono" id="mileIn" inputmode="numeric" value="' + esc(HC.mileage || '') + '"></div>' +
+    (HC.level < 60 ? '<button class="btn ghost" id="btnUp">Upgrade to ' + (HC.level + 20) + '</button>' : '') + '</div>' + barH(H.summary(HC)));
+  sections.forEach(s => {
+    const done = s.items.filter(i => H.effectiveRag(i, (HC.items || {})[i.id])).length;
+    const reds = s.items.filter(i => H.effectiveRag(i, (HC.items || {})[i.id]) === 'red').length;
+    const isOpen = !!OPEN[s.id];
+    html += '<div class="secblock"><button class="sechead" data-s="' + s.id + '"><h3>' + esc(s.name) + '</h3>' + (reds ? '<span class="chip stop">' + reds + ' urgent</span>' : '') +
+      '<span class="cnt ' + (done === s.items.length ? 'done' : '') + '">' + done + '/' + s.items.length + '</span><span>' + (isOpen ? '▾' : '▸') + '</span></button>';
+    if (isOpen) {
+      html += '<div class="secbody">' + s.items.map(it => itemH(it, SHOW_WHY && probIds.has(it.id) ? probs.filter(p => p.id === it.id) : null)).join('') + '</div>';
+      if (done < s.items.length) html += '<button class="allok" data-allok="' + s.id + '">Mark the rest of this section OK</button>';
+    }
+    html += '</div>';
+  });
+  $('jobView').innerHTML = html;
+  wireCheck();
+  const s = H.summary(HC);
+  $('dockIn').innerHTML = '<div class="counts"><span class="g">✓' + s.green + '</span><span class="a">!' + s.amber + '</span><span class="r">✕' + s.red + '</span><span class="t">' + s.todo + ' left</span></div>' +
+    '<button class="btn gold" id="btnFinish">Finish</button>';
+  $('btnFinish').onclick = finish;
+}
+function barH(s) {
+  const w = k => s.total ? (s[k] / s.total * 100).toFixed(1) + '%' : '0';
+  return '<div class="bar"><i style="width:' + w('green') + ';background:var(--go)"></i><i style="width:' + w('na') + ';background:var(--ink-3)"></i><i style="width:' + w('amber') + ';background:var(--warn)"></i><i style="width:' + w('red') + ';background:var(--stop)"></i></div>';
+}
+function itemH(it, why) {
+  const e = (HC.items || {})[it.id] || {};
+  const rag = H.effectiveRag(it, e), fromReading = H.ragFromReading(it.m, e.reading);
+  const RANK = { green: 0, amber: 1, red: 2 };
+  const btn = (r, label) => {
+    const locked = fromReading && r !== 'na' && RANK[r] < RANK[fromReading];
+    return '<button data-r="' + r + '" class="' + (rag === r ? 'on ' : '') + (locked ? 'lock' : '') + '"' + (locked ? ' title="The reading says ' + fromReading + '"' : '') + '>' + label + '</button>';
+  };
+  let h = '<div class="item ' + (rag || '') + (why ? ' flag' : '') + '" data-it="' + it.id + '"><div class="nm">' + esc(it.name) + (it.level > 20 ? '<span class="lv">' + it.level + '</span>' : '') + '</div>';
+  if (it.m) {
+    const r = e.reading || {};
+    const f = (k, l) => '<div><label>' + l + '</label><input inputmode="decimal" data-mm="' + k + '" value="' + esc(r[k] == null ? '' : r[k]) + '" placeholder="mm"></div>';
+    h += it.m === 'tread' ? '<div class="meas">' + f('inner', 'Inner') + f('mid', 'Middle') + f('outer', 'Outer') + '</div>' : '<div class="meas two">' + f('inner', 'Inner pad') + f('outer', 'Outer pad') + '</div>';
+    h += '<div class="auto">' + (it.m === 'tread' ? 'Under 1.6mm = urgent (illegal) · under 3mm = advisory' : '3mm or less = urgent · 5mm or less = advisory') + (fromReading ? ' · reading says <b>' + H.RAG_LABEL[fromReading] + '</b>' : '') + '</div>';
+  }
+  h += '<div class="rag">' + btn('green', 'OK') + btn('amber', 'Advise') + btn('red', 'Urgent') + btn('na', 'N/A') + '</div>';
+  const showMore = rag === 'red' || rag === 'amber' || e.note || (e.photos || []).length || pendingFor(it.id).length || OPEN['i:' + it.id];
+  if (showMore) {
+    h += '<div class="more"><textarea class="field" data-note placeholder="' + (rag === 'red' ? 'What is wrong and why it is urgent' : rag === 'amber' ? 'What to keep an eye on' : 'Note (optional)') + '">' + esc(e.note || '') + '</textarea>' + photosH(it.id, e, true) + '</div>';
+  } else {
+    h += '<div style="margin-top:.45rem"><button class="allok" style="margin:0" data-addmore>+ Note or photo</button></div>';
+  }
+  if (why) h += why.map(w => '<div class="why">⚠ ' + esc(w.why) + '</div>').join('');
+  return h + '</div>';
+}
+const pendingFor = id => Object.entries(UPLOADS).filter(([, u]) => u.itemId === id);
+function photosH(id, e, editable) {
+  let h = '<div class="photos">' + (e.photos || []).map(p => '<div class="ph"><img src="' + esc(p.url) + '" loading="lazy" data-view="' + esc(p.url) + '" alt="">' + (editable ? '<button class="x" data-rm="' + esc(p.url) + '" aria-label="Remove photo">✕</button>' : '') + '</div>').join('');
+  if (editable) {
+    h += pendingFor(id).map(([k, u]) => '<div class="ph ' + (u.state === 'fail' ? 'fail' : '') + '"><img src="' + u.dataUrl + '" alt=""><div class="up">' + (u.state === 'fail' ? '<button class="btn" style="min-height:0;padding:.3rem .5rem;font-size:.75rem" data-retry="' + k + '">Retry</button>' : '<span class="spin"></span>') + '</div></div>').join('');
+    h += '<label class="camera">📷<span>Photo</span><input type="file" accept="image/*" capture="environment" data-cam></label>';
+  }
+  return h + '</div>';
+}
+function wireCheck() {
+  const v = $('jobView');
+  $('mileIn').onchange = e => { HC.mileage = e.target.value.trim(); changed(); };
+  if ($('btnUp')) $('btnUp').onclick = () => {
+    if (!confirm('Upgrade to a ' + (HC.level + 20) + '-point check? Everything already done is kept.')) return;
+    HC.level += 20; logLater('Health check upgraded to ' + HC.level + '-point'); changed(); render();
+  };
+  v.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { OPEN[b.dataset.s] = !OPEN[b.dataset.s]; render(); });
+  v.querySelectorAll('[data-allok]').forEach(b => b.onclick = () => {
+    const s = H.sectionsFor(HC.level).find(x => x.id === b.dataset.allok);
+    const left = s.items.filter(i => !H.effectiveRag(i, (HC.items || {})[i.id]));
+    const needsMm = left.filter(i => i.m);
+    if (needsMm.length) { toast('Put the mm readings in for ' + needsMm.map(i => i.name.replace(/^.*— /, '')).join(', ') + ' first'); return; }
+    if (!confirm('Mark ' + left.length + ' item' + (left.length === 1 ? '' : 's') + ' as OK? Only do this if you have checked them.')) return;
+    left.forEach(i => { const e = entry(i.id); e.rag = 'green'; e.by = ME; e.t = Date.now(); });
+    changed(); render();
+  });
+  v.querySelectorAll('[data-it]').forEach(row => {
+    const id = row.dataset.it, it = H.itemById(id);
+    row.querySelectorAll('.rag [data-r]').forEach(b => b.onclick = () => {
+      const e = entry(id), r = b.dataset.r;
+      if (b.classList.contains('lock')) { toast('The reading says ' + H.RAG_LABEL[H.ragFromReading(it.m, e.reading)] + ' — change the mm if it is wrong'); return; }
+      e.rag = e.rag === r ? null : r; e.by = ME; e.t = Date.now();
+      changed(); render();
+      if (r === 'red' || r === 'amber') setTimeout(() => { const t = document.querySelector('[data-it="' + id + '"] [data-note]'); if (t && !t.value) t.focus(); }, 50);
+    });
+    row.querySelectorAll('[data-mm]').forEach(inp => inp.onchange = () => {
+      const e = entry(id); e.reading = e.reading || {};
+      const n = parseFloat(String(inp.value).replace(',', '.'));
+      e.reading[inp.dataset.mm] = isFinite(n) ? n : null; e.by = ME; e.t = Date.now();
+      changed(); render();
+    });
+    const note = row.querySelector('[data-note]');
+    if (note) note.oninput = () => { const e = entry(id); e.note = note.value; e.by = ME; e.t = Date.now(); changed(true); };
+    const more = row.querySelector('[data-addmore]'); if (more) more.onclick = () => { OPEN['i:' + id] = true; render(); };
+    const cam = row.querySelector('[data-cam]'); if (cam) cam.onchange = () => { Array.from(cam.files || []).forEach(f => addPhoto(id, f)); cam.value = ''; };
+    row.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
+      if (!confirm('Remove this photo?')) return;
+      const e = entry(id); e.removed = (e.removed || []).concat(b.dataset.rm); e.photos = (e.photos || []).filter(p => p.url !== b.dataset.rm); e.t = Date.now();
+      changed(); render();
+    });
+    row.querySelectorAll('[data-retry]').forEach(b => b.onclick = () => uploadPhoto(b.dataset.retry));
+  });
+  v.querySelectorAll('[data-view]').forEach(img => img.onclick = () => lightbox(img.dataset.view));
+}
+function lightbox(url) {
+  const d = document.createElement('div'); d.className = 'lightbox'; d.innerHTML = '<img src="' + esc(url) + '" alt="">';
+  d.onclick = () => d.remove(); document.body.appendChild(d);
+}
+
+/* ---------------- photos ---------------- */
+function prepImage(file, maxPx) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onerror = rej;
+    r.onload = () => {
+      const img = new Image();
+      img.onerror = () => res({ dataUrl: r.result, blob: file, type: file.type || 'image/jpeg' });
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxPx || h > maxPx) { const sc = maxPx / Math.max(w, h); w = Math.round(w * sc); h = Math.round(h * sc); }
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h); cx.drawImage(img, 0, 0, w, h);
+        const dataUrl = cv.toDataURL('image/jpeg', 0.8);
+        cv.toBlob(b => res({ dataUrl, blob: b, type: 'image/jpeg' }), 'image/jpeg', 0.8);
+      };
+      img.src = r.result;
+    };
+    r.readAsDataURL(file);
+  });
+}
+async function addPhoto(itemId, file) {
+  const k = 'U' + Date.now() + Math.floor(Math.random() * 1e4);
+  try {
+    const p = await prepImage(file, 1600);
+    UPLOADS[k] = { itemId, dataUrl: p.dataUrl, blob: p.blob, type: p.type, state: 'up', jobId: JOB.id };
+    render(); uploadPhoto(k);
+  } catch (e) { toast('Could not read that photo'); }
+}
+async function uploadPhoto(k) {
+  const u = UPLOADS[k]; if (!u) return;
+  u.state = 'up'; render();
+  const j = JOBS.find(x => x.id === u.jobId) || JOB;
+  const path = H.jobFolder(j) + '/hc-' + u.itemId + '-' + Date.now() + '.jpg';
+  try {
+    const r = await fetch(CFG.url.replace(/\/$/, '') + '/storage/v1/object/' + CFG.bucket + '/' + path, {
+      method: 'POST', headers: { apikey: CFG.key, Authorization: 'Bearer ' + CFG.key, 'Content-Type': u.type, 'x-upsert': 'true' }, body: u.blob });
+    if (!r.ok) throw new Error(r.status === 404 ? 'Photo store "' + CFG.bucket + '" missing in Supabase' : 'Upload failed (' + r.status + ')');
+    const url = CFG.url.replace(/\/$/, '') + '/storage/v1/object/public/' + CFG.bucket + '/' + path;
+    if (JOB && JOB.id === u.jobId && HC) {
+      const e = entry(u.itemId); e.photos = (e.photos || []).concat({ url, at: H.ts(), by: ME }); e.t = Date.now();
+      changed();
+    }
+    delete UPLOADS[k];
+  } catch (err) {
+    u.state = 'fail'; u.err = err.message; toast(err.message + ' — tap Retry', 4000);
+  }
+  render();
+}
+window.addEventListener('beforeunload', e => { if (Object.keys(UPLOADS).length || DIRTY) { e.preventDefault(); e.returnValue = ''; } });
+
+/* ---------------- saving ---------------- */
+let LOG_LATER = [];
+const logLater = s => LOG_LATER.push({ t: H.ts(), s: s + ' [' + ME + ']' });
+let syncTimer = null;
+function changed(quiet) {
+  DIRTY = true;
+  if (JOB) store.set(draftKey(JOB.id), JSON.stringify(HC));
+  queueSync(quiet ? 2500 : 1200);
+}
+function queueSync(ms) { clearTimeout(syncTimer); syncTimer = setTimeout(syncNow, ms || 1200); }
+async function syncNow(extraMutate) {
+  if (!JOB || !HC) return true;
+  if (SAVING) {
+    if (!extraMutate) { queueSync(800); return false; }
+    while (SAVING) await new Promise(r => setTimeout(r, 150));
+  }
+  clearTimeout(syncTimer);
+  SAVING = true; setSync('busy', 'Saving…');
+  const jobId = JOB.id, mine = H.clone(HC), before = JSON.stringify(HC), logs = LOG_LATER.splice(0);
+  try {
+    const r = await H.updateRow({ url: CFG.url, key: CFG.key, rowId: jobId, mutate: d => {
+      d.healthCheck = H.mergeHC(d.healthCheck, mine);
+      if (logs.length) { d.log = d.log || []; logs.forEach(l => d.log.push(l)); }
+      if (extraMutate) extraMutate(d);
+      return d;
+    } });
+    const i = JOBS.findIndex(x => x.id === jobId);
+    if (i > -1) JOBS[i] = Object.assign({}, r.data, { id: jobId });
+    if (JOB && JOB.id === jobId) {
+      JOB = JOBS[i] || JOB;
+      // keep anything typed while the save was in flight
+      if (JSON.stringify(HC) === before) { HC = H.clone(r.data.healthCheck); DIRTY = false; store.del(draftKey(jobId)); }
+      else { HC = H.mergeHC(r.data.healthCheck, HC); queueSync(); }
+    }
+    setSync('ok', 'Saved ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    return true;
+  } catch (e) {
+    LOG_LATER = logs.concat(LOG_LATER);
+    setSync('err', e.message + ' — kept on this phone, will retry');
+    queueSync(15000);
+    return false;
+  } finally { SAVING = false; }
+}
+window.addEventListener('online', () => { if (DIRTY) syncNow(); });
+
+/* ---------------- finishing ---------------- */
+function finish() {
+  const probs = H.problems(HC);
+  if (Object.keys(UPLOADS).length) { toast('Wait for the photos to finish uploading'); return; }
+  if (probs.length) {
+    SHOW_WHY = true;
+    // open every section that has a problem and jump to the first one
+    probs.forEach(p => { const it = p.id && H.itemById(p.id); if (it) OPEN[it.section] = true; });
+    render();
+    const first = probs.find(p => p.id);
+    if (first) setTimeout(() => { const el = document.querySelector('[data-it="' + first.id + '"]'); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 60);
+    else $('mileIn').focus();
+    toast(probs.length + ' thing' + (probs.length === 1 ? '' : 's') + ' to sort before sending', 3500);
+    return;
+  }
+  const s = H.summary(HC), stopWork = s.red > 0 && ['checkin', 'inprog'].includes(JOB.stage);
+  sheet('<h2 style="font-size:1.3rem">Send to the service adviser</h2>' +
+    '<div class="counts" style="margin:.7rem 0;font-size:1rem"><span class="g">✓ ' + s.green + ' OK</span><span class="a">! ' + s.amber + ' advisory</span><span class="r">✕ ' + s.red + ' urgent</span><span class="t">' + s.photos + ' photos</span></div>' +
+    (stopWork ? '<label class="check"><input type="checkbox" id="chkStop" checked><span><b>Stop work — Awaiting Authority</b><br><span class="hint">Moves the job to stage 15 so the adviser gets the customer to authorise the urgent items before anything else is done.</span></span></label>' : '') +
+    '<p class="hint">The adviser gets a ping and sees every photo. You can still change the check afterwards.</p>' +
+    '<div style="display:grid;gap:.5rem"><button class="btn gold wide" id="btnSend">Send</button><button class="btn ghost wide" data-close>Not yet</button></div>');
+  $('btnSend').onclick = async () => {
+    $('btnSend').disabled = true; $('btnSend').innerHTML = '<span class="spin"></span> Sending…';
+    const stop = $('chkStop') && $('chkStop').checked;
+    HC.status = 'sent'; HC.completedBy = ME; HC.completedAt = H.ts(); HC.summary = { green: s.green, amber: s.amber, red: s.red, na: s.na };
+    logLater('🩺 ' + HC.level + '-point health check done — ' + s.red + ' urgent, ' + s.amber + ' advisory, ' + s.green + ' OK');
+    const reds = H.findings(HC).filter(f => f.rag === 'red').map(f => f.item.name);
+    const ok = await syncNow(stop ? d => {
+      if (!['checkin', 'inprog'].includes(d.stage)) return;
+      const what = 'Health check: ' + reds.join(', ');
+      d.authHold = { what, since: Date.now(), at: H.ts(), by: ME };
+      d.log.push({ t: H.ts(), s: '⏸ Work stopped — awaiting authority: ' + what + ' [' + ME + ']' });
+      const hist = d.stageHistory = d.stageHistory || []; const last = hist[hist.length - 1]; if (last && !last.left) last.left = Date.now();
+      hist.push({ stage: 'authwait', at: Date.now(), by: ME });
+      d.log.push({ t: H.ts(), s: 'Awaiting customer authority [' + ME + ']' });
+      d.stage = 'authwait'; d.stageAt = Date.now();
+    } : null);
+    if (!ok) { HC.status = 'draft'; closeSheet(); toast('Could not reach the CRM — check signal and try again', 4000); render(); return; }
+    await notify('adviser', '🩺 Health check — ' + (JOB.reg || 'car') + (s.red ? ' · ' + s.red + ' urgent' : s.amber ? ' · ' + s.amber + ' advisory' : ' · all OK'),
+      (s.red ? 'Urgent: ' + reds.slice(0, 3).join(', ') + (reds.length > 3 ? '…' : '') + '. ' : '') + 'Checked by ' + ME + '.', { jobId: JOB.id, key: 'hc|' + JOB.id + '|' + HC.completedAt });
+    closeSheet(); VIEW = 'report'; toast('✓ Sent to the adviser'); render();
+  };
+}
+async function notify(role, title, body, extra) {
+  try {
+    const n = Object.assign({ id: 'N' + Date.now() + Math.floor(Math.random() * 9999), role, to: '', title, body: body || '', jobId: null, poId: null, at: H.ts(), ts: Date.now(), by: ME, seen: false }, extra || {});
+    n.key = n.key || role + '|' + title;
+    const base = REST() + 'jobs';
+    const g = await fetch(base + '?id=eq.__notifs__&select=id', { headers: HDR() });
+    if (g.ok && !(await g.json()).length) {
+      await fetch(base, { method: 'POST', headers: Object.assign(HDR(), { Prefer: 'return=minimal' }), body: JSON.stringify({ id: '__notifs__', data: { list: [n] }, updated_at: new Date().toISOString() }) });
+      return;
+    }
+    await H.updateRow({ url: CFG.url, key: CFG.key, rowId: '__notifs__', mutate: d => {
+      d.list = d.list || [];
+      if (d.list.some(x => !x.seen && x.key === n.key)) return null;
+      d.list.unshift(n); d.list = d.list.slice(0, 500); return d;
+    } });
+  } catch (e) { console.warn('notify:', e); }
+}
+
+/* ---------------- report (adviser + customer) ---------------- */
+function renderReport() {
+  const s = H.summary(HC), f = H.findings(HC);
+  const goods = H.itemsFor(HC.level).filter(it => H.effectiveRag(it, (HC.items || {})[it.id]) === 'green');
+  const nas = H.itemsFor(HC.level).filter(it => H.effectiveRag(it, (HC.items || {})[it.id]) === 'na');
+  let html = jobHead('<div class="counts" style="margin-top:.6rem"><span class="r">✕ ' + s.red + ' urgent</span><span class="a">! ' + s.amber + ' advisory</span><span class="g">✓ ' + s.green + ' OK</span>' + (s.na ? '<span class="t">' + s.na + ' n/a</span>' : '') + '</div>' + barH(s) +
+    '<div class="hint" style="margin:.5rem 0 0">Checked by ' + esc(HC.completedBy || HC.startedBy || '') + ' · ' + esc(HC.completedAt || HC.startedAt || '') + (HC.mileage ? ' · ' + esc(HC.mileage) + ' miles' : '') + '</div>');
+  if (canDecide() && f.length) html += '<p class="hint no-print">Tap what the customer said for each item. It saves onto the job.</p>';
+  if (!f.length) html += '<div class="note go"><b>All clear</b>Everything checked is in good order.</div>';
+  f.forEach(x => {
+    const d = (x.entry.decision || {}).d;
+    html += '<div class="find ' + x.rag + '" data-it="' + x.item.id + '"><div class="h"><b>' + esc(x.item.name) + '</b><span class="chip ' + (x.rag === 'red' ? 'stop' : 'warn') + '">' + H.RAG_LABEL[x.rag] + '</span></div>' +
+      (H.readingText(x.item, x.entry) ? '<div class="mono" style="font-size:.85rem;color:var(--ink-2)">' + esc(H.readingText(x.item, x.entry)) + '</div>' : '') +
+      (x.entry.note ? '<div style="margin:.3rem 0">' + esc(x.entry.note) + '</div>' : '') +
+      ((x.entry.photos || []).length ? photosH(x.item.id, x.entry, false) : '') +
+      (canDecide() ? '<div class="dec">' + [['yes', 'Authorised'], ['no', 'Declined'], ['later', 'Next visit']].map(([k, l]) => '<button data-d="' + k + '" class="' + (d === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div>' +
+        (x.entry.decision ? '<div class="hint" style="margin:.35rem 0 0">' + esc(x.entry.decision.by + ' · ' + x.entry.decision.at) + '</div>' : '')
+        : (d ? '<div class="hint" style="margin:.4rem 0 0">Customer: <b>' + ({ yes: 'Authorised', no: 'Declined', later: 'Next visit' })[d] + '</b></div>' : '')) +
+      '</div>';
+  });
+  if (goods.length) html += '<h2 class="sec">Checked and OK (' + goods.length + ')</h2><div class="greens">' + goods.map(it => '<div>✓ ' + esc(it.name) + (H.readingText(it, HC.items[it.id]) ? ' <span class="mono" style="color:var(--ink-3)">' + esc(H.readingText(it, HC.items[it.id])) + '</span>' : '') + '</div>').join('') + '</div>';
+  if (nas.length) html += '<h2 class="sec">Not applicable</h2><div class="greens">' + nas.map(it => '<div>– ' + esc(it.name) + '</div>').join('') + '</div>';
+  $('jobView').innerHTML = html;
+  $('jobView').querySelectorAll('[data-view]').forEach(img => img.onclick = () => lightbox(img.dataset.view));
+  $('jobView').querySelectorAll('.find[data-it]').forEach(row => row.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
+    const e = entry(row.dataset.it), k = b.dataset.d;
+    e.decision = (e.decision || {}).d === k ? null : { d: k, by: ME, at: H.ts() }; e.t = Date.now();
+    if (e.decision) logLater('Health check — ' + H.itemById(row.dataset.it).name + ': ' + ({ yes: 'authorised', no: 'declined', later: 'next visit' })[k]);
+    changed(); render();
+  }));
+  $('dockIn').innerHTML = '<button class="btn" id="btnEdit">Edit check</button><button class="btn" id="btnCopy">Copy text</button><button class="btn gold" id="btnPrint" style="flex:1">Report / PDF</button>';
+  $('btnEdit').onclick = () => { VIEW = 'check'; render(); };
+  $('btnCopy').onclick = async () => {
+    const t = H.customerText(HC, JOB);
+    try { await navigator.clipboard.writeText(t); toast('Copied — paste into WhatsApp'); }
+    catch (e) { sheet('<textarea class="field" style="min-height:260px">' + esc(t) + '</textarea><p><button class="btn wide" data-close>Close</button></p>'); }
+  };
+  $('btnPrint').onclick = () => window.print();
+}
+
+/* ---------------- sheet ---------------- */
+function sheet(html) {
+  $('sheetHost').innerHTML = '<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true">' + html + '</div></div>';
+  $('scrim').addEventListener('click', e => { if (e.target.id === 'scrim') closeSheet(); });
+  $('sheetHost').querySelectorAll('[data-close]').forEach(b => b.onclick = closeSheet);
+}
+function closeSheet() { $('sheetHost').innerHTML = ''; }
+
+/* ---------------- start up ---------------- */
+// Pick up new jobs without pressing anything (not while a check is open)
+setInterval(() => { if (ME && !JOB && document.visibilityState === 'visible') load(true); }, 30000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && ME && !JOB) load(true); });
+(function boot() {
+  let saved = null; try { saved = JSON.parse(store.get('kith_hc_me') || 'null'); } catch (e) {}
+  loadStaff();
+  if (saved && saved.name) { ME = saved.name; MY_ROLE = saved.role || ''; showList(); }
+  // Open straight onto a job: kith-healthcheck.html?job=<id> (link from the CRM)
+  const want = new URLSearchParams(location.search).get('job');
+  if (want && ME) { const wait = setInterval(() => { if (JOBS.length) { clearInterval(wait); openJob(want); } }, 300); setTimeout(() => clearInterval(wait), 10000); }
+})();
+</script>
+</body>
+</html>
