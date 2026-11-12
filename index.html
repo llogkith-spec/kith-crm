@@ -9781,7 +9781,7 @@ function linkedBillH(j){
   return '<div style="background:rgba(40,90,160,.14);border-left:3px solid var(--blue);border-radius:var(--rs);padding:8px 10px;margin:8px 0;font-size:11px">'+
     '<div style="font-weight:800;color:var(--blue)">➕ Same customer, same car — '+(all.length)+' jobs on one bill</div>'+
     all.map(x=>'<div style="display:flex;justify-content:space-between;gap:8px;color:var(--dim);margin-top:2px">'+
-      '<span>'+(x.id===j.id?'<strong>This job</strong>':escHtml(x.additionalWork?'Additional work':'Original job'))+' · '+escHtml(String(x.work||'').slice(0,34))+'</span>'+
+      '<span>'+(x.id===j.id?'<strong>This job</strong>':escHtml(x.additionalWork?'Additional work':(x.sameVisit||j.sameVisit?'Same visit':'Original job')))+' · '+escHtml(String(x.work||'').slice(0,34))+'</span>'+
       '<span>£'+(parseFloat(x.quote)||0).toFixed(2)+(jobBalance(x)>0.005?' · owes £'+jobBalance(x).toFixed(2):' · paid')+'</span></div>').join('')+
     '<div style="font-weight:800;margin-top:4px;color:var(--fg)">Together: £'+quoted.toFixed(2)+' quoted · £'+owed.toFixed(2)+' still owed</div>'+
   '</div>';

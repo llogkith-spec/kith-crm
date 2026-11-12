@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="KITH Intake"/>
 <meta name="theme-color" content="#1a1a2e"/>
-<title>KITH Cars — Job Intake v2.6</title>
+<title>KITH Cars — Job Intake v2.7</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{--gold:#c9a84c;--dark:#1a1a2e;--red:#c62828;--green:#2e7d32;--amber:#e65100;--blue:#1565c0;--purple:#5b3a8c;--teal:#00695c;--border:#e0e0e0;--bg:#f0f2f5;--dim:#666;--faint:#aaa}
@@ -229,6 +229,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
     </div>
 
     <div class="card" id="ess-card">
+      <div id="visit-banner" style="display:none"></div>
       <div class="sec">1 · How did they get in touch?</div>
       <div class="chan" id="chan-grid"></div>
       <div id="opener"></div>
@@ -441,7 +442,8 @@ input:checked+.tsl:before{transform:translateX(20px)}
     <h2 style="font-size:22px;font-weight:900;margin-bottom:8px">Job Submitted</h2>
     <div id="suc-msg" style="color:#555;font-size:14px;line-height:1.7;margin-bottom:18px"></div>
     <div id="suc-next"></div>
-    <button class="btn btn-dark" onclick="resetForm()">+ New Job Intake</button>
+    <div id="suc-visit"></div>
+    <button class="btn btn-dark" onclick="endVisit();resetForm()">+ New Job Intake</button>
   </div>
 </div>
 
@@ -452,7 +454,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
 var SB_URL='https://mxyrxyhvjndgjqupgstu.supabase.co';
 var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
 var SOP_VERSION='8.0';
-var INTAKE_BUILD='2.6';
+var INTAKE_BUILD='2.7';
 // The CRM keeps one row per job in `jobs` ({id, data, updated_at}).
 // Earlier builds wrote to `kith_jobs`, which nothing reads — jobs vanished.
 var JOBS_TABLE='jobs';
@@ -1134,6 +1136,7 @@ function dupCheck(v){
       if(!r.ok)return;
       var rows=await r.json();
       var act=(rows||[]).filter(function(j){
+        if(VISIT&&VISIT.jobs.some(function(x){return x.id===j.id;}))return false;
         return j&&String(j.id).indexOf('__')!==0&&!j.merged&&j.internal!=='true'&&
           String(j.reg||'').replace(/\s/g,'').toUpperCase()===v&&CLOSED_STAGES.indexOf(j.stage)===-1;});
       var el=document.getElementById('dup-msg');
@@ -1278,9 +1281,11 @@ async function submitJob(){
     job.log.push({t:ts,s:'\ud83d\udcf8 '+picUrls.length+' photo'+(picUrls.length===1?'':'s')+' added at intake by '+staffName});
   }
 
+  visitTag(job);
   var saved=false;
   try{saved=await pushJob(job);}catch(e){}
   if(!saved){var q=readQueue();q.push(job);writeQueue(q);}
+  visitDone(job);
   if(custType==='business'&&fval('f-company'))b2bSave(fval('f-company'),b2bContactFromForm());
   id=job.id;   // may have moved if the first number was taken
 
@@ -1399,6 +1404,7 @@ async function addIntakePhotos(input){
 }
 function resetForm(){
   intakePics=[];drawPics();b2bClear();
+  var vb=document.getElementById('visit-banner');if(vb){vb.style.display='none';vb.innerHTML='';}
   jobType=null;area=null;mechCat=null;custType=null;curStep=0;
   safetyHits=[];diagOverride=null;warrantyState=null;triageResult=null;
   rampState={exempt:false,reason:'',pending:false};
@@ -1798,6 +1804,60 @@ function copyText(t){
 }
 document.getElementById('f-haswa').addEventListener('change',function(){
   document.getElementById('wa-diff-fg').style.display=this.value==='diff'?'block':'none';paintEmail();updateNeeds();});
+
+// ---- One visit, several jobs ----------------------------------------------
+// e.g. a service AND a diagnostic: they go to different people, so each is its
+// own job in the CRM. Customer + car are typed once; every later job carries
+// linkedJobId = the first job, so the CRM shows them together on one bill.
+var VISIT=null,_visitKeep=null;
+var VISIT_KEEP=['f-name','f-phone','f-haswa','f-wa','f-email','f-reg','f-make','f-model','f-year','f-mileage','f-engine',
+  'f-shape','f-seats','f-roof','f-gvw','f-fuel','f-source'];
+function visitTag(job){
+  if(!VISIT)return;
+  job.linkedJobId=VISIT.root;job.sameVisit=true;
+  (job.log=job.log||[]).push({t:new Date().toLocaleString('en-GB'),
+    s:'Same visit as '+VISIT.jobs.map(function(x){return x.id+' ('+x.label+')';}).join(', ')+' — separate job, one bill'});
+}
+function visitDone(job){
+  var label=String(job.serviceLabel||job.work||'Job').replace(/^[^A-Za-z0-9]+/,'').slice(0,40);
+  if(!VISIT)VISIT={root:job.id,jobs:[]};
+  VISIT.jobs.push({id:job.id,label:label});
+  // snapshot customer + car so the next job doesn't retype them
+  _visitKeep={vals:{},checks:{noemail:fchk('f-noemail')},channel:channel,custType:custType,
+    company:fval('f-company'),knownBiz:fval('f-known-biz'),acct:b2bAcct,contact:b2bContact};
+  VISIT_KEEP.forEach(function(id){_visitKeep.vals[id]=fval(id);});
+  var el=document.getElementById('suc-visit');
+  if(el)el.innerHTML='<div style="background:#f7f3e6;border:1.5px solid #d8c78f;border-radius:10px;padding:12px;margin:14px 0;text-align:left">'+
+    '<div style="font-weight:800;margin-bottom:4px">Anything else on this car?</div>'+
+    '<div style="font-size:13px;color:#555;margin-bottom:10px">e.g. in for a service <b>and</b> a diagnostic. Each one is its own job so it goes to the right person — same customer, same car, one bill.'+
+    (VISIT.jobs.length>1?'<br><br>This visit so far: '+VISIT.jobs.map(function(x){return '<b>'+esc(x.id)+'</b> '+esc(x.label);}).join(' · '):'')+'</div>'+
+    '<button class="btn btn-gold" style="width:100%" onclick="anotherJob()">＋ Add another job for '+esc(job.reg||'this car')+'</button></div>';
+}
+function endVisit(){VISIT=null;_visitKeep=null;var el=document.getElementById('suc-visit');if(el)el.innerHTML='';}
+function anotherJob(){
+  var k=_visitKeep,v=VISIT;if(!k||!v)return resetForm();
+  resetForm();VISIT=v;_visitKeep=k;
+  Object.keys(k.vals).forEach(function(id){var e=document.getElementById(id);if(e)e.value=k.vals[id];});
+  var ne=document.getElementById('f-noemail');if(ne)ne.checked=!!k.checks.noemail;
+  document.getElementById('wa-diff-fg').style.display=fval('f-haswa')==='diff'?'block':'none';
+  if(k.channel){channel=k.channel;paintChannels();}
+  if(k.acct){b2bAcct=k.acct;b2bContact=k.contact;
+    document.getElementById('f-b2b-search').value=k.acct.company;
+    var bp=document.getElementById('b2b-picked');bp.style.display='block';
+    bp.innerHTML='<div style="margin-top:8px;font-weight:700">✓ '+esc(k.acct.company)+'</div>';}
+  if(k.custType&&document.getElementById('cu-'+k.custType)){pickCust(k.custType);
+    var co=document.getElementById('f-company');if(co)co.value=k.company;
+    var kb=document.getElementById('f-known-biz');if(kb&&k.knownBiz)kb.value=k.knownBiz;}
+  paintEmail();
+  var b=document.getElementById('visit-banner');b.style.display='block';
+  b.innerHTML='<div style="background:#1b1d2e;color:#fff;border-radius:10px;padding:12px;margin-bottom:12px">'+
+    '<div style="font-weight:800;color:#d8b75a">Another job — same visit</div>'+
+    '<div style="font-size:13px;margin-top:4px">'+esc(fval('f-name')||(k.acct&&k.acct.company)||'')+' · <b>'+esc(fval('f-reg'))+'</b> already filled in. '+
+    'Already booked this visit: '+v.jobs.map(function(x){return esc(x.id)+' '+esc(x.label);}).join(' · ')+
+    '<br>Just say what this job is below.</div>'+
+    '<button class="btn btn-ghost" style="margin-top:8px;color:#fff;border-color:#555" onclick="endVisit();resetForm()">Different customer — start fresh</button></div>';
+  updateNeeds();
+}
 
 // ---- B2B accounts: pick the company, contact details fill themselves ----
 // Accounts live in one shared row (jobs table, id __b2b_accounts__), topped up
@@ -2247,7 +2307,9 @@ async function submitQuick(){
   }
   job.log=[{t:ts,s:'Intake v'+INTAKE_BUILD+' by '+staffName+' — '+job.serviceLabel+' · straight to '+(job.stage==='so'?'SOs to Raise':'POs to Raise')}];
 
+  if(!job.isInternal)visitTag(job);
   var saved=false;try{saved=await pushJob(job);}catch(e){}
+  if(!job.isInternal)visitDone(job);else endVisit();
   if(job.isB2B&&b2bAcct)b2bSave(b2bAcct.company,b2bContactFromForm());
   if(!saved){var q=readQueue();q.push(job);writeQueue(q);}
   btn.disabled=false;
