@@ -18,7 +18,9 @@ const VERSION = '8.0';
 
 /* ---------------------------------------------------------------- rates ---- */
 // Ex VAT. Inc VAT is ex x 1.2 — the owner quotes these inc, so both are shown.
-const RATES = { LOW: 50, MED: 60, TOP: 70, BODY: 70 };
+// BODY raised to £90 on 10 Sep 2026. These are FALLBACKS — the live figures come
+// from kith_sop_config (edited in kith-sop.html) via applySop() below.
+const RATES = { LOW: 50, MED: 60, TOP: 70, BODY: 90 };
 
 /* ------------------------------------------------------------ customers ---- */
 // Six customer types. KITH types use the multiplier ladder; AA types never do.
@@ -60,9 +62,9 @@ const MULT_RAMP = { lower: 2.5,  upper: 1.75 };   // REPLACES the above, never s
 const ALWAYS_X2 = ['suspension', 'bearings', 'dpf', 'trackrod'];
 
 /* -------------------------------------------------------------- minimums --- */
-const MIN_LABOUR_HOURS = 0.5;                       // per mechanical line
+let MIN_LABOUR_HOURS = 0.5;                         // per mechanical line
 const MIN_EXEMPT = ['bulb', 'tyre', 'wiper'];       // categories with no minimum
-const BODY_MIN_CHARGE = 70;                         // per bodywork line, ex VAT
+let BODY_MIN_CHARGE = 90;                           // per bodywork line, ex VAT (was 70 before 10 Sep 2026)
 
 /* ------------------------------------------------------- inspection time --- */
 // Minutes. Divided by 60 at full precision — never a rounded decimal.
@@ -95,7 +97,7 @@ const FLUIDS = {
 };
 
 /* ------------------------------------------------------------ tyres -------- */
-const TYRE_FIT_EACH = 20;   // ex VAT, flat, per tyre. No multiplier, no minimum.
+let TYRE_FIT_EACH = 20;     // ex VAT, flat, per tyre. No multiplier, no minimum.
 
 /* -------------------------------------------------------- fixed prices ----- */
 const MOT = { 4: 50, 5: 58, 7: 58 };   // OUTSIDE the scope of VAT
@@ -115,7 +117,7 @@ const ENGINE_REPLACEMENT = {
   '3.0L +':      { petrol: 1950, diesel: 2350 }
 };
 const TUNING = {
-  'Stage 1 remap': 250, 'Stage 2 remap': 320, 'Economy remap': 200,
+  'Stage 1 remap': 200, 'Stage 2 remap': 300, 'Economy remap': 200,
   'Pop & bang (standalone)': 150, 'Pop & bang + Stage 1': 350,
   'Map restore to stock': 75, 'EGR Solution': 200, 'AdBlue delete': 250,
   'DPF remap (+ removal labour)': 330
@@ -135,19 +137,21 @@ const RECOVERY  = [{ to: 3, price: 90 }, { to: 5, price: 110 }, { to: 7, price: 
 const COLLECTION = [{ to: 3, price: 30 }, { to: 5, price: 45 }, { to: 7, price: 60 },  { to: 10, price: 75  }];
 
 /* ----------------------------------------------------------- bodywork ------ */
+// 5-seater bases rebased 10 Sep 2026 (+£100 each); sliding door priced as a door (2 Nov 2026).
 const PANEL_BASE = {
-  'Roof': 300, 'Boot / tailgate': 250, 'Front bumper': 220, 'Bonnet': 200,
-  'Door (each)': 200, 'Rear bumper': 175, 'Front quarter panel': 175,
-  'Rear quarter panel': 175, 'Trim / moulding': 100
+  'Roof': 400, 'Boot / tailgate': 350, 'Front bumper': 320, 'Bonnet': 300,
+  'Door (each)': 300, 'Rear bumper': 275, 'Front quarter panel': 275,
+  'Rear quarter panel': 275, 'Trim / moulding': 200, 'Sliding door': 300
 };
 const PANEL_UPLIFT = { '5-seater': 0, '7-seater / SUV': 40, '9-seater van': 80, 'Large van': 100 };
-const SLIDING_DOOR = { '5-seater': null, '7-seater / SUV': 270, '9-seater van': 320, 'Large van': 350 };
+// Kept for anything still reading it; panelLines() now prices the sliding door off PANEL_BASE.
+const SLIDING_DOOR = { '5-seater': 300, '7-seater / SUV': 340, '9-seater van': 380, 'Large van': 400 };
 const REPAINT = {
   'Small (5-seater)':   { Budget: 1650, Standard: 2050, Premium: 2460 },
   'Medium (7-seater)':  { Budget: 2250, Standard: 2750, Premium: 3300 },
   'Large (9-seater +)': { Budget: 3100, Standard: 3750, Premium: 4500 }
 };
-const MULTI_PANEL_DISCOUNT = 0.20;   // dearest full, every other panel 20% off
+let MULTI_PANEL_DISCOUNT = 0.20;     // dearest full, every other panel 20% off
 
 const VAT_RATE = 0.20;
 
@@ -315,9 +319,7 @@ function motLine({ motClass = 4 }) {
 function panelLines(panels, category = '5-seater') {
   const uplift = PANEL_UPLIFT[category] || 0;
   const priced = panels.map(name => {
-    const base = name === 'Sliding door'
-      ? SLIDING_DOOR[category]
-      : (PANEL_BASE[name] != null ? PANEL_BASE[name] + uplift : null);
+    const base = PANEL_BASE[name] != null ? PANEL_BASE[name] + uplift : null;
     return { name, price: base };
   });
   if (priced.some(p => p.price == null)) {
@@ -387,7 +389,90 @@ const PAIR_RULE = [
   { primary: 'Inner CV boot — same driveshaft',   secondary: 'Outer CV boot — same driveshaft' }
 ];
 
-return {
+/* =============================================================================
+   LIVE SOP — applySop(config)
+   Overwrites the fallback figures above with the live SOP from kith_sop_config
+   (the table kith-sop.html saves to). Call it with the row's `data` object.
+   Only keys that are present and the right type are applied, so a half-filled
+   config can never blank a price. Returns the list of sections it applied.
+   ============================================================================= */
+function setObj(target, src) {
+  if (!src || typeof src !== 'object') return false;
+  Object.keys(target).forEach(k => { if (!(k in src)) delete target[k]; });
+  Object.assign(target, src);
+  return true;
+}
+function setArr(target, src) {
+  if (!Array.isArray(src) || !src.length) return false;
+  target.length = 0; src.forEach(x => target.push(x));
+  return true;
+}
+function num(x) { return typeof x === 'number' && isFinite(x); }
+
+function applySop(cfg) {
+  const done = [];
+  if (!cfg || typeof cfg !== 'object') return done;
+  if (cfg.rates) {
+    ['LOW', 'MED', 'TOP', 'BODY'].forEach(k => { if (num(cfg.rates[k])) RATES[k] = cfg.rates[k]; });
+    done.push('rates');
+  }
+  if (cfg.customers) {
+    Object.keys(CUSTOMERS).forEach(k => {
+      const c = cfg.customers[k]; if (!c) return;
+      ['threshold', 'labourRate', 'partsPct', 'diagRate', 'diagFixed', 'diagAuthMax']
+        .forEach(f => { if (num(c[f])) CUSTOMERS[k][f] = c[f]; });
+    });
+    done.push('customers');
+  }
+  if (cfg.multiplier) {
+    const m = cfg.multiplier;
+    if (m.normal && num(m.normal.lower) && num(m.normal.upper)) Object.assign(MULT, m.normal);
+    if (m.ramp && num(m.ramp.lower) && num(m.ramp.upper)) Object.assign(MULT_RAMP, m.ramp);
+    setArr(ALWAYS_X2, m.alwaysX2);
+    done.push('multiplier');
+  }
+  if (cfg.minimums) {
+    const m = cfg.minimums;
+    if (num(m.labourHours))   { MIN_LABOUR_HOURS = m.labourHours; api.MIN_LABOUR_HOURS = m.labourHours; }
+    if (num(m.bodyMinCharge)) { BODY_MIN_CHARGE = m.bodyMinCharge; api.BODY_MIN_CHARGE = m.bodyMinCharge; }
+    setArr(MIN_EXEMPT, m.exemptCategories);
+    done.push('minimums');
+  }
+  if (Array.isArray(cfg.partsLadder) && cfg.partsLadder.length) {
+    let from = 0.01;
+    setArr(LADDER, cfg.partsLadder.map(b => {
+      const band = { from, to: b.to, mult: b.mult, minSell: b.minSell || 0,
+                     markup: Math.round((b.mult - 1) * 100) + '%' };
+      from = Math.round((b.to + 0.01) * 100) / 100;
+      return band;
+    }));
+    done.push('partsLadder');
+  }
+  if (num(cfg.tyreFitEach)) { TYRE_FIT_EACH = cfg.tyreFitEach; api.TYRE_FIT_EACH = cfg.tyreFitEach; done.push('tyreFitEach'); }
+  if (cfg.inspectionMinutes && setObj(INSPECTION_MINUTES, cfg.inspectionMinutes)) done.push('inspectionMinutes');
+  if (cfg.mot && setObj(MOT, cfg.mot)) done.push('mot');
+  if (cfg.diagnostics && setObj(DIAGNOSTICS, cfg.diagnostics)) done.push('diagnostics');
+  if (cfg.inspections && setObj(INSPECTIONS, cfg.inspections)) done.push('inspections');
+  if (cfg.tuning && setObj(TUNING, cfg.tuning)) done.push('tuning');
+  if (cfg.fluids && setObj(FLUIDS, cfg.fluids)) done.push('fluids');
+  if (setArr(RECOVERY, (cfg.recovery || []).map(b => ({ to: b.toMiles, price: b.price })))) done.push('recovery');
+  if (setArr(COLLECTION, (cfg.collection || []).map(b => ({ to: b.toMiles, price: b.price })))) done.push('collection');
+  const bw = cfg.bodywork;
+  if (bw) {
+    setObj(PANEL_BASE, bw.panelBase);
+    setObj(PANEL_UPLIFT, bw.panelUplift);
+    setObj(REPAINT, bw.repaint);
+    if (PANEL_BASE['Sliding door'] != null) {
+      Object.keys(PANEL_UPLIFT).forEach(k => { SLIDING_DOOR[k] = PANEL_BASE['Sliding door'] + PANEL_UPLIFT[k]; });
+    }
+    if (num(bw.multiPanelDiscount)) { MULTI_PANEL_DISCOUNT = bw.multiPanelDiscount; api.MULTI_PANEL_DISCOUNT = bw.multiPanelDiscount; }
+    done.push('bodywork');
+  }
+  api.SOP_VERSION = cfg.version || api.SOP_VERSION;
+  return done;
+}
+
+const api = {
   VERSION, RATES, CUSTOMERS, MULT, MULT_RAMP, ALWAYS_X2, LADDER, FLUIDS,
   TYRE_FIT_EACH, MIN_LABOUR_HOURS, MIN_EXEMPT, BODY_MIN_CHARGE, INSPECTION_MINUTES,
   MOT, DIAGNOSTICS, INSPECTIONS, ENGINE_REPLACEMENT, TUNING, SUBCONTRACT,
@@ -395,5 +480,8 @@ return {
   MULTI_PANEL_DISCOUNT, VAT_RATE, HARD_STOPS, PAIR_RULE, PARTS_ESCALATE_ABOVE,
   money, vat, isAA, resolveTier, multiplierFor,
   labourLine, partLine, fluidLine, tyreLine, fixedLine, motLine, panelLines, quote
+,
+  applySop, SOP_VERSION: VERSION
 };
+return api;
 }));
