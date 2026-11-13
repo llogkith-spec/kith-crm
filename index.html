@@ -583,9 +583,12 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
         <button class="btn btn-ghost btn-sm" onclick="cx('ov-new-sub')">✕</button>
       </div>
       <div class="fg" style="margin-bottom:8px"><label class="fl2">Subcontractor <span class="req">*</span></label>
-        <select class="fsel" id="sub-contractor">
-          <option value="">— Select —</option>
-        </select>
+        <div style="display:flex;gap:6px">
+          <select class="fsel" id="sub-contractor" style="flex:1">
+            <option value="">— Select —</option>
+          </select>
+          <button type="button" class="btn btn-gold btn-sm" style="white-space:nowrap" onclick="quickAddDir('subcontractor','sub-contractor')">+ New</button>
+        </div>
       </div>
       <!-- Invoice/receipt scanner for SO -->
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;margin-bottom:10px">
@@ -14985,6 +14988,73 @@ function toggleDirectory(id){
   renderSettings();
 }
 
+// ── QUICK ADD SUPPLIER / SUBCONTRACTOR (13 Nov 2026) ──────────────
+// A "+ New" button beside the supplier box on a PO and the subcontractor
+// box on an SO. Saves to the shared list (everyone sees it) and picks it
+// in the box straight away, so nobody has to leave the order to go to
+// Settings.
+function quickAddDir(type,selId){
+  let ov=document.getElementById('ov-quickdir');
+  if(!ov){
+    ov=document.createElement('div');ov.id='ov-quickdir';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    document.body.appendChild(ov);
+  }
+  const word=type==='subcontractor'?'subcontractor':'supplier';
+  const f=(id,label,ph,t)=>'<div class="fg" style="margin-bottom:8px"><label class="fl2">'+label+'</label><input class="fi2" id="qd-'+id+'" type="'+(t||'text')+'" placeholder="'+ph+'"/></div>';
+  ov.innerHTML='<div style="background:var(--surface);border:1px solid var(--gold);border-radius:var(--r);padding:16px;width:100%;max-width:420px;max-height:90vh;overflow:auto">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+      '<div style="font-weight:800;font-size:15px">+ New '+word+'</div>'+
+      '<button class="btn btn-ghost btn-sm" onclick="quickDirClose()">✕</button></div>'+
+    f('name','Name <span class="req">*</span>',type==='subcontractor'?'e.g. Hackbridge Auto Electrics':'e.g. Euro Car Parts Croydon')+
+    '<div class="fg" style="margin-bottom:8px"><label class="fl2">Type</label><select class="fsel" id="qd-type">'+
+      '<option value="supplier"'+(type==='supplier'?' selected':'')+'>Supplier (parts)</option>'+
+      '<option value="subcontractor"'+(type==='subcontractor'?' selected':'')+'>Subcontractor (does work for us)</option>'+
+      '<option value="both">Both</option></select></div>'+
+    f('phone','Phone','020 …','tel')+
+    f('email','Email','orders@…','email')+
+    f('account','Our account number','optional')+
+    f('notes','Notes','opening hours, contact name…')+
+    '<div id="qd-msg" style="font-size:11px;color:var(--red);min-height:14px;margin-bottom:6px"></div>'+
+    '<button class="btn btn-gold btn-full" onclick="quickDirSave(\''+type+'\',\''+selId+'\')">Save and use it</button>'+
+    '<div style="font-size:10px;color:var(--faint);margin-top:6px">Saved to the shared list — everyone sees it straight away.</div>'+
+  '</div>';
+  ov.style.display='flex';
+  ov.onclick=e=>{if(e.target===ov)quickDirClose();};
+  setTimeout(()=>document.getElementById('qd-name')?.focus(),50);
+}
+function quickDirClose(){const ov=document.getElementById('ov-quickdir');if(ov)ov.style.display='none';}
+function quickDirSave(want,selId){
+  const v=id=>(document.getElementById('qd-'+id)?.value||'').trim();
+  const name=v('name'),msg=document.getElementById('qd-msg');
+  if(!name){msg.textContent='Type the name.';return;}
+  let type=v('type')||want;
+  const ex=DIRECTORY.find(d=>String(d.name).trim().toLowerCase()===name.toLowerCase());
+  let entry;
+  if(ex){
+    // already on the list: switch it back on and make sure it shows in this box
+    ex.active=true;
+    if(ex.type!=='both'&&ex.type!==type)ex.type='both';
+    ['phone','email','account','notes'].forEach(k=>{if(v(k)&&!ex[k])ex[k]=v(k);});
+    entry=ex;
+  }else{
+    entry={id:'d'+Date.now(),name,type,phone:v('phone'),email:v('email'),account:v('account'),notes:v('notes'),active:true,
+      addedBy:currentUser?currentUser.name:'',addedAt:new Date().toISOString()};
+    DIRECTORY.push(entry);
+  }
+  saveSuppliers();
+  const sel=document.getElementById(selId);
+  if(sel){
+    if(![...sel.options].some(o=>o.value===entry.name||o.textContent===entry.name)){
+      const o=document.createElement('option');o.value=entry.name;o.textContent=entry.name;sel.appendChild(o);
+    }
+    sel.value=entry.name;
+    sel.dispatchEvent(new Event('change'));
+  }
+  quickDirClose();
+  if(typeof toast==='function')toast('✓ '+entry.name+(ex?' already on the list — selected':' added and selected'));
+}
+
 function openAddDirectory(){
   const name=prompt('Name:');if(!name)return;
   const typeOpt=['supplier','subcontractor','both'];
@@ -15986,11 +16056,12 @@ function openNewPO(jobId){
     const f=document.getElementById('po-job-filter');if(f)f.value='';poExistingNote();fillPartsFromJob();},30);
   document.getElementById('new-po-form').innerHTML=
     '<div class="fg" style="margin-bottom:8px"><label class="fl2">Supplier <span class="req">*</span></label>'+
-      '<select class="fsel" id="po-supplier" onchange="fillPartsFromJob();supplierAcctNote()">'+
+      '<div style="display:flex;gap:6px"><select class="fsel" id="po-supplier" style="flex:1" onchange="fillPartsFromJob();supplierAcctNote()">'+
         '<option value="">— Select supplier —</option>'+
         SUPPLIERS.map(s=>{const st=acctOf(s);
           return '<option value="'+escHtml(s)+'">'+escHtml(s)+(st==='stop'?'  \u26d4 ON STOP':(st==='cash'?'  \u00a3 CASH ONLY':''))+'</option>';}).join('')+
-      '</select><div id="po-acct-note" style="margin-top:6px"></div></div>'+
+      '</select><button type="button" class="btn btn-gold btn-sm" style="white-space:nowrap" onclick="quickAddDir(\'supplier\',\'po-supplier\')">+ New</button></div>'+
+      '<div id="po-acct-note" style="margin-top:6px"></div></div>'+
     '<div style="background:var(--surface3);border-left:3px solid var(--gold);border-radius:var(--rs);padding:8px 10px;margin-bottom:10px;font-size:11px;color:var(--dim)">'+
       '<strong style="color:var(--gold)">Raising a PO does not place the order.</strong> It records what needs buying \u2014 the parts team still has to order it from the supplier, then update the status.</div>'+
     '<div id="po-existing" style="font-size:11px;margin-bottom:8px"></div>'+
