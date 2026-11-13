@@ -873,6 +873,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <div class="overlay" id="ov-detail"><div class="panel" id="dp"></div></div>
 
 
+<script src="kith-core.js"></script>
 <script src="engine.js"></script>
 <script src="kith-lines.js"></script>
 <script src="kith-rules.js"></script>
@@ -905,17 +906,13 @@ const JSONP_PROXY='https://script.google.com/macros/s/AKfycbxlJydXPBm5GaUAfE-xtZ
 const AI_PROXY='https://script.google.com/macros/s/AKfycbyUGppzV1hOyq-9U4-k60lz68j9lpPloXw2am7j4iXDMhG4shbuVbbEd9crukVr_Nhj-A/exec'; // KITH AI Proxy (Gemini)
 
 // ── STAFF ───────────────────────────────────────────────
-const STAFF=[
-  {name:'Ali',            icon:'📞', filter:'adviser',   wa:'2348126024190', pin:'7777', roles:['adviser','parts']},
-  {name:'Joel',           icon:'📋', filter:'estimator', wa:'639072943859',  pin:'2222'},
-  {name:'Paul',           icon:'📋', filter:'estimator', wa:'',              pin:'3333', roles:['estimator','parts']},
-  {name:'Elvis',          icon:'📞', filter:'adviser',   wa:'',              pin:'8888', roles:['adviser','estimator']},
-  {name:'Sudha',          icon:'🔩', filter:'parts',     wa:'447514422991',  pin:'6666', roles:['parts','accounts','onsite']},
-  {name:'Giles',          icon:'🔧', filter:'parts',     wa:'447496673248',  pin:'4444', roles:['parts','workshop']},
-  {name:'Harith',         icon:'📋', filter:'estimator', wa:'',              pin:'5555'},
-  {name:'Logkith',        icon:'⭐', filter:'all',       wa:'',              pin:'0000'},
-];
-// Note: PINs above are temporary defaults — Logkith to update via settings
+// Staff come from the shared list (kith-core.js). People added, retired or
+// re-PINned in Accounts → Staff are laid over the top as soon as the table answers.
+const STAFF=KithCore.base();
+KithCore.staff().then(function(list){
+  STAFF.length=0; list.forEach(function(p){STAFF.push(p);});
+  try{ if(typeof currentUser!=='undefined'&&!currentUser&&document.getElementById('login-grid'))buildLoginGrid(); }catch(e){}
+});
 
 
 // Staff can hold more than one role (Ali covers adviser AND parts), so
@@ -992,7 +989,7 @@ function updatePinDots(){
 
 function checkPin(){
   if(!pinPendingUser)return;
-  if(pinBuffer===pinPendingUser.pin){
+  if(KithCore.pinOk(pinPendingUser,pinBuffer)){
     login(pinPendingUser.name);
   }else{
     document.getElementById('pin-error').textContent='Incorrect PIN. Try again.';
@@ -1135,8 +1132,8 @@ function deptOf(stage){return DEPTS.find(d=>d.stages.includes(stage))||null;}
 function stg(id){return STAGES.find(s=>s.id===id)||{id,label:id,col:'var(--dim)',cls:'',badge:'',owner:''};}
 
 // ── SUPABASE REST API (no external library needed) ───────
-const SB_URL = 'https://mxyrxyhvjndgjqupgstu.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
+const SB_URL = KithCore.URL;
+const SB_KEY = KithCore.KEY;
 const SB_HDR = {'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'};
 
 async function sbSelect(){
@@ -15142,8 +15139,10 @@ function updatePin(name){
   if(!s)return;
   const val=document.getElementById('pin-'+name)?.value.trim();
   if(!val||val.length!==4||!/^\d{4}$/.test(val)){alert('PIN must be exactly 4 digits.');return;}
-  s.pin=val;
-  alert('PIN updated for '+name);
+  s.pin=val; s.pins=[val].concat((s.pins||[]).filter(function(x){return x!==val;}));
+  KithCore.savePin(name,val)
+    .then(function(){alert('PIN saved for '+name+' — it now works on every KITH app.');})
+    .catch(function(){alert('PIN changed on this screen only — could not save it to the staff table.');});
 }
 
 // ── INVOICE SCANNER ──────────────────────────────────────

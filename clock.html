@@ -38,10 +38,11 @@ body{background:#1a1a2e;color:#fff;font-family:-apple-system,BlinkMacSystemFont,
 .btn-close{background:#c9a84c;color:#1a1a2e;border:none;border-radius:10px;padding:12px 28px;font-size:14px;font-weight:700;cursor:pointer;margin-top:24px}
 .btn-cancel{background:none;border:1px solid #444;color:#aaa;border-radius:8px;padding:10px 20px;margin-top:16px;font-size:13px;cursor:pointer}
 </style>
+<script src="kith-core.js"></script>
 <script>
 // Supabase (same project as CRM + accounts)
-var SB = 'https://mxyrxyhvjndgjqupgstu.supabase.co';
-var SK = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
+var SB = KithCore.URL;
+var SK = KithCore.KEY;
 var SH = {apikey:SK, Authorization:'Bearer '+SK, 'Content-Type':'application/json', Prefer:'return=representation'};
 
 // KITH Cars — Unit 1 Soho Mills, London Road, Hackbridge SM6 7HN

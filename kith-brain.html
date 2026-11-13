@@ -259,6 +259,7 @@ td.n,th.n{text-align:right;font-family:"IBM Plex Mono",monospace}
   </div>
 </div>
 
+<script src="kith-core.js"></script>
 <script src="learning.js"></script>
 <script src="engine.js"></script>
 <script src="kith-rules.js"></script>
@@ -267,12 +268,12 @@ td.n,th.n{text-align:right;font-family:"IBM Plex Mono",monospace}
    CONFIG
    =========================================================================== */
 const CFG={
-  url:localStorage.getItem('kith_crm_url')||'https://mxyrxyhvjndgjqupgstu.supabase.co',
+  url:localStorage.getItem('kith_crm_url')||KithCore.URL,
   // Same public key the CRM page uses, so nobody has to paste it in.
-  key:localStorage.getItem('kith_crm_key')||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog',
+  key:localStorage.getItem('kith_crm_key')||KithCore.KEY,
   table:'kith_learning'
 };
-const STAFF=['Logkith','Joel','Paul','Elvis','Harith','Giles','Ali','Sudha'];
+const STAFF=KithCore.base().map(p=>p.name);   // shared list — kith-core.js
 let ME=localStorage.getItem('kith_brain_user')||null;
 if(ME==='Logan')ME='Logkith';
 let SOP=[], SOP_SEQ=0;   // SOP_SEQ: a slow load must never overwrite a newer write
@@ -673,10 +674,7 @@ async function refresh(){
   paint();
 }
 async function staffList(){
-  const r=await fetch(CFG.url.replace(/\/$/,'')+'/rest/v1/kith_staff?select=id,data&limit=100',
-    {headers:{apikey:CFG.key,Authorization:'Bearer '+CFG.key}});
-  if(!r.ok)throw new Error('staff list '+r.status);
-  return ((await r.json())||[]).map(x=>x.data||{}).filter(x=>x.name&&x.active!==false);
+  return (await KithCore.staff()).filter(x=>x.name&&x.active!==false);   // shared list — kith-core.js
 }
 async function signIn(){
   const n=prompt('Who are you? ('+STAFF.join(' / ')+')',ME||'');
@@ -684,18 +682,18 @@ async function signIn(){
   let name=n.trim();
   if(/^logan$/i.test(name))name='Logkith';
   let staff=null;
-  try{staff=CFG.key?await staffList():null;}catch(e){staff=null;}
+  try{staff=await staffList();}catch(e){staff=null;}
   const rec=staff&&staff.find(x=>String(x.name).toLowerCase()===name.toLowerCase());
   if(rec)name=rec.name;
   sessionStorage.removeItem('kith_brain_boss');
   if(KITHRules.canDecide(name)){
     if(!staff){toast('Cannot check PINs \u2014 the kith_staff table is not readable yet (run staff.sql).',5000);return;}
     const pin=prompt('PIN for '+name);
-    if(!rec||String(rec.pin||'')!==String(pin||'')){toast('Wrong PIN.');return;}
+    if(!rec||!KithCore.pinOk(rec,pin)){toast('Wrong PIN.');return;}
     sessionStorage.setItem('kith_brain_boss',name);
   } else if(rec&&rec.pin){
     const pin=prompt('PIN for '+name);
-    if(String(rec.pin)!==String(pin||'')){toast('Wrong PIN.');return;}
+    if(!KithCore.pinOk(rec,pin)){toast('Wrong PIN.');return;}
   }
   ME=name;localStorage.setItem('kith_brain_user',ME);
   paintWho();

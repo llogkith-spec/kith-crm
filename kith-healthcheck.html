@@ -213,6 +213,7 @@ label.lbl{display:block;font-size:.78rem;color:var(--ink-2);margin:.7rem 0 .3rem
 <div class="dock" id="dock" hidden><div class="in" id="dockIn"></div></div>
 <div id="sheetHost"></div>
 
+<script src="kith-core.js"></script>
 <script src="kith-hc.js"></script>
 <script>
 'use strict';
@@ -228,8 +229,8 @@ label.lbl{display:block;font-size:.78rem;color:var(--ink-2);margin:.7rem 0 .3rem
    =========================================================================== */
 const H = window.KITHHC;
 const CFG = {
-  url: localStorage.getItem('kith_crm_url') || 'https://mxyrxyhvjndgjqupgstu.supabase.co',
-  key: localStorage.getItem('kith_crm_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog',
+  url: localStorage.getItem('kith_crm_url') || KithCore.URL,
+  key: localStorage.getItem('kith_crm_key') || KithCore.KEY,
   bucket: 'job-sheets'
 };
 const REST = () => CFG.url.replace(/\/$/, '') + '/rest/v1/';
@@ -256,15 +257,11 @@ const canDecide = () => /advis|director|manager|workshop/i.test(MY_ROLE) || /^(l
 /* ---------------- who ---------------- */
 // Same people and PINs as the CRM (index.html STAFF). Used when the
 // kith_staff table is empty. Mechanics sign in with "Mechanic" + their name.
-const FALLBACK_STAFF = [
-  { name: 'Ali', role: 'Service Adviser', pin: '7777' }, { name: 'Elvis', role: 'Service Adviser', pin: '8888' },
-  { name: 'Giles', role: 'Parts / Workshop', pin: '4444' }, { name: 'Logkith', role: 'Director', pin: '0000' }];
+const FALLBACK_STAFF = KithCore.base();   // shared list — kith-core.js
 let STAFF = [], PICKED = null;
 async function loadStaff() {
   try {
-    const r = await fetch(REST() + 'kith_staff?select=id,data&limit=200', { headers: HDR() });
-    if (!r.ok) throw new Error('staff ' + r.status);
-    STAFF = ((await r.json()) || []).map(x => Object.assign({ id: x.id }, x.data || {})).filter(x => x.name && x.active !== false);
+    STAFF = (await KithCore.staff()).filter(x => x.name && x.active !== false);
     if (!STAFF.length) throw new Error('empty');
   } catch (e) { STAFF = FALLBACK_STAFF.slice(); }
   // Mechanics first, then everyone else
@@ -273,7 +270,7 @@ async function loadStaff() {
   renderWho();
 }
 function renderWho() {
-  $('whoGrid').innerHTML = STAFF.map((p, i) => '<button class="' + (PICKED === p ? 'on' : '') + '" data-i="' + i + '"><span class="n">' + esc(p.name) + '</span><span class="r">' + esc(p.role || 'Staff') + '</span></button>').join('') +
+  $('whoGrid').innerHTML = STAFF.map((p, i) => '<button class="' + (PICKED === p ? 'on' : '') + '" data-i="' + i + '"><span class="n">' + esc(p.name) + '</span><span class="r">' + esc(p.label || p.role || 'Staff') + '</span></button>').join('') +
     '<button class="' + (PICKED === 'other' ? 'on' : '') + '" data-i="other"><span class="n">Mechanic</span><span class="r">Type your name</span></button>';
   $('whoGrid').querySelectorAll('[data-i]').forEach(b => b.onclick = () => {
     PICKED = b.dataset.i === 'other' ? 'other' : STAFF[+b.dataset.i]; renderWho();
@@ -290,7 +287,7 @@ function doLogin() {
     if (n.length < 2) { $('loginErr').innerHTML = '<div class="note stop"><b>Type your name</b>So the check shows who did it.</div>'; return; }
     ME = n; MY_ROLE = 'Mechanic';
   } else {
-    if (PICKED.pin && String($('pinIn').value) !== String(PICKED.pin)) { $('loginErr').innerHTML = '<div class="note stop"><b>Wrong PIN</b>Try again.</div>'; $('pinIn').value = ''; return; }
+    if (PICKED.pin && !KithCore.pinOk(PICKED, $('pinIn').value)) { $('loginErr').innerHTML = '<div class="note stop"><b>Wrong PIN</b>Try again.</div>'; $('pinIn').value = ''; return; }
     ME = PICKED.name; MY_ROLE = PICKED.role || '';
   }
   store.set('kith_hc_me', JSON.stringify({ name: ME, role: MY_ROLE }));

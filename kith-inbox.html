@@ -214,6 +214,7 @@ table.t tr:last-child td{border-bottom:0}
 
 <div id="sheetHost"></div>
 
+<script src="kith-core.js"></script>
 <script src="kith-parts.js"></script>
 <script src="kith-bot.js"></script>
 <script>
@@ -234,8 +235,8 @@ table.t tr:last-child td{border-bottom:0}
    =========================================================================== */
 const P = window.KITHParts, B = window.KITHBot;
 const CFG = {
-  url: localStorage.getItem('kith_crm_url') || 'https://mxyrxyhvjndgjqupgstu.supabase.co',
-  key: localStorage.getItem('kith_crm_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog'
+  url: localStorage.getItem('kith_crm_url') || KithCore.URL,
+  key: localStorage.getItem('kith_crm_key') || KithCore.KEY
 };
 const REST = () => CFG.url.replace(/\/$/, '') + '/rest/v1/';
 const HDR = () => ({ apikey: CFG.key, Authorization: 'Bearer ' + CFG.key, 'Content-Type': 'application/json' });
@@ -975,15 +976,13 @@ function closeSheet() { $('sheetHost').innerHTML = ''; }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
 
 /* ---------------- who is using it ---------------- */
-const FALLBACK_STAFF = [{ name: 'Ali', role: 'adviser' }, { name: 'Sudha', role: 'accounts' }, { name: 'Logkith', role: 'director' }];
+const FALLBACK_STAFF = KithCore.base();   // shared list — kith-core.js
 const INBOX_ROLES = ['adviser', 'director', 'accounts', 'parts'];
 const canUse = x => INBOX_ROLES.includes(x.role) || (Array.isArray(x.roles) && x.roles.some(r => INBOX_ROLES.concat('inbox').includes(r)));
 let STAFF = [], PICKED = null;
 async function loadStaff() {
   try {
-    const r = await fetch(REST() + 'kith_staff?select=id,data&limit=100', { headers: HDR() });
-    if (!r.ok) throw new Error('staff ' + r.status);
-    STAFF = ((await r.json()) || []).map(x => Object.assign({ id: x.id }, x.data || {})).filter(x => x.name && x.active !== false && canUse(x));
+    STAFF = (await KithCore.staff()).filter(x => x.name && x.active !== false && canUse(x));
     if (!STAFF.length) throw new Error('empty');
   } catch (e) { STAFF = FALLBACK_STAFF.slice(); }
   renderWho();
@@ -998,7 +997,7 @@ function renderWho() {
 }
 function doLogin() {
   if (!PICKED) return;
-  if (PICKED.pin && String($('pinIn').value) !== String(PICKED.pin)) { $('loginErr').innerHTML = '<div class="note stop"><b>Wrong PIN</b>Try again.</div>'; $('pinIn').value = ''; return; }
+  if (PICKED.pin && !KithCore.pinOk(PICKED, $('pinIn').value)) { $('loginErr').innerHTML = '<div class="note stop"><b>Wrong PIN</b>Try again.</div>'; $('pinIn').value = ''; return; }
   ME = PICKED.name; MY = PICKED;
   try { localStorage.setItem('kith_inbox_me', ME); } catch (e) {}
   showMain();

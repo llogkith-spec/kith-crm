@@ -4,8 +4,9 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>KITH Cars — Accounts</title>
+<script src="kith-core.js"></script>
 <script>
-var PINS = {Sudha:'6666', Logkith:'0000'};
+var PINS = {Sudha:1, Logkith:1};   // who may open Accounts — the PINs themselves live in kith-core.js / Accounts → Staff
 var user = null, who = null, pin = '';
 
 function goPin(name) {
@@ -33,7 +34,7 @@ function updDots() {
 }
 
 function chk() {
-  if(pin === PINS[who]) {
+  if(PINS[who] && KithCore.pinOk(who, pin)) {
     user = who;
     try { localStorage.setItem('kith_user', user); } catch(e){}
     document.getElementById('login').style.display = 'none';
@@ -77,7 +78,7 @@ function autoLogin() {
 window.addEventListener('DOMContentLoaded', autoLogin);
 
 // SUPABASE
-var SB = 'https://mxyrxyhvjndgjqupgstu.supabase.co';
+var SB = KithCore.URL;
 // Build stamp: bumped on every release. An open tab checks every few minutes
 // whether a newer one is live and asks to reload, so nobody keeps working on
 // an old copy (e.g. a statement reader that has since been fixed).
@@ -93,7 +94,7 @@ setInterval(async function(){
     document.body.appendChild(b);
   } catch(e) {}
 }, 3 * 60 * 1000);
-var SK = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
+var SK = KithCore.KEY;
 var SH = {apikey:SK, Authorization:'Bearer '+SK, 'Content-Type':'application/json', Prefer:'resolution=merge-duplicates'};
 
 // Supabase hands back at most 1,000 rows per request, so anything bigger

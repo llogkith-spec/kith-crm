@@ -132,11 +132,12 @@ pre{padding:10px;overflow:auto;white-space:pre-wrap}
 <dialog id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
 <div class="toast" id="toast"></div>
 
+<script src="kith-core.js"></script>
 <script>
 /* ============================ CONFIG ============================ */
 const CFG = {
-  SUPABASE_URL: 'https://mxyrxyhvjndgjqupgstu.supabase.co',
-  SUPABASE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog',            // ← paste anon key (same as portal-core.js)
+  SUPABASE_URL: KithCore.URL,
+  SUPABASE_KEY: KithCore.KEY,            // ← paste anon key (same as portal-core.js)
   TABLE: 'kith_leadgen',
   JOBS_TABLE: 'jobs',
   STAFF_TABLE: 'kith_staff',   // PIN checked here; role must contain director/owner
@@ -643,7 +644,7 @@ function clearDemo(){if(!confirm('Clear all demo numbers and start with an empty
 /* ============================ OWNER GATE ============================ */
 async function checkPin(){
   const pin=$('#pin').value.trim(); let okk=false;
-  if(DB.on()){try{const r=await DB.get(CFG.STAFF_TABLE,`select=name,role&pin=eq.${encodeURIComponent(pin)}&active=eq.true`);okk=r.some(x=>/director|owner|admin|manager/i.test(x.role||''))}catch(e){}}
+  try{okk=(await KithCore.staff()).some(p=>KithCore.hasRole(p,'director')&&(p.pins||[]).length&&KithCore.pinOk(p,pin))}catch(e){}   // shared list — kith-core.js
   if(!okk&&CFG.OWNER_PIN) okk=pin===CFG.OWNER_PIN;
   if(okk){try{sessionStorage.setItem('kith_lg_ok','1')}catch(e){}$('#gate').style.display='none';boot()}else $('#pinErr').textContent='Not an owner PIN';
 }

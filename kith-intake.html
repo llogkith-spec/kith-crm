@@ -455,12 +455,13 @@ input:checked+.tsl:before{transform:translateX(20px)}
   </div>
 </div>
 
+<script src="kith-core.js"></script>
 <script>
 // =============================================================================
 // CONFIG
 // =============================================================================
-var SB_URL='https://mxyrxyhvjndgjqupgstu.supabase.co';
-var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
+var SB_URL=KithCore.URL;
+var SB_KEY=KithCore.KEY;
 var SOP_VERSION='8.0';
 var INTAKE_BUILD='3.2';
 // The CRM keeps one row per job in `jobs` ({id, data, updated_at}).
@@ -501,13 +502,8 @@ var RAMP_RULES={
   gvw_over:['over'], gvw_flag:['at','unknown']
 };
 
-var STAFF=[
-  {n:'Ali',r:'Service Adviser',i:'📞'},
-  {n:'Elvis',r:'Service Adviser + Estimator',i:'📞'},
-  {n:'Joel',r:'Estimator (12pm–5pm)',i:'📋'},{n:'Paul',r:'Estimator (parts + labour)',i:'📋'},
-  {n:'Giles',r:'Parts',i:'🔧'},{n:'Harith',r:'Parts',i:'🔩'},
-  {n:'Sudha',r:'Accounts',i:'💷'},{n:'Logan',r:'Director',i:'👑'}
-];
+// Shared staff list (kith-core.js). The director is recorded as 'Logan' on intake.
+var STAFF=KithCore.base().map(function(p){return {n:p.name==='Logkith'?'Logan':p.name,r:p.label,i:p.icon};});
 
 // =============================================================================
 // LEVEL 1 — JOB TYPE

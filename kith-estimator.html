@@ -431,6 +431,7 @@ details .dbody{padding:0 .6rem .6rem}
 </div>
 </div>
 
+<script src="kith-core.js"></script>
 <script src="kith-rules.js"></script>
 <script>
 /* ===========================================================================
@@ -1158,9 +1159,9 @@ setTimeout(()=>{renderCustomers();renderLabour();renderParts();renderFixed();ren
    data.quote on the same row rather than into a table of its own.
    =========================================================================== */
 const CRM={
-  url:  localStorage.getItem('kith_crm_url') ||'https://mxyrxyhvjndgjqupgstu.supabase.co',
+  url:  localStorage.getItem('kith_crm_url') ||KithCore.URL,
   // Same public key the CRM page uses, so nobody has to paste it in.
-  key:  localStorage.getItem('kith_crm_key') ||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog',
+  key:  localStorage.getItem('kith_crm_key') ||KithCore.KEY,
   // The CRM keeps every job in "jobs" (kith_jobs was never read by the board).
   table:'jobs'
 };
@@ -1753,21 +1754,16 @@ const ROLES={
 };
 // Only used if the kith_staff table can't be read. Names match the CRM,
 // so assignments and pings line up.
-const FALLBACK_STAFF=[
-  {name:'Joel',role:'estimator'},{name:'Paul',role:'estimator'},{name:'Elvis',role:'estimator'},
-  {name:'Logkith',role:'director'}
-];
+const FALLBACK_STAFF=KithCore.base().filter(x=>ROLES[x.role]);   // shared list — kith-core.js
 let STAFF=[], PICKED=null, SECTION='labour';
 
 async function loadStaff(){
   try{
-    if(!CRM.key)throw new Error('no key');
-    const r=await fetch(CRM.url.replace(/\/$/,'')+'/rest/v1/kith_staff?select=id,data&limit=100',
-      {headers:{apikey:CRM.key,Authorization:'Bearer '+CRM.key}});
-    if(!r.ok)throw new Error('staff '+r.status);
-    const rows=await r.json();
-    STAFF=(rows||[]).map(x=>({id:x.id,...(x.data||{})}))
-      .filter(x=>x.name&&x.active!==false&&ROLES[x.role||'estimator']);   // advisers etc. use their own apps
+    // Shared staff list (kith-core.js). Main role picks the sections; someone who
+    // covers estimating as a second role (e.g. Elvis) still gets the estimator view.
+    STAFF=(await KithCore.staff())
+      .map(x=>Object.assign({},x,{role:ROLES[x.role]?x.role:(x.roles||[]).find(r=>ROLES[r])}))
+      .filter(x=>x.name&&x.active!==false&&x.role);
     if(!STAFF.length)throw new Error('empty');
   }catch(e){ STAFF=FALLBACK_STAFF.slice(); }
   renderWho();
@@ -1788,7 +1784,7 @@ function renderWho(){
 }
 function doLogin(){
   if(!PICKED)return;
-  if(PICKED.pin && String($('pinIn').value)!==String(PICKED.pin)){
+  if(PICKED.pin && !KithCore.pinOk(PICKED,$('pinIn').value)){
     $('loginErr').innerHTML='<div class="note stop" style="margin-top:.6rem"><b>Wrong PIN</b>Try again.</div>';
     $('pinIn').value='';return;
   }

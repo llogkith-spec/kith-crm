@@ -191,14 +191,15 @@ a{color:var(--gold);text-decoration:none}
 
 <div class="toast" id="toast"></div>
 
+<script src="kith-core.js"></script>
 <script>
 'use strict';
 
 // ── CONFIG ──────────────────────────────────────────────
-const SB_URL = 'https://mxyrxyhvjndgjqupgstu.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
+const SB_URL = KithCore.URL;
+const SB_KEY = KithCore.KEY;
 const SB_HDR = {'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'};
-const DIRECTOR_PIN = '0000';
+// Director PIN comes from the shared staff list (kith-core.js)
 
 // ── STATE ──────────────────────────────────────────────
 let SOP = null;       // live loaded SOP from DB
@@ -209,7 +210,7 @@ let SOP_VERSION = 1;
 function checkPin(){
   const v = document.getElementById('pinInput').value;
   if(v.length < 4) return;
-  if(v === DIRECTOR_PIN){
+  if(KithCore.pinOk(KithCore.BOSS, v)){
     sessionStorage.setItem('ksop', '1');
     document.getElementById('pinWall').style.display = 'none';
     document.getElementById('app').style.display = 'block';
