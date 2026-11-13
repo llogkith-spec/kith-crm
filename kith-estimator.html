@@ -439,7 +439,7 @@ details .dbody{padding:0 .6rem .6rem}
    =========================================================================== */
 const KITH=(function(){
 const VERSION='8.0';
-const RATES={LOW:50,MED:60,TOP:70,BODY:70};
+const RATES={LOW:50,MED:60,TOP:70,BODY:90}; // fallbacks — live SOP overrides via applySop()
 const CUSTOMERS={
  retail:{label:'Retail / B2C',short:'RETAIL',kind:'kith',threshold:2.0,collapseMed:true,
    note:'Two tiers only. Servicing and brakes are LOW (£50/hr). Everything else is TOP (£70/hr). There is no retail MED tier.'},
@@ -455,22 +455,22 @@ const CUSTOMERS={
    note:'£44/hr at raw SRT, no multiplier. Parts 15%. Only 0.3–0.5 hr of diagnostic is authorised by the AA.'}};
 const MULT={lower:2.0,upper:1.5}, MULT_RAMP={lower:2.5,upper:1.75};
 const ALWAYS_X2=['suspension','bearings','dpf','trackrod'];
-const MIN_LABOUR_HOURS=0.5, MIN_EXEMPT=['bulb','tyre','wiper'], BODY_MIN_CHARGE=70;
+let MIN_LABOUR_HOURS=0.5, BODY_MIN_CHARGE=90; const MIN_EXEMPT=['bulb','tyre','wiper'];
 const INSPECTION_MINUTES={interim:12.5,full:20,major:30};
 const LADDER=[{to:10,mult:2.0,minSell:0,markup:'100%'},{to:20,mult:1.8,minSell:20,markup:'80%'},
   {to:30,mult:1.6,minSell:36,markup:'60%'},{to:40,mult:1.4,minSell:48,markup:'40%'},
   {to:2000,mult:1.3,minSell:56,markup:'30%'}];
-const PARTS_ESCALATE_ABOVE=2000, TYRE_FIT_EACH=20, VAT_RATE=0.20;
+const PARTS_ESCALATE_ABOVE=2000, VAT_RATE=0.20; let TYRE_FIT_EACH=20;
 const MOT={4:50,5:58,7:58};
 const FLUIDS={'Budget oil (1L)':5.50,'Castrol 5W-30 (1L)':7.50,'Castrol 5W-30 C3 (1L)':12.50,
  'Castrol 0W-30 C2 (1L)':8.00,'Castrol 0W-20 LL (1L)':10.50,'Transmission / PAS fluid (1L)':10.40,
  'Brake & clutch fluid':8.00,'Brake cleaner':4.50,'WD-40':9.00,'Cataclean DPF cleaner':15.00,
  "Wynn's exhaust DPF cleaner":9.90,'Coolant (1L)':5.00,'Screenwash':2.00,'AdBlue (1L)':2.50,
  'Bulb':8.00,'Wiper blade - front':7.00,'Wiper blade - rear':5.00};
-const PANEL_BASE={'Roof':300,'Boot / tailgate':250,'Front bumper':220,'Bonnet':200,
- 'Door (each)':200,'Rear bumper':175,'Front quarter panel':175,'Rear quarter panel':175,'Trim / moulding':100};
+const PANEL_BASE={'Roof':400,'Boot / tailgate':350,'Front bumper':320,'Bonnet':300,
+ 'Door (each)':300,'Rear bumper':275,'Front quarter panel':275,'Rear quarter panel':275,'Trim / moulding':200};
 const PANEL_UPLIFT={'5-seater':0,'7-seater / SUV':40,'9-seater van':80,'Large van':100};
-const SLIDING_DOOR={'5-seater':null,'7-seater / SUV':270,'9-seater van':320,'Large van':350};
+const SLIDING_DOOR={'5-seater':300,'7-seater / SUV':340,'9-seater van':380,'Large van':400}; // priced as a door + uplift
 const FIXED={
  'MOT — Class 4 (cars, small vans)':{price:50,vatable:false},
  'MOT — Class 5 (13+ seat)':{price:58,vatable:false},
@@ -483,7 +483,7 @@ const FIXED={
  'Engine replacement — 1.5-2.0L petrol':{price:1200},'Engine replacement — 1.5-2.0L diesel':{price:1450},
  'Engine replacement — 2.1-3.0L petrol':{price:1550},'Engine replacement — 2.1-3.0L diesel':{price:1850},
  'Engine replacement — 3.0L+ petrol':{price:1950},'Engine replacement — 3.0L+ diesel':{price:2350},
- 'Stage 1 remap':{price:250},'Stage 2 remap':{price:320},'Economy remap':{price:200},
+ 'Stage 1 remap':{price:200},'Stage 2 remap':{price:300},'Economy remap':{price:200},
  'Pop & bang (standalone)':{price:150},'Pop & bang + Stage 1':{price:350},'Map restore to stock':{price:75},
  'EGR Solution':{price:200},'AdBlue delete':{price:250},'DPF remap (removal labour is extra)':{price:330},
  'Recovery 0-3 miles':{price:90},'Recovery 3-5 miles':{price:110},'Recovery 5-7 miles':{price:150},
@@ -585,10 +585,33 @@ function quote(lines,{customer='retail'}={}){
  return{version:VERSION,customer,lines,net,vat:vatAmount,incVat,outsideVat,customerPays,
   depositRequired,deposit:depositRequired?money(customerPays/2):0,
   escalations,readyToSend:escalations.length===0};}
-return{VERSION,RATES,CUSTOMERS,MULT,MULT_RAMP,ALWAYS_X2,LADDER,FLUIDS,MOT,FIXED,
+/* Live SOP from kith_sop_config (saved in kith-sop.html). Overwrites the
+   fallbacks above so this page prices exactly like the CRM and the Brain. */
+function applySop(c){
+ if(!c||typeof c!=='object')return false;
+ const n=x=>typeof x==='number'&&isFinite(x);
+ if(c.rates)['LOW','MED','TOP','BODY'].forEach(k=>{if(n(c.rates[k]))RATES[k]=c.rates[k];});
+ const m=c.minimums||{};
+ if(n(m.labourHours)){MIN_LABOUR_HOURS=m.labourHours;api.MIN_LABOUR_HOURS=m.labourHours;}
+ if(n(m.bodyMinCharge)){BODY_MIN_CHARGE=m.bodyMinCharge;api.BODY_MIN_CHARGE=m.bodyMinCharge;}
+ if(Array.isArray(c.partsLadder)&&c.partsLadder.length){LADDER.length=0;
+  c.partsLadder.forEach(b=>LADDER.push({to:b.to,mult:b.mult,minSell:b.minSell||0,markup:Math.round((b.mult-1)*100)+'%'}));}
+ if(n(c.tyreFitEach)){TYRE_FIT_EACH=c.tyreFitEach;api.TYRE_FIT_EACH=c.tyreFitEach;}
+ if(c.mot)Object.keys(c.mot).forEach(k=>{if(!n(c.mot[k]))return;MOT[k]=c.mot[k];
+  Object.keys(FIXED).forEach(f=>{if(f.startsWith('MOT — Class '+k+' '))FIXED[f].price=c.mot[k];});});
+ const setFixed=o=>o&&Object.keys(o).forEach(k=>{const v=o[k],p=typeof v==='object'&&v?v.price:v;if(FIXED[k]&&n(p))FIXED[k].price=p;});
+ setFixed(c.diagnostics);setFixed(c.tuning);setFixed(c.inspections);
+ const bw=c.bodywork||{};
+ if(bw.panelBase)Object.keys(bw.panelBase).forEach(k=>{if(!n(bw.panelBase[k]))return;if(k==='Sliding door')return;PANEL_BASE[k]=bw.panelBase[k];});
+ if(bw.panelUplift)Object.keys(bw.panelUplift).forEach(k=>{if(n(bw.panelUplift[k]))PANEL_UPLIFT[k]=bw.panelUplift[k];});
+ const sd=bw.panelBase&&bw.panelBase['Sliding door'];
+ if(n(sd))Object.keys(PANEL_UPLIFT).forEach(k=>{SLIDING_DOOR[k]=sd+PANEL_UPLIFT[k];});
+ return true;}
+const api={VERSION,RATES,CUSTOMERS,MULT,MULT_RAMP,ALWAYS_X2,LADDER,FLUIDS,MOT,FIXED,
  PANEL_BASE,PANEL_UPLIFT,SLIDING_DOOR,TYRE_FIT_EACH,MIN_LABOUR_HOURS,BODY_MIN_CHARGE,
  INSPECTION_MINUTES,HARD_STOPS,PAIR_RULE,VAT_RATE,money,vat,isAA,resolveTier,multiplierFor,
- labourLine,partLine,fluidLine,tyreLine,fixedLine,panelPrice,quote};
+ labourLine,partLine,fluidLine,tyreLine,fixedLine,panelPrice,quote,applySop};
+return api;
 })();
 
 /* ===========================================================================
@@ -1141,6 +1164,16 @@ const CRM={
   // The CRM keeps every job in "jobs" (kith_jobs was never read by the board).
   table:'jobs'
 };
+
+// Pull the live SOP so this page never quotes old prices (falls back silently if offline).
+(async function loadLiveSop(){
+  try{
+    const r=await fetch(CRM.url+'/rest/v1/kith_sop_config?id=eq.current&select=data',
+      {headers:{apikey:CRM.key,Authorization:'Bearer '+CRM.key}});
+    if(!r.ok)return; const rows=await r.json();
+    if(rows&&rows[0]&&rows[0].data&&KITH.applySop(rows[0].data)&&typeof renderAll==='function')renderAll();
+  }catch(e){}
+})();
 
 /* ---------------------------------------------------------------------------
    STAGE KEYS — checked against the live CRM (index.html STAGES), 16 Sep 2026.
