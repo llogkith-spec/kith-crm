@@ -2234,7 +2234,7 @@ function renderInbox(){
   let pendingTotal=Object.values(pendingByDay).flat().length;
 
   function addedRowHTML({r,d,job}){
-    const t=(r['Timestamp']||r['timestamp']||'').replace(/'/g,"\\'");
+    const t=String(r['Timestamp']||r['timestamp']||'').replace(/'/g,"\\'");
     const isBooked=['booked','po'].includes(job.stage);
     const col=isBooked?'var(--green)':'var(--blue)';
     return'<div style="display:flex;gap:6px;align-items:center;padding:5px 8px;margin-bottom:4px;border-left:3px solid '+col+';background:var(--surface2);border-radius:0 var(--rs) var(--rs) 0">'+
@@ -2259,7 +2259,7 @@ function renderInbox(){
   }
 
   function pendingRowHTML({r,d}){
-    const t=(r['Timestamp']||r['timestamp']||'').replace(/'/g,"\\'");
+    const t=String(r['Timestamp']||r['timestamp']||'').replace(/'/g,"\\'");
     const canAdd=currentUser&&(currentUser.filter==='estimator'||currentUser.name==='Logkith');
     // Is this reg already a live job? The same vehicle often gets submitted
     // more than once, which is why one reg could show four times.
