@@ -519,6 +519,9 @@ async function loadData() {
   // Recurring bills — load templates, then raise anything whose day has passed.
   try {
     recurring = await fetchRecurring();
+    // Overheads Logan confirmed on 13 Nov go in by themselves, but only when
+    // the list was actually read, so a failed load can never add duplicates.
+    if (_recLoadOK && (_confirmedMissing().length || _confirmedChanged().length)) await addConfirmedOverheads(true);
     autoRaiseDue();
   } catch(e) { console.warn('Recurring load skipped:', e); recurring = []; }
 
@@ -2718,6 +2721,39 @@ function _fcChart(months) {
 
 // ---- P&L MONTHLY ----
 function _shiftReportMonth(delta) { reportMonth = shiftMonth(reportMonth, delta); rReports(); }
+// Direct costs: what the jobs themselves use. Revenue less these = gross profit.
+var DIRECT_CATS = ['Parts','Paint & materials','Consumables','Subcontractor','Tyres'];
+var _plWages = {};   // YYYY-MM -> {cost, hours} once loaded, null while loading
+async function _plLoadWages(ym) {
+  try {
+    var R = monthRange(ym + '-15');
+    var got = await Promise.all([fetchStaff(), fetchShiftsBetween(R.start, R.end)]);
+    var W = _wageSummary(Array.isArray(got[0]) ? got[0] : [], got[1] || []);
+    _plWages[ym] = {cost: W.list.reduce(function(t,x){ return t + (x.cost||0); }, 0), hours: W.list.reduce(function(t,x){ return t + (x.hours||0); }, 0)};
+  } catch(e) { _plWages[ym] = {cost:0, hours:0}; }
+  if (reportMonth === ym && reportView === 'pnl' && _curTab() === 'reports') _renderPnL();
+}
+// Active overheads that cover month ym with no bill for that month yet.
+// Only from the overhead's start month, so past months aren't back-filled
+// with costs that were never set up then.
+function _plExpectedOverheads(ym) {
+  var out = [];
+  recurring.forEach(function(t){
+    if (!t.active) return;
+    var n = recEvery(t), st = t.startMonth || String(normDate(t.createdAt) || '').slice(0,7);
+    if (st && ym < st) return;
+    var tk = _payeeKey(t.supplier), nk = _payeeKey(t.name);
+    var billed = invs.some(function(i){
+      if (!billCostInMonth(i, ym)) return false;
+      if (i.recurringId === t.id) return true;
+      var ik = _payeeKey(i.supplier);
+      return (i.cat || '') === (t.cat || '') && (_recKeyMatch(ik, tk) || _recKeyMatch(ik, nk) || (t.bankKey && _recKeyMatch(ik, t.bankKey)));
+    });
+    if (billed) return;
+    out.push({name:t.name || t.supplier, cat:t.cat || 'Other', amt:recMonthlyNet(t), every:n});
+  });
+  return out.sort(function(a,b){ return b.amt - a.amt; });
+}
 function _renderPnL() {
   var range = monthRange(reportMonth + '-15');
 
@@ -2740,8 +2776,25 @@ function _renderPnL() {
     if (billSpread(i)) spreadRows.push({inv:i, amt:c});
   });
   var monthBills = invs.filter(function(i){ return billCostInMonth(i, reportMonth); });
+
+  // Overheads due for this month that haven't turned into a bill yet (or
+  // were paid without one), counted at their monthly share so net profit is
+  // never flattered by a bill that simply hasn't arrived.
+  var expOver = _plExpectedOverheads(reportMonth);
+  expOver.forEach(function(x){ byCat[x.cat] = (byCat[x.cat]||0) + x.amt; });
+  var expTotal = expOver.reduce(function(s,x){ return s + x.amt; }, 0);
+
+  // Wages from clock-ins / sign-in sheets for the month
+  var W = _plWages[reportMonth];
+  if (W === undefined) { _plWages[reportMonth] = null; _plLoadWages(reportMonth); }
+  var wages = W ? W.cost : 0;
+  if (wages) byCat['Wages'] = wages;
+
   var totalCosts = Object.keys(byCat).reduce(function(s,k){return s+byCat[k];},0);
   var profit = revenue - totalCosts;
+  var directCost = DIRECT_CATS.reduce(function(s,k){ return s + (byCat[k]||0); }, 0);
+  var gross = revenue - directCost;
+  var pct = function(v){ return revenue > 0 ? (v / revenue * 100).toFixed(1) + '%' : '—'; };
 
   var prev = shiftMonth(reportMonth, -1);
   var next = shiftMonth(reportMonth, +1);
@@ -2755,11 +2808,14 @@ function _renderPnL() {
     '</div>'+
 
     // Summary
-    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">'+
       sc('Revenue (ex VAT)', '£'+revenue.toFixed(2), '#2e7d32')+
+      sc('Gross margin (after parts, paint, subcontract)', pct(gross), '#1565c0')+
       sc('Costs (ex VAT)',   '£'+totalCosts.toFixed(2), '#c62828')+
-      sc(profit>=0?'Profit':'Loss', (profit>=0?'+':'')+'£'+profit.toFixed(2), profit>=0?'#2e7d32':'#c62828')+
+      sc(profit>=0?'Net profit':'Net loss', (profit>=0?'+':'')+'£'+profit.toFixed(2), profit>=0?'#2e7d32':'#c62828')+
+      sc('Net margin', pct(profit), profit>=0?'#2e7d32':'#c62828')+
     '</div>'+
+    (!W ? '<div style="font-size:12px;color:#888;margin:-6px 0 12px">Adding wages…</div>' : '')+
 
     // Breakdown
     '<div style="'+cardStyle()+'padding:0;margin-bottom:14px">'+
@@ -2775,6 +2831,10 @@ function _renderPnL() {
       }).join('') +
       '<div style="display:flex;justify-content:space-between;padding:12px 14px;background:#fafafa;border-radius:0 0 12px 12px"><strong>Total costs</strong><strong style="color:#c62828">£'+totalCosts.toFixed(2)+'</strong></div>'+
     '</div>'+
+    (expOver.length ? '<div style="'+cardStyle()+'padding:0;margin-bottom:14px">'+
+      '<div style="padding:14px 14px 8px 14px"><div style="'+stitle()+'margin:0">🔁 Overheads counted before the bill arrives (£'+expTotal.toFixed(2)+')</div><div style="font-size:11px;color:#888;margin-top:2px">Included above at their monthly share from 🔁 Overheads, because no bill for them is in this month yet.</div></div>'+
+      expOver.map(function(x){ return '<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 14px;border-top:1px solid #f0f0f0;font-size:13px"><span><strong>'+escapeHtml(x.name)+'</strong> · '+escapeHtml(x.cat)+(x.every>1?'<div style="font-size:11px;color:#888">'+escapeHtml(REC_EVERY[x.every]||'')+' bill, this month\'s share</div>':'')+'</span><strong>£'+x.amt.toFixed(2)+'</strong></div>'; }).join('')+
+    '</div>' : '')+
     (spreadRows.length ? '<div style="'+cardStyle()+'padding:0;margin-bottom:14px">'+
       '<div style="padding:14px 14px 8px 14px"><div style="'+stitle()+'margin:0">↔ Spread over several months</div><div style="font-size:11px;color:#888;margin-top:2px">Included above at this month\'s share only. The full bill is in the VAT return for its invoice date.</div></div>'+
       spreadRows.map(function(r){ var i = r.inv;
@@ -2784,7 +2844,7 @@ function _renderPnL() {
     '<div style="'+cardStyle()+'padding:16px 14px;text-align:center;background:'+(profit>=0?'#e8f5e9':'#ffebee')+'">'+
       '<div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.08em">'+(profit>=0?'Net profit':'Net loss')+'</div>'+
       '<div style="font-size:28px;font-weight:900;color:'+(profit>=0?'#2e7d32':'#c62828')+';margin-top:4px">'+(profit>=0?'+':'')+'£'+profit.toFixed(2)+'</div>'+
-      '<div style="font-size:11px;color:#888;margin-top:6px">Revenue £'+revenue.toFixed(2)+' – Costs £'+totalCosts.toFixed(2)+' · All figures ex VAT. Yearly and quarterly bills are spread over the months they cover. Payroll not included yet.</div>'+
+      '<div style="font-size:11px;color:#888;margin-top:6px">Revenue £'+revenue.toFixed(2)+' – Costs £'+totalCosts.toFixed(2)+' · All figures ex VAT. Yearly and quarterly bills are spread over the months they cover. Wages are '+(W && W.cost ? 'from clock-ins and sign-in sheets ('+W.hours.toFixed(0)+' hours)' : 'not in yet: no hours recorded for this month')+'.</div>'+
     '</div>';
 }
 
@@ -4661,10 +4721,13 @@ var OVERHEAD_STARTERS = [
   ['Accountant','Professional fees',1,true], ['Finance / loan','Loan / finance repayment',1,false], ['Card machine fees','Bank & finance charges',1,true]
 ];
 
+var _recLoadOK = false;   // true only when the overheads list was really read
 async function fetchRecurring() {
+  _recLoadOK = false;
   try {
-    var rows = await sbGet('kith_recurring');
+    var rows = await sbAll('kith_recurring?select=*&order=updated_at.desc,id.asc');
     if (!Array.isArray(rows)) return [];
+    _recLoadOK = true;
     return rows.map(function(r){ return r.data; }).filter(Boolean);
   } catch(e) { return []; }
 }
@@ -4718,8 +4781,14 @@ function autoRaiseDue() {
     if (!t.active) return;
     if (t.lastRaised === monthKey) return;
     if (!recDueIn(t, monthKey)) return;
+    // also counts a bill someone already scanned or typed in for this
+    // supplier this month, so the overhead doesn't double it
+    var tk = _payeeKey(t.supplier), nk = _payeeKey(t.name);
     var already = invs.some(function(i){
-      return i.recurringId === t.id && i.recurringMonth === monthKey;
+      if (i.recurringId === t.id && i.recurringMonth === monthKey) return true;
+      if (i.recurringId || !billCostInMonth(i, monthKey) || (i.cat || '') !== (t.cat || '')) return false;
+      var ik = _payeeKey(i.supplier);
+      return _recKeyMatch(ik, tk) || _recKeyMatch(ik, nk) || (t.bankKey && _recKeyMatch(ik, t.bankKey));
     });
     if (already) { t.lastRaised = monthKey; persistRecurring(t); return; }
     if ((parseInt(t.day,10)||1) <= today) { raiseRecurring(t, monthKey, true); raised++; }
@@ -5039,7 +5108,7 @@ function confirmedOverheadsCard() {
         td('£'+(c[3]/c[5]).toFixed(2))+'</tr>'; }).join('')+
     '</tbody></table></div></div>';
 }
-async function addConfirmedOverheads() {
+async function addConfirmedOverheads(quiet) {
   var b = document.getElementById('conf-add'); if (b) { b.disabled = true; b.textContent = 'Adding…'; }
   _confirmedChanged().forEach(function(x){
     var c = x[0], r = x[1], f = _confirmedTmpl(c);
@@ -5050,7 +5119,7 @@ async function addConfirmedOverheads() {
   if (recIgnore === null) await loadRecIgnore();   // never overwrite the shared list unread
   KITH_NOT_OVERHEADS.forEach(function(k){ if (recIgnore.indexOf(k) < 0) recIgnore.push(k); });
   persistRecIgnore();
-  rRecurring();
+  if (!quiet) rRecurring();
 }
 
 function recFoundCard() {
