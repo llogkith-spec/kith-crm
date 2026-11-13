@@ -2059,11 +2059,8 @@ function createIntakeJob(raw,ts,logLine,fixedId){
 // onto the board at 1 · Intake and gets an estimator.
 // It only runs once the board has loaded from the server and the form
 // sheet is fresh (not an old saved copy), so it never doubles anything up.
-// Left in the inbox for a person to decide:
-//  · the same reg and the same work is already live (a real duplicate)
-//  · rows marked added before but with no job (something went wrong)
-//  · rows older than 14 days (old leads nobody added at the time)
-//  · rows with no name and no reg
+// 13 Nov 2026: nothing is held back any more. Every row not already on the
+// board goes to 1 · Intake; duplicates, old rows and gaps get a ⚠ log line.
 const AUTO_INTAKE_DAYS=14;
 let _autoIntakeBusy=false;
 function _autoIntakeId(ts){
@@ -2081,29 +2078,28 @@ function autoImportIntake(){
   _autoIntakeBusy=true;
   let n=0;
   try{
-    const cutoff=Date.now()-AUTO_INTAKE_DAYS*86400000;
     newIntakeRows().forEach(raw=>{
       const t=raw['Timestamp']||raw['timestamp']||'';
       if(!t)return;
       let st;try{st=intakeRowStatus(raw);}catch(e){return;}
-      if(st.state!=='pending'||st.missing)return;
-      const when=tsDate(t).getTime();
-      if(!(when>=cutoff))return;
+      if(st.state!=='pending')return;
       const d=st.d;
-      if(!d.name&&!d.reg)return;
+      if(!d.name&&!d.reg&&!d.work)return;                         // a completely blank row
       const fid=_autoIntakeId(t);
       if(jobs.some(j=>j&&j.id===fid))return;                     // another screen already did it
-      if(!d.additional){
-        const dd=findDupes({reg:d.reg,work:d.work,tmJob:d.tmJob});
-        if(dd.same.length)return;                                 // stays in the inbox for a person
-      }
+      // Everything goes on the board now (13 Nov 2026) — old rows, rows
+      // marked added with no job, and possible duplicates. Anything that
+      // needs a second look gets a warning in the job log instead.
       const job=createIntakeJob(raw,t,'⚡ Came in from the intake form — put straight on the board',fid);
       try{
+        const notes=[];
+        if(st.missing)notes.push('⚠ Was marked added before but no job existed — added again');
+        if(Date.now()-tsDate(t).getTime()>AUTO_INTAKE_DAYS*86400000)notes.push('⚠ Older form submission ('+String(t)+') — check it is still wanted');
+        if(!d.name||!d.reg)notes.push('⚠ Form row is missing '+(!d.name?'a name':'a reg'));
         const dd=findDupes({reg:d.reg,work:d.work,tmJob:d.tmJob},job.id);
-        if(dd.similar.length){
-          job.log.push({t:ts2(),s:'⚠ Same vehicle already live: '+dd.similar.slice(0,3).map(x=>(x.tmJob||x.id)+' at '+stg(x.stage).label).join(', ')+' — check it is different work'});
-          save(job);
-        }
+        if(dd.same&&dd.same.length)notes.push('⚠ Possible duplicate of '+dd.same.slice(0,3).map(x=>(x.tmJob||x.id)+' at '+stg(x.stage).label).join(', ')+' — merge or lose one if it is the same job');
+        else if(dd.similar&&dd.similar.length)notes.push('⚠ Same vehicle already live: '+dd.similar.slice(0,3).map(x=>(x.tmJob||x.id)+' at '+stg(x.stage).label).join(', ')+' — check it is different work');
+        if(notes.length){notes.forEach(s=>job.log.push({t:ts2(),s}));save(job);}
       }catch(e){}
       n++;
     });
@@ -2338,7 +2334,7 @@ function renderInbox(){
   }
   const autoNote='<div style="font-size:11px;margin-bottom:10px;padding:7px 10px;background:var(--surface2);border-radius:var(--rs);border-left:3px solid var(--green)">'+
       '<strong style="color:var(--green)">New form submissions now go straight onto the board at 1 \u00b7 Intake.</strong> '+
-      '<span style="color:var(--dim)">Anything left under \u201cNot Yet Added\u201d needs a person: a likely duplicate, older than '+AUTO_INTAKE_DAYS+' days, or missing a name and reg.</span></div>';
+      '<span style="color:var(--dim)">Everything goes on \u2014 possible duplicates, old rows and gaps get a \u26a0 note in the job log to check.</span></div>';
   el.innerHTML=staleBanner+jobHint+autoNote+(dupCount?'<div style="font-size:11px;margin-bottom:10px;padding:7px 10px;background:var(--surface2);border-radius:var(--rs);border-left:3px solid var(--red)">'+
       '<strong style="color:var(--red)">'+dupCount+' submission'+(dupCount===1?'':'s')+' already in the pipeline</strong> '+
       '<span style="color:var(--dim)">\u2014 same reg and same work submitted more than once.</span> '+
