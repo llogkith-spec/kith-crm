@@ -4824,6 +4824,7 @@ function rRecurring() {
       var left = OVERHEAD_STARTERS.filter(function(x){ return !have[x[0].toLowerCase()]; });
       return left.length ? '<div style="'+cardStyle()+'margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#555;margin-bottom:8px">Quick add — tap one, then fill in the amount:</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+
         left.map(function(x){ return '<button onclick="openRecForm(null, OVERHEAD_STARTERS['+OVERHEAD_STARTERS.indexOf(x)+'])" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:5px 11px;font-size:12px">+ '+escapeHtml(x[0])+'</button>'; }).join('')+'</div></div>' : ''; })()+
+    confirmedOverheadsCard()+
     recFoundCard()+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">'+
       sc('Active templates', String(active.length), '#1a1a2e')+
@@ -4959,6 +4960,96 @@ function findRecurringInBank() {
   res.hasRevolut = Object.keys(cov).some(function(a){ return /revolut/i.test(a); });
   res.hasMetro = Object.keys(cov).some(function(a){ return /metro/i.test(a); });
   return res;
+}
+
+// ---- Overheads Logan confirmed on 13 Nov 2026 (from Aug-Oct Revolut) ----
+// Shown as one "Add all" card until each is set up. Anything already in the
+// list (same name or payee) is skipped, so tapping it twice can't duplicate.
+// [name, supplier, category, total paid (inc any VAT), VAT included?, every (months), day, start month, bank payee key]
+var KITH_CONFIRMED_OVERHEADS = [
+  ['Rent','Michael Rogers Property Management','Rent',14000,false,3,25,'2026-09','michael rogers property management ltd client account'],
+  ['Business rates','London Borough of Merton NNDR','Business rates',1000,false,1,7,null,'london borough of merton nndr'],
+  ['Electricity','EDF','Utilities',151.94,true,1,20,null,'edf uk card payments'],
+  ['Waste collection','Waste Managed','Utilities',102.52,true,1,28,null,'waste managed'],
+  ['Phone & broadband','BT Business','Utilities',153.23,true,1,6,null,'bt business bill'],
+  ['Armada Investments finance','Armada Investments Ltd','Loan / finance repayment',271.58,false,1,20,null,'armada investments ltd'],
+  ['Close Brothers finance','Close Brothers Ltd','Loan / finance repayment',694.19,false,1,26,null,'close brothers ltd'],
+  ['TechMan','Techman','Software & subscriptions',226,true,1,7,null,'techman'],
+  ['Claude','Anthropic (Claude)','Software & subscriptions',80,false,1,1,null,'claude'],
+  ['Supabase','Supabase','Software & subscriptions',20,false,1,1,null,'supabase'],
+  ['Canva','Canva','Software & subscriptions',13,true,1,9,null,'canva'],
+  ['Revolut Business plan','Revolut','Bank & finance charges',10,false,1,23,null,'revolut business fee'],
+  ['Amazon Prime','Amazon Prime','Software & subscriptions',8.99,true,1,24,null,'amazon prime'],
+  ['Google One','Google One','Software & subscriptions',1.59,true,1,3,null,'google one']
+];
+// Payees Logan said aren't standing bills: Certas (fuel = consumable), CCS Collect (VAT payments)
+var KITH_NOT_OVERHEADS = ['certas energy uk limited', 'ccscollect'];
+
+function _confirmedFind(c) {
+  var nk = _payeeKey(c[0]), sk = _payeeKey(c[1]);
+  return recurring.filter(function(r){
+    var rn = _payeeKey(r.name), rs = _payeeKey(r.supplier);
+    return r.bankKey === c[8] || rn === nk || _recKeyMatch(rs, sk) || _recKeyMatch(rs, c[8]);
+  })[0];
+}
+function _confirmedMissing() { return KITH_CONFIRMED_OVERHEADS.filter(function(c){ return !_confirmedFind(c); }); }
+// already set up, but at a different amount or frequency than confirmed
+function _confirmedChanged() {
+  var out = [];
+  KITH_CONFIRMED_OVERHEADS.forEach(function(c){
+    var r = _confirmedFind(c); if (!r || r.confirmedNov26) return;
+    var tot = (parseFloat(r.net)||0) + (parseFloat(r.vat)||0);
+    if (Math.abs(tot - c[3]) >= 0.01 || recEvery(r) !== c[5]) out.push([c, r, tot]);
+  });
+  return out;
+}
+function _confirmedTmpl(c) {
+  var total = c[3], net = c[4] ? +(total / 1.2).toFixed(2) : total, vat = +(total - net).toFixed(2);
+  return {id:'REC' + Date.now() + Math.floor(Math.random()*100000), every:c[5], startMonth:c[7] || _thisMonthKey(),
+    name:c[0], supplier:c[1], ref:c[0].replace(/[^A-Za-z0-9]/g,'').slice(0,8).toUpperCase() || 'REC',
+    cat:c[2], div:'Overheads', net:net, vat:vat, day:c[6], bankKey:c[8], active:true, lastRaised:null,
+    createdAt:ts(), createdBy:user, note:'Confirmed by Logan 13 Nov 2026'};
+}
+function confirmedOverheadsCard() {
+  var miss = _confirmedMissing(), chg = _confirmedChanged();
+  if (!miss.length && !chg.length) return '';
+  var tot = miss.concat(chg.map(function(x){ return x[0]; })).reduce(function(s,c){ return s + c[3] / c[5]; }, 0);
+  var n = miss.length + chg.length;
+  return '<div style="'+cardStyle()+'margin-bottom:14px;border:2px solid #2e7d32">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">'+
+      '<div><div style="'+stitle()+'margin:0">✅ Your confirmed overheads — '+(miss.length?miss.length+' to add':'')+(miss.length&&chg.length?', ':'')+(chg.length?chg.length+' to update':'')+'</div>'+
+      '<div style="font-size:11px;color:#888;margin-top:3px">From the Aug–Oct statements and the figures you gave. Quarterly rent is spread over 3 months in the P&L and forecast.</div></div>'+
+      '<div style="text-align:right"><div style="font-size:18px;font-weight:800">£'+tot.toFixed(2)+'/month</div>'+
+      '<button id="conf-add" onclick="addConfirmedOverheads()" style="'+btnStyle('#2e7d32','#fff')+'margin-top:6px">✓ '+(miss.length?'Add':'Update')+' all '+n+'</button></div>'+
+    '</div>'+
+    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+th(['Overhead','Category','How often','Amount','Per month'])+'<tbody>'+
+    miss.map(function(c){
+      return '<tr>'+td('<strong>'+escapeHtml(c[0])+'</strong><div style="font-size:10px;color:#888">'+escapeHtml(c[1])+'</div>')+
+        td('<span style="font-size:12px">'+escapeHtml(c[2])+'</span>')+
+        td('<span style="font-size:12px">'+(REC_EVERY[c[5]]||'')+' · day '+c[6]+(c[7]?' (Sep, Dec, Mar, Jun)':'')+'</span>')+
+        td('<strong>£'+c[3].toFixed(2)+'</strong><div style="font-size:10px;color:#888">'+(c[4]?'inc VAT':'no VAT')+'</div>')+
+        td('£'+(c[3]/c[5]).toFixed(2))+'</tr>';
+    }).join('')+
+    chg.map(function(x){ var c = x[0];
+      return '<tr style="background:#fffbea">'+td('<strong>'+escapeHtml(x[1].name||c[0])+'</strong><div style="font-size:10px;color:#e65100;font-weight:700">already set up — will update</div>')+
+        td('<span style="font-size:12px">'+escapeHtml(c[2])+'</span>')+
+        td('<span style="font-size:12px">'+(REC_EVERY[c[5]]||'')+' · day '+c[6]+'</span>')+
+        td('<span style="text-decoration:line-through;color:#999;font-size:11px">£'+x[2].toFixed(2)+(recEvery(x[1])!==c[5]?' '+(REC_EVERY[recEvery(x[1])]||''):'')+'</span><br><strong>£'+c[3].toFixed(2)+'</strong>')+
+        td('£'+(c[3]/c[5]).toFixed(2))+'</tr>'; }).join('')+
+    '</tbody></table></div></div>';
+}
+async function addConfirmedOverheads() {
+  var b = document.getElementById('conf-add'); if (b) { b.disabled = true; b.textContent = 'Adding…'; }
+  _confirmedChanged().forEach(function(x){
+    var c = x[0], r = x[1], f = _confirmedTmpl(c);
+    ['every','startMonth','cat','net','vat','day','bankKey','note'].forEach(function(k){ r[k] = f[k]; });
+    r.confirmedNov26 = true; persistRecurring(r);
+  });
+  _confirmedMissing().forEach(function(c){ var t = _confirmedTmpl(c); t.confirmedNov26 = true; recurring.unshift(t); persistRecurring(t); });
+  if (recIgnore === null) await loadRecIgnore();   // never overwrite the shared list unread
+  KITH_NOT_OVERHEADS.forEach(function(k){ if (recIgnore.indexOf(k) < 0) recIgnore.push(k); });
+  persistRecIgnore();
+  rRecurring();
 }
 
 function recFoundCard() {
