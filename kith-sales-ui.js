@@ -158,7 +158,7 @@ function show(v) {
 function paint() {
   if (V.view === 'inbox' || EDITING) return;
   const el = $('view-sales');
-  if (D.missing) { el.innerHTML = '<div class="sv"><div class="note stop"><b>The kith_sales table isn\'t set up yet</b>Run the SQL in the setup notes (README-inbox.md, step 2) in Supabase, then refresh.</div></div>'; return; }
+  if (D.missing) { el.innerHTML = '<div class="sv"><div class="note stop"><b>The kith_sales table isn\'t set up yet</b>In Supabase, open SQL Editor → New query, run the three lines from README-sales.md (step 1), then refresh this page.</div></div>'; return; }
   if (!V.loadedAt) { el.innerHTML = '<div class="sv"><div class="empty"><span class="spin"></span> Loading customers…</div></div>'; return; }
   ({ pipeline: paintPipeline, customers: paintCustomers, campaigns: paintCampaigns, b2b: paintB2B })[V.view]();
 }
