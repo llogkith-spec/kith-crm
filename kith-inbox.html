@@ -250,7 +250,15 @@ const errBox = (id, m) => { const e = $(id); if (e) e.innerHTML = '<div class="n
 
 /* ---------------- state ---------------- */
 let ME = null, MY = null;
-let LEADS = [], LEADS_BASE = [], OUT = [], OUT_BASE = [], LIVE = {};
+let LEADS = [], LEADS_BASE = [], OUT = [], OUT_BASE = [], LIVE = {}, AUTOPILOT = null;
+// kith-autopilot.gs triages and replies on the server every minute. While its
+// heartbeat is fresh this page only shows what it did, so no lead is ever
+// answered twice. If the heartbeat stops, this page takes over again.
+function autopilotAlive() {
+  const a = AUTOPILOT;
+  if (!a || !a.at || (a.mode !== 'on' && a.mode !== 'test')) return false;
+  return Date.now() - Date.parse(a.at) < 5 * 60 * 1000;
+}
 let TAB = 'new', BUSY = false;
 let CAT = 'all';  // category filter: all/adviser/parts/accounts/director/ambiguous/rapidfire
 
@@ -271,6 +279,7 @@ function debouncedSaveLeads(){
 }
 async function triageLead(l) {
   if (!l || !l.id) return;
+  if (autopilotAlive()) return;                                   // the server is doing it
   if (l.triage && l.triage.text_hash === triageHash(l)) return;  // already triaged this content
   if (_triageInFlight[l.id]) return;
   const text = triageText(l);
@@ -401,6 +410,7 @@ function isStopReply(l) {
 }
 async function fireTriageActions(l) {
   if (!l || !l.triage) return;
+  if (autopilotAlive()) return;
   if (isStopReply(l)) { l.triage.optedOut = l.triage.optedOut || new Date().toISOString(); return; }
   const t = l.triage;
   if (t.is_ambiguous) return;                             // Logan handles ambiguous
@@ -583,7 +593,10 @@ async function load(silent) {
     OUT = localOnly.concat(serverOut);
     OUT_BASE = clone(OUT);
     LIVE = sys('__msgcfg__').live || {};
-    setSync('ok', 'Up to date ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    AUTOPILOT = sys('__msgcfg__').autopilot || null;
+    setSync('ok', 'Up to date ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) +
+      (autopilotAlive() ? ' · Autopilot ' + (AUTOPILOT.mode === 'on' ? 'ON' : 'in test mode') + ' (last ran ' +
+        new Date(AUTOPILOT.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ')' : ' · Autopilot not running'));
     render();
   } catch (e) {
     setSync('err', e.message);
@@ -654,12 +667,29 @@ function catBar(kind){
     cats.map(c => '<button class="btn sm' + (CAT === c.k ? ' primary' : '') + '" style="' + (CAT === c.k ? 'background:' + c.col + ';color:#000;border-color:' + c.col : 'border:1px solid ' + c.col + ';color:' + c.col + ';background:transparent') + '" data-cat="' + c.k + '">' + esc(c.lbl) + ' <span style="opacity:.7">' + counts[c.k] + '</span></button>').join('') +
   '</div>';
 }
+function autopilotBanner() {
+  const a = AUTOPILOT;
+  if (autopilotAlive()) {
+    const l = a.last || {};
+    return '<div class="note ' + (a.mode === 'on' ? 'go' : 'warn') + '"><b>' +
+      (a.mode === 'on' ? '🤖 Autopilot is on' : '🤖 Autopilot is in test mode — nothing goes to customers') + '</b>' +
+      'It triages new enquiries and sends replies every minute, even with this page shut. Last run ' +
+      new Date(a.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) +
+      (l.sent ? ' · ' + l.sent + ' sent' : '') + (l.failed ? ' · ' + l.failed + ' failed' : '') +
+      (l.wouldSend ? ' · ' + l.wouldSend + ' waiting' : '') + (l.error ? ' · ⚠ ' + esc(l.error) : '') + '.</div>';
+  }
+  if (a && a.at) return '<div class="note stop"><b>Autopilot has stopped</b>Its last run was ' +
+    new Date(a.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) +
+    '. This page is triaging and replying again while it is open. Check the Apps Script triggers.</div>';
+  return '';
+}
 function banner() {
-  if (liveCount() === 3) return '';
+  const ap = autopilotBanner();
+  if (liveCount() === 3) return ap;
   const off = ['whatsapp', 'sms', 'email'].filter(c => !LIVE[c]).map(c => ({ whatsapp: 'WhatsApp', sms: 'text messages', email: 'email' })[c]);
   return '<div class="note warn"><b>' + (liveCount() ? 'Not everything is connected yet' : 'Nothing is connected yet') + '</b>' +
     'Messages are written and held on the Messages tab. ' + off.join(', ') + ' can’t go automatically until the account' + (off.length === 1 ? ' is' : 's are') +
-    ' set up — until then send them by hand from there, one tap each.</div>';
+    ' set up — until then send them by hand from there, one tap each.</div>' + ap;
 }
 function renderLeads(kind) {
   const list = leadsInCat(kind, CAT).sort((a, b) => (b.t || 0) - (a.t || 0));
