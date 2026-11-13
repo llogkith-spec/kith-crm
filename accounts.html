@@ -4747,7 +4747,7 @@ function delRecurring(id) {
 
 var recEditId = null;
 function openRecForm(id, starter) {
-  recEditId = id || null;
+  recEditId = id || null; _recFromBankKey = null;
   var c = document.getElementById('r-cat');
   if (c && !c.options.length) c.innerHTML = BILL_CATS.map(function(x){return '<option>'+escapeHtml(x)+'</option>';}).join('');
   var d = document.getElementById('r-div');
@@ -4791,11 +4791,12 @@ function saveRecurring() {
     net: net,
     vat: hasVat ? +(net*0.2).toFixed(2) : 0,
     day: parseInt((document.getElementById('r-day')||{}).value,10)||1,
+    bankKey: _recFromBankKey || (old ? old.bankKey : undefined),
     active: old ? old.active : true, lastRaised: old ? old.lastRaised : null,
     createdAt: old ? old.createdAt : ts(), createdBy: old ? old.createdBy : user
   };
   if (old) recurring = recurring.map(function(x){ return x.id === old.id ? t : x; }); else recurring.unshift(t);
-  recEditId = null;
+  recEditId = null; _recFromBankKey = null;
   persistRecurring(t);
   cx('ov-rec');
   ['r-name','r-sup','r-net'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
@@ -4823,6 +4824,7 @@ function rRecurring() {
       var left = OVERHEAD_STARTERS.filter(function(x){ return !have[x[0].toLowerCase()]; });
       return left.length ? '<div style="'+cardStyle()+'margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#555;margin-bottom:8px">Quick add — tap one, then fill in the amount:</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+
         left.map(function(x){ return '<button onclick="openRecForm(null, OVERHEAD_STARTERS['+OVERHEAD_STARTERS.indexOf(x)+'])" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:5px 11px;font-size:12px">+ '+escapeHtml(x[0])+'</button>'; }).join('')+'</div></div>' : ''; })()+
+    recFoundCard()+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">'+
       sc('Active templates', String(active.length), '#1a1a2e')+
       sc('Overheads per month (ex VAT, averaged)', '£'+monthlyTotal.toFixed(2), '#c62828')+
@@ -4852,6 +4854,203 @@ function rRecurring() {
           '</tr>';
         }).join('')+'</tbody></table></div>'
       : '<div style="'+cardStyle()+'color:#888;text-align:center;padding:30px">No overheads set up yet. Use Quick add above — rent, rates, insurance, utilities, software.</div>');
+}
+
+// ---- Regular payments found on the bank statements ----
+// Looks back over the last 3 months of uploaded statements (Metro + Revolut)
+// for payments to the same payee that keep coming back at a steady amount:
+// direct debits, standing orders, card subscriptions, weekly hires. Anything
+// that isn't set up as an overhead yet is listed with a one-tap Add, so the
+// P&L and forecasts stop missing it.
+
+var recIgnore = null;        // payee keys marked "not a bill" (shared)
+var recFoundOpen = {done:false, once:false, hidden:false};
+var _recFromBankKey = null;  // set while the form is pre-filled from a statement
+var _recFound = null;
+
+async function loadRecIgnore() {
+  try {
+    var r = await fetch(SB+'/rest/v1/kith_bank_tx?id=eq.__recignore__&select=data', {headers:SH});
+    var a = await r.json();
+    recIgnore = (a && a[0] && a[0].data && Array.isArray(a[0].data.keys)) ? a[0].data.keys : [];
+  } catch(e) { recIgnore = []; }
+}
+function persistRecIgnore() {
+  sbUp('kith_bank_tx', {id:'__recignore__', data:{kind:'recignore', keys:recIgnore}, updated_at:new Date().toISOString()});
+}
+
+var REC_SKIP_CATS = ['Wages','Director / personal','Customer refunds','Transfer (own account)'];
+function _recKeyMatch(a, b) {
+  if (!a || !b) return false;
+  if (a === b || a.indexOf(b) === 0 || b.indexOf(a) === 0) return true;
+  var fa = a.split(' ')[0], fb = b.split(' ')[0];
+  return fa.length >= 4 && fa === fb;
+}
+function _recNice(s) {
+  s = String(s || '').replace(/\*.*$/, '').replace(/\s{2,}/g, ' ').trim();
+  if (s === s.toUpperCase()) s = s.toLowerCase().replace(/\b[a-z]/g, function(c){ return c.toUpperCase(); });
+  return s.slice(0, 40);
+}
+function _recMedian(a) { var b = a.slice().sort(function(x,y){ return x-y; }), m = Math.floor(b.length/2); return b.length % 2 ? b[m] : (b[m-1]+b[m])/2; }
+function _recDays(a, b) { return Math.round((new Date(b+'T00:00:00') - new Date(a+'T00:00:00')) / 86400000); }
+
+function findRecurringInBank() {
+  var outs = bankTx.filter(function(t){ return t.dir === 'out' && t.amount > 0 && t.date; });
+  if (!outs.length) return {none:true};
+  var end = outs.reduce(function(m,t){ return t.date > m ? t.date : m; }, '');
+  var sd = new Date(end+'T00:00:00'); sd.setDate(sd.getDate() - 92);
+  var start = _ymdL(sd);
+  var groups = {};
+  outs.forEach(function(t){
+    if (t.date < start || t.date > end) return;
+    if (_isTransfer(t) || t.cat === CAT_TO_REVOLUT || t.cat === CAT_CASH_DRAWN || REC_SKIP_CATS.indexOf(t.cat) >= 0) return;
+    var payee = t.payee || _splitDesc(t).payee;
+    var key = _payeeKey(payee);
+    if (!key) return;
+    (groups[key] = groups[key] || {key:key, tx:[]}).tx.push(t);
+  });
+  var res = {start:start, end:end, add:[], done:[], once:[], hidden:[]};
+  Object.keys(groups).forEach(function(k){
+    var g = groups[k], tx = g.tx.sort(function(a,b){ return a.date.localeCompare(b.date); });
+    var amts = tx.map(function(t){ return t.amount; });
+    var med = _recMedian(amts), spread = med ? (Math.max.apply(null, amts) - Math.min.apply(null, amts)) / med : 9;
+    var months = {}; tx.forEach(function(t){ months[t.date.slice(0,7)] = 1; });
+    var nMonths = Object.keys(months).length;
+    var isDD = tx.some(function(t){ return /direct debit|standing order/i.test(t.type || '') || /\bD\/?D\b|direct debit|standing order/i.test(t.desc || ''); });
+    var gaps = []; for (var i = 1; i < tx.length; i++) gaps.push(_recDays(tx[i-1].date, tx[i].date));
+    var gap = gaps.length ? _recMedian(gaps) : 0;
+    var every = 1, how = 'Monthly';
+    if (gaps.length && gap <= 10) { how = 'Weekly'; }
+    else if (gaps.length && gap >= 75 && gap <= 105) { every = 3; how = 'Quarterly'; }
+    var steady = spread <= 0.35;
+    var regular = (how === 'Weekly' && tx.length >= 6 && steady) ||
+                  (nMonths >= 2 && (steady || isDD) && !(how === 'Weekly' && !steady)) ||
+                  (every === 3 && steady);
+    // a parts supplier paid many times a month at random amounts isn't an overhead
+    if (regular && how !== 'Weekly' && tx.length > nMonths * 2 && !steady) regular = false;
+    var cats = {}; tx.forEach(function(t){ if (t.cat) cats[t.cat] = (cats[t.cat]||0) + 1; });
+    var cat = Object.keys(cats).sort(function(a,b){ return cats[b]-cats[a]; })[0] || '';
+    var last = tx[tx.length-1];
+    if (tx.length === 1) how = 'Seen once';
+    var perMonth = how === 'Weekly' ? med * 52 / 12
+                 : every === 3 ? med / 3 : med;
+    var item = {key:k, name:_recNice(last.payee || _splitDesc(last).payee), cat:cat, how:how, every:every,
+      n:tx.length, nMonths:nMonths, usual:+med.toFixed(2), last:last.amount, lastDate:last.date,
+      day:_recMedian(tx.map(function(t){ return +t.date.slice(8,10); })), perMonth:+perMonth.toFixed(2),
+      steady:steady, isDD:isDD, accts:Object.keys(tx.reduce(function(o,t){ o[t.acct||t.bank||'?'] = 1; return o; }, {})), tx:tx};
+    var tmpl = recurring.filter(function(r){ return r.bankKey === k || _recKeyMatch(_payeeKey(r.supplier), k) || _recKeyMatch(_payeeKey(r.name), k); })[0];
+    if (tmpl) {
+      item.tmpl = tmpl;
+      var tAmt = (parseFloat(tmpl.net)||0) + (parseFloat(tmpl.vat)||0);
+      item.tAmt = tAmt;
+      item.off = how !== 'Weekly' && tAmt > 0 && Math.abs(item.last - tAmt) / tAmt > 0.1;
+      res.done.push(item); return;
+    }
+    if ((recIgnore || []).indexOf(k) >= 0) { if (regular || isDD) res.hidden.push(item); return; }
+    if (regular) res.add.push(item);
+    else if (isDD && tx.length === 1) res.once.push(item);
+  });
+  var byMonth = function(a,b){ return b.perMonth - a.perMonth; };
+  res.add.sort(byMonth); res.done.sort(byMonth); res.once.sort(function(a,b){ return b.usual - a.usual; }); res.hidden.sort(byMonth);
+  // which statements the window is built from
+  var cov = {};
+  bankStmts.forEach(function(s){ if (s.to >= start && s.from <= end) { var a = s.acct || s.bank || '?'; cov[a] = cov[a] || []; cov[a].push(s); } });
+  res.cov = cov;
+  res.hasRevolut = Object.keys(cov).some(function(a){ return /revolut/i.test(a); });
+  res.hasMetro = Object.keys(cov).some(function(a){ return /metro/i.test(a); });
+  return res;
+}
+
+function recFoundCard() {
+  if (!bankLoaded || recIgnore === null) {
+    Promise.all([bankLoaded ? null : loadBank(), recIgnore === null ? loadRecIgnore() : null]).then(function(){
+      bankTx.forEach(function(t){ if (!t.confirmed) classifyBankTx(t); });
+      if (_curTab() === 'recurring') rRecurring();
+    });
+    return '<div style="'+cardStyle()+'margin-bottom:14px;color:#888">🔎 Checking your bank statements for regular payments…</div>';
+  }
+  var R = _recFound = findRecurringInBank();
+  if (R.none) return '<div style="'+cardStyle()+'margin-bottom:14px;font-size:13px;color:#e65100">🔎 No bank statements uploaded yet. Upload the last 3 months of Revolut and Metro statements in the 🏦 Bank tab and this will list every regular payment that isn\'t set up here.</div>';
+  var g = function(n){ return '£' + (+n).toFixed(2); };
+  var addTotal = R.add.reduce(function(s,x){ return s + x.perMonth; }, 0);
+  var warn = [];
+  if (!R.hasRevolut) warn.push('No Revolut statement covers these months — most bills go out of Revolut, so upload it in the 🏦 Bank tab.');
+  if (!R.hasMetro) warn.push('No Metro statement covers these months — direct debits on Metro won\'t show.');
+  var pill = function(t, c){ return '<span style="background:'+c+'15;color:'+c+';padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap">'+t+'</span>'; };
+  var seenTxt = function(x){ return '<span title="'+escapeHtml(x.tx.map(function(t){ return t.date+'  '+g(t.amount)+'  '+(t.acct||t.bank||''); }).join('\n'))+'" style="cursor:help;border-bottom:1px dotted #bbb">'+x.n+'× in '+x.nMonths+' month'+(x.nMonths>1?'s':'')+'</span>'; };
+  var row = function(x, i, kind){
+    var btns = kind === 'add'
+      ? '<button onclick="addRecFromBank(\''+kind+'\','+i+')" style="'+btnStyle('#1a1a2e','#fff')+'padding:4px 10px;font-size:11px">+ Add</button> '+
+        '<button onclick="ignoreRecFromBank(\''+escapeHtml(x.key)+'\',true)" style="'+btnStyle('#fff','#888',true)+'padding:4px 8px;font-size:11px">Not a bill</button>'
+      : kind === 'once'
+      ? '<button onclick="addRecFromBank(\''+kind+'\','+i+')" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:4px 10px;font-size:11px">+ Add</button> '+
+        '<button onclick="ignoreRecFromBank(\''+escapeHtml(x.key)+'\',true)" style="'+btnStyle('#fff','#888',true)+'padding:4px 8px;font-size:11px">Not a bill</button>'
+      : kind === 'hidden'
+      ? '<button onclick="ignoreRecFromBank(\''+escapeHtml(x.key)+'\',false)" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:4px 8px;font-size:11px">Show again</button>'
+      : '<button onclick="openRecForm(\''+escapeHtml(x.tmpl.id)+'\')" style="'+btnStyle('#fff','#1a1a2e',true)+'padding:4px 8px;font-size:11px">Edit</button>';
+    var amt = kind === 'done'
+      ? '<strong>'+g(x.last)+'</strong>'+(x.off ? '<div style="font-size:10px;color:#c62828;font-weight:700">overhead says '+g(x.tAmt)+'</div>' : '<div style="font-size:10px;color:#2e7d32">✓ matches</div>')
+      : '<strong>'+g(x.usual)+'</strong>'+(x.steady ? '' : '<div style="font-size:10px;color:#888">varies '+g(Math.min.apply(null,x.tx.map(function(t){return t.amount;})))+'–'+g(Math.max.apply(null,x.tx.map(function(t){return t.amount;})))+'</div>');
+    return '<tr>'+
+      td('<strong>'+escapeHtml(x.name)+'</strong>'+(x.isDD?' '+pill('DD','#1565c0'):'')+'<div style="font-size:10px;color:#888">'+escapeHtml(x.accts.join(', '))+' · last '+escapeHtml(prettyYmd(x.lastDate))+'</div>')+
+      td(x.cat ? '<span style="font-size:12px">'+escapeHtml(x.cat)+'</span>' : '<span style="font-size:11px;color:#e65100">not categorised</span>')+
+      td('<span style="font-size:12px">'+x.how+'</span><div style="font-size:10px;color:#888">'+seenTxt(x)+(x.how==='Monthly'||x.how==='Quarterly'?' · around the '+Math.round(x.day)+_ordSfx(Math.round(x.day)):'')+'</div>')+
+      td(amt)+
+      td(kind === 'once' ? '<span style="font-size:11px;color:#888">depends how often</span>' : '<span style="font-size:12px">'+g(x.perMonth)+'</span>')+
+      td('<span style="white-space:nowrap">'+btns+'</span>')+
+    '</tr>';
+  };
+  var table = function(list, kind){
+    return '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+th(['Paid to','Category','How often','Amount','≈ per month',''])+
+      '<tbody>'+list.map(function(x,i){ return row(x,i,kind); }).join('')+'</tbody></table></div>';
+  };
+  var fold = function(id, title, list, kind, note){
+    if (!list.length) return '';
+    var open = recFoundOpen[id];
+    return '<div style="border-top:1px solid #f0f0f0;margin-top:10px;padding-top:8px">'+
+      '<div onclick="recFoundOpen[\''+id+'\']=!recFoundOpen[\''+id+'\'];rRecurring()" style="cursor:pointer;font-size:13px;font-weight:700;color:#555">'+(open?'▾':'▸')+' '+title+' ('+list.length+')</div>'+
+      (open ? (note?'<div style="font-size:11px;color:#888;margin:4px 0 6px">'+note+'</div>':'')+table(list, kind) : '')+'</div>';
+  };
+  var offN = R.done.filter(function(x){ return x.off; }).length;
+  return '<div style="'+cardStyle()+'margin-bottom:14px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">'+
+      '<div><div style="'+stitle()+'margin:0">🔎 Regular payments on your bank statements</div>'+
+      '<div style="font-size:11px;color:#888;margin-top:3px">'+escapeHtml(prettyYmd(R.start))+' – '+escapeHtml(prettyYmd(R.end))+' · payments to the same payee that keep coming back. Transfers between your accounts, wages and cash are left out.</div></div>'+
+      (R.add.length ? '<div style="text-align:right"><div style="font-size:20px;font-weight:800;color:#c62828">'+g(addTotal)+'/month</div><div style="font-size:11px;color:#888">not in your overheads yet</div></div>' : '')+
+    '</div>'+
+    warn.map(function(w){ return '<div style="background:#fff3e0;color:#e65100;border-radius:8px;padding:8px 12px;font-size:12px;margin-top:10px">'+w+'</div>'; }).join('')+
+    (R.add.length
+      ? '<div style="font-size:13px;font-weight:700;margin:12px 0 4px">'+R.add.length+' to add</div>'+table(R.add, 'add')
+      : '<div style="font-size:13px;color:#2e7d32;font-weight:600;margin-top:10px">✓ Every regular payment on these statements is already set up as an overhead.</div>')+
+    fold('done', 'Already set up'+(offN?' — <span style="color:#c62828">'+offN+' with a different amount on the statement</span>':''), R.done, 'done', 'Compared with the last payment on the statement. If the amount has gone up, tap Edit and change it.')+
+    fold('once', 'Direct debits seen only once — could be quarterly or yearly', R.once, 'once', 'Only one payment in 3 months, so it might be quarterly or yearly (insurance, rates, licences). Add it if it\'s a standing bill — set how often in the form.')+
+    fold('hidden', 'Marked "not a bill"', R.hidden, 'hidden', '')+
+  '</div>';
+}
+function _ordSfx(n) { return (n % 100 >= 11 && n % 100 <= 13) ? 'th' : (['th','st','nd','rd'][n % 10] || 'th'); }
+
+var REC_VAT_CATS = ['Utilities','Software & subscriptions','Professional fees','Marketing','Tools & equipment','Vehicle & fuel','Consumables','Paint & materials','Parts','Subcontractor','Rent'];
+function addRecFromBank(kind, i) {
+  var x = (_recFound && _recFound[kind] || [])[i]; if (!x) return;
+  var cat = BILL_CATS.indexOf(x.cat) >= 0 ? x.cat : 'Other';
+  var vat = REC_VAT_CATS.indexOf(cat) >= 0;
+  var every = kind === 'once' ? 12 : x.every;
+  openRecForm(null, [x.name, cat, every, vat]);
+  _recFromBankKey = x.key;
+  var gross = x.how === 'Weekly' ? x.perMonth : x.usual;
+  var set = function(id, v){ var e = document.getElementById(id); if (e) e.value = v; };
+  set('r-sup', x.name);
+  set('r-net', (vat ? gross / 1.2 : gross).toFixed(2));
+  set('r-day', String(Math.min(28, Math.max(1, Math.round(x.day)))));
+  set('r-start', every > 1 ? x.lastDate.slice(0,7) : _thisMonthKey());
+  var ti = document.getElementById('r-title');
+  if (ti) ti.textContent = 'Add ' + x.name + ' — check VAT and amount';
+}
+function ignoreRecFromBank(key, on) {
+  recIgnore = (recIgnore || []).filter(function(k){ return k !== key; });
+  if (on) recIgnore.push(key);
+  persistRecIgnore();
+  rRecurring();
 }
 
 // ========== BANK STATEMENTS & RECONCILIATION ==========
