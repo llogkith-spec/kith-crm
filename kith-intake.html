@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="KITH Intake"/>
 <meta name="theme-color" content="#1a1a2e"/>
-<title>KITH Cars — Job Intake v3.1</title>
+<title>KITH Cars — Job Intake v3.2</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{--gold:#c9a84c;--dark:#1a1a2e;--red:#c62828;--green:#2e7d32;--amber:#e65100;--blue:#1565c0;--purple:#5b3a8c;--teal:#00695c;--border:#e0e0e0;--bg:#f0f2f5;--dim:#666;--faint:#aaa}
@@ -462,7 +462,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
 var SB_URL='https://mxyrxyhvjndgjqupgstu.supabase.co';
 var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
 var SOP_VERSION='8.0';
-var INTAKE_BUILD='3.1';
+var INTAKE_BUILD='3.2';
 // The CRM keeps one row per job in `jobs` ({id, data, updated_at}).
 // Earlier builds wrote to `kith_jobs`, which nothing reads — jobs vanished.
 var JOBS_TABLE='jobs';
@@ -938,6 +938,7 @@ function pickCust(k){
   document.getElementById('cu-'+k).classList.add('sel');
   var fu=document.getElementById('cust-followup');
   var asap=document.getElementById('f-asap');if(asap)asap.checked=(k==='business');
+  try{paintEmail();}catch(e){}
   if(k==='business'){
     fu.innerHTML=note('n-gold','<strong>Trade is not the same as B2B.</strong> A company only becomes trade after 4 different vehicles in 30 days. The CRM works that out — you just record the company.')+
       fld('Company name','f-company','text','As it should appear on the invoice')+
@@ -1958,7 +1959,11 @@ function pickChannel(k){
 function noWA(){return fval('f-haswa')==='no';}
 function paintEmail(){
   var need=noWA();
-  document.getElementById('email-fg').style.display=(need||channel==='email')?'block':'none';
+  var biz=custType==='business';
+  document.getElementById('email-fg').style.display=(need||channel==='email'||biz)?'block':'none';
+  var why=document.getElementById('email-why');
+  if(biz&&!need){why.style.display='block';why.textContent='Business customer — estimates and invoices go to this email.';return;}
+  why.textContent='No WhatsApp — the estimate goes to this email instead.';
   document.getElementById('email-req').style.display=need?'inline':'none';
   document.getElementById('email-why').style.display=need?'block':'none';
   document.getElementById('noemail-row').style.display=need?'flex':'none';
@@ -2074,7 +2079,8 @@ async function b2bSearch(q){
   var hits=list.filter(function(a){return b2bKey(a.company).indexOf(k)!==-1||a.contacts.some(function(c){return b2bKey(c.name).indexOf(k)!==-1;});}).slice(0,6);
   out.innerHTML=hits.length?hits.map(function(a){var i=list.indexOf(a);
       return'<button class="btn btn-ghost" style="display:block;width:100%;text-align:left;margin-top:6px" onclick="b2bPick('+i+')">🏢 <b>'+esc(a.company)+'</b>'+
-        '<span style="font-size:11px;color:#666"> · '+a.contacts.length+' contact'+(a.contacts.length===1?'':'s')+'</span></button>';}).join('')
+        '<span style="font-size:11px;color:#666"> · '+a.contacts.length+' contact'+(a.contacts.length===1?'':'s')+
+        (function(){var em=a.contacts.map(function(c){return c.email;}).filter(Boolean);return em.length?' · ✉ '+esc(em.join(', ')):'';})()+'</span></button>';}).join('')
     :'<div class="hint" style="margin-top:6px">No account called that yet — fill in the details below and it’ll be saved.</div>';
 }
 function b2bPick(i){
@@ -2088,7 +2094,7 @@ function b2bPick(i){
   var el=document.getElementById('b2b-picked');el.style.display='block';
   el.innerHTML='<div style="margin-top:8px;font-weight:700">✓ '+esc(a.company)+' <a href="#" onclick="b2bClear();return false" style="font-size:12px;font-weight:400">change</a></div>'+
     (a.contacts.length?'<div class="hint">Who’s calling?</div>'+a.contacts.map(function(c,ci){
-      return'<button class="btn btn-ghost" style="margin:4px 6px 0 0" onclick="b2bUse('+ci+')">'+esc(c.name)+(c.phone?' · '+esc(c.phone):'')+'</button>';}).join('')+
+      return'<button class="btn btn-ghost" style="margin:4px 6px 0 0" onclick="b2bUse('+ci+')">'+esc(c.name)+(c.phone?' · '+esc(c.phone):'')+(c.email?' · ✉ '+esc(c.email):'')+'</button>';}).join('')+
       '<div class="hint">Someone new? Just type their name and number below — they’ll be added to this account.</div>'
     :'<div class="hint">No contact saved — you can leave name and phone blank, it goes on their account.</div>');
   if(a.contacts.length===1)b2bUse(0);

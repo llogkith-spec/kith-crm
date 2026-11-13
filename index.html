@@ -5042,7 +5042,8 @@ function jobH(j){
     '<div class="fi"><div class="fl">Vehicle</div><div class="fv">'+escHtml(vehDesc(j,false))+'</div></div>'+
     '<div class="fi"><div class="fl">Customer</div><div class="fv">'+j.name+'</div></div>'+
     '<div class="fi"><div class="fl">Phone</div><div class="fv">'+j.phone+'</div></div>'+
-    (j.email?'<div class="fi"><div class="fl">Email</div><div class="fv">'+j.email+'</div></div>':'')+
+    (j.email?'<div class="fi"><div class="fl">Email</div><div class="fv"><a href="mailto:'+escHtml(j.email)+'" style="color:var(--blue)">'+escHtml(j.email)+'</a></div></div>'
+      :(j.isB2B||/b2b|trade|fleet/i.test(String(j.custType||''))?'<div class="fi"><div class="fl">Email</div><div class="fv" style="color:var(--amber)">None yet — get one for the invoice</div></div>':''))+
     (function(){const k=custKind(j);
       return k?'<div class="fi"><div class="fl">Customer type</div><div class="fv" style="color:'+k.col+';font-weight:700">'+k.icon+' '+escHtml(k.label)+'</div></div>':'';})()+
     (j.source?'<div class="fi"><div class="fl">Source</div><div class="fv">'+escHtml(j.source)+'</div></div>':'')+
