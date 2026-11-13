@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="KITH Intake"/>
 <meta name="theme-color" content="#1a1a2e"/>
-<title>KITH Cars — Job Intake v2.7</title>
+<title>KITH Cars — Job Intake v3.1</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{--gold:#c9a84c;--dark:#1a1a2e;--red:#c62828;--green:#2e7d32;--amber:#e65100;--blue:#1565c0;--purple:#5b3a8c;--teal:#00695c;--border:#e0e0e0;--bg:#f0f2f5;--dim:#666;--faint:#aaa}
@@ -95,6 +95,15 @@ input:checked+.tsl:before{transform:translateX(20px)}
 .dm-pills{display:flex;flex-wrap:wrap;gap:6px}
 .dm-pill{background:#f0f0f0;border:1.5px solid var(--border);border-radius:10px;padding:6px 9px;font-size:12px;font-weight:700;cursor:pointer;text-align:left;color:var(--dark)}
 .dm-pill small{display:block;font-weight:500;font-size:10.5px;color:var(--dim)}
+.dm-w{fill:#fff;stroke:#c9cfd9;stroke-width:2;cursor:pointer}
+.dm-w.on{fill:var(--red);stroke:#8e1c1c}
+.dm-mark-svg{display:block;margin:0 auto;width:auto;height:200px;max-width:100%;overflow:visible;cursor:crosshair;touch-action:manipulation}
+.dm-mark-p{fill:#fdecea;stroke:var(--red);stroke-width:1.5}
+.dm-ring{fill:rgba(198,40,40,.18);stroke:var(--red);stroke-width:1.5}
+.dm-dot{fill:var(--red)}
+.dm-pill[disabled]{opacity:.45;cursor:default}
+.dm-out{font-size:12px;color:var(--dim);margin-top:6px}
+.dm-out.blend{color:var(--amber)}
 .dm-pill.sel{background:rgba(198,40,40,.1);border-color:var(--red);color:var(--red)}
 .safety-row{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #f0f0f0;cursor:pointer}
 .safety-row:last-child{border-bottom:none}
@@ -260,7 +269,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
           <input type="checkbox" id="f-noemail" style="width:18px;height:18px"/> No email either — we'll text or call them</label></div>
       <div class="fg">
         <label class="fl">Registration <span class="req">*</span></label>
-        <input class="fi fi-reg" id="f-reg" maxlength="8" placeholder="AB12 CDE" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'');dupCheck(this.value)"/>
+        <input class="fi fi-reg" id="f-reg" maxlength="8" placeholder="AB12 CDE" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'');dupCheck(this.value);vehLookupSoon(this.value)"/>
         <div class="dup" id="dup-msg"></div>
         <div class="back" id="back-msg"></div>
       </div>
@@ -312,6 +321,9 @@ input:checked+.tsl:before{transform:translateX(20px)}
     <div class="card">
       <div class="sec">Step 3 of 5 — Vehicle</div>
       <div class="notice n-blue" id="veh-reg-line" style="margin-bottom:14px">Reg: <strong id="veh-reg-show">—</strong> <span style="font-size:11px">(change it at the top)</span></div>
+      <div id="veh-card"><div class="notice n-blue" style="margin:0">Looking up the car from the reg…</div></div>
+      <div id="veh-flag"></div>
+      <details id="veh-manual" style="margin-top:10px"><summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--dim)">Wrong or missing? Edit the car by hand</summary>
       <div class="grid2">
         <div class="fg"><label class="fl">Make</label><input class="fi" id="f-make" placeholder="e.g. BMW"/></div>
         <div class="fg"><label class="fl">Model</label><input class="fi" id="f-model" placeholder="e.g. 3 Series"/></div>
@@ -326,9 +338,10 @@ input:checked+.tsl:before{transform:translateX(20px)}
             <option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></div>
         <div class="fg"><label class="fl">Engine size</label><input class="fi" id="f-engine" placeholder="e.g. 1.6"/></div>
       </div>
+          </details>
     </div>
 
-    <div class="card">
+    <div class="card" id="shape-card" style="display:none">
       <div class="sec">Vehicle shape — look at the car, don't guess</div>
       <div class="notice n-blue">These four answers set the bodywork column, the MOT class, and whether it fits our ramp. You're not judging anything — just describing what's in front of you.</div>
       <div class="fg"><label class="fl">1. What shape is it? <span class="req">*</span></label>
@@ -415,11 +428,6 @@ input:checked+.tsl:before{transform:translateX(20px)}
         <div><div style="font-size:14px;font-weight:700;color:var(--red)">⚡ ASAP — Urgent</div>
           <div style="font-size:11px;color:#888">Jumps to top of queue</div></div>
       </div>
-      <div class="tog-row">
-        <label class="tog"><input type="checkbox" id="f-custparts" onchange="custPartsWarn()"><span class="tsl"></span></label>
-        <div><div style="font-size:14px;font-weight:700">Customer wants to supply their own parts</div>
-          <div style="font-size:11px;color:#888">Default answer is no — this is a hard stop</div></div>
-      </div>
       <div id="custparts-warn"></div>
     </div>
 
@@ -454,7 +462,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
 var SB_URL='https://mxyrxyhvjndgjqupgstu.supabase.co';
 var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eXJ4eWh2am5kZ2pxdXBnc3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMTMyNjgsImV4cCI6MjA5Nzc4OTI2OH0.z7F_sUqx56bIcBLxjWFJSP3rT1jhNPAL9_1SWZ7cUog';
 var SOP_VERSION='8.0';
-var INTAKE_BUILD='2.7';
+var INTAKE_BUILD='3.1';
 // The CRM keeps one row per job in `jobs` ({id, data, updated_at}).
 // Earlier builds wrote to `kith_jobs`, which nothing reads — jobs vanished.
 var JOBS_TABLE='jobs';
@@ -559,11 +567,10 @@ var MECH={
         'What is the car actually doing — noise, smoke, shaking, no power?',
         'When did it start? Sudden or gradual?','Has anyone else worked on it recently?',
         'Can they drive it here safely, or does it need collecting?'])+
-      fld('Diagnostic tier','f-diag-type','select',Object.keys(PRICES.diagnostic).concat(['Not sure — estimator to decide']))+
       fld('Warning lights showing','f-diag-lights','text','Exactly what the customer says...')+
       fld('What the car is doing','f-diag-symptoms','textarea','Symptoms, and when they happen...')+
       fld('Can they drive it here?','f-driveable','select',['Yes — drives fine','Yes — but not confident','No — needs recovery'])+
-      diagRef());}},
+      note('n-blue','The estimator picks the diagnostic level and price from what you write here — so write down everything they say.'));}},
 
   suspension:{label:'🚗 Suspension & Steering',sub:'Shocks, springs, steering',safety:true,guided:function(){
     return card('Suspension & steering — ask the customer',
@@ -619,12 +626,12 @@ var MECH={
 // BODYWORK — one flow, no sub-categories
 var BODY_FLOW=function(){
   return card('Bodywork — ask the customer',
-    script(['Where on the car is the damage? Tap each panel on the car below.',
+    script(['Where on the car is the damage? Tap each panel on the car below — and the wheels for kerbed alloys.',
       'What does it look like — a scuff, a dent, or is the panel cracked?',
       'Insurance, or are they paying themselves?'])+
     '<label class="fl">Where is the damage? <span style="color:var(--red)">*</span> <span style="font-weight:500">Tap each damaged panel</span></label>'+
     '<div id="dm-box">'+damageMapH()+'</div>'+
-    chipGroup('Not on the drawing','body-extra',['Sliding door','Trim / moulding','Alloy wheels','Brake calipers','Mirror','Sill','Whole car'])+
+    chipGroup('Not on the drawing','body-extra',['Sliding door','Trim / moulding','Brake calipers','Mirror','Sill','Whole car'])+
     note('n-blue','<strong>Photos:</strong> whole car, each damaged panel close up, and the reg plate. Add them with <strong>📷 Add photos</strong> at the top — they upload straight away and land on the job.')+
     '<div class="tog-row" style="margin-bottom:12px"><label class="tog"><input type="checkbox" id="f-photos"><span class="tsl"></span></label>'+
     '<div><div style="font-size:14px;font-weight:700">Photos taken, or customer is sending them on WhatsApp</div>'+
@@ -653,13 +660,40 @@ var CAR_PANELS=[
   {id:'lrq',label:'Left rear quarter',d:'M22 354 L62 354 L56 452 Q30 460 22 440 Z'},
   {id:'rrq',label:'Right rear quarter',d:'M238 354 L198 354 L204 452 Q230 460 238 440 Z'}
 ];
-var DMG_TYPES=[
+var DMG_TYPES=[   // same three as the website quote (quote-catalogue.json bodywork_damage)
   {id:'smart',label:'Light scuff or scratch',size:'Smaller than a phone'},
   {id:'scuff',label:'Scuff or scratch',size:'Bigger than a phone'},
-  {id:'dent',label:'Dent, paint not broken',size:'Paint still intact'},
-  {id:'dentp',label:'Dent, paint broken',size:'Cracked, flaked or bare metal'},
-  {id:'replace',label:'Cracked, split or hanging off',size:'The panel itself is damaged'}
+  {id:'dent',label:'Dent or damaged panel',size:'Pushed in, creased, cracked or split',dent:true}
 ];
+// Alloys sit down the sides of the drawing, as on the website. Priced per wheel.
+var CAR_WHEELS=[
+  {id:'wfl',label:'Front left alloy',x:10,y:92,w:22,h:54},
+  {id:'wfr',label:'Front right alloy',x:228,y:92,w:22,h:54},
+  {id:'wrl',label:'Rear left alloy',x:10,y:360,w:22,h:54},
+  {id:'wrr',label:'Rear right alloy',x:228,y:360,w:22,h:54}
+];
+// Where a dent is and how big — the website's sizes. Near an edge = blend into the next panel.
+var MARK_SIZES=[
+  {id:'s',label:'Coin',hint:'up to 5cm',r:7},
+  {id:'m',label:'Phone',hint:'up to 15cm',r:13},
+  {id:'l',label:'Dinner plate',hint:'up to 30cm',r:22},
+  {id:'xl',label:'Bigger',hint:'more than 30cm',r:34}
+];
+var DMG_MARK={},DMG_WHEELS={};
+function _markSize(id){return MARK_SIZES.filter(function(m){return m.id===id;})[0]||MARK_SIZES[1];}
+function _panelBox(id){
+  var p=_dmgPanel(id);if(!p)return null;
+  var n=(p.d.match(/-?\d+(?:\.\d+)?/g)||[]).map(Number),xs=[],ys=[];
+  for(var i=0;i+1<n.length;i+=2){xs.push(n[i]);ys.push(n[i+1]);}
+  var x=Math.min.apply(null,xs),y=Math.min.apply(null,ys);
+  return {x:x,y:y,w:Math.max.apply(null,xs)-x,h:Math.max.apply(null,ys)-y};
+}
+function _needsBlend(id,m){
+  var b=_panelBox(id);if(!b||!m)return false;
+  var r=_markSize(m.size).r;
+  var gap=Math.min(m.x-b.x,b.x+b.w-m.x,m.y-b.y,b.y+b.h-m.y)-r;
+  return gap<Math.min(b.w,b.h)*0.2;
+}
 var DMG={};         // panel id → damage type id ('' until chosen)
 var DMG_ORDER=[];   // in the order they were tapped
 function _dmgPanel(id){return CAR_PANELS.filter(function(p){return p.id===id;})[0];}
@@ -671,6 +705,8 @@ function damageMapH(){
     '<path class="dm-glass" d="M66 154 L194 154 L188 192 L72 192 Z"/><path class="dm-glass" d="M72 322 L188 322 L194 358 L66 358 Z"/>'+
     CAR_PANELS.map(function(p){var on=(p.id in DMG);
       return '<path class="dm-p'+(on?' on':'')+(on&&DMG[p.id]?' typed':'')+'" d="'+p.d+'" onclick="dmgTap(\''+p.id+'\')" tabindex="0" role="button" aria-pressed="'+on+'"><title>'+p.label+'</title></path>';}).join('')+
+    CAR_WHEELS.map(function(w){var on=!!DMG_WHEELS[w.id];
+      return '<rect class="dm-w'+(on?' on':'')+'" x="'+w.x+'" y="'+w.y+'" width="'+w.w+'" height="'+w.h+'" rx="8" onclick="dmgWheel(\''+w.id+'\')" tabindex="0" role="button" aria-pressed="'+on+'"><title>'+w.label+'</title></rect>';}).join('')+
     '</svg>'+
     '<div style="'+lbl+';margin-top:3px">Rear of car \u25bc</div>';
   var side=DMG_ORDER.length?DMG_ORDER.map(function(id){
@@ -679,8 +715,12 @@ function damageMapH(){
       '<button type="button" class="dm-x" onclick="dmgTap(\''+id+'\')" aria-label="Remove '+p.label+'">×</button></div>'+
       '<div class="dm-pills">'+DMG_TYPES.map(function(t){
         return '<button type="button" class="dm-pill'+(DMG[id]===t.id?' sel':'')+'" onclick="dmgType(\''+id+'\',\''+t.id+'\')">'+t.label+'<small>'+t.size+'</small></button>';
-      }).join('')+'</div></div>';
-  }).join(''):'<div class="notice n-blue" style="margin:0">Nothing picked yet. Tap the damaged panels on the car.</div>';
+      }).join('')+'</div>'+dmgMarkH(id,p)+'</div>';
+  }).join(''):(Object.keys(DMG_WHEELS).length?'':'<div class="notice n-blue" style="margin:0">Nothing picked yet. Tap the damaged panels on the car. Kerbed alloys? Tap the wheels down the sides.</div>');
+  var wn=CAR_WHEELS.filter(function(w){return DMG_WHEELS[w.id];});
+  if(wn.length)side='<div class="dm-card"><div class="dm-h"><span>'+(wn.length===1?'1 alloy wheel':wn.length+' alloy wheels')+'</span>'+
+    '<button type="button" class="dm-x" onclick="DMG_WHEELS={};dmgPaint()" aria-label="Clear the wheels">×</button></div>'+
+    '<div style="font-size:12px;color:var(--dim)">'+wn.map(function(w){return w.label.replace(' alloy','');}).join(', ')+'. Refurbished per wheel — price depends on how bad the rim is.</div></div>'+side;
   return '<div class="dm-wrap"><div>'+svg+'</div><div>'+side+'</div></div>';
 }
 function dmgPaint(){var b=document.getElementById('dm-box');if(b)b.innerHTML=damageMapH();}
@@ -689,12 +729,37 @@ function dmgTap(id){
   else{DMG[id]='';DMG_ORDER.push(id);}
   dmgPaint();
 }
-function dmgType(id,t){DMG[id]=(DMG[id]===t?'':t);dmgPaint();}
+function dmgType(id,t){DMG[id]=(DMG[id]===t?'':t);if(!(_dmgType(DMG[id])||{}).dent)delete DMG_MARK[id];dmgPaint();}
+function dmgWheel(id){if(DMG_WHEELS[id])delete DMG_WHEELS[id];else DMG_WHEELS[id]=true;dmgPaint();}
+// Dents only: the panel drawn big, tap to drop a marker, pick a size we can all picture.
+function dmgMarkH(id,p){
+  if(!(_dmgType(DMG[id])||{}).dent)return '';
+  var b=_panelBox(id);if(!b)return '';
+  var pad=Math.max(b.w,b.h)*0.12,m=DMG_MARK[id],r=m?_markSize(m.size).r:0,blend=m&&_needsBlend(id,m);
+  return '<div class="dm-mark"><div style="font-size:12px;margin:8px 0 4px"><b>Where is it, and how big?</b> Tap the panel to drop a marker.</div>'+
+    '<svg class="dm-mark-svg" viewBox="'+(b.x-pad)+' '+(b.y-pad)+' '+(b.w+pad*2)+' '+(b.h+pad*2)+'" onclick="dmgMarkTap(event,\''+id+'\')">'+
+    '<path class="dm-mark-p" d="'+p.d+'"/>'+
+    (m?'<circle class="dm-ring" cx="'+m.x+'" cy="'+m.y+'" r="'+r+'"/><circle class="dm-dot" cx="'+m.x+'" cy="'+m.y+'" r="2.5"/>':'')+'</svg>'+
+    '<div class="dm-pills" style="margin-top:6px">'+MARK_SIZES.map(function(z){
+      return '<button type="button" class="dm-pill'+(m&&m.size===z.id?' sel':'')+'"'+(m?'':' disabled')+' onclick="dmgMarkSize(\''+id+'\',\''+z.id+'\')">'+z.label+'<small>'+z.hint+'</small></button>';}).join('')+'</div>'+
+    (m?'<div class="dm-out'+(blend?' blend':'')+'">'+(blend?'<b>Close to the edge.</b> Colour gets blended into the panel next door.':'<b>Well inside the panel.</b> Nothing to blend into the next one.')+'</div>'
+      :'<div class="dm-out">Tap the panel above — we work out whether it needs blending.</div>')+'</div>';
+}
+function dmgMarkTap(ev,id){
+  var svg=ev.currentTarget,pt=svg.createSVGPoint();pt.x=ev.clientX;pt.y=ev.clientY;
+  var ctm=svg.getScreenCTM();if(!ctm)return;var q=pt.matrixTransform(ctm.inverse());
+  var had=DMG_MARK[id];DMG_MARK[id]={x:Math.round(q.x*10)/10,y:Math.round(q.y*10)/10,size:had?had.size:'m'};dmgPaint();
+}
+function dmgMarkSize(id,z){if(DMG_MARK[id]){DMG_MARK[id].size=z;dmgPaint();}}
 function damageList(){
   return DMG_ORDER.filter(function(id){return id in DMG;}).map(function(id){
-    var p=_dmgPanel(id),t=_dmgType(DMG[id]);
-    return {panel:id,label:p?p.label:id,type:DMG[id]||'',typeLabel:t?t.label:''};
-  });
+    var p=_dmgPanel(id),t=_dmgType(DMG[id]),m=DMG_MARK[id],o={panel:id,label:p?p.label:id,type:DMG[id]||'',typeLabel:t?t.label:''};
+    if(m&&t&&t.dent){var z=_markSize(m.size),bl=_needsBlend(id,m);
+      o.mark={x:m.x,y:m.y,size:m.size};o.markSize=z.label.toLowerCase();o.blend=bl;
+      o.typeLabel+=' — '+z.label.toLowerCase()+' size ('+z.hint+'), '+(bl?'near the edge, needs blending':'well inside the panel');}
+    return o;
+  }).concat(CAR_WHEELS.filter(function(w){return DMG_WHEELS[w.id];}).map(function(w){
+    return {panel:w.id,label:w.label,type:'alloy',typeLabel:'Alloy wheel refurb',wheel:true};}));
 }
 function damageText(){
   var parts=damageList().map(function(d){return d.label+(d.typeLabel?' ('+d.typeLabel.toLowerCase()+')':'');});
@@ -767,7 +832,8 @@ function fld(l,id,t,o){var e='';
   else if(t==='textarea'){e='<textarea class="fi" id="'+id+'" rows="2" placeholder="'+o+'"></textarea>';}
   else{e='<input class="fi" id="'+id+'" placeholder="'+o+'"/>';}
   return'<div class="fg"><label class="fl">'+l+'</label>'+e+'</div>';}
-function chipGroup(l,g,items){return'<div class="fg"><label class="fl">'+l+'</label><div class="chips">'+
+var CHIP_LABELS={};
+function chipGroup(l,g,items){CHIP_LABELS[g]=l;return'<div class="fg"><label class="fl">'+l+'</label><div class="chips">'+
   items.map(function(i){return'<div class="chip" data-group="'+g+'" onclick="this.classList.toggle(\'sel\')">'+i+'</div>';}).join('')+
   '</div></div>';}
 function _getChipsRaw(g){return Array.from(document.querySelectorAll('.chip[data-group="'+g+'"].sel')).map(function(c){return c.textContent;}).join(', ');}
@@ -871,10 +937,13 @@ function pickCust(k){
   document.querySelectorAll('[id^=cu-]').forEach(function(b){b.classList.remove('sel');});
   document.getElementById('cu-'+k).classList.add('sel');
   var fu=document.getElementById('cust-followup');
+  var asap=document.getElementById('f-asap');if(asap)asap.checked=(k==='business');
   if(k==='business'){
     fu.innerHTML=note('n-gold','<strong>Trade is not the same as B2B.</strong> A company only becomes trade after 4 different vehicles in 30 days. The CRM works that out — you just record the company.')+
       fld('Company name','f-company','text','As it should appear on the invoice')+
-      fld('Do we already deal with them?','f-known-biz','select',['Yes — regular','Yes — occasionally','No — first time','Not sure']);
+      fld('Do we already deal with them?','f-known-biz','select',['Yes — regular','Yes — occasionally','No — first time','Not sure'])+
+      '<div id="b2b-guess"></div>';
+    b2bGuessShow();
   } else if(k==='warranty'){
     fu.innerHTML=note('n-teal','<strong>We have no agreed rate card with warranty companies.</strong> They set the rate when they authorise the claim. Record what they have authorised and the estimator prices to it — every one of these goes to Logan before it is sent.'+
       '<span class="pend">no rates agreed</span>')+
@@ -899,6 +968,8 @@ function pickCust(k){
 // RAMP + VEHICLE CATEGORY
 // =============================================================================
 function deriveRamp(){
+  var gw=document.getElementById('f-gvw');
+  if(gw&&!gw.value&&(fval('f-shape')==='car'||fval('f-shape')==='suv'))gw.value='under';
   var shape=fval('f-shape'),seats=fval('f-seats'),roof=fval('f-roof'),gvw=fval('f-gvw');
   var el=document.getElementById('ramp-result'),cat=document.getElementById('cat-result');
   if(!shape||!seats||!roof||!gvw){el.innerHTML='';cat.innerHTML='';return;}
@@ -1069,8 +1140,7 @@ function go(n){
       alert('Read the safety list to the customer first, then tick "I\'ve read this list".');return;}
     if(curStep===2){
       if(!fval('f-reg')){alert('Registration is required.');return;}
-      if(!fval('f-shape')||!fval('f-seats')||!fval('f-roof')||!fval('f-gvw')){
-        alert('All four vehicle shape questions are needed — they set the price.');return;}
+
     }
   }
   curStep=n;
@@ -1078,11 +1148,70 @@ function go(n){
   document.getElementById('s'+n).classList.add('on');
   for(var i=0;i<5;i++){document.getElementById('sd'+i).className='sdot'+(i<=n?' on':'');}
   if(n===1&&!needsCustomer()){go(2);return;}
-  if(n===2){var rs=document.getElementById('veh-reg-show');if(rs)rs.textContent=fval('f-reg')||'—';}
+  if(n===2){var rs=document.getElementById('veh-reg-show');if(rs)rs.textContent=fval('f-reg')||'—';vehLookup(fval('f-reg'));}
   if(n===3)buildStep3();
   if(n===4)buildStep4();
   updateNeeds();
   window.scrollTo(0,60);
+}
+// ---- Car from the reg (same lookup as kithcars.com: DVLA, falling back to the MOT history) ----
+var VEH_API='https://www.kithcars.com/api/vehicle',_veh={reg:'',data:null,busy:false},_vehT=null;
+function vehLookupSoon(r){clearTimeout(_vehT);if(String(r||'').length>=5)_vehT=setTimeout(function(){vehLookup(r);},700);}
+function titleCase(t){return String(t||'').toLowerCase().replace(/\b[a-z]/g,function(c){return c.toUpperCase();});}
+// Too big for our ramp, from what the garage sees day to day: anything over 3.5 tonnes, buses,
+// and the long/high vans. Not a no — a red flag so it's checked before it's booked.
+var BIG_VANS=/sprinter|crafter|transit(?! (connect|courier|custom))|master|movano|ducato|boxer|relay|daily|nv400|interstar|luton|box van|tipper|dropside|minibus|motorhome|camper/i;
+function vehSize(v){
+  var ta=String(v.typeApproval||'').toUpperCase(),txt=[v.make,v.model].join(' ');
+  if(/^(N2|N3|M2|M3)/.test(ta))return {big:true,why:ta.indexOf('M')===0?'it is registered as a bus / minibus':'it is registered as over 3,500 kg'};
+  if(BIG_VANS.test(txt))return {big:true,why:'it is a large van ('+titleCase(txt)+')'};
+  if(/^N1/.test(ta))return {van:true};
+  return {};
+}
+function vehPaint(){
+  var c=document.getElementById('veh-card'),fl=document.getElementById('veh-flag'),man=document.getElementById('veh-manual');if(!c)return;
+  var v=_veh.data;
+  if(_veh.busy){c.innerHTML='<div class="notice n-blue" style="margin:0">Looking up '+esc(_veh.reg)+'…</div>';return;}
+  if(!v){c.innerHTML='<div class="notice n-amber" style="margin:0">Couldn’t look the car up'+(_veh.reg?' for <b>'+esc(_veh.reg)+'</b>':'')+'. Check the reg at the top — or fill it in by hand below.</div>';
+    if(man)man.open=true;fl.innerHTML='';return;}
+  var line=[titleCase(v.make),titleCase(v.model)].filter(Boolean).join(' ');
+  var bits=[v.yearOfManufacture,v.fuelType&&titleCase(v.fuelType),v.engineCapacity&&(Math.round(v.engineCapacity/100)/10).toFixed(1)+'L',v.colour&&titleCase(v.colour)].filter(Boolean);
+  c.innerHTML='<div style="border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;background:#fff">'+
+    '<div style="font-size:12px;color:var(--dim);font-weight:700">✓ FOUND</div>'+
+    '<div style="font-size:18px;font-weight:800;margin:2px 0">'+esc(line||'Vehicle found')+'</div>'+
+    '<div style="font-size:13px;color:var(--dim)">'+esc(bits.join(' · '))+'</div>'+
+    (v.motExpiryDate?'<div style="font-size:12px;margin-top:6px;color:'+(v.motStatus==='Valid'?'var(--green)':'var(--red)')+'">MOT '+(v.motStatus==='Valid'?'valid until ':'expired ')+esc(v.motExpiryDate)+'</div>':'')+
+    '</div>';
+  if(man)man.open=false;
+  var z=vehSize(v);
+  fl.innerHTML=z.big?note('n-red','<strong>🚩 Big vehicle — check before booking.</strong> '+esc(z.why).replace(/^./,function(x){return x.toUpperCase();})+'. It won’t go on our ramp, so ask Logan whether we can do this work before you promise anything.'):'';
+}
+async function vehLookup(reg){
+  reg=String(reg||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(!reg){_veh={reg:'',data:null,busy:false};vehPaint();return;}
+  if(_veh.reg===reg&&(_veh.data||_veh.busy)){vehPaint();return;}
+  _veh={reg:reg,data:null,busy:true};vehPaint();
+  var v=null;
+  try{
+    var ctl=window.AbortController?new AbortController():null,t=setTimeout(function(){if(ctl)ctl.abort();},8000);
+    var r=await fetch(VEH_API,{method:'POST',headers:{'content-type':'text/plain'},body:JSON.stringify({reg:reg}),signal:ctl&&ctl.signal});
+    clearTimeout(t);var j=await r.json();v=j&&j.vehicle||null;
+  }catch(e){}
+  if(_veh.reg!==reg)return;          // they changed the reg while we waited
+  _veh={reg:reg,data:v,busy:false};
+  if(v){
+    var set=function(id,val){var e=document.getElementById(id);if(e&&val)e.value=val;};
+    set('f-make',titleCase(v.make));set('f-model',titleCase(v.model));set('f-year',v.yearOfManufacture);
+    var fu=String(v.fuelType||'').toLowerCase();
+    set('f-fuel',/hybrid/.test(fu)?'Hybrid':/elec/.test(fu)?'Electric':/diesel/.test(fu)?'Diesel':/petrol/.test(fu)?'Petrol':'');
+    if(v.engineCapacity)set('f-engine',(Math.round(v.engineCapacity/100)/10).toFixed(1));
+    // answer the old shape questions from the lookup so ramp / MOT class / bodywork column still work
+    var z=vehSize(v);
+    set('f-shape',z.big?'van_high':z.van?'van_std':'car');set('f-seats',/^M2|^M3/.test(String(v.typeApproval||''))?'9':'5');
+    set('f-roof','no');set('f-gvw',z.big?'over':'under');
+    try{deriveRamp();}catch(e){}
+  }
+  vehPaint();
 }
 function needsCustomer(){var jt=JOB_TYPES.filter(function(x){return x.k===jobType;})[0];return jt?jt.cust:true;}
 function activeFlow(){
@@ -1169,6 +1298,9 @@ async function submitJob(){
     if(!fval('f-name')&&!b2bAcct){alert('Customer name required.');return;}
     if(!fval('f-phone')&&!b2bAcct){alert('Phone number required.');return;}
   }
+  if(custType==='business'&&!fval('f-company')){   // last chance: fill the company rather than send it blank
+    var g=b2bAcct||b2bGuessFor(),co=document.getElementById('f-company');
+    if(co)co.value=g?g.company:(fval('f-b2b-search')||'');}
   var stillMissing=missingList();
   var mustMissing=stillMissing.filter(function(x){return x.lvl==='must';}).map(function(x){return x.l;});
   if(mustMissing.length&&!confirm('Still missing:\n• '+mustMissing.join('\n• ')+
@@ -1182,6 +1314,14 @@ async function submitJob(){
   var id=newJobId();
   var reg=fval('f-reg').toUpperCase();
   var answers=collectAnswers();
+  var intakeAnswers=[];
+  if(fval('f-words'))intakeAnswers.push({q:'In their words',a:fval('f-words')});
+  document.querySelectorAll('#guided-content .fg, #comeback-card .fg').forEach(function(g){
+    var l=g.querySelector('.fl'),e=g.querySelector('input,select,textarea');
+    if(l&&e&&e.value&&e.type!=='checkbox'&&e.type!=='file')intakeAnswers.push({q:l.textContent.replace(/\*/g,'').trim(),a:String(e.value).trim()});});
+  ['axle','brakework','tyre-brand','susp-loc','susp-work','exhaust-type','elec-work','eng-work','clutch-work','body-type','body-extra'].forEach(function(g){
+    var v=_getChipsRaw(g);if(v)intakeAnswers.push({q:(CHIP_LABELS[g]||g),a:v});});
+  if(fval('f-notes'))intakeAnswers.push({q:'Notes',a:fval('f-notes')});
   var needsDiag=safetyHits.length>0&&!diagOverride;
 
   var escalations=[];
@@ -1235,11 +1375,20 @@ async function submitJob(){
   if(fval('f-svc-type'))parts.push(fval('f-svc-type'));
   ['axle','brakework','exhaust-type','elec-work','eng-work','clutch-work','susp-work','panels','body-type']
     .forEach(function(g){if(answers['chips-'+g])parts.push(answers['chips-'+g]);});
+  if(mechCat==='diagnostic'){
+    if(fval('f-diag-type'))parts.push(fval('f-diag-type'));
+    if(fval('f-diag-lights'))parts.push('Lights: '+fval('f-diag-lights'));
+    if(fval('f-diag-symptoms'))parts.push(fval('f-diag-symptoms'));
+    if(fval('f-driveable')==='No — needs recovery')parts.push('Needs recovery');}
+  if(mechCat==='tyres'){
+    ['f-tyre-qty','f-tyre-size'].forEach(function(k){if(fval(k))parts.push(fval(k));});
+    if(answers['chips-tyre-brand'])parts.push(answers['chips-tyre-brand']);}
   ['f-other-work','f-sale-work','f-body-desc'].forEach(function(k){if(fval(k))parts.push(fval(k));});
   if(jobType==='recovery')parts.push('Recovery: '+fval('f-rec-from')+' → '+fval('f-rec-to'));
   var work=parts.join(' · ')||f.label||jt.n;
+  if(mechCat==='diagnostic'&&parts.length)work='Diagnostic — '+work;
   if(jobType==='comeback')work='COMEBACK — '+work;
-  if(needsDiag)work='DIAGNOSTIC FIRST — '+work;
+  if(needsDiag&&mechCat!=='diagnostic')work='DIAGNOSTIC FIRST — '+work;
 
   var job={
     id:id,reg:reg,
@@ -1254,21 +1403,23 @@ async function submitJob(){
     mileage:fval('f-mileage'),fuel:fval('f-fuel'),engineSize:fval('f-engine'),
     work:work,jobType:jobType,area:area,serviceType:mechCat||area||jobType,
     serviceLabel:f.label||jt.n,
-    guidedAnswers:answers,judgement:judgement,
+    guidedAnswers:answers,intakeAnswers:intakeAnswers,judgement:judgement,
+    dvla:_veh.data||null,
     isB2B:custType==='business',isAA:(custType||'').indexOf('aa_')===0,
     isWarrantyCo:custType==='warranty',isInternal:!needsCustomer(),
     isComeback:jobType==='comeback',
     customerSuppliedParts:fchk('f-custparts'),
     source:fval('f-source'),notes:fval('f-notes'),by:staffName,
-    asap:fchk('f-asap'),priority:fchk('f-asap'),
+    asap:fchk('f-asap')||custType==='business',priority:fchk('f-asap')||custType==='business',
     stage:'intake',stageAt:Date.now(),
     damage:area==='bodywork'?damageList():[],
+    damagePanels:area==='bodywork'?damageList().filter(function(d){return d.type;}).map(function(d){return d.panel;}):[],
     custType:needsCustomer()?(CRM_CUST[custType]||''):'Internal (stock)',
     fleetAccount:false,fromIntakeApp:true,intakeKey:newIntakeKey(),
     tmJob:'',tmPart:'',est:null,finalEst:null,parts:[],finalNotes:'',fromForm:false,
     log:[{t:ts,s:'Intake v'+INTAKE_BUILD+' by '+staffName+' — '+jt.n+(area?' / '+area:'')+
       ' · customer '+(needsCustomer()?custType:'internal')+
-      (rampState.exempt?' · RAMP-EXEMPT':'')+(needsDiag?' · DIAGNOSTIC FIRST':'')+
+      (rampState.exempt?' · RAMP-EXEMPT':'')+(needsDiag&&mechCat!=='diagnostic'?' · DIAGNOSTIC FIRST':'')+
       (warrantyState?' · warranty '+warrantyState.verdict:'')+
       (escalations.length?' · ESCALATE ('+escalations.length+')':'')+
       (custType==='business'?' · BUSINESS — set Retail or Trade in the CRM':'')+
@@ -1330,20 +1481,50 @@ async function pushJob(job){
   }
   return false;
 }
+// The first job of a visit was saved offline and its number was taken by the
+// time it synced, so it got a new one. Move every same-visit job — still on
+// the phone or already in the CRM — over to the new number so the bill holds.
+async function relinkVisit(oldId,newId,reg){
+  if(VISIT){if(VISIT.root===oldId)VISIT.root=newId;
+    VISIT.jobs.forEach(function(x){if(x.id===oldId)x.id=newId;});}
+  var q=readQueue(),ch=false;
+  q.forEach(function(j){if(j.sameVisit&&j.linkedJobId===oldId){j.linkedJobId=newId;ch=true;}});
+  if(ch)writeQueue(q);
+  var cr=function(x){return String(x||'').replace(/[^A-Z0-9]/gi,'').toUpperCase();};
+  try{
+    var r=await fetch(SB_URL+'/rest/v1/'+JOBS_TABLE+'?select=id,data,updated_at&data->>linkedJobId=eq.'+
+      encodeURIComponent(oldId)+'&data->>sameVisit=eq.true',{headers:sbHdr()});
+    var rows=r.ok?await r.json():[];
+    for(var i=0;i<rows.length;i++){
+      var d=rows[i].data;if(!d||cr(d.reg)!==cr(reg))continue;
+      d.linkedJobId=newId;(d.log=d.log||[]).push({t:new Date().toLocaleString('en-GB'),
+        s:'First job of this visit synced late and was filed as '+newId+' (not '+oldId+') — link moved'});
+      var at=new Date().toISOString();
+      await fetch(SB_URL+'/rest/v1/'+JOBS_TABLE+'?id=eq.'+encodeURIComponent(rows[i].id)+
+        (rows[i].updated_at?'&updated_at=eq.'+encodeURIComponent(rows[i].updated_at):''),
+        {method:'PATCH',headers:sbHdr({'Content-Type':'application/json','Prefer':'return=minimal'}),
+         body:JSON.stringify({data:d,updated_at:at})});
+    }
+  }catch(e){}
+}
 var _syncing=false;
 async function syncQueue(){
   if(_syncing)return;_syncing=true;
   try{
     var q=readQueue();if(!q.length)return;
-    var rem=[];
+    var rem=[],moved={};
     for(var i=0;i<q.length;i++){
       // jobs queued by older builds: bring them up to date first
       if(q[i].stage==='estimating')q[i].stage='labour';
       if(!q[i].intakeKey)q[i].intakeKey=newIntakeKey();
-      var ok=false;try{ok=await pushJob(q[i]);}catch(e){}
+      if(q[i].sameVisit&&moved[q[i].linkedJobId])q[i].linkedJobId=moved[q[i].linkedJobId];
+      var was=q[i].id,ok=false;try{ok=await pushJob(q[i]);}catch(e){}
+      if(ok&&q[i].id!==was){moved[was]=q[i].id;await relinkVisit(was,q[i].id,q[i].reg);}
       if(!ok)rem.push(q[i]);
     }
-    writeQueue(rem.concat(readQueue().slice(q.length)));
+    var all=rem.concat(readQueue().slice(q.length));
+    all.forEach(function(j){if(j.sameVisit&&moved[j.linkedJobId])j.linkedJobId=moved[j.linkedJobId];});
+    writeQueue(all);
   }finally{_syncing=false;}
 }
 window.addEventListener('online',function(){syncQueue();});
@@ -1403,13 +1584,14 @@ async function addIntakePhotos(input){
   }
 }
 function resetForm(){
-  intakePics=[];drawPics();b2bClear();
+  _qSent=[];intakePics=[];drawPics();b2bClear();
   var vb=document.getElementById('visit-banner');if(vb){vb.style.display='none';vb.innerHTML='';}
   jobType=null;area=null;mechCat=null;custType=null;curStep=0;
   safetyHits=[];diagOverride=null;warrantyState=null;triageResult=null;
   rampState={exempt:false,reason:'',pending:false};
+  _veh={reg:'',data:null,busy:false};
   window._bodyCat=null;window._motClass=null;
-  DMG={};DMG_ORDER=[];
+  DMG={};DMG_ORDER=[];DMG_MARK={};DMG_WHEELS={};
   document.querySelectorAll('.big-btn,.svc-btn').forEach(function(b){b.classList.remove('sel');});
   ['f-reg','f-make','f-model','f-year','f-mileage','f-engine','f-name','f-phone','f-notes','f-words']
     .forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
@@ -1912,6 +2094,23 @@ function b2bPick(i){
   if(a.contacts.length===1)b2bUse(0);
   updateNeeds();
 }
+// "Wallington Cars office" typed as the customer name → it's the Wallington Cars account.
+function b2bGuessFor(){
+  var list=b2bAccounts||[],keys=[fval('f-name'),fval('f-b2b-search'),fval('f-company')].map(b2bKey).filter(function(k){return k.length>=4;});
+  if(!keys.length)return null;
+  var hits=list.filter(function(a){var ak=b2bKey(a.company);if(ak.length<4)return false;
+    return keys.some(function(k){return k.indexOf(ak)!==-1||ak.indexOf(k)!==-1;});});
+  return hits.length===1?hits[0]:null;
+}
+async function b2bGuessShow(){
+  await b2bLoad();
+  var el=document.getElementById('b2b-guess');if(!el||custType!=='business'||b2bAcct)return;
+  var g=b2bGuessFor();
+  if(!g){if(!fval('f-company')&&fval('f-b2b-search')){var co=document.getElementById('f-company');if(co)co.value=fval('f-b2b-search');}el.innerHTML='';return;}
+  var i=b2bAccounts.indexOf(g);
+  el.innerHTML='<div class="notice n-gold" style="margin-top:8px">Looks like <b>'+esc(g.company)+'</b> — we already have them saved.'+
+    '<button class="btn btn-gold" style="width:100%;margin-top:8px" onclick="b2bPick('+i+')">Use the '+esc(g.company)+' account</button></div>';
+}
 function b2bUse(ci){
   var c=b2bAcct&&b2bAcct.contacts[ci];if(!c)return;b2bContact=c;
   var set=function(id,v){var e=document.getElementById(id);if(e)e.value=v||'';};
@@ -2048,9 +2247,8 @@ function needGroups(){
   if(custType&&custType.indexOf('aa_')===0)pay.push(it('AA job reference',fval('f-aa-ref'),'must'));
   if(pay.length)G.push({g:'Paying',items:pay});
 
-  var veh=[it('Vehicle shape — the 4 questions',fval('f-shape')&&fval('f-seats')&&fval('f-roof')&&fval('f-gvw'),'must','Sets the bodywork column, MOT class and ramp'),
-    it('Make and model',fval('f-make')&&fval('f-model'),'ask')];
-  veh.push(it('Mileage today',fval('f-mileage'),jobType==='comeback'?'must':'ask',jobType==='comeback'?'Needed for the warranty check':''));
+  var veh=[it('Make and model',fval('f-make')&&fval('f-model'),'ask','Comes from the reg — only type it if the lookup failed')];
+  if(jobType==='comeback')veh.push(it('Mileage today',fval('f-mileage'),'must','Needed for the warranty check'));
   G.push({g:'The car',items:veh});
 
   var job=[];
@@ -2281,12 +2479,13 @@ async function submitQuick(){
       email:fval('f-email'),sendEstimateBy:fval('f-haswa')!=='no'?'whatsapp':(fval('f-email')?'email':'sms/call'),make:fval('q-make'),model:fval('q-model'),
       work:'STRAIGHT — '+what,jobType:'straight',area:'mechanical',serviceType:'straight',serviceLabel:'⚡ Straight job',
       isStraight:true,noEstimate:true,isInternal:false,custType:b2bAcct?'':'Retail',isB2B:!!b2bAcct,
-      judgement:b2bAcct?{customer_type:'business',company_name:b2bAcct.company,trade_status:'resolve_in_crm'}:undefined,
       fixedPrice:pr?{label:what,incVat:pr.inc,exVat:pr.ex,vatFree:pr.vatFree,depositDue:pr.inc>=200?+(pr.inc/2).toFixed(2):0}:null,
       finalNotes:'Fixed price: £'+(pr?pr.inc.toFixed(2):'?')+(pr&&pr.vatFree?' (no VAT)':' inc VAT')+' — '+what,
       bookedFor:fval('q-date')||'',bookedTime:fval('q-time')||'',bookSide:'mechanical',bookLen:sp.len,bookUnit:'hours',
       ramp:fval('q-onsite').indexOf('Yes')===0,parts:[],stage:'so',
       judgement:{sop_version:SOP_VERSION,job_type:'straight',straight:sp.k,channel:channel,
+        customer_type:b2bAcct?'business':undefined,company_name:b2bAcct?b2bAcct.company:undefined,
+        trade_status:b2bAcct?'resolve_in_crm':undefined,
         remap_insurance_told:sp.k.indexOf('remap')===0?fchk('q-remap-told'):null,captured_by:staffName,captured_at:now}
     });
   } else {
@@ -2309,7 +2508,7 @@ async function submitQuick(){
 
   if(!job.isInternal)visitTag(job);
   var saved=false;try{saved=await pushJob(job);}catch(e){}
-  if(!job.isInternal)visitDone(job);else endVisit();
+  if(!job.isInternal)visitDone(job);else{endVisit();moreQuickBtn(job);}
   if(job.isB2B&&b2bAcct)b2bSave(b2bAcct.company,b2bContactFromForm());
   if(!saved){var q=readQueue();q.push(job);writeQueue(q);}
   btn.disabled=false;
@@ -2329,6 +2528,30 @@ async function submitQuick(){
   document.getElementById('suc-next').innerHTML='<div class="next"><div class="sec">What happens next</div><ol>'+
     li.map(function(x){return '<li>'+x+'</li>';}).join('')+'</ol></div>';
   syncQueue();
+}
+
+// Consumables / staff parts: keep going without starting from the top.
+// Each send is its own order at POs to Raise; the button opens a fresh one
+// with the same "needed by" and supplier already picked.
+var _qSent=[];
+function moreQuickBtn(job){
+  var mode=quickMode,el=document.getElementById('suc-visit');if(!el)return;
+  _qSent.push(job.id+' '+String(job.work||'').replace(/^[^:]*:\s*/,'').slice(0,50));
+  var what=mode==='consumables'?'consumables':'parts for staff';
+  el.innerHTML='<div style="background:#f7f3e6;border:1.5px solid #d8c78f;border-radius:10px;padding:12px;margin:14px 0;text-align:left">'+
+    '<div style="font-weight:800;margin-bottom:4px">Need more '+what+'?</div>'+
+    (_qSent.length>1?'<div style="font-size:13px;color:#555;margin-bottom:10px">Sent so far: '+_qSent.map(esc).join(' · ')+'</div>':'')+
+    '<button class="btn btn-gold" style="width:100%" onclick="moreQuick(\''+mode+'\')">＋ Add more '+what+'</button></div>';
+}
+function moreQuick(mode){
+  var keep={need:fval('q-need'),sup:fval('q-sup'),who:fval('q-who'),fr:fval('q-for')};
+  var sent=_qSent.slice();resetForm();_qSent=sent;pickQuick(mode);
+  [['q-need',keep.need],['q-sup',keep.sup],['q-who',keep.who],['q-for',keep.fr]].forEach(function(x){
+    var e=document.getElementById(x[0]);if(e&&x[1])e.value=x[1];});
+  var first=document.querySelector('#q-items .qi-name');
+  var box=document.getElementById('quick-off');if(box)box.scrollIntoView({block:'start'});
+  if(first)first.focus();
+  updateNeeds();
 }
 
 paintChannels();

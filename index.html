@@ -345,7 +345,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <div class="tabs">
   <button class="tab on" onclick="setFilter('all',this)">All Jobs <span id="cnt-all" style="color:var(--faint);font-size:10px"></span></button>
   <button class="tab" onclick="openInbox()">📨 Inbox <span id="cnt-leads" style="color:var(--faint);font-size:10px"></span></button>
-  <button class="tab" onclick="setFilter('inbox',this);renderInbox()">📥 New Intake <span id="cnt-inbox" style="color:var(--faint);font-size:10px"></span></button>
+  <span id="cnt-inbox" style="display:none"></span>
   <button class="tab" onclick="setFilter('action',this)">⚡ Needs Action</button>
   <button class="tab" onclick="setFilter('waiting',this)">⏳ Awaiting Customer</button>
   <button class="tab" onclick="setFilter('parts',this)">🔩 Parts</button>
@@ -414,7 +414,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
       <div class="mob-group">Leads</div>
       <div class="mob-grid">
         <button onclick="mobMoreGo(()=>openInbox())">📨 Inbox<span class="mg-c" id="m-cnt-lead"></span></button>
-        <button onclick="mobMoreGo(()=>setFilter('inbox',null))">📥 New Intake<span class="mg-c" id="m-cnt-inb"></span></button>
+        <span class="mg-c" id="m-cnt-inb" style="display:none"></span>
         <button onclick="mobMoreGo(()=>openB2BView())">🏢 B2B Leads</button>
         <button onclick="mobMoreGo(()=>openAwaitingDash())">🤝 Awaiting Decision</button>
       </div>
@@ -1258,6 +1258,10 @@ try{pos=JSON.parse(localStorage.getItem('kith_pos')||'[]');}catch(e){}
 let b2bLeads=[];
 try{b2bLeads=JSON.parse(localStorage.getItem('kith_b2b')||'[]');}catch(e){}
 let intakeData=[], partsData=[];
+// The sheet sometimes hands back the timestamp as a number or date, not text.
+// Everything below treats it as text, so make it text the moment rows arrive.
+function normIntake(rows){(rows||[]).forEach(r=>{if(!r)return;
+  ['Timestamp','timestamp'].forEach(k=>{if(r[k]!==undefined&&r[k]!==null&&typeof r[k]!=='string')r[k]=String(r[k]);});});return rows;}
 let imported=new Set(JSON.parse(localStorage.getItem('kith_imp')||'[]'));
 let dismissed=new Set();try{dismissed=new Set(JSON.parse(localStorage.getItem('kith_dismissed')||'[]'));}catch(e){}
 let filter='all', curId=null, viewMode='board';
@@ -1711,7 +1715,7 @@ async function refreshSheets(){
   // for everyone — fall back to the last good pull and say how old it is.
   try{
     const got = await fetchSheetAny(INTAKE_ID, INTAKE_GID, 'Intake');
-    intakeData = got.rows;
+    intakeData = normIntake(got.rows);
     try{localStorage.setItem('kith_intake_cache',JSON.stringify({at:Date.now(),rows:intakeData}));}catch(x){}
     setDot('intake','ok','Intake Form — '+intakeData.length+' response'+(intakeData.length!==1?'s':'')+(got.via==='direct'?' (backup route — proxy down)':''));
     window._intakeStale=null;
@@ -1719,7 +1723,7 @@ async function refreshSheets(){
     console.warn('Intake:',e);
     let c=null;try{c=JSON.parse(localStorage.getItem('kith_intake_cache')||'null');}catch(x){}
     if(c&&c.rows&&c.rows.length){
-      intakeData=c.rows;
+      intakeData=normIntake(c.rows);
       window._intakeStale=c.at;
       setDot('intake','err','Intake Form — not updating, showing '+c.rows.length+' from '+cacheAge(c.at)+' ago (republish the sheet)');
     } else {
@@ -1780,7 +1784,7 @@ async function autoRefreshIntake(){
     const st=document.getElementById('sync-time');
     if(st)st.textContent='Synced '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
     if(sig!==_intakeSig||_intakeRedrawDue){
-      intakeData=rows;_intakeSig=sig;
+      intakeData=normIntake(rows);_intakeSig=sig;
       updateInboxBadge();
   try{autoImportIntake();}catch(x){console.warn(x);}
       if(_userIsTyping()){_intakeRedrawDue=true;}
@@ -2136,7 +2140,7 @@ function dismissRow(t){dismissed.add(t);saveDismissed();updateInboxBadge();rende
 // ── RENDER INBOX ─────────────────────────────────────────
 function renderInbox(){
   if((!intakeData||!intakeData.length)){
-    try{const c=JSON.parse(localStorage.getItem('kith_intake_cache')||'null');if(c&&c.rows&&c.rows.length)intakeData=c.rows;}catch(e){}
+    try{const c=JSON.parse(localStorage.getItem('kith_intake_cache')||'null');if(c&&c.rows&&c.rows.length)intakeData=normIntake(c.rows);}catch(e){}
   }
   const q=(document.getElementById('search-bar')?.value||'').toLowerCase().trim();
   const hideDupes=localStorage.getItem('kith_hide_dupes')==='1';
@@ -5044,6 +5048,7 @@ function jobH(j){
     (j.source?'<div class="fi"><div class="fl">Source</div><div class="fv">'+escHtml(j.source)+'</div></div>':'')+
     '<div class="fi" style="grid-column:1/-1"><div class="fl">Work Required</div><div class="fv" style="line-height:1.5">'+j.work+'</div></div>'+
     twoPriceH(j)+
+    intakeToldH(j)+
 
     '<div class="fi"><div class="fl">Intake By</div><div class="fv">'+j.by+'</div></div>'+
         vehDetailsPanel(j)+
@@ -6672,6 +6677,19 @@ const DMG_PANELS={fbumper:'M62 14 Q130 -2 198 14 L204 46 L56 46 Z',bonnet:'M60 5
   rfwing:'M238 60 Q230 40 204 46 L200 150 L238 150 Z',lfdoor:'M22 154 L62 154 L66 256 L22 256 Z',rfdoor:'M238 154 L198 154 L194 256 L238 256 Z',
   lrdoor:'M22 260 L66 260 L66 350 L22 350 Z',rrdoor:'M238 260 L194 260 L194 350 L238 350 Z',lrq:'M22 354 L62 354 L56 452 Q30 460 22 440 Z',
   rrq:'M238 354 L198 354 L204 452 Q230 460 238 440 Z'};
+// Everything the adviser was told at intake, so the estimator never has to ring back to ask.
+const INTAKE_LBL={"f-svc-type": "Service type", "f-last-service": "Last service", "f-other-issues": "Other issues", "f-brake-symptoms": "What they described", "f-tyre-qty": "How many", "f-tyre-size": "Tyre size", "f-tracking": "Tracking", "f-diag-type": "Diagnostic tier", "f-diag-lights": "Warning lights", "f-diag-symptoms": "What the car is doing", "f-driveable": "Can they drive it here?", "f-susp-symptoms": "What they described", "f-exhaust-symptoms": "What they described", "f-elec-symptoms": "What they described", "f-eng-symptoms": "What they described", "f-gearbox-type": "Gearbox", "f-clutch-symptoms": "What they described", "f-other-work": "Work", "f-other-lights": "Warning lights", "f-body-desc": "About the damage", "f-body-pay": "Insurance or private", "f-rec-from": "Collect from", "f-rec-to": "Deliver to", "f-rec-drives": "Does it drive?", "f-rec-dist": "Distance", "f-rec-keys": "Keys", "f-cb-job": "Original job", "f-cb-date": "Original date", "f-cb-same": "Same fault?", "f-cb-what": "Original work", "chips-axle": "Which wheels", "chips-brakework": "Asked for", "chips-tyre-brand": "Brand", "chips-susp-loc": "Where", "chips-susp-work": "They think it is", "chips-exhaust-type": "Asked for", "chips-elec-work": "Asked for", "chips-eng-work": "Asked for", "chips-clutch-work": "Asked for", "chips-body-type": "Repair type"};
+function intakeToldH(j){
+  let rows=Array.isArray(j.intakeAnswers)?j.intakeAnswers.filter(x=>x&&x.a):[];
+  if(!rows.length){
+    const w=j.judgement&&j.judgement.customer_words;if(w)rows.push({q:'In their words',a:w});
+    const g=j.guidedAnswers||{};Object.keys(g).forEach(k=>{if(INTAKE_LBL[k]&&g[k])rows.push({q:INTAKE_LBL[k],a:g[k]});});
+    if(j.notes)rows.push({q:'Notes',a:j.notes});
+  }
+  if(!rows.length)return '';
+  return '<div class="fi" style="grid-column:1/-1"><div class="fl">What they told us at intake</div><div class="fv" style="font-size:12px;line-height:1.55">'+
+    rows.map(x=>'<div style="padding:3px 0;border-bottom:1px solid var(--border)"><span style="color:var(--dim)">'+escHtml(x.q)+':</span> '+escHtml(String(x.a))+'</div>').join('')+'</div></div>';
+}
 function damageMapCrmH(j){
   const d=Array.isArray(j.damage)?j.damage.filter(x=>x&&x.panel):[];
   if(!d.length)return '';
