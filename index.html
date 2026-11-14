@@ -2812,7 +2812,37 @@ function dupeJobCount(){
 // Nobody should touch a spanner on work the customer hasn't agreed to.
 // This records who approved it, when, and how they said yes.
 const APPROVE_HOWS=['Verbal on the phone','Replied on WhatsApp','Replied by text','In person','Email','Fleet / account authority','Warranty authorised'];
-function approveEstimate(id){
+// Tap-to-pick sheet that scrolls on a phone — replaces the typed prompt()
+// for "how did they approve it". Resolves {choice,text} or null on cancel.
+function pickSheet(opts){
+  return new Promise(resolve=>{
+    const o=Object.assign({title:'',sub:'',options:[],def:'',field:null},opts||{});
+    const bg=document.createElement('div');
+    bg.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center';
+    const box=document.createElement('div');
+    box.style.cssText='background:var(--surface,#1b1b1b);color:var(--text,#eee);width:100%;max-width:520px;max-height:85vh;overflow-y:auto;-webkit-overflow-scrolling:touch;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom))';
+    let picked=o.def||'';
+    const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    box.innerHTML='<div style="font-size:16px;font-weight:800;margin-bottom:4px">'+esc(o.title)+'</div>'+
+      (o.sub?'<div style="font-size:13px;color:var(--gold,#d4a843);font-weight:700;margin-bottom:10px">'+esc(o.sub)+'</div>':'')+
+      '<div class="ps-opts">'+o.options.map((x,i)=>'<button type="button" data-i="'+i+'" style="display:block;width:100%;text-align:left;padding:14px 12px;margin-bottom:8px;border-radius:10px;border:2px solid var(--border,#333);background:var(--surface2,#242424);color:inherit;font-size:15px;font-weight:600">'+esc(x)+'</button>').join('')+'</div>'+
+      (o.field?'<div style="font-size:12px;color:var(--dim,#999);margin:8px 0 4px">'+esc(o.field.label)+'</div><input class="ps-text" value="'+esc(o.field.value||'')+'" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid var(--border,#333);background:var(--surface2,#242424);color:inherit;font-size:16px">':'')+
+      '<div style="display:flex;gap:8px;margin-top:12px"><button type="button" class="ps-cancel btn btn-ghost" style="flex:1;padding:12px">Cancel</button><button type="button" class="ps-ok btn btn-gold" style="flex:2;padding:12px;font-weight:800">OK</button></div>';
+    bg.appendChild(box);document.body.appendChild(bg);
+    const btns=[...box.querySelectorAll('.ps-opts button')];
+    const paint=()=>btns.forEach(b=>{const on=o.options[+b.dataset.i]===picked;b.style.borderColor=on?'var(--gold,#d4a843)':'var(--border,#333)';b.style.background=on?'rgba(212,168,67,.18)':'var(--surface2,#242424)';});
+    paint();
+    const done=v=>{bg.remove();resolve(v);};
+    btns.forEach(b=>b.onclick=()=>{picked=o.options[+b.dataset.i];paint();if(!o.field)done({choice:picked,text:''});});
+    box.querySelector('.ps-cancel').onclick=()=>done(null);
+    bg.addEventListener('click',e=>{if(e.target===bg)done(null);});
+    box.querySelector('.ps-ok').onclick=()=>{
+      if(!picked){alert('Pick one first.');return;}
+      const t=box.querySelector('.ps-text');done({choice:picked,text:t?t.value.trim():''});
+    };
+  });
+}
+async function approveEstimate(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
   if(twoPriceOpen(j)){
     const t=twoPriceTotals(j);
@@ -2823,11 +2853,10 @@ function approveEstimate(id){
     applyTwoChoice(j,w);
   }
   const amt=parseFloat(j.quote)||0;
-  const how=prompt('How did the customer approve it?\n\n'+APPROVE_HOWS.join(' / ')+
-    (amt?'\n\nQuote: \u00a3'+amt.toFixed(2):''),'Verbal on the phone');
-  if(how===null)return;
-  const who=prompt('Who approved it? (name of the person who said yes)',j.name||'');
-  if(who===null)return;
+  const res=await pickSheet({title:'How did the customer approve it?',sub:amt?'Quote: \u00a3'+amt.toFixed(2):'',
+    options:APPROVE_HOWS,def:'',field:{label:'Who said yes?',value:j.name||''}});
+  if(!res)return;
+  const how=res.choice, who=res.text;
   j.estApproved=true;
   j.estApprovedAt=ts();
   j.estApprovedHow=String(how||'').trim();
@@ -2839,6 +2868,7 @@ function approveEstimate(id){
     ' \u2014 '+j.estApprovedHow+(currentUser?' ['+currentUser.name+']':'')});
   save(j);renderDetail();renderAll();
   if(typeof toast==='function')toast('\u2713 Estimate approved');
+  return true;
 }
 function unapproveEstimate(id){
   const j=jobs.find(x=>x.id===id);if(!j)return;
@@ -2869,10 +2899,11 @@ function holdForAuth(id){
   save(j);
   mv('authwait','Awaiting customer authority');
 }
-function authGiven(id){
+async function authGiven(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
-  const how=prompt('How did they authorise it?\n\n'+APPROVE_HOWS.join(' / '),'Verbal on the phone');
-  if(how===null)return;
+  const res=await pickSheet({title:'How did they authorise it?',options:APPROVE_HOWS});
+  if(!res)return;
+  const how=res.choice;
   j.authHold=j.authHold||{};
   j.authHold.clearedAt=ts();
   j.authHold.how=String(how||'').trim();
@@ -6366,7 +6397,7 @@ function actH(j){
         approvalH(j)+
         photoStripH(j)+
         phoneRowH(j)+
-        '<button class="btn btn-green btn-full" style="margin-bottom:6px" onclick="approveEstimate(\''+j.id+'\');onCustomerYes(\''+j.id+'\',{via:\'manual\'});mv(\'ready\',\'Customer said yes \\u2014 booking in\')">Customer YES \u2192 Deposit &amp; T&amp;Cs</button>'+
+        '<button class="btn btn-green btn-full" style="margin-bottom:6px" onclick="approveEstimate(\''+j.id+'\').then(ok=>{if(!ok)return;curId=\''+j.id+'\';onCustomerYes(\''+j.id+'\',{via:\'manual\'});mv(\'ready\',\'Customer said yes \\u2014 booking in\')})">Customer YES \u2192 Deposit &amp; T&amp;Cs</button>'+
         '<button class="btn btn-gold btn-full" style="margin-bottom:6px" onclick="mv(\'waiting\',\'Thinking about it \\u2014 awaiting response\')">Thinking about it \u2192 Awaiting Response</button>'+
         saidNoBtnsH(j)+
         bookNowBtnH(j);
@@ -14257,9 +14288,12 @@ function adYes(id){
   const j=jobs.find(x=>x.id===id);if(!j)return;
   if(j.stage==='range'){rangeYes(id);renderAwaitingDash();return;}
   curId=id;
-  approveEstimate(id);onCustomerYes(id,{via:'awaiting decision'});
-  mv('ready','Customer said yes \u2014 booking in [Awaiting Decision]');
-  renderAwaitingDash();
+  approveEstimate(id).then(ok=>{
+    if(!ok)return;
+    curId=id;onCustomerYes(id,{via:'awaiting decision'});
+    mv('ready','Customer said yes \u2014 booking in [Awaiting Decision]');
+    renderAwaitingDash();
+  });
 }
 function adNo(id){customerSaidNo(id);renderAwaitingDash();}
 let adFilter='all';
