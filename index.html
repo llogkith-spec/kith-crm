@@ -4690,8 +4690,25 @@ function quickStage(jobId, stage){
   if(j.stage==='booked'&&!j.bookedFor)setTimeout(()=>openBookingModal(j.id),80);
 }
 
+// When a job came in — form timestamp, then createdAt, then its first log
+// line, then when it last moved. Used to run the list first come, first served.
+function jobCameIn(j){
+  try{if(j.srcTs){const d=tsDate(j.srcTs).getTime();if(d)return d;}}catch(e){}
+  if(j.createdAt){const d=new Date(j.createdAt).getTime();if(d)return d;const p=parseLogTime(j.createdAt);if(p)return p;}
+  const first=(j.log||[])[0];
+  if(first){const p=parseLogTime(first.t);if(p)return p;}
+  return j.stageAt||0;
+}
 function renderList(){
-  document.getElementById('list-body').innerHTML=fil().map(j=>{
+  // 14 Nov 2026: Lost jobs stay off the list (Lost tab still shows them,
+  // and a search still finds them, at the bottom). Oldest job first.
+  const q=(document.getElementById('search-bar')?.value||'').trim();
+  let list=fil();
+  if(currentFilter!=='lost'&&!q)list=list.filter(j=>j.stage!=='lost');
+  list=list.map(j=>({j,t:jobCameIn(j)}))
+    .sort((a,b)=>((a.j.stage==='lost')-(b.j.stage==='lost'))||(a.t-b.t))
+    .map(x=>x.j);
+  document.getElementById('list-body').innerHTML=list.map(j=>{
     const s=stg(j.stage);
     return'<tr onclick="openJob(\''+j.id+'\')">'+
       '<td style="font-family:\'Courier New\',monospace;font-weight:800;color:var(--gold)">'+j.reg+'</td>'+
