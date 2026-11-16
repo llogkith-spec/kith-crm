@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v16.7 \u00b7 16 Nov';
+const BUILD='v16.8 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -1237,10 +1237,10 @@ function sbRealtime(){
 // ── STAGE MIGRATION (old → new pipeline) ─────────────────
 const STAGE_MAP={
   'estimating':   'labour',
-  'estimated':    'financial',
+  'estimated':    'signoff',
   'contact1':     'contact',
   'contact2':     'contact',
-  'joel-final':   'financial',
+  'joel-final':   'signoff',
   'giles-recheck':'parts',
   'addwork':      'parts',
   'addlabour':    'labour',
@@ -1428,6 +1428,9 @@ function save(jobToSave){
   const j=jobToSave||gj();
   if(!j)return;
   cleanJob(j);
+  // 16 Nov 2026: Final Estimate is one stage with Sign-Off, and the Service Adviser stage is gone
+  if(j.stage==='financial'){j.stage='signoff';try{stampStage(j,'signoff');}catch(e){}}
+  else if(j.stage==='contact'){j.stage='contacted';try{stampStage(j,'contacted');}catch(e){}}
   // Techman number entered = the estimator has started this job
   if(j.tmJob&&!j.startedAt&&j.assignedEstimator){
     j.startedAt=new Date().toISOString();
@@ -12683,8 +12686,8 @@ const AUTO_RULES=[
     why:j=>(skipsRange(j)||'')+' \u2014 no instant range, straight to the full estimate',
     when:j=>!j.rangeSentAt&&!j.rangeYesAt&&!!skipsRange(j) },
 
-  { id:'parts-priced', from:'parts', to:'financial',
-    label:'Parts Estimate → Final Estimate once every part is priced',
+  { id:'parts-priced', from:'parts', to:'signoff',
+    label:'Parts Estimate → Final Estimate & Sign-Off once every part is priced',
     why:'every part priced',
     when:j=>allPartsPriced(j) },
 
@@ -14832,7 +14835,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1925';
+const CRM_BUILD='2026-11-16-1935';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -15821,7 +15824,7 @@ function addPartByParts(){
 function labourOnlyDone(){
   const j=gj();if(!j)return;
   if(!canMove()){alert('Only Logkith or Parts team can advance jobs.');return;}
-  mv('financial','Labour only — no parts needed — moved to Final Estimate by '+(currentUser?currentUser.name:'Parts'));
+  mv('signoff','Labour only — no parts needed — moved to Final Estimate by '+(currentUser?currentUser.name:'Parts'));
 }
 
 function toggleKitBox(i){
@@ -15893,7 +15896,7 @@ function savePartPricesInner(){
   } else {
     if(typeof toast==='function')toast('\u2713 '+priced+' part'+(priced===1?'':'s')+' saved');
   }
-  mv('financial','Parts team priced '+priced+'/'+j.parts.length+' parts \u2014 Final Estimate');
+  mv('signoff','Parts team priced '+priced+'/'+j.parts.length+' parts \u2014 Final Estimate');
 }
 
 // ── PURCHASE ORDERS ──────────────────────────────────────
