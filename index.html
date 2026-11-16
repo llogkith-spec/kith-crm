@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v15.4 \u00b7 16 Nov';
+const BUILD='v15.5 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -4858,8 +4858,13 @@ function oldFormPulls(){
     if(!j||j.mergedInto||!String(j.id||'').startsWith('JF'))return false;
     if(!['intake','range'].includes(j.stage))return false;
     if(j.tmJob||j.quote||j.est||j.finalEst)return false;
-    const made=parseLogTime((j.log||[])[0]&&j.log[0].t);
+    const made=parseLogTime((j.log||[])[0]&&j.log[0].t)||j.createdMs||(j.createdAt?Date.parse(j.createdAt):0);
     if(!made)return false;
+    // already done in the old system (Techman job number / "completed" in the text)
+    if(/\b(MW[QJ]\s?\d{5,}|completed?)\b/i.test(String(j.work||'')))return true;
+    // pulled in by the 13–16 Nov flood and still sitting on Intake a day later:
+    // a real new lead moves on within a minute, so this is an old row
+    if(made>=FORM_FLOOD_FROM&&made<=FORM_FLOOD_TO&&j.stage==='intake'&&Date.now()-made>12*36e5&&!j.assignedEstimator&&!j.brainAppliedAt&&!j.rangeSentAt)return true;
     return !formRowFresh(j,made);
   });
 }
@@ -14579,7 +14584,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1715';
+const CRM_BUILD='2026-11-16-1720';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -14941,7 +14946,7 @@ function stampStage(j,to){
 }
 // Historic jobs only have log text — parse "24 Jun 2026, 20:54"
 function parseLogTime(t){
-  const m=String(t||'').match(/(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4}),?\s*(\d{1,2}):(\d{2})/);
+  const m=String(t||'').match(/(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4}),?\s*(?:at\s+)?(\d{1,2}):(\d{2})/);
   if(!m)return null;
   const mo={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11}[m[2].toLowerCase().slice(0,3)];
   if(mo===undefined)return null;
