@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v10.9 \u00b7 16 Nov';
+const BUILD='v11.0 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6337,8 +6337,23 @@ function estDocData(j){
     });
   }else if(parseFloat(j.labourCost)>0){
     const q=parseFloat(j.srtCharged)||parseFloat(j.srt)||1, tot=parseFloat(j.labourCost);
-    const d=String(j.labourDesc||j.work||'Labour').split('\n')[0].replace(/\s+—\s+[\d.]+h.*$/,'');
-    labour.push({code:j.labourFixed?'LAB - FIXED':estLabourCode(tot/q),desc:d,qty:j.labourFixed?1:q,unit:j.labourFixed?tot:tot/q,total:r2(tot)});
+    // 16 Nov 2026: one row per operation written in the labour description
+    // ("Full service - 1.6hr @ 50/hr / Front brake pads - 1.4hr"), the labour
+    // shared out by hours — never just the first line.
+    const ops=(typeof parseOpsFromDesc==='function')?parseOpsFromDesc(j.labourDesc):[];
+    const opH=ops.reduce((a,o)=>a+o.book,0);
+    if(!j.labourFixed&&ops.length>1&&opH>0){
+      let left=r2(tot);
+      ops.forEach((o,ix)=>{
+        const part=ix===ops.length-1?left:r2(tot*o.book/opH);left=r2(left-part);
+        const hrs=q*o.book/opH;
+        labour.push({code:estLabourCode(part/(hrs||1)),desc:o.op,qty:Math.round(hrs*100)/100,unit:part/(hrs||1),total:part});
+      });
+    }else{
+      const lines=String(j.labourDesc||j.work||'Labour').split('\n').map(x=>x.replace(/\s*[\-—:]\s*[\d.]+\s*(h|hr|hrs|hours)\b.*$/i,'').replace(/\s+—\s+£.*$/,'').trim()).filter(x=>x&&!/^total\b/i.test(x));
+      const d=(lines.length?lines.join(' + '):String(j.work||'Labour'));
+      labour.push({code:j.labourFixed?'LAB - FIXED':estLabourCode(tot/q),desc:d,qty:j.labourFixed?1:q,unit:j.labourFixed?tot:tot/q,total:r2(tot)});
+    }
   }
   if(parseFloat(j.addLabourCost)>0)labour.push({code:'LAB',desc:'Additional labour',qty:1,unit:parseFloat(j.addLabourCost),total:r2(j.addLabourCost)});
   const products=[];
