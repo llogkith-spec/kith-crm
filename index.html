@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v15.3 \u00b7 16 Nov';
+const BUILD='v15.4 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -9783,7 +9783,10 @@ function autoSkipNoParts(){
     if(!j||j.stage!=='parts'||j.mergedInto)return;
     if(realParts(j).length)return;
     if(!(parseFloat(j.labourCost)>0))return;
-    if(!(j.noParts||isClearlyBodywork(j)||diagOnlyLabour(j)||(typeof motOnlyJob==='function'&&motOnlyJob(j))||srtLines(j).length&&srtLines(j).every(l=>l.fixed)))return;
+    // 16 Nov 2026: bodywork often needs parts (clips, trims, lights) — never skipped
+    // on its own; only MOT, diagnostics and non-body fixed prices skip Parts.
+    if(isBodyJob(j)&&!j.noParts)return;
+    if(!(j.noParts||diagOnlyLabour(j)||(typeof motOnlyJob==='function'&&motOnlyJob(j))||srtLines(j).length&&srtLines(j).every(l=>l.fixed&&l.code!=='BODY')))return;
     j.stage='signoff';
     j.stageAt=Date.now();
     try{stampStage(j,'signoff');}catch(e){}
@@ -14576,7 +14579,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1710';
+const CRM_BUILD='2026-11-16-1715';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
