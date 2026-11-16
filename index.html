@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v12.8 \u00b7 16 Nov';
+const BUILD='v12.9 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6205,7 +6205,7 @@ function confirmEstimateSent(id){
 }
 // No relay: must run inside the tap, before anything is awaited, or the
 // browser blocks the WhatsApp window.
-function estManualSend(j,d,num,text,viaShare){
+function estManualSend(j,d,num,text,viaShare,waited){
   const name=d?estDocName(j,d):'';
   const f=d&&EST_FILES[d.url];
   if(d&&f&&f!=='loading'&&canShareFiles()&&(estIsPhone()||viaShare)){
@@ -6232,7 +6232,12 @@ function estManualSend(j,d,num,text,viaShare){
   }
   // Computer: open the chat with the message, and save the PDF under a
   // proper name so it can be dropped straight in as a document.
-  window.open(waLink(num,text),'_blank');
+  // WhatsApp Web can't take a file from a link, so the message carries
+  // the estimate's own link too — the customer can open it either way.
+  const textL=d?text+'\n\nYour estimate (PDF): '+d.url:text;
+  if(waited){
+    estSetStatus(j,'<a href="'+escHtml(waLink(num,textL))+'" target="_blank" class="btn btn-sm" style="background:var(--green);color:#111;font-weight:700;display:inline-block">\ud83d\udcac Open WhatsApp with the estimate</a>','var(--green)');
+  }else window.open(waLink(num,textL),'_blank');
   if(d){
     estSaveFile(j,d);
     setTimeout(()=>estSetStatus(j,
@@ -6254,12 +6259,18 @@ async function sendEstimateWA(id,i,viaShare){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
   const num=estPhone(j);
   if(!num){alert('There is no mobile number on this job — add the customer’s number first.');return;}
-  const d=estDocFor(j,i);
+  let d=estDocFor(j,i), waited=false;
+  // 16 Nov 2026: never send the quote without our estimate — make the
+  // KITH PDF (both options when two prices are out) if it isn't there yet.
+  if((!d||(d.kith&&!kithPdfFresh(j)))&&(i==null||i==='')){
+    estSetStatus(j,'\ud83d\udcc4 Making the estimate PDF\u2026','var(--amber)');
+    try{await ensureKithEstPdf(j);d=estDocFor(j);waited=true;}catch(e){}
+  }
   const text=estimateWAMsg(j);
   if(!d&&!confirm('The estimator has not attached the estimate PDF yet.\n\nSend the price as a plain message without it?'))return;
   const mm=estMismatch(j,d);
   if(mm&&!confirm('\u26a0 The PDF total is \u00a3'+mm.pdf.toFixed(2)+' but the CRM says \u00a3'+mm.crm.toFixed(2)+'.\n\nThe customer would get a message and a PDF with two different prices.\n\nPress Cancel, then "Update the CRM to match" under the PDF \u2014 or OK to send anyway.'))return;
-  if(!waAuto())return estManualSend(j,d,num,text,!!viaShare);
+  if(!waAuto())return estManualSend(j,d,num,text,!!viaShare,waited);
   estSetStatus(j,'Sending…','var(--amber)');
   const r=await waSend(num,text,d?{template:EST_TEMPLATE,
       params:[firstName(j),vehDesc(j),estTotalTxt(j)||'on the attached estimate'],
@@ -14023,7 +14034,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1210';
+const CRM_BUILD='2026-11-16-1215';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
