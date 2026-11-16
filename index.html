@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v17.0 \u00b7 16 Nov';
+const BUILD='v17.1 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -4750,13 +4750,13 @@ function cardH(j){
         'border-radius:10px;padding:1px 7px;margin-bottom:5px;cursor:pointer" onclick="event.stopPropagation();openCustType(\''+j.id+'\')">'+
         '? CUSTOMER TYPE</div>';})()+
     (function(){
-      if(j.stage!=='waiting'&&j.stage!=='contacted')return '';
-      const d=chaseDayOf(j);
-      if(d>2)return '<div style="font-size:10px;font-weight:800;color:var(--red);margin-bottom:4px">\u26a0 NO ANSWER \u2014 CLOSE OFF</div>';
-      const done=(j.chasesSent||[]).filter(x=>(CHASE_STEPS[x.step]||{}).day===d).length;
-      const total=CHASE_STEPS.filter(x=>x.day===d).length;
+      if(!['contacted','waiting','waiting2'].includes(j.stage))return '';
+      const c=chaseDue(j);
+      if(c&&c.giveUp)return '<div style="font-size:10px;font-weight:800;color:var(--red);margin-bottom:4px">\u26a0 NO ANSWER \u2014 CLOSE OFF</div>';
+      const done=Math.min(CHASE_STEPS.length,(j.chasesSent||[]).filter(x=>x&&x.step<CHASE_STEPS.length).length);
+      const total=CHASE_STEPS.length;
       return '<div style="font-size:10px;font-weight:800;color:'+(done>=total?'var(--dim)':'var(--amber)')+';margin-bottom:4px">'+
-        '\ud83d\udcde DAY '+d+' \u00b7 '+done+'/'+total+' done</div>';})()+
+        '\ud83d\udcde FOLLOW-UPS \u00b7 '+done+'/'+total+' done (call + text)</div>';})()+
     (function(){const r=reminderState(j);
       return (r&&r.due)?'<div style="font-size:10px;font-weight:800;color:var(--amber);margin-bottom:4px">\ud83d\udd14 REMIND \u2014 IN '+(r.days===0?'TODAY':'TOMORROW')+'</div>':'';})()+
     (function(){if(j.stage!=='followup')return '';const f=followUpDue(j);
@@ -13631,19 +13631,12 @@ function markDeposit(id){
 // Two days of chasing, same shape each day: ring them when the day opens,
 // text if we couldn't get hold of them, then a light nudge before we shut.
 // Hours are counted from the job entering Contacted / Awaiting Response.
+// 16 Nov 2026 (Logan): two follow-ups only — one phone call, one text. That's all.
 const CHASE_STEPS=[
-  {hrs:1,  day:1, label:'Day 1 \u00b7 Phone call', call:true,
+  {hrs:1,  day:1, label:'Follow-up 1 \u00b7 Phone call', call:true,
    build:j=>'Ring '+(j.name||'the customer')+' about the estimate for '+vehDesc(j)+' \u2014 '+money2(parseFloat(j.quote)||0)+'.'},
-  {hrs:4,  day:1, label:'Day 1 \u00b7 Text if no answer', call:false,
-   build:j=>'Hi '+firstName(j)+', I tried to give you a ring about the estimate for your '+vehDesc(j)+'.\n\n'+(workTxt(j,80)?'Work: '+workTxt(j,80)+'\n':'')+'Total: '+money2(parseFloat(j.quote)||0)+' including VAT\n\nReply YES to book in, or reply with any questions and I will talk you through it. \u2014 KITH Cars'},
-  {hrs:8,  day:1, label:'Day 1 \u00b7 End of day nudge', call:false,
-   build:j=>'Hi '+firstName(j)+', just a reminder about our estimate for your '+vehDesc(j)+(workTxt(j,60)?' for '+workTxt(j,60).toLowerCase():'')+' \u2014 '+money2(parseFloat(j.quote)||0)+' including VAT.\n\nReply YES and we will send you the next available dates. If you have gone elsewhere, no problem at all \u2014 just let us know. \u2014 KITH Cars'},
-  {hrs:25, day:2, label:'Day 2 \u00b7 Phone call', call:true,
-   build:j=>'Second day \u2014 ring '+(j.name||'the customer')+' about '+vehDesc(j)+'.'},
-  {hrs:28, day:2, label:'Day 2 \u00b7 Text if no answer', call:false,
-   build:j=>'Hi '+firstName(j)+', I tried you again today about your '+vehDesc(j)+'. The estimate is '+money2(parseFloat(j.quote)||0)+' including VAT'+(workTxt(j,60)?' for '+workTxt(j,60).toLowerCase():'')+'.\n\nReply YES to go ahead, or NO if you would rather leave it \u2014 either way helps us. \u2014 KITH Cars'},
-  {hrs:32, day:2, label:'Day 2 \u00b7 Last nudge', call:false,
-   build:j=>'Hi '+firstName(j)+', last message from us about the '+money2(parseFloat(j.quote)||0)+' estimate for your '+vehDesc(j)+'. If we don\u2019t hear back we will close it off tomorrow \u2014 no hard feelings, and if you need us later just reply here and we will pick it straight back up. \u2014 KITH Cars'}
+  {hrs:4,  day:1, label:'Follow-up 2 \u00b7 Text if no answer', call:false,
+   build:j=>'Hi '+firstName(j)+', I tried to give you a ring about the estimate for your '+vehDesc(j)+'.\n\n'+(workTxt(j,80)?'Work: '+workTxt(j,80)+'\n':'')+'Total: '+money2(parseFloat(j.quote)||0)+' including VAT\n\nReply YES to book in, or reply with any questions and I will talk you through it. \u2014 KITH Cars'}
 ];
 const CHASE_GIVE_UP_HRS=48; // after two full days, close it off
 function chaseDayOf(j){
@@ -13690,7 +13683,7 @@ function chaseDue(j){
   if(j.saidNo)return null;                       // they said no — never chase again
   if(!['waiting','waiting2','contacted'].includes(j.stage))return null;
   const hrs=hoursWaiting(j);
-  const done=(j.chasesSent||[]).length;
+  const done=(j.chasesSent||[]).filter(x=>x&&x.step<CHASE_STEPS.length).length;
   if(done>=CHASE_STEPS.length&&hrs>=CHASE_GIVE_UP_HRS)return{giveUp:true,hrs};
   for(let i=done;i<CHASE_STEPS.length;i++){
     if(hrs>=CHASE_STEPS[i].hrs)return{step:i,cfg:CHASE_STEPS[i],hrs};
@@ -14843,7 +14836,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-2000';
+const CRM_BUILD='2026-11-16-2010';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
