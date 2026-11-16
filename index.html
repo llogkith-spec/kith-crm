@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v14.5 \u00b7 16 Nov';
+const BUILD='v14.6 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -12392,6 +12392,11 @@ function autoPilot(){
   // bodywork/fixed-price jobs applied with "No labour required" left in the description
   try{jobs.forEach(j=>{if(j&&(parseFloat(j.labourCost)||0)>0&&Array.isArray(j.srtLines)&&j.srtLines.length&&/^no labour( required)?\.?$/i.test(String(j.labourDesc||'').trim())&&['labour','parts','financial','signoff'].includes(j.stage)){j.labourDesc=labourDescFromLines(j);save(j);}});}catch(e){}
   try{jobs.forEach(j=>{if(fixOwnDetails(j))save(j);});}catch(e){}
+  // alloy lines applied before 16 Nov 13:00 didn't say how many alloys
+  try{jobs.forEach(j=>{let ch=false;(Array.isArray(j.srtLines)?j.srtLines:[]).forEach(l=>{
+    if(l&&l.fixed&&/^alloy wheel refurb$/i.test(String(l.op||'').trim())){const q=parseInt(l.qty)||1,e=parseFloat(l.rate)||((parseFloat(l.labour)||0)/q);
+      l.op='Alloy wheel refurb \u00d7'+q+' (\u00a3'+e.toFixed(0)+' each)';ch=true;}});
+    if(ch){if(labourDescReplaceable(j))j.labourDesc=labourDescFromLines(j);save(j);}});}catch(e){}
   try{autoSplitJobs();}catch(e){console.warn('split',e);}
   let moved=0;
   window._batchSave=true;
@@ -14249,7 +14254,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1405';
+const CRM_BUILD='2026-11-16-1410';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
