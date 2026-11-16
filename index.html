@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v17.7 \u00b7 16 Nov';
+const BUILD='v17.8 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -1136,7 +1136,9 @@ const ARRIVAL_FROM=['booked','po','raised','so','soraised'];
 // Booked is where Operations takes over. The board shows a divider and
 // a label at the start of each department.
 const DEPTS=[
-  {id:'sales',      label:'Sales',      col:'var(--gold)',  stages:['intake','range','labour','parts','financial','signoff','disapproved','contact','contacted','waiting','waiting2','ready']},
+  // 16 Nov 2026 (Logan): Sales is two stages — 1 estimate / lead gen, then 2 conversion from Contacted
+  {id:'sales',      label:'Sales 1 \u00b7 Estimate / Lead gen', col:'var(--gold)',  stages:['intake','range','labour','parts','financial','signoff','disapproved','contact']},
+  {id:'sales2',     label:'Sales 2 \u00b7 Conversion', col:'var(--purple,#a78bfa)', stages:['contacted','waiting','waiting2','ready']},
   {id:'operations', label:'Operations', col:'var(--blue)',  stages:['booked','po','raised','so','soraised','checkin','authwait','inprog','done']},
   {id:'accounts',   label:'Accounts',   col:'var(--green)', stages:['accounts','receivable']},
   {id:'aftercare',  label:'Aftercare',  col:'var(--teal)',  stages:['review','followup']},
@@ -14973,7 +14975,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-2115';
+const CRM_BUILD='2026-11-16-2135';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
