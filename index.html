@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v13.4 \u00b7 16 Nov';
+const BUILD='v13.5 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -2617,6 +2617,12 @@ function custTypeColPicker(){
 }
 
 function custTypeOf(j){
+  // intake app's answer (business / warranty / aa / retail) when no form type
+  if(!j.custType&&j.judgement&&j.judgement.customer_type){
+    const m={business:'B2B',b2b:'B2B',warranty:'Warranty company',aa:'AA',retail:'Retail',private:'Retail',internal:'Internal'};
+    const v=String(j.judgement.customer_type).toLowerCase().trim();
+    if(m[v])return m[v];
+  }
   if(j.custType&&!/^(yes|no|y|n|n\/a|na|none|-)$/i.test(String(j.custType).trim()))return String(j.custType).trim();
   if(j.fleetAccount)return 'B2B / Fleet';
   if(/b2b|trade|fleet|account|garage|dealer/i.test(String(j.source||'')))return String(j.source).trim();
@@ -4434,6 +4440,29 @@ function approvalH(j){
   '</div>';
 }
 
+// 16 Nov 2026: a B2B job came in with KITH's own name, number and email as
+// the customer (saved on the company's account by mistake). The company
+// becomes the customer, and our own number/email are taken off so a quote
+// can't be WhatsApped or emailed to ourselves.
+function isOwnDetail(kind,v){
+  v=String(v||'').trim();if(!v)return false;
+  if(kind==='name')return /^kith( cars)?( ltd| group| garage)?$/i.test(v);
+  if(kind==='email')return /kithcars/i.test(v);
+  const n=v.replace(/\D/g,'').replace(/^44/,'0');return n==='07923688259'||n==='02046299469';
+}
+function fixOwnDetails(j){
+  if(!j||j.ownDetailsFixed)return false;
+  const co=String(j.judgement&&j.judgement.company_name||'').trim();
+  if(!isOwnDetail('name',j.name)||!co||/kith/i.test(co))return false;
+  const was=[j.name,j.phone,j.email].filter(Boolean).join(' / ');
+  j.name=co;
+  if(isOwnDetail('phone',j.phone))j.phone='';
+  if(isOwnDetail('email',j.email))j.email='';
+  j.ownDetailsFixed=true;
+  j.log=j.log||[];
+  j.log.push({t:ts(),s:'\u26a0 Customer was KITH\u2019s own details ('+was+') \u2014 changed to '+co+'. Get '+co+'\u2019s contact name and number.'});
+  return true;
+}
 function custKind(j){
   const t=custTypeOf(j);
   if(isThirdParty(j))return{label:t||'Third party',col:'var(--teal)',icon:'\ud83d\udee1',
@@ -12244,6 +12273,7 @@ function autoPilot(){
     if(j&&['financial','signoff'].includes(j.stage)&&m&&m>=(j.stageAt||0)){estMoveToContacted(j,'the quote already went to the customer on WhatsApp');save(j);}});}catch(e){}
   // bodywork/fixed-price jobs applied with "No labour required" left in the description
   try{jobs.forEach(j=>{if(j&&(parseFloat(j.labourCost)||0)>0&&Array.isArray(j.srtLines)&&j.srtLines.length&&/^no labour( required)?\.?$/i.test(String(j.labourDesc||'').trim())&&['labour','parts','financial','signoff'].includes(j.stage)){j.labourDesc=labourDescFromLines(j);save(j);}});}catch(e){}
+  try{jobs.forEach(j=>{if(fixOwnDetails(j))save(j);});}catch(e){}
   try{autoSplitJobs();}catch(e){console.warn('split',e);}
   let moved=0;
   window._batchSave=true;
@@ -14085,7 +14115,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1245';
+const CRM_BUILD='2026-11-16-1250';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
