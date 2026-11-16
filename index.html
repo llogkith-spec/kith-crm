@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v9.8 \u00b7 16 Nov';
+const BUILD='v9.9 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6299,7 +6299,7 @@ function estDocHTML(j){
   return '<div class="kest" style="background:#fff;color:#111;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:1.35;padding:34px 38px;max-width:820px;margin:0 auto">'+
     '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
       '<div><div style="font-size:24px;font-weight:800">Estimate Details</div><div style="letter-spacing:.5px">Estimate No: '+escHtml(estDocNo(j))+'</div></div>'+
-      '<div style="text-align:center"><div style="display:inline-block;border:3px solid #111;border-radius:50%;padding:8px 22px;font-weight:800;letter-spacing:2px">KITH<div style="font-size:9px;letter-spacing:1px;font-weight:600;margin-top:-2px">CARS</div></div>'+
+      '<div style="text-align:right"><div style="font-size:30px;font-weight:900;letter-spacing:6px;line-height:1">KITH CARS</div><div style="font-size:10px;font-weight:700;letter-spacing:3px;margin-top:4px">GARAGE &amp; BODYSHOP</div>'+
         '<div style="margin-top:10px"><a href="https://'+KITH_CO.web+'" style="color:#1a4fd8">'+KITH_CO.web+'</a></div></div>'+
     '</div>'+
     '<table style="margin-top:14px;border-collapse:collapse;font-size:12px">'+row('Valid From:',dt(from))+row('Expiry Date:',dt(exp))+'</table>'+
