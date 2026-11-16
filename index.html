@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v15.2 \u00b7 16 Nov';
+const BUILD='v15.3 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -7013,7 +7013,8 @@ function actH(j){
         '<div id="parts-list">'+renderPartsEditList(j)+'</div>'+
         '<button class="btn btn-ghost btn-sm btn-full" style="margin-top:6px" onclick="addPartRow()">+ Add Part</button>'+
         '<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">'+
-          '<button class="btn btn-gold btn-full" onclick="labourDone()">'+((!realParts(j).length&&diagOnlyLabour(j))?'Labour Done \u2192 Final Estimate (diagnostic, no parts)':'Labour Done \u2192 Parts Team')+'</button>'+
+          '<button class="btn btn-gold btn-full" onclick="labourDone()">'+((!realParts(j).length&&diagOnlyLabour(j))?'Labour Done \u2192 Sign-Off (diagnostic, no parts)':'Labour Done \u2192 Parts Team')+'</button>'+
+          (!realParts(j).length?'<button class="btn btn-full" style="margin-top:8px;background:var(--green);color:#111;font-weight:800" onclick="labourDoneNoParts()">\u2713 Labour done \u2014 NO parts needed \u2192 straight to Sign-Off</button>':'')+
           '<button class="btn btn-ghost btn-full" onclick="noLabourDone()">⚡ No Labour — Go to Parts / Sub Booking</button>'+
           '<button class="btn btn-blue btn-full" onclick="cx(\'ov-detail\');openNewSub()">🔧 Raise Subcontractor Booking</button>'+
         '</div>'+
@@ -7021,6 +7022,7 @@ function actH(j){
       break;
     case 'parts':{
       const labH=parseFloat(j.labourCost)||0;
+      h+='<button class="btn btn-full" style="margin-bottom:10px;background:var(--green);color:#111;font-weight:800" onclick="partsNotNeeded(\''+j.id+'\')">\u2713 No parts needed \u2192 straight to Sign-Off</button>';
       h+=
         // Show labour from estimator
         (labH?
@@ -9733,19 +9735,36 @@ function diagOnlyLabour(j){
   if(lines.length)return lines.every(l=>/diagnos|inspection|fault[- ]?find/i.test(String(l.op||'')));
   try{return isDiagOnly(j);}catch(e){return false;}
 }
+function labourDoneNoParts(){
+  const j=gj();if(!j)return;
+  window._noPartsDirect=true;
+  try{labourDone();}finally{setTimeout(()=>{window._noPartsDirect=false;},500);}
+}
+function partsNotNeeded(id){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
+  if(realParts(j).length&&!confirm('There are parts on the list.\n\nSend it to Sign-Off with NO parts anyway?'))return;
+  j.parts=[];j.noParts=true;
+  j.log=j.log||[];j.log.push({t:ts(),s:'\u2713 No parts needed'+(currentUser?' ['+currentUser.name+']':'')});
+  mv('signoff','No parts needed \u2014 straight to Final Estimate & Sign-Off');
+}
 function skipPartsIfNone(j,msg){
   if(realParts(j).length)return false;
+  if(window._noPartsDirect){
+    j.parts=realParts(j);j.noParts=true;
+    mv('signoff',msg+' \u2014 no parts needed, straight to Final Estimate & Sign-Off');
+    return true;
+  }
   if(diagOnlyLabour(j)){
     j.parts=realParts(j);j.noParts=true;
-    mv('financial',msg+' \u2014 diagnostic only, no parts \u2014 straight to Final Estimate');
+    mv('signoff',msg+' \u2014 diagnostic only, no parts \u2014 straight to Sign-Off');
     return true;
   }
   if(!confirm('No parts listed on '+(j.reg||'this job')+'.\n\n'+
-    'OK \u2014 no parts needed, send it straight to 4 \u00b7 Final Estimate.\n'+
+    'OK \u2014 no parts needed, send it straight to Final Estimate & Sign-Off.\n'+
     'Cancel \u2014 send it to the parts team to check.'))return false;
   j.parts=realParts(j);
   j.noParts=true;
-  mv('financial',msg+' \u2014 no parts needed, skipped Parts Estimate');
+  mv('signoff',msg+' \u2014 no parts needed, skipped Parts Estimate');
   return true;
 }
 // Stricter than isBodywork(): whole words only, and any mechanical
@@ -9764,7 +9783,7 @@ function autoSkipNoParts(){
     if(!j||j.stage!=='parts'||j.mergedInto)return;
     if(realParts(j).length)return;
     if(!(parseFloat(j.labourCost)>0))return;
-    if(!(j.noParts||isClearlyBodywork(j)))return;
+    if(!(j.noParts||isClearlyBodywork(j)||diagOnlyLabour(j)||(typeof motOnlyJob==='function'&&motOnlyJob(j))||srtLines(j).length&&srtLines(j).every(l=>l.fixed)))return;
     j.stage='signoff';
     j.stageAt=Date.now();
     try{stampStage(j,'signoff');}catch(e){}
@@ -14557,7 +14576,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1700';
+const CRM_BUILD='2026-11-16-1710';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
