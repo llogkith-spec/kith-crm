@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v14.2 \u00b7 16 Nov';
+const BUILD='v14.3 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -7098,6 +7098,7 @@ function actH(j){
     case 'raised':
       h+=jobCardAttachH(j)+approvalH(j);
       h+='<div class="notice" style="margin-bottom:10px">Orders raised. Waiting on parts and subcontractors to come in.</div>'+
+        '<button class="btn btn-gold btn-full" style="margin-bottom:10px" onclick="openPartsArrived(\''+j.id+'\')">\ud83d\udce6 Parts arrived \u2014 scan the barcodes</button>'+
         raisedOrdersH(j)+
         (function(){
           const p=(typeof posForJob==='function')?posForJob(j.id):[];
@@ -14248,7 +14249,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1340';
+const CRM_BUILD='2026-11-16-1355';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -18264,6 +18265,159 @@ function bookingBanner(j){
   return '<div style="background:var(--surface2);border-left:3px solid var(--green);border-radius:var(--rs);padding:8px 10px;margin-bottom:10px;font-size:11px;color:var(--dim)">'+
     '\ud83d\udcc5 Booked <strong style="color:var(--green)">'+escHtml(when)+'</strong> \u2014 '+escHtml(fmtBookDate(j.bookedFor))+
     (isBodywork(j)?' <span style="color:var(--blue)">\u00b7 bodywork, order any time</span>':'')+'</div>';
+}
+
+// ── PARTS ARRIVED: SCAN THE BARCODES (16 Nov 2026) ─────────────────
+// One place to book in everything on the job's POs. Scan with the camera
+// (or a USB/Bluetooth scanner, which types the code and presses Enter):
+// a code that matches a part number ticks that part off; an unknown code is
+// matched to a part once and remembered for next time. Saving updates each
+// PO to Received / Part Received exactly like the PO's own delivery check.
+var PA={jobId:null,stream:null,timer:null,det:null,h5:null,last:'',lastAt:0};
+function _paItems(j){
+  const out=[];
+  (typeof posForJob==='function'?posForJob(j.id):[]).filter(po=>!['Cancelled','Returned'].includes(po.status||'')).forEach(po=>{
+    (po.items||[]).forEach((it,i)=>{
+      const q=parseInt(it.qty)||1;
+      if(it._paGot==null)it._paGot=(it.received!=null?parseInt(it.received):(['Received','Paid'].includes(po.status)?q:0));
+      out.push({po,it,i,q});
+    });
+  });
+  return out;
+}
+function _paNorm(c){return String(c||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
+function openPartsArrived(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  PA.jobId=id;
+  if(!_paItems(j).length){alert('No POs with parts on this job yet.');return;}
+  let w=document.getElementById('pa-modal');if(w)w.remove();
+  w=document.createElement('div');w.id='pa-modal';
+  w.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:1300;display:flex;align-items:center;justify-content:center;padding:16px';
+  w.innerHTML='<div style="background:var(--surface);border-radius:var(--r);padding:18px;max-width:560px;width:100%;max-height:92vh;overflow-y:auto">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;font-size:16px">📦 Parts arrived — '+escHtml(j.reg||'')+'</div>'+
+      '<button onclick="closePartsArrived()" style="background:none;border:none;color:var(--dim);font-size:22px;cursor:pointer">×</button></div>'+
+    '<div style="font-size:11px;color:var(--dim);margin:3px 0 10px">Scan each part’s barcode, or tick them off by hand.</div>'+
+    '<div id="pa-cam" style="display:none;margin-bottom:8px;border-radius:8px;overflow:hidden;background:#000"><video id="pa-video" playsinline muted style="width:100%;max-height:260px;object-fit:cover;display:block"></video><div id="pa-h5"></div></div>'+
+    '<div style="display:flex;gap:6px;margin-bottom:8px">'+
+      '<button class="btn btn-gold btn-sm" id="pa-cam-btn" onclick="paCamera()">📷 Scan with the camera</button>'+
+      '<input id="pa-code" placeholder="or type / scanner here, then Enter" onkeydown="if(event.key===\'Enter\'){paScanned(this.value);this.value=\'\';}" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--fg);border-radius:4px;padding:6px 8px;font-size:12px">'+
+    '</div>'+
+    '<div id="pa-msg" style="font-size:12px;min-height:16px;margin-bottom:6px"></div>'+
+    '<div id="pa-list"></div>'+
+    '<textarea class="fta" id="pa-note" placeholder="Anything missing or damaged? (what the driver said)" style="width:100%;margin:10px 0"></textarea>'+
+    '<button class="btn btn-gold btn-full" onclick="savePartsArrived()">Save — book these parts in</button>'+
+  '</div>';
+  document.body.appendChild(w);
+  paRender();
+  setTimeout(()=>{const c=document.getElementById('pa-code');if(c)c.focus();},100);
+}
+function paRender(){
+  const j=jobs.find(x=>x.id===PA.jobId);if(!j)return;
+  const el=document.getElementById('pa-list');if(!el)return;
+  el.innerHTML=_paItems(j).map((x,k)=>{
+    const done=x.it._paGot>=x.q;
+    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">'+
+      '<div style="width:22px;text-align:center;font-size:16px">'+(done?'✅':(x.it._paGot>0?'🟡':'⬜'))+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700">'+escHtml(x.it.name||'—')+'</div>'+
+        '<div style="font-size:10px;color:var(--faint)">'+escHtml(x.po.num||'')+' · '+escHtml(x.po.supplier||'')+(x.it.num?' · '+escHtml(x.it.num):'')+(x.it.barcode?' · ✓ barcode known':'')+'</div></div>'+
+      '<input type="number" min="0" max="'+x.q+'" value="'+x.it._paGot+'" onchange="paSet('+k+',this.value)" style="width:48px;background:var(--surface2);border:1px solid var(--border);color:var(--fg);border-radius:4px;padding:3px 5px;font-size:12px">'+
+      '<span style="font-size:11px;color:var(--faint)">of '+x.q+'</span></div>';
+  }).join('');
+}
+function paSet(k,v){
+  const j=jobs.find(x=>x.id===PA.jobId);if(!j)return;
+  const x=_paItems(j)[k];if(!x)return;
+  x.it._paGot=Math.max(0,Math.min(x.q,parseInt(v)||0));paRender();
+}
+function paMsg(t,col){const m=document.getElementById('pa-msg');if(m){m.innerHTML=t;m.style.color=col||'var(--dim)';}}
+function paScanned(code){
+  code=String(code||'').trim();if(!code)return;
+  const now=Date.now();if(code===PA.last&&now-PA.lastAt<2500)return;PA.last=code;PA.lastAt=now;
+  const j=jobs.find(x=>x.id===PA.jobId);if(!j)return;
+  const n=_paNorm(code), items=_paItems(j);
+  let hit=items.find(x=>x.it.barcode&&_paNorm(x.it.barcode)===n&&x.it._paGot<x.q)
+       ||items.find(x=>x.it.num&&_paNorm(x.it.num)&&(n===_paNorm(x.it.num)||n.indexOf(_paNorm(x.it.num))>-1)&&x.it._paGot<x.q)
+       ||items.find(x=>x.it.barcode&&_paNorm(x.it.barcode)===n);
+  if(hit){
+    if(hit.it._paGot>=hit.q){paMsg('ℹ '+escHtml(hit.it.name)+' is already all in.','var(--amber)');return;}
+    hit.it._paGot++;paRender();
+    try{navigator.vibrate&&navigator.vibrate(80);}catch(e){}
+    paMsg('✓ '+escHtml(hit.it.name)+' — '+hit.it._paGot+' of '+hit.q,'var(--green)');
+    return;
+  }
+  // unknown code: which part is it? remember it next time
+  const open=items.filter(x=>x.it._paGot<x.q);
+  if(!open.length){paMsg('Everything on this job is already ticked in. Code '+escHtml(code)+' not matched.','var(--amber)');return;}
+  paMsg('Code <strong>'+escHtml(code)+'</strong> — which part is it? '+open.map(x=>'<button class="btn btn-ghost btn-xs" style="margin:3px 4px 0 0" onclick="paLearn(\''+escHtml(code).replace(/'/g,'')+'\','+items.indexOf(x)+')">'+escHtml(x.it.name)+'</button>').join(''),'var(--fg)');
+}
+function paLearn(code,k){
+  const j=jobs.find(x=>x.id===PA.jobId);if(!j)return;
+  const x=_paItems(j)[k];if(!x)return;
+  x.it.barcode=code;x.it._paGot=Math.min(x.q,x.it._paGot+1);
+  paRender();paMsg('✓ '+escHtml(x.it.name)+' — barcode remembered','var(--green)');
+}
+async function paCamera(){
+  const box=document.getElementById('pa-cam'),btn=document.getElementById('pa-cam-btn');
+  if(PA.stream||PA.h5){closeCam();if(btn)btn.textContent='📷 Scan with the camera';return;}
+  box.style.display='block';if(btn)btn.textContent='■ Stop the camera';
+  try{
+    if('BarcodeDetector' in window){
+      PA.det=new BarcodeDetector();
+      PA.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+      const v=document.getElementById('pa-video');v.srcObject=PA.stream;await v.play();
+      PA.timer=setInterval(async()=>{try{const c=await PA.det.detect(v);if(c&&c[0])paScanned(c[0].rawValue);}catch(e){}},350);
+    }else{
+      document.getElementById('pa-video').style.display='none';
+      await new Promise((res,rej)=>{if(window.Html5Qrcode)return res();const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js';sc.onload=res;sc.onerror=rej;document.head.appendChild(sc);});
+      PA.h5=new Html5Qrcode('pa-h5');
+      await PA.h5.start({facingMode:'environment'},{fps:8,qrbox:{width:260,height:120}},t=>paScanned(t),()=>{});
+    }
+    paMsg('Point the camera at the barcode on the box.','var(--dim)');
+  }catch(e){closeCam();if(btn)btn.textContent='📷 Scan with the camera';paMsg('⚠ Could not open the camera — type the code instead.','var(--red)');}
+}
+function closeCam(){
+  try{if(PA.timer)clearInterval(PA.timer);}catch(e){}PA.timer=null;
+  try{if(PA.stream)PA.stream.getTracks().forEach(t=>t.stop());}catch(e){}PA.stream=null;
+  try{if(PA.h5){PA.h5.stop().catch(()=>{});}}catch(e){}PA.h5=null;
+  const box=document.getElementById('pa-cam');if(box)box.style.display='none';
+}
+function closePartsArrived(){
+  closeCam();
+  const j=jobs.find(x=>x.id===PA.jobId);
+  if(j)_paItems(j).forEach(x=>{delete x.it._paGot;});
+  const m=document.getElementById('pa-modal');if(m)m.remove();
+}
+function savePartsArrived(){
+  const j=jobs.find(x=>x.id===PA.jobId);if(!j)return;
+  const note=(document.getElementById('pa-note')||{}).value||'';
+  const items=_paItems(j), byPo={};
+  items.forEach(x=>{(byPo[x.po.id]=byPo[x.po.id]||{po:x.po,rows:[]}).rows.push(x);});
+  const lines=[];let allJob=true;
+  Object.values(byPo).forEach(({po,rows})=>{
+    if(['Paid'].includes(po.status)){rows.forEach(x=>delete x.it._paGot);return;}
+    let allIn=true,noneIn=true,missing=[];
+    rows.forEach(x=>{x.it.received=x.it._paGot;delete x.it._paGot;
+      if(x.it.received<x.q){allIn=false;missing.push(x.it.name+' ('+x.it.received+' of '+x.q+')');}
+      if(x.it.received>0)noneIn=false;});
+    const was=po.status||'Ordered';
+    po.status=allIn?'Received':(noneIn?was:'Part Received');
+    if(allIn||!noneIn){
+      po.checkedInAt=ts();po.checkedInBy=currentUser?currentUser.name:'';
+      if(note.trim())po.deliveryNote=note.trim();
+      po.statusLog=po.statusLog||[];
+      po.statusLog.push(ts()+' → '+(allIn?'All received':'Part received — short: '+missing.join('; '))+' (scanned in)'+(currentUser?' ['+currentUser.name+']':''));
+    }
+    if(!allIn)allJob=false;
+    lines.push(po.num+': '+(allIn?'all in':(noneIn?'nothing yet':'short — '+missing.join('; '))));
+  });
+  savePOs();
+  j.log=j.log||[];
+  j.log.push({t:ts(),s:'📦 Parts booked in'+(allJob?' — everything is here':'')+': '+lines.join(' · ')+(note.trim()?' · '+note.trim():'')+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);
+  closeCam();const m=document.getElementById('pa-modal');if(m)m.remove();
+  if(typeof toast==='function')toast(allJob?'✓ All parts in — ready for the vehicle':'⚠ Saved — some parts still to come');
+  try{renderDetail();}catch(e){}try{renderAll();}catch(e){}
+  if(allJob&&ARRIVAL_FROM.includes(j.stage)&&confirm('Everything is in for '+(j.reg||'this job')+'.\n\nMove it on to Vehicle Check-In?')){try{mv('checkin','Parts in — scanned in');}catch(e){}}
 }
 
 function openGoodsIn(poId){
