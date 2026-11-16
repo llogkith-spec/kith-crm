@@ -4860,6 +4860,8 @@ function nextAutoH(j){
   const r=AUTO_RULES.find(x=>x.from===j.stage&&autoRuleOn(x.id));
   if(!r)return '';
   let ready=false;try{ready=!!r.when(j);}catch(e){}
+  if(typeof r.to==='function'&&!r.to(j))return '<div style="font-size:10px;color:var(--faint);margin-top:6px">\u26a1 Brain working out the instant range\u2026</div>';
+  if(typeof r.why==='function')return '<div style="font-size:10px;color:var(--green);margin-top:6px">\u26a1 moving to '+escHtml(stg(r.to(j)).label)+' on the next pass \u2014 '+escHtml(r.why(j)||'')+'</div>';
   return '<div style="font-size:10px;color:'+(ready?'var(--green)':'var(--faint)')+';margin-top:6px">\u26a1 '+
     (ready?'moving to '+escHtml(stg(typeof r.to==='function'?r.to(j):r.to).label)+' on the next pass':'moves to '+escHtml(stg(typeof r.to==='function'?r.to(j):r.to).label)+' by itself once '+escHtml(r.why))+'</div>';
 }
@@ -9123,10 +9125,10 @@ async function brainSupabase(j){
       try{ if(typeof renderAll==='function')renderAll(); }catch(e){}
       return j.brainAI;
     }
-    delete j._brainAIPending;
+    delete j._brainAIPending;j._brainTriedMs=Date.now();
     return null;
   }catch(e){
-    delete j._brainAIPending;
+    delete j._brainAIPending;j._brainTriedMs=Date.now();
     return null;
   }
 }
@@ -9451,6 +9453,20 @@ const RANGE_STOP=new Set('the and for with from that this have has had need need
 function rangeWords(t){
   return [...new Set(String(t||'').toLowerCase().replace(/[^a-z0-9 ]+/g,' ').split(/\s+/)
     .map(w=>w.replace(/(ing|es|s)$/,'')).filter(w=>w.length>=3&&!RANGE_STOP.has(w)&&!/^\d+$/.test(w)))];
+}
+// Where a job on Intake goes next. {to:''} = wait (the Brain is still working).
+function intakeRoute(j){
+  if(!j||j.stage!=='intake')return {to:''};
+  if(Date.now()-(j.stageAt||0)>14*864e5)return {to:''};            // old — leave for the clean-up
+  const skip=skipsRange(j);
+  if(skip)return {to:'labour',why:skip+' \u2014 no instant range, straight to the full estimate'};
+  if(!String(j.work||'').trim())return {to:'labour',why:'no work description to price \u2014 straight to the full estimate'};
+  let r=null;try{r=brainRange(j);}catch(e){}
+  if(r&&r.low>0&&r.high>0)return {to:'range',why:'instant range ready (\u00a3'+r.low+'\u2013\u00a3'+r.high+')'};
+  const waited=Date.now()-(j.stageAt||0)>10*60*1000;
+  if(j._brainAIPending&&!waited)return {to:''};
+  if(j.brainAI||j._brainTriedMs||waited)return {to:'labour',why:'the Brain could not give an instant range \u2014 straight to the full estimate'};
+  return {to:''};
 }
 function skipsRange(j){
   if(!j)return '';
@@ -10845,10 +10861,13 @@ function moveDupeContents(from,to){
 // when  : the fact that makes the move true
 // why   : what gets written in the job log
 const AUTO_RULES=[
-  { id:'intake-assigned', from:'intake', to:j=>skipsRange(j)?'labour':'range',
-    label:'Intake → Price Range once an estimator has it (B2B, AA, internal and comebacks go straight to Labour Estimate)',
-    why:'assigned to an estimator',
-    when:j=>!!j.assignedEstimator },
+  // 16 Nov 2026 — step 1 is the instant price range. A job on Intake moves
+  // on by itself: to Price Range when the Brain can give an instant range,
+  // otherwise straight to Labour Estimate (step 2). No estimator needed first.
+  { id:'intake-assigned', from:'intake', to:j=>intakeRoute(j).to,
+    label:'Intake → Price Range when an instant range is possible, otherwise straight to Labour Estimate (B2B, AA, warranty, insurance, internal, comebacks and additional work always go to Labour Estimate)',
+    why:j=>intakeRoute(j).why,
+    when:j=>!!intakeRoute(j).to },
 
   { id:'parts-priced', from:'parts', to:'financial',
     label:'Parts Estimate → Final Estimate once every part is priced',
@@ -10993,9 +11012,11 @@ function autoPilot(){
       j.stageAt=Date.now();
       try{stampStage(j,to);}catch(e){}
       j.log=j.log||[];
-      j.log.push({t:ts(),s:'⚡ '+stg(from).label+' → '+stg(to).label+' — '+r.why+' (automatic)'});
+      const why=(typeof r.why==='function')?(r.why(j)||''):r.why;
+      j.log.push({t:ts(),s:'⚡ '+stg(from).label+' → '+stg(to).label+' — '+why+' (automatic)'});
+      if(to==='labour'&&!j.assignedEstimator){try{if(autoAssignEstimator(j)&&typeof pingEstimator==='function')pingEstimator(j);}catch(e){}}
       if(to==='lost'&&!j.lostReason)j.lostReason='No reply after three days of chasing';
-      AUTO_LOG.unshift({at:ts(),ts:Date.now(),id:j.id,reg:j.reg||'',from:from,to:to,rule:r.id,why:r.why});
+      AUTO_LOG.unshift({at:ts(),ts:Date.now(),id:j.id,reg:j.reg||'',from:from,to:to,rule:r.id,why:why});
       if(AUTO_LOG.length>200)AUTO_LOG.length=200;
       save(j);
       try{ if(typeof fireNotifForStage==='function')fireNotifForStage(j,to); }catch(e){}
