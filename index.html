@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v14.0 \u00b7 16 Nov';
+const BUILD='v14.1 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -925,6 +925,9 @@ function estimatorPickList(){
   return boss?list.concat([boss]):list;
 }
 function estName(s){return s&&s.name==='Logkith'?'Logan':(s&&s.name||'');}
+// 16 Nov 2026: Joel can do Logan's sign-off too
+const SIGNOFF_BY=['Logkith','Joel'];
+function canSignOff(u){return !!(u&&SIGNOFF_BY.indexOf(u.name)>-1);}
 function hasRole(u,role){
   if(!u)return false;
   if(u.filter==='all')return true;
@@ -3603,7 +3606,7 @@ async function queueOutbox(msg){
 let _signOffBusy=false;
 async function signOff(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
-  if(!currentUser||currentUser.name!=='Logkith'){alert('Only Logkith can sign a quote off.');return;}
+  if(!canSignOff(currentUser)){alert('Only Logan or Joel can sign a quote off.');return;}
   if(_signOffBusy)return;
   const miss=unpricedAsks(j);
   if(miss.length&&!confirm('\u26a0 The customer asked for this, but it is not priced:\n\n'+miss.map(m=>'\u2022 '+m).join('\n')+'\n\nSend the quote without it anyway?'))return;
@@ -3619,7 +3622,7 @@ async function signOff(id){
 function signOffNow(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
   const amt=parseFloat(j.quote)||parseFloat(j.finalEst)||0;
-  if(!currentUser||currentUser.name!=='Logkith'){alert('Only Logkith can sign a quote off.');return;}
+  if(!canSignOff(currentUser)){alert('Only Logan or Joel can sign a quote off.');return;}
   if(!String(j.phone||'').trim()){
     alert('\u26d4 No phone number on '+(j.reg||'this job')+'.\n\nThe quote is sent to the customer the moment you approve it, so it needs a number.');
     return;
@@ -3798,7 +3801,7 @@ function runRepriceSweep(){
 function disapproveJob(id,opts){
   opts=opts||{};
   const j=jobs.find(x=>x.id===id);if(!j)return false;
-  if(!opts.via&&(!currentUser||currentUser.name!=='Logkith')){alert('Only Logkith can mark a quote disapproved.');return false;}
+  if(!opts.via&&!canSignOff(currentUser)){alert('Only Logkith can mark a quote disapproved.');return false;}
   let who=opts.who;
   if(!who){who=prompt('Who said no?','Logan (father)');if(who===null)return false;who=who||'Logan (father)';}
   const from=j.stage;
@@ -3824,7 +3827,7 @@ function disapprovedH(j){
     '<div style="font-size:11px;color:var(--dim);margin-top:2px">'+escHtml(d.who||'')+(d.via?' \u00b7 '+escHtml(d.via):'')+(d.at?' \u00b7 '+escHtml(d.at):'')+'</div>'+
     (d.note?'<div style="font-size:11px;margin-top:4px">Said: '+escHtml(d.note)+'</div>':'')+
     '<div style="font-size:11px;color:var(--dim);margin-top:6px">Write why below \u2014 the brain learns from it. Then fix the numbers, or send it back to the estimator.</div>'+
-    (!(currentUser&&currentUser.name==='Logkith')?'<div style="font-size:11px;color:var(--faint);margin-top:4px">Only Logkith can clear this.</div>':
+    (!canSignOff(currentUser)?'<div style="font-size:11px;color:var(--faint);margin-top:4px">Only Logkith can clear this.</div>':
       '<button class="btn btn-sm btn-full" style="margin-top:8px;background:var(--red);color:#fff;font-weight:700" onclick="declineJob(\''+j.id+'\')">\ud83d\udeab We can\u2019t do this job \u2014 tell the customer</button>')+
   '</div>';
 }
@@ -3840,7 +3843,7 @@ function lfTarget(label){
 }
 function labourFixH(j,mode){
   if(!canAdjustLabour(j)){
-    if(mode==='disapproved'&&currentUser&&currentUser.name==='Logkith')
+    if(mode==='disapproved'&&canSignOff(currentUser))
       return '<div class="fg" style="margin-bottom:10px"><label class="fl2">Why was it disapproved? (required \u2014 the brain learns this)</label>'+
         '<textarea class="fta" id="lf-why-'+j.id+'" placeholder="e.g. labour far too low for a clutch on this"></textarea></div>'+
         '<div style="font-size:11px;color:var(--faint);margin-bottom:6px">This job was not priced in the estimator app, so the labour can\u2019t be adjusted here.</div>'+
@@ -3941,7 +3944,7 @@ function lfPreview(id){
 }
 async function lfApply(id,asRule){
   const j=jobs.find(x=>x.id===id);if(!j)return;
-  if(!currentUser||currentUser.name!=='Logkith'){alert('Only Logkith can change labour at sign-off.');return;}
+  if(!canSignOff(currentUser)){alert('Only Logkith can change labour at sign-off.');return;}
   const mode=(document.getElementById('lf-'+id)||{dataset:{}}).dataset.mode||'signoff';
   const why=((document.getElementById('lf-why-'+id)||{}).value||'').trim();
   const changes=lfRead(j),changed=changes.filter(c=>c.changed);
@@ -4001,7 +4004,7 @@ async function lfApply(id,asRule){
 }
 async function lfSendBack(id){
   const j=jobs.find(x=>x.id===id);if(!j)return;
-  if(!currentUser||currentUser.name!=='Logkith'){alert('Only Logkith can clear a disapproved job.');return;}
+  if(!canSignOff(currentUser)){alert('Only Logkith can clear a disapproved job.');return;}
   const why=((document.getElementById('lf-why-'+id)||{}).value||'').trim();
   if(!why){alert('Write why it was disapproved first.');return;}
   if(j.disapproval)j.disapproval=Object.assign({},j.disapproval,{reasonNeeded:false,reason:why,resolvedAt:ts(),resolvedBy:currentUser.name,sentBack:true});
@@ -4188,7 +4191,7 @@ function declineMsg(j,reason){
 }
 function declineJob(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
-  if(!currentUser||currentUser.name!=='Logkith'){alert('Only Logkith can decline a job.');return;}
+  if(!canSignOff(currentUser)){alert('Only Logkith can decline a job.');return;}
   const reason=prompt('We can’t do this job — why? This goes to the customer.\n\ne.g. "we’re not doing backbox deletes for the time being"','');
   if(reason===null)return;
   const r=String(reason).trim().replace(/[.\s]+$/,'');
@@ -4220,7 +4223,7 @@ function declinedH(j){
       :'<div style="font-size:11px;color:var(--amber);margin-top:6px">No mobile number — ring them and read this out.</div>')+
     (told?'<div style="font-size:11px;color:var(--green);margin-top:5px">✓ Sent '+escHtml(d.toldAt)+(d.toldBy?' by '+escHtml(d.toldBy):'')+'</div>':'')+
     '<button class="btn btn-ghost btn-sm btn-full" style="margin-top:6px;color:var(--red);border-color:var(--red)" onclick="closeDeclined(\''+j.id+'\')">✕ Customer told — close the job</button>'+
-    (currentUser&&currentUser.name==='Logkith'?'<button class="btn btn-ghost btn-xs btn-full" style="margin-top:5px" onclick="undoDecline(\''+j.id+'\')">Changed my mind — back to sign-off</button>':'')+
+    (canSignOff(currentUser)?'<button class="btn btn-ghost btn-xs btn-full" style="margin-top:5px" onclick="undoDecline(\''+j.id+'\')">Changed my mind — back to sign-off</button>':'')+
   '</div>';
 }
 function sendDecline(id){
@@ -4351,7 +4354,7 @@ function advSetNote(id,v){
 
 function signOffH(j){
   const amt=parseFloat(j.quote)||parseFloat(j.finalEst)||0;
-  const isBoss=currentUser&&currentUser.name==='Logkith';
+  const isBoss=canSignOff(currentUser);
   if(j.signedOff){
     const stale=signOffStale(j);
     return '<div style="background:'+(stale?'rgba(160,120,20,.16)':'rgba(46,125,50,.15)')+';border:2px solid '+(stale?'var(--amber)':'var(--green)')+
@@ -4381,7 +4384,7 @@ function signOffH(j){
         '<button class="btn btn-ghost btn-sm btn-full" style="margin-top:5px;color:var(--red);border-color:var(--red)" onclick="disapproveJob(\''+j.id+'\')">\u2717 Disapproved \u2014 needs a reason</button>'+
         '<button class="btn btn-sm btn-full" style="margin-top:5px;background:var(--red);color:#fff;font-weight:700" onclick="declineJob(\''+j.id+'\')">\ud83d\udeab We can\u2019t do this job \u2014 tell the customer</button>'+
         '<button class="btn btn-ghost btn-xs btn-full" style="margin-top:5px" onclick="logPhoneSignOff(\''+j.id+'\')">\u260e\ufe0f Record a phone sign-off</button>'
-      : '<div style="font-size:11px;color:var(--faint)">Only Logkith can approve this.</div>')+
+      : '<div style="font-size:11px;color:var(--faint)">Only Logan or Joel can approve this.</div>')+
   '</div>'+advNoteH(j);
 }
 
@@ -5831,7 +5834,7 @@ function myWork(){
   const live=jobs.filter(j=>j&&!j.mergedInto&&j.stage!=='lost');
   const out=[];
   const add=(j,why)=>out.push({kind:'job',id:j.id,reg:j.reg||'',name:j.name||'',why,since:j.stageAt||0});
-  if(boss)live.filter(j=>j.stage==='signoff').forEach(j=>add(j,'Waiting on your sign-off'));
+  if(boss||canSignOff(u))live.filter(j=>j.stage==='signoff').forEach(j=>add(j,'Waiting on your sign-off'));
   if(boss)live.filter(j=>j.stage==='disapproved').forEach(j=>add(j,'Disapproved \u2014 write why and fix it'));
   if(has('estimator'))live.filter(j=>(['intake','labour','financial'].includes(j.stage)||(j.stage==='range'&&!j.rangeSentAt))&&(boss?true:j.assignedEstimator===u.name))
     .forEach(j=>add(j,j.stage==='financial'?'Final estimate to confirm':(j.tmJob?'Pricing in progress':'Start pricing')));
@@ -10012,7 +10015,8 @@ function brainFixSop(j){
     const ct=_brainCustType(j);
     if(ct!=='retail'&&ct!=='trade')return;            // AA / warranty: their own cards
     const svc=/service|brake|pads?|discs?|caliper|oil (and|&) filter|oil change/i.test(lab);
-    const want=svc?'LOW':(ct==='trade'?'MED':'TOP');
+    // trade keeps the Brain's MED or TOP; only a wrong LOW is lifted to MED
+    const want=svc?'LOW':(ct==='trade'?(bj.tier==='TOP'?'TOP':'MED'):'TOP');
     if(bj.tier!==want){
       bj.tier=want;brainRecalc(j,bj);
       bj.srt_source=(bj.srt_source||'')+' \u00b7 '+want+' rate ('+(svc?'servicing / brakes':(ct==='trade'?'trade \u2014 MED for everything but servicing and brakes':'retail \u2014 TOP for everything but servicing and brakes'))+')';
@@ -14227,7 +14231,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1330';
+const CRM_BUILD='2026-11-16-1335';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
