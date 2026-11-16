@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v9.0 \u00b7 16 Nov';
+const BUILD='v9.1 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6748,11 +6748,61 @@ const BODY_SIZES=[
   {k:'van',   label:'Van',    hint:'Panel van',                   cat:'Large van'}
 ];
 function isBodyJob(j){return !!j&&((Array.isArray(j.damage)&&j.damage.length)||isBodywork(j));}
+// ── VEHICLE SIZE FROM THE REG (16 Nov 2026) ─────────────────────────
+// Same lookup as kithcars.com and the intake app (DVLA, then MOT history).
+// The size is picked for the estimator; they can still change it.
+const VEH_API='https://www.kithcars.com/api/vehicle';
+const SIZE_LARGE=/caravelle|shuttle|transporter kombi|multivan|tourneo custom|tourneo(?! connect| courier)|vito tourer|v[- ]?class|viano|spacetourer|space tourer|traveller|trafic passenger|vivaro life|zafira life|proace verso|primastar|nv300 combi|minibus/i;
+const SIZE_PICKUP=/hilux|ranger|l200|navara|amarok|d-?max|x-?class|musso|warrior|triton|gladiator|tundra|tacoma|f-?150|pick ?up/i;
+const SIZE_MEDIUM=/qashqai|x-?trail|tiguan|touareg|t-?roc|kuga|edge|explorer|puma|sportage|sorento|niro|tucson|santa ?fe|kona|rav ?4|c-?hr|land ?cruiser|cr-?v|hr-?v|cx-?3|cx-?5|cx-?30|cx-?60|q2|q3|q5|q7|q8|e-?tron|x1|x2|x3|x4|x5|x6|x7|xc ?40|xc ?60|xc ?90|kodiaq|karoq|kamiq|ateca|arona|tarraco|duster|bigster|evoque|velar|discovery|defender|range rover|freelander|outlander|eclipse cross|asx|vitara|jimny|s-?cross|captur|kadjar|koleos|austral|arkana|3008|5008|2008|c5 aircross|c3 aircross|grandland|crossland|mokka|frontera|juke|ariya|macan|cayenne|glc|gle|gla|glb|gls|ml\b|g-?class|stelvio|levante|f-?pace|e-?pace|i-?pace|model x|model y|tonale|compass|renegade|cherokee|wrangler|mg ?hs|zs|ev6|ioniq 5|enyaq|id\.?4|id\.?5|bayon|ix35|forester|outback|xv|crosstrek|galaxy|s-?max|sharan|alhambra|touran|zafira|picasso|spacetourer|espace|grand scenic|scenic|previa|sienna|odyssey|carens|rifter|berlingo|caddy life|tourneo connect|combo life|townstar|kangoo|doblo/i;
+function bodySizeGuess(j){
+  const v=j.dvla||{};
+  const ta=String(v.typeApproval||'').toUpperCase();
+  const txt=[v.make||j.make,v.model||j.model].filter(Boolean).join(' ');
+  if(/^(M2|M3)/.test(ta))return {k:'large',why:'registered as a minibus ('+ta+')'};
+  if(SIZE_LARGE.test(txt))return {k:'large',why:txt+' \u2014 9-seater people carrier'};
+  if(SIZE_PICKUP.test(txt))return {k:'medium',why:txt+' \u2014 pickup'};
+  if(/^(N1|N2|N3)/.test(ta))return {k:'van',why:'registered as a goods vehicle ('+ta+')'};
+  if(typeof BIG_VANS_RX!=='undefined'&&BIG_VANS_RX.test(txt))return {k:'van',why:txt+' \u2014 van'};
+  if(/\b(van|transit|vivaro|trafic|transporter|caddy(?! life)|partner|expert|dispatch|berlingo van|combo(?! life)|connect|courier|proace|nv200|kangoo van|doblo cargo|sprinter|crafter|master|movano|ducato|boxer|relay)\b/i.test(txt))return {k:'van',why:txt+' \u2014 van'};
+  if(SIZE_MEDIUM.test(txt))return {k:'medium',why:txt+' \u2014 SUV / 4x4 / 7-seater'};
+  if(/^M1/.test(ta)&&(v.model||j.model))return {k:'small',why:txt+' \u2014 car'};
+  if(txt.trim()&&(j.model||v.model))return {k:'small',why:txt+' \u2014 car'};
+  return null;
+}
+const _vehBusy={};
+async function vehLookupJob(j){
+  const reg=String(j&&j.reg||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(!reg||reg.length<4||_vehBusy[reg]||j.dvla||j.dvlaTriedAt)return;
+  _vehBusy[reg]=true;
+  try{
+    const ctl=window.AbortController?new AbortController():null,t=setTimeout(()=>{if(ctl)ctl.abort();},8000);
+    const r=await fetch(VEH_API,{method:'POST',headers:{'content-type':'text/plain'},body:JSON.stringify({reg}),signal:ctl&&ctl.signal});
+    clearTimeout(t);const d=await r.json();
+    if(d&&d.vehicle){j.dvla=d.vehicle;}else j.dvlaTriedAt=Date.now();
+  }catch(e){j.dvlaTriedAt=Date.now();}
+  finally{delete _vehBusy[reg];}
+  try{autoBodySize(j);save(j);if(curId===j.id)renderDetail();}catch(e){}
+}
+function autoBodySize(j){
+  if(!j||j.bodySize||!isBodyJob(j))return false;
+  const g=bodySizeGuess(j);if(!g)return false;
+  const z=BODY_SIZES.find(x=>x.k===g.k);if(!z)return false;
+  j.bodySize=g.k;j.bodySizeAuto=g.why;
+  j.log=j.log||[];j.log.push({t:ts(),s:'\ud83d\ude90 Vehicle size from the reg: '+z.label+' ('+g.why+') \u2014 change it if wrong'});
+  return true;
+}
 function bodySizeH(j){
   if(!isBodyJob(j))return '';
+  if(!j.bodySize){
+    if(autoBodySize(j)){try{save(j);}catch(e){}}
+    else if(!j.dvla&&!j.dvlaTriedAt)vehLookupJob(j);
+  }
   const cur=j.bodySize||'';
   return '<div style="background:var(--surface2);border:1px solid '+(cur?'var(--border)':'var(--amber)')+';border-radius:var(--r);padding:10px 12px;margin-bottom:10px">'+
     '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:'+(cur?'var(--faint)':'var(--amber)')+';font-weight:800;margin-bottom:6px">🚐 Vehicle size'+(cur?'':' — pick one before pricing')+'</div>'+
+    (cur&&j.bodySizeAuto?'<div style="font-size:11px;color:var(--dim);margin:-2px 0 6px">\u2713 Picked from the reg \u2014 '+escHtml(j.bodySizeAuto)+'. Tap another size if it is wrong.</div>':'')+
+    (!cur&&!j.dvla&&!j.dvlaTriedAt?'<div style="font-size:11px;color:var(--dim);margin:-2px 0 6px">Looking up '+escHtml(j.reg||'')+'\u2026</div>':'')+
     '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">'+
     BODY_SIZES.map(z=>'<button class="btn btn-sm '+(cur===z.k?'btn-gold':'btn-ghost')+'" style="flex-direction:column;align-items:flex-start;text-align:left;line-height:1.2;padding:7px 8px;height:auto" onclick="setBodySize(\''+j.id+'\',\''+z.k+'\')">'+
       '<b>'+z.label+'</b><span style="font-size:9px;font-weight:500;opacity:.8">'+z.hint+'</span></button>').join('')+
@@ -6761,7 +6811,7 @@ function bodySizeH(j){
 function setBodySize(id,k){
   const j=jobs.find(x=>x.id===id);if(!j)return;
   const z=BODY_SIZES.find(x=>x.k===k);if(!z||j.bodySize===k)return;
-  j.bodySize=k;
+  j.bodySize=k;delete j.bodySizeAuto;
   j.log=j.log||[];j.log.push({t:ts(),s:'🚐 Vehicle size: '+z.label+' ('+z.cat+' panel column)'+(currentUser?' ['+currentUser.name+']':'')});
   save(j);renderDetail();renderAll();
 }
