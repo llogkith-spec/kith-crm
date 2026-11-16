@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v14.8 \u00b7 16 Nov';
+const BUILD='v14.9 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -9987,7 +9987,56 @@ function brainRecalc(j,bj){
   try{const M=KITH_SOP&&KITH_SOP.multiplier&&KITH_SOP.multiplier.normal;if(M){lower=M.lower||2;upper=M.upper||1.5;}
     const c=_brainCustType(j);if(c==='trade')threshold=1.5;const t=KITH_SOP&&KITH_SOP.customers&&KITH_SOP.customers[c]&&KITH_SOP.customers[c].threshold;if(t)threshold=t;}catch(e){}
   const rate=sopRates()[bj.tier]||sopRates().TOP||70;
-  bj.labour_ex_vat=Math.round(Math.max(h*(h<threshold?lower:upper),0.5)*rate*100)/100;
+  // pair rule: the second item of a pair is billed at its raw SRT
+  if(bj.paired){bj.labour_ex_vat=Math.round(h*rate*100)/100;return;}
+  // SOP: the minimum applies to the book hours, THEN the multiplier
+  let minH=0.5;try{const m=KITH_SOP&&KITH_SOP.minimums&&parseFloat(KITH_SOP.minimums.labourHours);if(m)minH=m;}catch(e){}
+  const hh=Math.max(h,minH);
+  bj.labour_ex_vat=Math.round(hh*(hh<threshold?lower:upper)*rate*100)/100;
+}
+// ── PAIR RULE (SOP v8, closed list of three) ─────────────────────────
+// Pads + discs on the same axle, clutch + dual mass flywheel, inner + outer
+// CV boot on the same driveshaft: the second item is billed at its RAW SRT
+// (no multiplier), because the first one already has the car apart.
+const PAIR_RULES=[
+  {a:/brake ?pads?/i,an:/dis[ck]/i,b:/brake ?dis[ck]s?|\bdis[ck]s?\b/i,bn:/pads?\b/i,why:'pads and discs on the same axle'},
+  {a:/clutch/i,an:/flywheel|dmf|dual mass/i,b:/flywheel|dmf|dual mass/i,bn:/^$/,why:'clutch and dual mass flywheel'},
+  {a:/inner cv boot/i,an:/outer/i,b:/outer cv boot/i,bn:/inner/i,why:'inner and outer CV boot on the same driveshaft'}
+];
+function _axle(t){t=String(t).toLowerCase();return /front/.test(t)?'F':(/rear/.test(t)?'R':'');}
+// Labour on a normal line is ALWAYS book hours × SOP multiplier × tier rate —
+// never the Brain's own £ figure (a timing chain came out at £93.33/hr).
+function brainRecalcAll(j){
+  const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
+  const R=sopRates();let ch=false;
+  ai.jobs.forEach(b=>{
+    if(b.fixedTyre||b.fixedDiag||b.fixedBody||b.fixedAlloy||b.fixedMot||b.manual&&b.fixedBody)return;
+    if(!(parseFloat(b.srt_hours)>0))return;
+    if(!R[b.tier]){b.tier=/service|brake|pads?|dis[ck]s?|caliper/i.test(String(b.job_label||''))?'LOW':'TOP';}
+    const was=parseFloat(b.labour_ex_vat)||0;
+    brainRecalc(j,b);
+    if(Math.abs(was-(parseFloat(b.labour_ex_vat)||0))>0.009)ch=true;
+  });
+  return ch;
+}
+function brainPairRule(j){
+  const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
+  const live=ai.jobs.filter(b=>!b.excluded&&!b.fixedTyre&&!b.fixedDiag&&!b.fixedBody&&!b.fixedAlloy&&!b.fixedMot);
+  let ch=false;
+  PAIR_RULES.forEach(rule=>{
+    live.filter(b=>{const l=String(b.job_label||'');return rule.b.test(l)&&!rule.bn.test(l);}).forEach(sec=>{
+      const l2=String(sec.job_label||'');
+      const pri=live.find(b=>{const l=String(b.job_label||'');return b!==sec&&rule.a.test(l)&&!rule.an.test(l)&&(!_axle(l)||!_axle(l2)||_axle(l)===_axle(l2));});
+      const want=!!pri;
+      if(want!==!!sec.paired){
+        sec.paired=want;
+        if(want){sec.pairedWithLabel=pri.job_label;sec.srt_source=(sec.srt_source||'').replace(/ \u00b7 PAIR RULE.*$/,'')+' \u00b7 PAIR RULE: '+rule.why+' \u2014 billed at the raw book time, no multiplier';}
+        else{delete sec.pairedWithLabel;sec.srt_source=(sec.srt_source||'').replace(/ \u00b7 PAIR RULE.*$/,'');}
+        brainRecalc(j,sec);ch=true;
+      }
+    });
+  });
+  return ch;
 }
 function motPrice(j){
   let T=null;try{T=KITH_SOP&&KITH_SOP.mot;}catch(e){}
@@ -10235,7 +10284,7 @@ async function brainAskLine(j,desc){
     j.brainAI.jobs=j.brainAI.jobs||[];
     const added=d.jobs.map(x=>Object.assign({},x,{manual:true,askedFor:desc}));
     j.brainAI.jobs.push(...added);
-    try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);}catch(e){}
+    try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainPairRule(j);brainRecalcAll(j);}catch(e){}
     delete j.brainPrefillDismissedAt;
     j.log=j.log||[];j.log.push({t:ts(),s:'\ud83e\udde0 Brain priced \u201c'+desc+'\u201d: '+added.map(x=>(x.job_label||x.job_normalised)+' \u00a3'+(parseFloat(x.labour_ex_vat)||0).toFixed(2)).join(', ')+(currentUser?' ['+currentUser.name+']':'')});
     BRAIN_ADD_OPEN[j.id]=true;
@@ -10290,7 +10339,7 @@ function brainPrefillH(j){
   }
   const ai = j.brainAI;
   if(!ai||!ai.jobs||!ai.jobs.length)return '';
-  if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)|brainFixAlloy(j)|brainFixBody(j)){try{save(j);}catch(e){}}
+  if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)|brainPairRule(j)|brainRecalcAll(j)|brainFixAlloy(j)|brainFixBody(j)){try{save(j);}catch(e){}}
   const applied = !!j.brainAppliedAt;
   const firmN = ai.jobs.filter(b=>b.is_firm).length;
   const totN = ai.jobs.length;
@@ -10377,6 +10426,7 @@ window.brainEditSrt = function(jobId, idx, val){
     const mult = h<threshold?lower:upper;
     const rate = rates[tierKey]||rates.TOP||70;
     bj.labour_ex_vat = Math.max(h*mult, 0.5)*rate;
+    try{brainRecalc(j,bj);brainPairRule(j);}catch(e){}
   }catch(e){}
   save(j); renderDetail();
 };
@@ -10510,6 +10560,7 @@ window.brainAutoPartsNow=function(id){
 // Roll up the pre-fill to the job's single labour fields
 window.brainApplyToJob = function(jobId){
   const j = _brainJob(jobId); if(!j||!j.brainAI)return;
+  try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainPairRule(j);brainRecalcAll(j);brainFixAlloy(j);brainFixBody(j);}catch(e){}
   const inc = j.brainAI.jobs.filter(b=>!b.excluded);
   const totSrt = inc.reduce((s,b)=>s+(parseFloat(b.srt_hours)||0),0);
   const totLabour = inc.reduce((s,b)=>s+(parseFloat(b.labour_ex_vat)||0),0);
@@ -10517,7 +10568,7 @@ window.brainApplyToJob = function(jobId){
   // charged hours carry the SOP multiplier / minimum. Keep one line per job
   // so the breakdown shows book vs charged, and the rate reads right.
   const rates = (KITH_SOP&&KITH_SOP.rates)||{LOW:50,MED:60,TOP:70,BODY:90};
-  try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainFixAlloy(j);brainFixBody(j);addTyreParts(j);}catch(e){}
+  try{addTyreParts(j);}catch(e){}
   j.srtLines = inc.map(b=>{
     if(b.fixedAlloy)return {op:'Alloy wheel refurb \u00d7'+(b.alloyQty||1)+' (\u00a3'+(parseFloat(b.alloyEach)||0).toFixed(0)+' each)',book:0,charged:0,qty:b.alloyQty||1,fixed:true,code:'BODY',labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.alloyEach)||0,src:'fixed',by:brainWho(),at:ts()};
     if(b.fixedBody)return {op:String(b.job_label||b.bodyPanel||'Bodywork'),book:0,charged:0,qty:1,fixed:true,code:'BODY',labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.labour_ex_vat)||0,src:'fixed',by:brainWho(),at:ts()};
@@ -12426,6 +12477,28 @@ function autoPilot(){
       save(rp);save(o);
     }else save(rp);
   });}catch(e){}
+  try{const R=sopRates(),ok=Object.values(R).map(Number);
+    jobs.forEach(j=>{
+      if(!j||!/^Brain pre-fill/.test(String(j.srtSource||''))||!['labour','parts','financial','signoff'].includes(j.stage)||j.rateFixed1)return;
+      let ch=false,tot=0;
+      srtLines(j).forEach(l=>{
+        if(l.fixed){tot+=parseFloat(l.labour)||0;return;}
+        const c=parseFloat(l.charged)||0;let lab=parseFloat(l.labour)||0;
+        if(!lab&&c>0){const lc=parseFloat(j.labourCost)||0,tc=parseFloat(j.srtCharged)||0;if(lc&&tc&&srtLines(j).filter(x=>!x.fixed).length===1)lab=lc;}
+        if(c>0&&lab>0&&!ok.some(x=>Math.abs(lab/c-x)<0.05)){
+          const rt=ok.includes(parseFloat(l.rate))?parseFloat(l.rate):(/service|brake|pads?|dis[ck]s?|caliper/i.test(l.op)?R.LOW:R.TOP);
+          l.labour=Math.round(c*rt*100)/100;l.rate=rt;ch=true;
+        }
+        tot+=parseFloat(l.labour)||0;
+      });
+      j.rateFixed1=true;
+      if(ch&&Math.abs(tot-(parseFloat(j.labourCost)||0))>0.5){
+        const was=j.labourCost;j.labourCost=Math.round(tot*100)/100;
+        if(labourDescReplaceable(j))j.labourDesc=labourDescFromLines(j);
+        j.log=j.log||[];j.log.push({t:ts2(),s:'\u26a0 Labour re-priced to the rate card: \u00a3'+(+was).toFixed(2)+' \u2192 \u00a3'+j.labourCost.toFixed(2)+' (charged hours \u00d7 tier rate)'});
+      }
+      save(j);
+    });}catch(e){}
   try{autoSplitJobs();}catch(e){console.warn('split',e);}
   let moved=0;
   window._batchSave=true;
@@ -14283,7 +14356,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1420';
+const CRM_BUILD='2026-11-16-1615';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
