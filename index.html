@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v13.6 \u00b7 16 Nov';
+const BUILD='v13.7 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -10196,14 +10196,37 @@ function brainAddLineH(j){
       '</span>'+
       '<span id="bal-other-'+j.id+'" style="display:none;gap:6px;align-items:center">'+
         '<input id="bal-desc-'+j.id+'" placeholder="What needs doing" style="'+sel+';width:200px">'+
-        '<span style="font-size:12px;color:var(--dim)">\u00a3</span><input id="bal-price-'+j.id+'" type="number" step="0.01" placeholder="ex VAT" style="'+sel+';width:90px">'+
+        '<span style="font-size:12px;color:var(--dim)">\u00a3</span><input id="bal-price-'+j.id+'" type="number" step="0.01" placeholder="blank = Brain" style="'+sel+';width:110px">'+
       '</span>'+
       '<button class="btn btn-gold btn-xs" onclick="brainAddLine(\''+j.id+'\')">Add</button>'+
     '</div>'+
-    '<div style="font-size:10px;color:var(--faint);margin-top:4px">Panels are priced from the SOP (inc VAT \u2192 ex VAT on the job), same as the lines above.</div>'+
+    '<div id="bal-st-'+j.id+'" style="font-size:10px;color:var(--faint);margin-top:4px">Panels are priced from the SOP (inc VAT \u2192 ex VAT on the job). For Other, leave the price blank and the Brain works out the labour and parts (e.g. \u201cheadlight replacement\u201d).</div>'+
   '</details>';
 }
 var BRAIN_ADD_OPEN={};
+// Other line with no price: ask the Brain, same as the main pre-fill
+async function brainAskLine(j,desc){
+  const st=document.getElementById('bal-st-'+j.id);
+  if(st){st.textContent='\ud83e\udde0 Asking the Brain to price \u201c'+desc+'\u201d\u2026';st.style.color='var(--amber)';}
+  try{
+    const res=await fetch(BRAIN_URL,{method:'POST',headers:{...SB_HDR,'x-caller':'crm'},
+      body:JSON.stringify({customer_type:_brainCustType(j),vehicle:_brainVeh(j),reg:j.reg||'',complaint:desc})});
+    const d=await res.json();
+    if(!res.ok||d.error||!Array.isArray(d.jobs)||!d.jobs.length)throw new Error((d&&d.error)||'no answer');
+    if(!j.brainAI)j.brainAI={jobs:[],at:ts(),ms:Date.now(),conf:d.confidence||'low'};
+    j.brainAI.jobs=j.brainAI.jobs||[];
+    const added=d.jobs.map(x=>Object.assign({},x,{manual:true,askedFor:desc}));
+    j.brainAI.jobs.push(...added);
+    try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);}catch(e){}
+    delete j.brainPrefillDismissedAt;
+    j.log=j.log||[];j.log.push({t:ts(),s:'\ud83e\udde0 Brain priced \u201c'+desc+'\u201d: '+added.map(x=>(x.job_label||x.job_normalised)+' \u00a3'+(parseFloat(x.labour_ex_vat)||0).toFixed(2)).join(', ')+(currentUser?' ['+currentUser.name+']':'')});
+    BRAIN_ADD_OPEN[j.id]=true;
+    save(j);renderDetail();
+    if(typeof toast==='function')toast('\ud83e\udde0 Added \u2014 parts for it go on the parts list when you apply');
+  }catch(e){
+    if(st){st.textContent='\u26a0 The Brain could not price that ('+e.message+') \u2014 type a price instead.';st.style.color='var(--red)';}
+  }
+}
 function brainAddLine(id){
   const j=_brainJob(id);if(!j)return;
   const v=x=>{const el=document.getElementById(x+'-'+id);return el?(el.type==='checkbox'?el.checked:el.value):'';};
@@ -10213,7 +10236,8 @@ function brainAddLine(id){
   let line;
   if(panel==='__other'){
     const desc=String(v('bal-desc')).trim(),pr=parseFloat(v('bal-price'));
-    if(!desc||!(pr>=0)){alert('Type what needs doing and the price ex VAT.');return;}
+    if(!desc){alert('Type what needs doing.');return;}
+    if(!(pr>=0)){brainAskLine(j,desc);return;}   // no price: the Brain prices it
     line={job_label:desc,job_normalised:'manual',srt_hours:0,labour_ex_vat:Math.round(pr*100)/100,tier:'BODY',fixedBody:true,fromDamage:true,manual:true,
       srt_source:'Added by '+(currentUser?estName(currentUser):'the estimator')+' \u2014 \u00a3'+pr.toFixed(2)+' ex VAT'};
   }else if(panel==='__alloy'){
@@ -14176,7 +14200,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1300';
+const CRM_BUILD='2026-11-16-1305';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
