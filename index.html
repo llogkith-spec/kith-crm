@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v15.5 \u00b7 16 Nov';
+const BUILD='v15.6 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -9878,7 +9878,19 @@ function allOrdersIn(j){
 // Logan can switch ordering off at sign-off (straight jobs, parts the
 // customer brings, everything off the shelf). The job then sits in Booked
 // until its day and goes straight to Vehicle Check-In — no PO or SO stage.
-function skipsOrders(j){ return !!(j&&j.skipOrders); }
+function skipsOrders(j){ return !!(j&&(j.skipOrders||noOrdersNeeded(j))); }
+// 16 Nov 2026: nothing to order and no subcontractor → no PO / SO stages at all
+function noOrdersNeeded(j){
+  if(!j||j.skipOrders===false)return false;
+  try{
+    if(realParts(j).some(p=>p.stockStatus!=='stock'&&!p.noOrder))return false;
+    if(j.soNeeded===true)return false;
+    if(j.soNeeded!==false&&soNeeded(j).length)return false;
+    if((typeof posForJob==='function'?posForJob(j.id):[]).some(x=>x.status!=='Cancelled'))return false;
+    if((typeof subsForJob==='function'?subsForJob(j.id):[]).some(x=>x.status!=='Cancelled'))return false;
+  }catch(e){return false;}
+  return true;
+}
 function jobNeedsPO(j){ if(skipsOrders(j))return false; return realParts(j).some(p=>p.stockStatus!=='stock'&&!p.noOrder); }
 function jobNeedsSO(j){
   if(skipsOrders(j))return false;
@@ -12483,7 +12495,7 @@ const AUTO_RULES=[
     when:j=>!!j.bookedFor&&!skipsOrders(j) },
 
   { id:'booked-skip-arrival', from:'booked', to:afterOrdersLand,
-    label:'Booked \u2192 Vehicle Check-In on the day, for jobs Logan has marked "no POs or SOs"',
+    label:'Booked \u2192 Vehicle Check-In on the day, for jobs with nothing to order (no parts, no subcontractor) or marked "no POs or SOs"',
     why:'no ordering needed \u2014 booking day, car due in today',
     when:j=>skipsOrders(j)&&!!j.bookedFor&&arrivalDue(j) },
 
@@ -12644,6 +12656,11 @@ function autoPilot(){
       j.stage=sent?'contacted':'signoff';j.stageAt=Date.now();try{stampStage(j,j.stage);}catch(e){}
       j.log=j.log||[];j.log.push({t:ts2(),s:sent?'\u2192 Contacted (quote already went to the customer)':'\u2192 Final Estimate & Sign-Off \u2014 the Service Adviser step is gone; Approve sends the quote'});save(j);}
   });}catch(e){}
+  // jobs already sitting in the PO / SO stages with nothing to order go back to Booked
+  try{jobs.forEach(j=>{if(j&&!j.mergedInto&&['po','so','raised','soraised'].includes(j.stage)&&!j.skipOrders&&noOrdersNeeded(j)){
+    const from=j.stage;j.stage='booked';j.stageAt=Date.now();try{stampStage(j,'booked');}catch(e){}
+    j.log=j.log||[];j.log.push({t:ts2(),s:'\u2192 Booked \u2014 nothing to order (no parts, no subcontractor), so no PO/SO stages; goes to Check-In on its day'});
+    try{stageMoved(j,from,'booked');}catch(e){}save(j);}});}catch(e){}
   try{autoSplitJobs();}catch(e){console.warn('split',e);}
   let moved=0;
   window._batchSave=true;
@@ -14584,7 +14601,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1720';
+const CRM_BUILD='2026-11-16-1735';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
