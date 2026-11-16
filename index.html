@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v16.1 \u00b7 16 Nov';
+const BUILD='v16.2 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6144,7 +6144,20 @@ var CHANNELS={relay:'',secret:'',at:'',by:''};
 try{const c=JSON.parse(localStorage.getItem('kith_channels')||'null');if(c&&c.relay)CHANNELS=c;}catch(e){}
 function relayUrl(){ return CHANNELS.relay||WA_PROXY_URL; }
 function relaySecret(){ return CHANNELS.secret||WA_PROXY_SECRET; }
-function waAuto(){ return !!(relayUrl()&&relaySecret()); }
+// 16 Nov 2026: the relay can be connected while WhatsApp Business isn't
+// actually delivering yet (templates / number still being set up) — then a
+// "sent" is a lie. The CRM only sends by itself once Logan switches it LIVE;
+// until then every Send opens WhatsApp (with the PDF) for a person to press send.
+function relayConnected(){ return !!(relayUrl()&&relaySecret()); }
+function waAuto(){ return relayConnected()&&CHANNELS&&CHANNELS.live===true; }
+async function setWaLive(on){
+  if(on&&!confirm('Switch WhatsApp sending LIVE?\n\nOnly do this once a test message has actually arrived on a phone. From then on the CRM sends quotes and estimates by itself.'))return;
+  CHANNELS=Object.assign({},CHANNELS,{live:!!on,liveAt:ts(),liveBy:currentUser?currentUser.name:''});
+  safeSet('kith_channels',JSON.stringify(CHANNELS));
+  try{ await casWrite('__channels__',()=>({channels:CHANNELS})); }catch(e){}
+  renderChannels();
+  if(typeof toast==='function')toast(on?'\u2713 WhatsApp sending is LIVE':'WhatsApp sending off \u2014 buttons open WhatsApp to send by hand');
+}
 async function loadChannels(){
   try{
     const r=await fetch(SB_URL+'/rest/v1/jobs?id=eq.__channels__&select=data',{headers:SB_HDR});
@@ -6160,7 +6173,7 @@ async function saveChannels(){
   const k=String((document.getElementById('ch-secret')||{}).value||'').trim();
   if(u&&!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)&&
      !confirm('That does not look like an Apps Script /exec address.\n\nSave it anyway?'))return;
-  CHANNELS={relay:u,secret:k,at:ts(),by:currentUser?currentUser.name:''};
+  CHANNELS={relay:u,secret:k,at:ts(),by:currentUser?currentUser.name:'',live:!!(CHANNELS&&CHANNELS.live),liveAt:CHANNELS&&CHANNELS.liveAt,liveBy:CHANNELS&&CHANNELS.liveBy};
   safeSet('kith_channels',JSON.stringify(CHANNELS));
   try{ await casWrite('__channels__',()=>({channels:CHANNELS})); }
   catch(e){ alert('Saved on this device, but it could not be shared: '+(e.message||e)); }
@@ -6191,8 +6204,12 @@ async function testRelay(){
 }
 function renderChannels(){
   const el=document.getElementById('channel-box');if(!el)return;
-  const on=waAuto();
+  const on=waAuto(), con=relayConnected();
   el.innerHTML=
+    (con?'<div style="background:'+(on?'rgba(40,140,60,.15)':'rgba(160,120,20,.15)')+';border:1px solid '+(on?'var(--green)':'var(--amber)')+';border-radius:var(--r);padding:9px 11px;margin-bottom:10px">'+
+      '<div style="font-size:12px;font-weight:800;color:'+(on?'var(--green)':'var(--amber)')+'">'+(on?'\u2713 Sending is LIVE \u2014 the CRM sends by itself':'Relay connected, sending NOT live \u2014 Send opens WhatsApp for you to press send')+'</div>'+
+      '<div style="font-size:11px;color:var(--dim);margin:3px 0 6px">Switch it live only once a test message has really arrived on a phone'+(CHANNELS.liveAt?' \u00b7 last changed '+escHtml(CHANNELS.liveAt)+(CHANNELS.liveBy?' by '+escHtml(CHANNELS.liveBy):''):'')+'.</div>'+
+      '<button class="btn btn-sm '+(on?'btn-ghost':'btn-gold')+'" onclick="setWaLive('+(!on)+')">'+(on?'Switch sending off':'Switch sending LIVE')+'</button></div>':'')+
     '<div style="font-size:13px;font-weight:800;color:'+(on?'var(--green)':'var(--amber)')+';margin-bottom:3px">'+
       (on?'\u2713 Relay connected \u2014 messages send themselves and customer messages land in the Inbox'
         :'Not connected \u2014 buttons open WhatsApp for someone to press send')+'</div>'+
@@ -14673,7 +14690,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1820';
+const CRM_BUILD='2026-11-16-1830';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
