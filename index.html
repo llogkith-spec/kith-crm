@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v10.6 \u00b7 16 Nov';
+const BUILD='v10.7 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6530,17 +6530,17 @@ function actH(j){
         '<input type="hidden" id="a-tj" value="'+escHtml(j.tmJob||'')+'"/>'+
         '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">'+
           '<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">'+
-            '<input type="checkbox" id="a-fixed" '+(j.labourFixed?'checked':'')+' onchange="toggleFixedLabour()"/> Fixed price labour (no SRT \u2014 e.g. tyre fit)'+
+            '<input type="checkbox" id="a-fixed" '+((j.labourFixed||sopFixedPriceJob(j))?'checked':'')+' onchange="toggleFixedLabour()"/> '+(sopFixedPriceJob(j)?'Fixed price under the SOP \u2014 no SRT needed':'Fixed price labour (no SRT)')+
           '</label>'+
         '</div>'+
-        '<div id="srt-fields" style="display:'+(j.labourFixed?'none':'flex')+';gap:8px;margin-bottom:8px">'+
+        '<div id="srt-fields" style="display:'+((j.labourFixed||sopFixedPriceJob(j))?'none':'flex')+';gap:8px;margin-bottom:8px">'+
           '<div class="fg" style="flex:1;margin:0"><label class="fl2">Original SRT (hrs) <span class="req">*</span></label>'+
             '<input class="fi2" id="a-srt" type="number" step="0.1" placeholder="e.g. 2.4" value="'+(j.srt||'')+'" oninput="srtPreview()"/></div>'+
           '<div class="fg" style="flex:1;margin:0"><label class="fl2">Hours charged</label>'+
             '<input class="fi2" id="a-srt-charged" type="number" step="0.1" placeholder="if different" value="'+(j.srtCharged||'')+'" oninput="srtPreview()"/></div>'+
           '</div>'+srtBreakdownH(j,true)+'<div>'+
         '</div>'+
-        '<div class="fg" id="srt-src-wrap" style="margin-bottom:8px;display:'+(j.labourFixed?'none':'block')+'"><label class="fl2">SRT source</label>'+
+        '<div class="fg" id="srt-src-wrap" style="margin-bottom:8px;display:'+((j.labourFixed||sopFixedPriceJob(j))?'none':'block')+'"><label class="fl2">SRT source</label>'+
           '<input class="fi2" id="a-srt-src" placeholder="HaynesPro operation / code" value="'+escHtml(j.srtSource||'')+'"/></div>'+
         '<div id="srt-preview" style="font-size:11px;color:var(--dim);margin-bottom:10px"></div>'+
         '<div class="fg" style="margin-bottom:8px"><label class="fl2" style="display:flex;justify-content:space-between;align-items:center">Labour Description <span class="req">*</span>'+
@@ -9157,6 +9157,16 @@ function renderShiftBar(){
   if(board&&board.parentNode){board.parentNode.insertBefore(bar,board);}
 }
 
+// Is this labour a fixed price under the SOP? Breakdown lines marked fixed
+// (Brain tyre fitting), or work that is one of the SOP's fixed-price items.
+const SOP_FIXED_RX=/\b(tyre fit\w*|fit\w* (a |the |\d+ )?tyres?|tyres? fit\w*|puncture|mot\b|m\.o\.t|remap|stage [12]\b|recovery|collect(ion)? and return|diagnostic|diag\b|wheel alignment|tracking|valet)\b/i;
+function sopFixedPriceJob(j){
+  const lines=(typeof srtLines==='function')?srtLines(j):[];
+  if(lines.length&&lines.every(l=>l.fixed))return true;
+  if(lines.length&&lines.some(l=>!l.fixed&&(parseFloat(l.book)||0)>0))return false;
+  const txt=String(j.labourDesc||'')+' '+String(j.work||'');
+  return SOP_FIXED_RX.test(txt)&&!(lines.length&&lines.some(l=>!l.fixed));
+}
 function noLabourDone(){
   const j=gj();if(!j)return;
   const tj=document.getElementById('a-tj')?.value.trim();
@@ -11635,9 +11645,12 @@ function labourDone(){
   const desc=document.getElementById('a-labour-desc')?.value.trim();
   const cost=parseFloat(document.getElementById('a-labour-cost')?.value);
   if(isBodyJob(j)&&!j.bodySize){alert('Bodywork: pick the vehicle size first \u2014 Small, Medium, Large or Van.');return;}
-  const fixedLab=!!document.getElementById('a-fixed')?.checked;
   const srt=parseFloat(document.getElementById('a-srt')?.value);
-  if(!fixedLab&&(isNaN(srt)||srt<=0)){alert('Enter the original SRT (book hours), or tick "Fixed price labour" if there is no book time.');return;}
+  // 16 Nov 2026: the CRM knows the SOP fixed-price items (tyre fitting, MOT,
+  // diagnostics, remaps, recovery…) — no tick box needed for them.
+  const autoFixed=sopFixedPriceJob(j);
+  const fixedLab=!!document.getElementById('a-fixed')?.checked||(autoFixed&&(isNaN(srt)||srt<=0));
+  if(!fixedLab&&(isNaN(srt)||srt<=0)){alert('Enter the original SRT (book hours) for this work.');return;}
   if(!desc){alert('Enter labour description.');return;}
   if(isNaN(cost)||cost<=0){alert('Enter labour total amount.');return;}
   j.assignedEstimator=estimator;
