@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v11.4 \u00b7 16 Nov';
+const BUILD='v11.5 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6336,7 +6336,7 @@ function estDocData(j){
     const blended=(j.labourCost&&j.srtCharged)?j.labourCost/j.srtCharged:70;
     lines.forEach(l=>{
       if(l.fixed){const fq=parseFloat(l.qty)||1,ft=parseFloat(l.labour)||0;
-        labour.push({code:l.noVat?'MOT':'LAB1 - BASIC',desc:String(l.op||'Fixed price').replace(/\s*\(fixed.*\)$/,''),qty:fq,unit:ft/fq,total:r2(ft),noVat:!!l.noVat});return;}
+        labour.push({code:l.code||(l.noVat?'MOT':'LAB1 - BASIC'),desc:String(l.op||'Fixed price').replace(/\s*\(fixed.*\)$/,''),qty:fq,unit:ft/fq,total:r2(ft),noVat:!!l.noVat});return;}
       const q=parseFloat(l.charged)||parseFloat(l.book)||0;
       const tot=l.labour!=null?parseFloat(l.labour):q*blended;
       labour.push({code:estLabourCode(q?tot/q:blended),desc:l.op||'Labour',qty:q,unit:q?tot/q:tot,total:r2(tot)});
@@ -9797,6 +9797,75 @@ function brainFixSop(j){
   });
   return ch;
 }
+// ── BODYWORK IN THE BRAIN PRE-FILL (16 Nov 2026) ────────────────────
+// Bodywork is never hours × rate. It is priced like the website / intake
+// estimate: a price per panel (by vehicle size), dearest panel full and the
+// rest 20% off, 25% off painting on cars over 10 years old, dent
+// straightening on top (£70 shallow … £300 bad), blending £50 a side (£100 into
+// a door). Trim removal / refit is part of the panel job.
+const BODY_CAT={small:'5-seater',medium:'7-seater / SUV',large:'9-seater van',van:'Large van'};
+function bodyEng(){const K=window.KITH||{};return {base:K.PANEL_BASE||{'Roof':400,'Boot / tailgate':350,'Front bumper':320,'Bonnet':300,'Door (each)':300,'Rear bumper':275,'Front quarter panel':275,'Rear quarter panel':275,'Trim / moulding':200,'Sliding door':300},
+  uplift:K.PANEL_UPLIFT||{'5-seater':0,'7-seater / SUV':40,'9-seater van':80,'Large van':100},disc:(K.MULTI_PANEL_DISCOUNT!=null?K.MULTI_PANEL_DISCOUNT:0.2)};}
+function panelOf(t){
+  t=String(t||'').toLowerCase();
+  if(/trim|moulding|molding/.test(t)&&!/\bpanel\b/.test(t))return 'Trim / moulding';
+  if(/sliding door/.test(t))return 'Sliding door';
+  if(/rear quarter|rear wing|quarter panel.*rear|rear.*quarter/.test(t))return 'Rear quarter panel';
+  if(/front quarter|front wing|\bwing\b/.test(t))return 'Front quarter panel';
+  if(/\bdoor\b/.test(t))return 'Door (each)';
+  if(/bonnet|hood/.test(t))return 'Bonnet';
+  if(/\broof\b/.test(t))return 'Roof';
+  if(/boot|tailgate/.test(t))return 'Boot / tailgate';
+  if(/front bumper/.test(t))return 'Front bumper';
+  if(/rear bumper|back bumper/.test(t))return 'Rear bumper';
+  if(/\bbumper\b/.test(t))return 'Front bumper';
+  if(/trim|moulding|molding/.test(t))return 'Trim / moulding';
+  return null;
+}
+function vehAgeYears(j){
+  const y=parseInt((j.dvla&&j.dvla.yearOfManufacture)||j.year||0);
+  return y>1950?(new Date().getFullYear()-y):0;
+}
+function brainFixBody(j){
+  const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
+  if(!(typeof isBodyJob==='function'&&isBodyJob(j)))return false;
+  const E=bodyEng(), cat=BODY_CAT[j.bodySize]||'5-seater', up=E.uplift[cat]||0, old=vehAgeYears(j)>10;
+  let ch=false;const painted=[];
+  ai.jobs.forEach(bj=>{
+    const lab=String(bj.job_label||bj.job_normalised||'');
+    const panel=panelOf(lab);
+    if(!panel||bj.fixedTyre||bj.fixedDiag||bj.fixedMot)return;
+    const paint=/paint|respray|refinish|scratch|scuff|dent|chip|crack|repair/i.test(lab);
+    // trim / moulding just taken off and put back = part of the panel job
+    if(panel==='Trim / moulding'&&!/paint|respray|refinish/i.test(lab)){
+      bj.fixedBody=true;bj.srt_hours=0;bj.labour_ex_vat=0;bj.tier='BODY';bj.bodyNote='included';
+      bj.srt_source='Included in the panel price (trim off and refit) — a new trim goes on the parts list if it is damaged';
+      ch=true;return;
+    }
+    if(!paint&&panel!=='Trim / moulding')return;
+    let price=(E.base[panel]!=null?E.base[panel]:300)+up;
+    if(old)price=Math.round(price*0.75*100)/100;
+    let dent=0;
+    if(/dent/i.test(lab)){
+      dent=/shallow|small|ding|minor|light/i.test(lab)?70:/large|bad|deep|crease|severe|big/i.test(lab)?300:150;
+      try{const d=(j.damage||[]).find(x=>panelOf(x.label)===panel&&x.mark&&x.mark.size);
+        if(d)dent={small:70,medium:150,large:300}[String(d.mark.size).toLowerCase()]||dent;}catch(e){}
+    }
+    const blend=/blend/i.test(lab)?(/door/i.test(lab.split(/blend/i)[1]||'')?100:50):0;
+    bj.fixedBody=true;bj.bodyPanel=panel;bj.panelPrice=price;bj.dentPrice=dent;bj.blendPrice=blend;
+    bj.srt_hours=0;bj.tier='BODY';
+    painted.push(bj);
+    ch=true;
+  });
+  // dearest panel full, every other panel 20% off (painting only — dent and blend extras stay full)
+  painted.sort((a,b)=>b.panelPrice-a.panelPrice).forEach((bj,ix)=>{
+    const p=ix===0?bj.panelPrice:Math.round(bj.panelPrice*(1-E.disc)*100)/100;
+    bj.labour_ex_vat=Math.round((p+bj.dentPrice+bj.blendPrice)*100)/100;
+    bj.srt_source=bj.bodyPanel+' ('+cat+') £'+p.toFixed(2)+(ix?' (−20% second panel)':'')+(old?' · 25% off, over 10 years old':'')+
+      (bj.dentPrice?' + dent straightening £'+bj.dentPrice:'')+(bj.blendPrice?' + blend £'+bj.blendPrice:'')+' — SOP panel price, not hours';
+  });
+  return ch;
+}
 function brainPrefillH(j){
   if(!j||j.stage!=='labour')return '';
   if(j.brainPrefillDismissedAt)return '';
@@ -9808,7 +9877,7 @@ function brainPrefillH(j){
   }
   const ai = j.brainAI;
   if(!ai||!ai.jobs||!ai.jobs.length)return '';
-  if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)){try{save(j);}catch(e){}}
+  if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)|brainFixBody(j)){try{save(j);}catch(e){}}
   const applied = !!j.brainAppliedAt;
   const firmN = ai.jobs.filter(b=>b.is_firm).length;
   const totN = ai.jobs.length;
@@ -9818,7 +9887,7 @@ function brainPrefillH(j){
   const rows = ai.jobs.map((bj,i) => {
     const firm = !!bj.is_firm;
     const verified = !!(j.brainVerified&&j.brainVerified[bj.job_normalised]);
-    const chip = (bj.fixedTyre||bj.fixedDiag||bj.fixedMot)
+    const chip = (bj.fixedTyre||bj.fixedDiag||bj.fixedMot||bj.fixedBody)
       ? '<span style="background:var(--green);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">FIXED</span>'
       : firm
       ? '<span style="background:var(--green);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">FIRM</span>'
@@ -9838,6 +9907,7 @@ function brainPrefillH(j){
           Object.keys(diagTiers()).map(t=>'<option value="'+escHtml(t)+'"'+(t===bj.diagTier?' selected':'')+'>'+escHtml(t.replace(/ diagnostic$/i,''))+' \u00a3'+diagTiers()[t]+'</option>').join('')+'</select></div>':
       bj.fixedTyre?'<div style="text-align:right;font-size:11px;color:var(--dim)">fixed \u00d7'+(bj.tyreQty||1)+'</div>':
       bj.fixedMot?'<div style="text-align:right;font-size:11px;color:var(--dim)">fixed \u00b7 no VAT</div>':
+      bj.fixedBody?'<div style="text-align:right;font-size:11px;color:var(--dim)">'+(bj.bodyNote==='included'?'included':'per panel')+'</div>':
       '<div style="text-align:right">'+
         '<input type="number" step="0.1" min="0" value="'+srtH.toFixed(1)+'" '+(applied?'disabled':'')+' '+
           'style="width:70px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px 6px;font-family:inherit;font-size:13px;color:var(--fg);text-align:right" '+
@@ -9847,7 +9917,7 @@ function brainPrefillH(j){
       '<div style="text-align:right;font-family:ui-monospace,monospace;font-size:13px;font-weight:600;color:var(--gold)">£'+Math.round(bj.labour_ex_vat||0)+'</div>'+
       '<div style="display:flex;gap:4px;justify-content:flex-end;align-items:center">'+
         chip +
-        (!bj.fixedTyre&&!bj.fixedDiag&&!bj.fixedMot&&!firm&&!verified&&!applied?' <button onclick="brainVerifySrt(\''+j.id+'\','+i+')" style="background:var(--gold);color:#000;border:none;padding:3px 8px;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer">✓</button>':'')+
+        (!bj.fixedTyre&&!bj.fixedDiag&&!bj.fixedMot&&!bj.fixedBody&&!firm&&!verified&&!applied?' <button onclick="brainVerifySrt(\''+j.id+'\','+i+')" style="background:var(--gold);color:#000;border:none;padding:3px 8px;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer">✓</button>':'')+
       '</div>'+
     '</div>';
   }).join('');
@@ -9938,8 +10008,9 @@ window.brainApplyToJob = function(jobId){
   // charged hours carry the SOP multiplier / minimum. Keep one line per job
   // so the breakdown shows book vs charged, and the rate reads right.
   const rates = (KITH_SOP&&KITH_SOP.rates)||{LOW:50,MED:60,TOP:70,BODY:90};
-  try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);addTyreParts(j);}catch(e){}
+  try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainFixBody(j);addTyreParts(j);}catch(e){}
   j.srtLines = inc.map(b=>{
+    if(b.fixedBody)return {op:String(b.job_label||b.bodyPanel||'Bodywork'),book:0,charged:0,qty:1,fixed:true,code:'BODY',labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.labour_ex_vat)||0,src:'fixed',by:brainWho(),at:ts()};
     if(b.fixedMot)return {op:String(b.job_label||'MOT'),book:0,charged:0,qty:1,fixed:true,noVat:true,labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.labour_ex_vat)||0,src:'fixed',by:brainWho(),at:ts()};
     if(b.fixedDiag)return {op:String(b.diagTier||'Diagnostic'),book:0,charged:0,qty:1,fixed:true,labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.labour_ex_vat)||0,src:'fixed',by:brainWho(),at:ts()};
     if(b.fixedTyre)return {op:'Tyre fitting \u00d7'+(b.tyreQty||1)+' (fixed \u00a3'+tyreFitEach().toFixed(2)+' each)',book:0,charged:0,qty:b.tyreQty||1,fixed:true,labour:parseFloat(b.labour_ex_vat)||0,rate:tyreFitEach(),src:'fixed',by:brainWho(),at:ts()};
