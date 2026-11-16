@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v15.7 \u00b7 16 Nov';
+const BUILD='v15.8 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -12495,9 +12495,9 @@ const AUTO_RULES=[
     when:j=>!!j.bookedFor&&!skipsOrders(j) },
 
   { id:'booked-skip-arrival', from:'booked', to:afterOrdersLand,
-    label:'Booked \u2192 Vehicle Check-In on the day, for jobs with nothing to order (no parts, no subcontractor) or marked "no POs or SOs"',
-    why:'no ordering needed \u2014 booking day, car due in today',
-    when:j=>skipsOrders(j)&&!!j.bookedFor&&arrivalDue(j) },
+    label:'Booked \u2192 Vehicle Check-In straight away, for jobs with nothing to order (no parts, no subcontractor) or marked "no POs or SOs"',
+    why:'nothing to order \u2014 waiting for the car on its booking day',
+    when:j=>skipsOrders(j)&&!!j.bookedFor },
 
   { id:'po-all-raised', from:'po', to:nextOrderStage,
     label:'POs to Raise \u2192 SOs to Raise (if an SO is needed) or POs/SOs Raised once every part is on an order',
@@ -12567,7 +12567,8 @@ function autoSkipJob(j){
   if(!j||j.mergedInto||j.stage==='lost'||j.autoHold)return true;
   if(typeof isOld3Aug==='function'&&isOld3Aug(j))return true;   // left alone until Logkith decides
   // A booking more than a week gone is old work, not a car due in — don't shuffle it
-  if(['booked','po','so','raised','soraised'].includes(j.stage)&&j.bookedFor){
+  // 16 Nov 2026: nothing waits in Booked once it has a date — Booked always moves on
+  if(['po','so','raised','soraised'].includes(j.stage)&&j.bookedFor){
     const t=new Date(j.bookedFor+'T00:00:00').getTime();
     if(!isNaN(t)&&Date.now()-t>7*864e5)return true;
   }
@@ -12658,9 +12659,9 @@ function autoPilot(){
   });}catch(e){}
   // jobs already sitting in the PO / SO stages with nothing to order go back to Booked
   try{jobs.forEach(j=>{if(j&&!j.mergedInto&&['po','so','raised','soraised'].includes(j.stage)&&!j.skipOrders&&noOrdersNeeded(j)){
-    const from=j.stage;j.stage='booked';j.stageAt=Date.now();try{stampStage(j,'booked');}catch(e){}
-    j.log=j.log||[];j.log.push({t:ts2(),s:'\u2192 Booked \u2014 nothing to order (no parts, no subcontractor), so no PO/SO stages; goes to Check-In on its day'});
-    try{stageMoved(j,from,'booked');}catch(e){}save(j);}});}catch(e){}
+    const from=j.stage,to=afterOrdersLand(j)||'checkin';j.stage=to;j.stageAt=Date.now();try{stampStage(j,to);}catch(e){}
+    j.log=j.log||[];j.log.push({t:ts2(),s:'\u2192 '+stg(to).label+' \u2014 nothing to order (no parts, no subcontractor), so no PO/SO stages'});
+    try{stageMoved(j,from,to);}catch(e){}save(j);}});}catch(e){}
   try{const DONE_TO_ACC=['MWQ103038','MWQ103385','MWQ103381','MWQ103343','MWQ103494','MWQ103010'];
     jobs.forEach(j=>{if(j&&!j.mergedInto&&DONE_TO_ACC.includes(String(j.tmJob||'').toUpperCase().replace(/\s/g,''))&&!j.doneToAcc1&&!['accounts','receivable','review','followup','lost'].includes(j.stage)){
       const from=j.stage;j.doneToAcc1=true;j.stage='accounts';j.stageAt=Date.now();try{stampStage(j,'accounts');}catch(e){}
@@ -14606,7 +14607,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1745';
+const CRM_BUILD='2026-11-16-1750';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
