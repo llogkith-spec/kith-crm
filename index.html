@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v10.1 \u00b7 16 Nov';
+const BUILD='v10.2 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6298,6 +6298,8 @@ function estDocData(j){
   if(lines.length){
     const blended=(j.labourCost&&j.srtCharged)?j.labourCost/j.srtCharged:70;
     lines.forEach(l=>{
+      if(l.fixed){const fq=parseFloat(l.qty)||1,ft=parseFloat(l.labour)||0;
+        labour.push({code:'LAB1 - BASIC',desc:String(l.op||'Fixed price').replace(/\s*\(fixed.*\)$/,''),qty:fq,unit:ft/fq,total:r2(ft)});return;}
       const q=parseFloat(l.charged)||parseFloat(l.book)||0;
       const tot=l.labour!=null?parseFloat(l.labour):q*blended;
       labour.push({code:estLabourCode(q?tot/q:blended),desc:l.op||'Labour',qty:q,unit:q?tot/q:tot,total:r2(tot)});
@@ -9223,6 +9225,7 @@ function labourDescFromLines(j){
   return lines.map(l=>{
     const b=parseFloat(l.book)||0,c=parseFloat(l.charged)||0,v=l.labour!=null?parseFloat(l.labour):c*rate;
     // customer-facing: charged hours only, never the book time
+    if(l.fixed)return (l.op||'Fixed price')+' \u2014 \u00a3'+v.toFixed(2);
     const h=(c||b);
     return (l.op||'Operation')+' \u2014 '+h.toFixed(2).replace(/\.?0+$/,'')+'h \u2014 \u00a3'+v.toFixed(2);
   }).join('\n')+'\nTotal: '+(srtLinesTotal(j,'charged')||srtLinesTotal(j,'book')).toFixed(2).replace(/\.?0+$/,'')+'h \u2014 \u00a3'+
@@ -9519,6 +9522,50 @@ function brainMaybeFire(j){
 // corrected SRT writes back to kith_srt_cache (the learning loop). One
 // "Apply to job" rollup sets j.srt / j.labourCost so labourH() renders
 // normally from there.
+// ── TYRES IN THE BRAIN PRE-FILL (16 Nov 2026) ───────────────────────
+// Tyre fitting is a fixed £20 + VAT per tyre (SOP tyreFitEach) — no SRT,
+// no multiplier, no minimum. The tyre itself is a PART for the parts team
+// to price (net cost, never marked up), not labour.
+const TYRE_FIT_RX=/\btyres?\b/i, TYRE_NOT_FIT_RX=/puncture|repair|pressure|tpms(?!.*fit)|sensor|valve only|check/i;
+function tyreFitEach(){try{return parseFloat(KITH_SOP&&KITH_SOP.tyreFitEach)||20;}catch(e){return 20;}}
+function tyreQtyFrom(t){
+  t=String(t||'').toLowerCase();
+  let m=t.match(/(\d+)\s*(?:x\s*)?tyres?/)||t.match(/x\s*(\d+)/)||t.match(/(\d+)\s*x\b/);
+  if(m)return Math.max(1,Math.min(8,parseInt(m[1])));
+  if(/\b(four|all four|4 tyres|full set|set of four)\b/.test(t))return 4;
+  if(/\b(three)\b/.test(t))return 3;
+  if(/\b(two|pair|both|front tyres|rear tyres)\b/.test(t))return 2;
+  return 1;
+}
+function tyreSizeFrom(t){const m=String(t||'').match(/\b(\d{3}\/\d{2}\s*Z?R\s?\d{2}[^,;)]*)/i);return m?m[1].trim().replace(/\s+/g,' '):'';}
+function brainFixTyres(j){
+  const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
+  let ch=false;
+  ai.jobs.forEach(bj=>{
+    const lab=String(bj.job_label||bj.job_normalised||'');
+    if(!TYRE_FIT_RX.test(lab)||TYRE_NOT_FIT_RX.test(lab)||!/fit|suppl|replac|new|change/i.test(lab))return;
+    const q=tyreQtyFrom(lab+' '+(j.work||'')), each=tyreFitEach(), tot=q*each;
+    if(bj.fixedTyre&&bj.labour_ex_vat===tot)return;
+    bj.fixedTyre=true;bj.tyreQty=q;bj.srt_hours=0;bj.labour_ex_vat=tot;bj.tier='TYRE';
+    bj.srt_source='Fixed tyre fitting \u2014 \u00a3'+each.toFixed(2)+' + VAT per tyre \u00d7 '+q+' (SOP). The tyre itself goes to parts to price.';
+    ch=true;
+  });
+  return ch;
+}
+// Tyres the Brain found become parts lines for the parts team to price
+function addTyreParts(j){
+  const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return 0;
+  j.parts=j.parts||[];let n=0;
+  ai.jobs.filter(b=>b.fixedTyre).forEach(bj=>{
+    const lab=String(bj.job_label||'');
+    const size=tyreSizeFrom(lab)||tyreSizeFrom(j.work);
+    if(j.parts.some(p=>/tyre/i.test(String(p.name||''))))return;
+    j.parts.push({name:'Tyre'+(size?' '+size:''),num:'',qty:bj.tyreQty||1,price1:'',price2:'',price3:'',supplier1:'',supplier2:'',supplier3:'',eta1:'',eta2:'',eta3:'',status:'pending',fromBrain:true});
+    n++;
+  });
+  if(n){j.log=j.log||[];j.log.push({t:ts(),s:'\ud83d\udede Tyre added to the parts list for the parts team to price (no markup)'});}
+  return n;
+}
 function brainPrefillH(j){
   if(!j||j.stage!=='labour')return '';
   if(j.brainPrefillDismissedAt)return '';
@@ -9529,6 +9576,7 @@ function brainPrefillH(j){
   }
   const ai = j.brainAI;
   if(!ai||!ai.jobs||!ai.jobs.length)return '';
+  if(brainFixTyres(j)){try{save(j);}catch(e){}}
   const applied = !!j.brainAppliedAt;
   const firmN = ai.jobs.filter(b=>b.is_firm).length;
   const totN = ai.jobs.length;
@@ -9538,7 +9586,9 @@ function brainPrefillH(j){
   const rows = ai.jobs.map((bj,i) => {
     const firm = !!bj.is_firm;
     const verified = !!(j.brainVerified&&j.brainVerified[bj.job_normalised]);
-    const chip = firm
+    const chip = bj.fixedTyre
+      ? '<span style="background:var(--green);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">FIXED</span>'
+      : firm
       ? '<span style="background:var(--green);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">FIRM</span>'
       : (verified
         ? '<span style="background:var(--green);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">✓ VERIFIED</span>'
@@ -9549,16 +9599,17 @@ function brainPrefillH(j){
         '<div style="font-size:13px;font-weight:600;color:var(--fg)">'+escHtml(bj.job_label||bj.job_normalised)+'</div>'+
         '<div style="font-size:10px;color:var(--faint);margin-top:2px">'+escHtml(bj.srt_source||'')+'</div>'+
       '</div>'+
+      (bj.fixedTyre?'<div style="text-align:right;font-size:11px;color:var(--dim)">fixed \u00d7'+(bj.tyreQty||1)+'</div>':
       '<div style="text-align:right">'+
         '<input type="number" step="0.1" min="0" value="'+srtH.toFixed(1)+'" '+(applied?'disabled':'')+' '+
           'style="width:70px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px 6px;font-family:inherit;font-size:13px;color:var(--fg);text-align:right" '+
           'id="brh-'+j.id+'-'+i+'" onchange="brainEditSrt(\''+j.id+'\','+i+',this.value)">'+
         '<span style="font-size:10px;color:var(--faint);margin-left:3px">h</span>'+
-      '</div>'+
+      '</div>')+
       '<div style="text-align:right;font-family:ui-monospace,monospace;font-size:13px;font-weight:600;color:var(--gold)">£'+Math.round(bj.labour_ex_vat||0)+'</div>'+
       '<div style="display:flex;gap:4px;justify-content:flex-end;align-items:center">'+
         chip +
-        (!firm&&!verified&&!applied?' <button onclick="brainVerifySrt(\''+j.id+'\','+i+')" style="background:var(--gold);color:#000;border:none;padding:3px 8px;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer">✓</button>':'')+
+        (!bj.fixedTyre&&!firm&&!verified&&!applied?' <button onclick="brainVerifySrt(\''+j.id+'\','+i+')" style="background:var(--gold);color:#000;border:none;padding:3px 8px;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer">✓</button>':'')+
       '</div>'+
     '</div>';
   }).join('');
@@ -9648,7 +9699,9 @@ window.brainApplyToJob = function(jobId){
   // charged hours carry the SOP multiplier / minimum. Keep one line per job
   // so the breakdown shows book vs charged, and the rate reads right.
   const rates = (KITH_SOP&&KITH_SOP.rates)||{LOW:50,MED:60,TOP:70,BODY:90};
+  try{brainFixTyres(j);addTyreParts(j);}catch(e){}
   j.srtLines = j.brainAI.jobs.map(b=>{
+    if(b.fixedTyre)return {op:'Tyre fitting \u00d7'+(b.tyreQty||1)+' (fixed \u00a3'+tyreFitEach().toFixed(2)+' each)',book:0,charged:0,qty:b.tyreQty||1,fixed:true,labour:parseFloat(b.labour_ex_vat)||0,rate:tyreFitEach(),src:'fixed',by:brainWho(),at:ts()};
     const book=parseFloat(b.srt_hours)||0, lab=parseFloat(b.labour_ex_vat)||0;
     const rate=rates[b.tier]||rates.TOP||70;
     const charged=rate>0?Math.round(lab/rate*100)/100:book;
