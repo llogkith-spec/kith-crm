@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v17.2 \u00b7 16 Nov';
+const BUILD='v17.3 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -11129,7 +11129,8 @@ function rangeWords(t){
 // diagnostic (estimator sets the level) and the repair (priced on its own).
 const DIAG_RX=/\b(diag\w*|health ?check|fault[ -]?find\w*|investigat\w*|inspect\w*|check (why|what)|find (the )?(fault|cause))\b/i;
 function splitWorkParts(work){
-  const segs=String(work||'').split(/\s*(?:,|;|\+|&|\n|\band then\b|\bthen\b|\band\b|\bplus\b|\balso\b)\s*/i)
+  // "DIAGNOSTIC FIRST —" is the intake's safety flag, not a diagnostic the customer asked for
+  const segs=String(work||'').replace(/^\s*DIAGNOSTIC FIRST\s*[\u2014\-:]+\s*/i,'').split(/\s*(?:,|;|\+|&|\n|\band then\b|\bthen\b|\band\b|\bplus\b|\balso\b)\s*/i)
     .map(x=>x.replace(/^[\s\-–—.]+|[\s\-–—.]+$/g,'')).filter(x=>x&&x.length>=3);
   const diag=segs.filter(x=>DIAG_RX.test(x));
   // a bit like "bank 2" or "both sides" is part of the line before, not a job of its own
@@ -11146,6 +11147,8 @@ function isDiagOnly(j){
 // The split uses whichever has more, and says what was found and why.
 function splitSource(j){
   const jd=j.judgement||{};
+  // the safety flag alone ("tyres worn to the metal") is not a diagnostic job
+  if(/^\s*DIAGNOSTIC FIRST/i.test(String(j.work||''))&&!splitWorkParts(j.work).diag.length&&jd.split_choice!=='split')return {diag:[],rep:[],fromWords:false};
   if(jd.split_choice==='split'&&Array.isArray(jd.split_diag)&&Array.isArray(jd.split_rep)&&jd.split_diag.length&&jd.split_rep.length)
     return {diag:jd.split_diag,rep:jd.split_rep,fromWords:true,atIntake:true};
   const p=splitWorkParts(j.work);
@@ -11158,7 +11161,8 @@ const DIAG_DONE_RX=/\b(done|already|carried out|paid|completed|did)\b/i;
 function canSplitDiag(j){
   if(!j||j.mergedInto||j.noSplit||j.splitFrom||j.splitInto)return false;
   if(j.judgement&&j.judgement.split_choice==='one')return false;   // intake said keep it as one job
-  if(!['intake','range','labour'].includes(j.stage))return false;
+  // 16 Nov 2026 (Logan): split only at 1 · Intake — never once it is going through the pipeline
+  if(j.stage!=='intake')return false;
   if(Date.now()-(j.stageAt||0)>14*864e5)return false;
   if(j.rangeSentAt||j.rangeYesAt||parseFloat(j.quote)>0||parseFloat(j.srt)>0||j.tmJob)return false;
   try{if(typeof formRowFresh==='function'&&!formRowFresh(j))return false;}catch(e){}
@@ -12937,6 +12941,19 @@ function autoPilot(){
       try{stageMoved(j,from,'accounts');}catch(e){}save(j);}});}catch(e){}
   // v16.7: one line per part — merge copies the Brain added twice
   try{jobs.forEach(j=>{if(j&&!j.mergedInto&&['labour','parts','signoff'].includes(j.stage)&&dedupeParts(j))save(j);});}catch(e){}
+  // v17.3: undo splits made from the intake safety flag ("DIAGNOSTIC FIRST — 1 tyre") — the
+  // tyre was already being priced on the original, so the copy back in Labour is a duplicate
+  try{jobs.forEach(c=>{
+    if(!c||c.mergedInto||!c.splitFrom||c.splitUndone)return;
+    if(!['intake','range','labour'].includes(c.stage)||parseFloat(c.quote)>0||parseFloat(c.srt)>0)return;
+    const p=jobs.find(x=>x&&x.id===c.splitFrom);if(!p)return;
+    if(!/^\s*DIAGNOSTIC FIRST/i.test(String(p.workOriginal||p.work||'')))return;
+    if(splitWorkParts(p.workOriginal||p.work).diag.length)return;      // a real diagnostic was asked for
+    c.splitUndone=true;c.mergedInto=p.id;c.stage='lost';c.stageAt=Date.now();c.lostReason='Duplicate \u2014 wrong split, the work is on '+p.id;
+    c.log=c.log||[];c.log.push({t:ts2(),s:'\u21a9 Split undone \u2014 "Diagnostic first" was only the safety flag, so this is the same work as '+p.id+'. Closed as a duplicate.'});
+    if(p.workOriginal)p.work=p.workOriginal;delete p.splitInto;p.noSplit=true;
+    p.log=p.log||[];p.log.push({t:ts2(),s:'\u21a9 Split undone \u2014 the copy '+c.id+' is closed; all the work stays on this job'});
+    save(c);save(p);});}catch(e){}
   // v17.2: MOTs carry no VAT — put right any that picked up 20% at sign-off (£60 for a £50 MOT)
   try{jobs.forEach(j=>{if(!j||j.mergedInto||!j.motRouted||j.motVatFixed||!motOnlyJob(j))return;
     const m=motPrice(j);j.motVatFixed=true;j.vatExempt=true;
@@ -14882,7 +14899,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-2025';
+const CRM_BUILD='2026-11-16-2040';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
