@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v14.1 \u00b7 16 Nov';
+const BUILD='v14.2 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -10836,7 +10836,17 @@ function skipsRange(j){
   return '';
 }
 function _pct(a,p){if(!a.length)return 0;const i=(a.length-1)*p,lo=Math.floor(i),hi=Math.ceil(i);return a[lo]+(a[hi]-a[lo])*(i-lo);}
+function motOnlyJob(j){
+  const t=(String(j.work||'')+' '+String(j.judgement&&j.judgement.customer_words||'')).toLowerCase().replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();
+  if(!/\bmot\b/.test(t))return false;
+  const rest=t.replace(/\b(mot|only|test|class|just|an|a|the|please|needed|need|due|booking|book|in|for|car|vehicle|[0-9]+)\b/g,'').trim();
+  return !rest;
+}
 function brainRange(j){
+  // MOT only: fixed price by class, outside VAT — never a spread (16 Nov 2026)
+  try{if(motOnlyJob(j)){const m=motPrice(j);
+    return {n:1,matches:[],low:m.price,high:m.price,conf:'good',src:'sop',fixed:true,
+      note:'MOT Class '+m.cls+' \u2014 fixed \u00a3'+m.price.toFixed(2)+' (no VAT on an MOT)'};}}catch(e){}
   // Alloy refurb only: count the alloys x the SOP per-alloy price (16 Nov 2026)
   try{if(alloyOnly(j)){const r=alloyRange(j);
     return {n:r.n,matches:[],low:r.lo,high:r.hi,conf:'good',src:'sop',
@@ -10928,6 +10938,10 @@ function brainFallback(j,mine,body,top){
   return {n:top.length,matches:top,why:top.length?'Only '+top.length+' similar job'+(top.length===1?'':'s')+' so far \u2014 not enough to give a range':'Nothing like this priced yet \u2014 brain working on an SRT estimate...'};
 }
 function rangeMsg(j,lo,hi){
+  if(String(lo)===String(hi)&&typeof motOnlyJob==='function'&&motOnlyJob(j))
+    return 'Hi '+firstName(j)+', thanks for getting in touch with '+GARAGE.name+' about your '+vehDesc(j)+'.\n\n'+
+      'An MOT is a fixed \u00a3'+lo+' (there is no VAT on an MOT).\n\n'+
+      'Reply YES and we\u2019ll send you the next available dates.\n\n\u2014 '+GARAGE.name;
   return 'Hi '+firstName(j)+', thanks for getting in touch with '+GARAGE.name+' about your '+vehDesc(j)+'.\n\n'+
     'For '+String(j.work||'this work').replace(/\s+/g,' ').slice(0,140)+', jobs like this usually come to between \u00a3'+lo+' and \u00a3'+hi+' including VAT.\n\n'+
     'If that works for you, just reply YES and we\u2019ll put together your exact quote.\n\n\u2014 '+GARAGE.name;
@@ -11008,14 +11022,17 @@ function replyGuess(t){t=String(t||'');return YES_RE.test(t)?'yes':(NO_RE.test(t
 
 function rangePanelH(j){
   const b=brainRange(j);
-  const lo=j.rangeLow||b.low||'', hi=j.rangeHigh||b.high||'';
+  const lo=b.fixed?b.low:(j.rangeLow||b.low||''), hi=b.fixed?b.high:(j.rangeHigh||b.high||'');
   const sent=!!j.rangeSentAt;
   const num=estPhone(j);
   const cur=v=>'<span style="font-size:22px;font-weight:900">\u00a3'+v+'</span>';
   return photoStripH(j)+
   '<div style="background:var(--surface2);border:1px solid var(--gold);border-radius:var(--r);padding:11px 13px;margin-bottom:10px">'+
     '<div style="font-size:11px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">\ud83e\udde0 Estimator brain \u2014 price range</div>'+
-    (b.low
+    (b.fixed
+      ?'<div style="display:flex;align-items:baseline;gap:8px">'+cur(b.low)+'<span style="font-size:11px;color:var(--dim)">fixed price \u00b7 no VAT</span></div>'+
+       '<div style="font-size:11px;color:var(--dim);margin-top:3px">'+escHtml(b.note||'')+'</div>'
+    :b.low
       ?'<div style="display:flex;align-items:baseline;gap:8px">'+cur(b.low)+'<span style="color:var(--dim)">to</span>'+cur(b.high)+'<span style="font-size:11px;color:var(--dim)">inc VAT</span></div>'+
        '<div style="font-size:11px;color:var(--dim);margin-top:3px">'+(b.note?escHtml(b.note)+' \u00b7 <span style="color:var(--amber)">check it</span>':'From '+b.n+' similar job'+(b.n===1?'':'s')+' KITH has priced \u00b7 '+(b.conf==='good'?'<span style="color:var(--green)">good match</span>':'<span style="color:var(--amber)">rough \u2014 check it</span>'))+'</div>'
       :'<div style="font-size:12px;color:var(--amber);font-weight:700">'+escHtml(b.why)+'.</div><div style="font-size:11px;color:var(--dim);margin-top:2px">Type a range below from experience. The brain keeps it, and uses it the next time similar work comes in.</div>')+
@@ -14231,7 +14248,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1335';
+const CRM_BUILD='2026-11-16-1340';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
