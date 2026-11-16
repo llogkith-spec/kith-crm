@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v10.3 \u00b7 16 Nov';
+const BUILD='v10.4 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -9558,7 +9558,7 @@ function brainFixTyres(j){
 function addTyreParts(j){
   const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return 0;
   j.parts=j.parts||[];let n=0;
-  ai.jobs.filter(b=>b.fixedTyre).forEach(bj=>{
+  ai.jobs.filter(b=>b.fixedTyre&&!b.excluded).forEach(bj=>{
     const lab=String(bj.job_label||'');
     const size=tyreSizeFrom(lab)||tyreSizeFrom(j.work);
     if(j.parts.some(p=>/tyre/i.test(String(p.name||''))))return;
@@ -9567,6 +9567,12 @@ function addTyreParts(j){
   });
   if(n){j.log=j.log||[];j.log.push({t:ts(),s:'\ud83d\udede Tyre added to the parts list for the parts team to price (no markup)'});}
   return n;
+}
+function brainToggleLine(id,i,on){
+  const j=_brainJob(id);if(!j||!j.brainAI||!j.brainAI.jobs[i])return;
+  const bj=j.brainAI.jobs[i];bj.excluded=!on;
+  j.log=j.log||[];j.log.push({t:ts(),s:'\ud83e\udde0 Brain line '+(on?'put back':'left out')+': '+(bj.job_label||bj.job_normalised||'')+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);renderDetail();
 }
 function brainPrefillH(j){
   if(!j||j.stage!=='labour')return '';
@@ -9582,8 +9588,8 @@ function brainPrefillH(j){
   const applied = !!j.brainAppliedAt;
   const firmN = ai.jobs.filter(b=>b.is_firm).length;
   const totN = ai.jobs.length;
-  const totSrt = ai.jobs.reduce((s,b)=>s+(parseFloat(b.srt_hours)||0),0);
-  const totLabour = ai.jobs.reduce((s,b)=>s+(parseFloat(b.labour_ex_vat)||0),0);
+  const totSrt = ai.jobs.reduce((s,b)=>s+(b.excluded?0:(parseFloat(b.srt_hours)||0)),0);
+  const totLabour = ai.jobs.reduce((s,b)=>s+(b.excluded?0:(parseFloat(b.labour_ex_vat)||0)),0);
   const totCard = ai.allFirm?'var(--green)':(firmN>0?'var(--amber)':'var(--gold)');
   const rows = ai.jobs.map((bj,i) => {
     const firm = !!bj.is_firm;
@@ -9596,11 +9602,14 @@ function brainPrefillH(j){
         ? '<span style="background:var(--green);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">✓ VERIFIED</span>'
         : '<span style="background:var(--amber);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">AI EST.</span>');
     const srtH = parseFloat(bj.srt_hours)||0;
-    return '<div style="display:grid;grid-template-columns:1fr 100px 100px 120px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">'+
+    const off=!!bj.excluded;
+    return '<div style="display:grid;grid-template-columns:1fr 100px 100px 120px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)'+(off?';opacity:.4':'')+'">'+
+      '<div style="display:flex;gap:9px;align-items:flex-start">'+
+        '<input type="checkbox" '+(off?'':'checked')+' '+(applied?'disabled':'')+' title="Untick to leave this line out" style="width:17px;height:17px;margin-top:2px;flex-shrink:0;cursor:pointer" onchange="brainToggleLine(\''+j.id+'\','+i+',this.checked)">'+
       '<div>'+
         '<div style="font-size:13px;font-weight:600;color:var(--fg)">'+escHtml(bj.job_label||bj.job_normalised)+'</div>'+
-        '<div style="font-size:10px;color:var(--faint);margin-top:2px">'+escHtml(bj.srt_source||'')+'</div>'+
-      '</div>'+
+        '<div style="font-size:10px;color:var(--faint);margin-top:2px">'+escHtml(bj.srt_source||'')+(off?' \u2014 <b>left out</b>':'')+'</div>'+
+      '</div></div>'+
       (bj.fixedTyre?'<div style="text-align:right;font-size:11px;color:var(--dim)">fixed \u00d7'+(bj.tyreQty||1)+'</div>':
       '<div style="text-align:right">'+
         '<input type="number" step="0.1" min="0" value="'+srtH.toFixed(1)+'" '+(applied?'disabled':'')+' '+
@@ -9695,14 +9704,15 @@ window.brainVerifySrt = async function(jobId, idx){
 // Roll up the pre-fill to the job's single labour fields
 window.brainApplyToJob = function(jobId){
   const j = _brainJob(jobId); if(!j||!j.brainAI)return;
-  const totSrt = j.brainAI.jobs.reduce((s,b)=>s+(parseFloat(b.srt_hours)||0),0);
-  const totLabour = j.brainAI.jobs.reduce((s,b)=>s+(parseFloat(b.labour_ex_vat)||0),0);
+  const inc = j.brainAI.jobs.filter(b=>!b.excluded);
+  const totSrt = inc.reduce((s,b)=>s+(parseFloat(b.srt_hours)||0),0);
+  const totLabour = inc.reduce((s,b)=>s+(parseFloat(b.labour_ex_vat)||0),0);
   // 16 Nov 2026: book time (SRT) and hours CHARGED are different — the
   // charged hours carry the SOP multiplier / minimum. Keep one line per job
   // so the breakdown shows book vs charged, and the rate reads right.
   const rates = (KITH_SOP&&KITH_SOP.rates)||{LOW:50,MED:60,TOP:70,BODY:90};
   try{brainFixTyres(j);addTyreParts(j);}catch(e){}
-  j.srtLines = j.brainAI.jobs.map(b=>{
+  j.srtLines = inc.map(b=>{
     if(b.fixedTyre)return {op:'Tyre fitting \u00d7'+(b.tyreQty||1)+' (fixed \u00a3'+tyreFitEach().toFixed(2)+' each)',book:0,charged:0,qty:b.tyreQty||1,fixed:true,labour:parseFloat(b.labour_ex_vat)||0,rate:tyreFitEach(),src:'fixed',by:brainWho(),at:ts()};
     const book=parseFloat(b.srt_hours)||0, lab=parseFloat(b.labour_ex_vat)||0;
     const rate=rates[b.tier]||rates.TOP||70;
@@ -9712,7 +9722,7 @@ window.brainApplyToJob = function(jobId){
   j.srt = Number(totSrt.toFixed(2));
   j.srtCharged = Number(j.srtLines.reduce((a,l)=>a+l.charged,0).toFixed(2));
   j.labourCost = Number(totLabour.toFixed(2));
-  j.srtSource = 'Brain pre-fill · ' + j.brainAI.jobs.length + ' lines';
+  j.srtSource = 'Brain pre-fill · ' + inc.length + ' lines';
   if(!String(j.labourDesc||'').trim())j.labourDesc=labourDescFromLines(j);
   j.brainAppliedAt = ts();
   j.brainAppliedBy = brainWho();
