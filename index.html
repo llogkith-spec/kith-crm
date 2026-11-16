@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v13.3 \u00b7 16 Nov';
+const BUILD='v13.4 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -9514,6 +9514,12 @@ function removeSrtLine(id,i){
 }
 // Keep the headline SRT figures equal to the sum of the lines
 // The labour breakdown written out as the labour description (16 Nov 2026)
+// Empty, the "No labour required" placeholder, or our own earlier
+// breakdown can be rewritten; anything an estimator typed is kept.
+function labourDescReplaceable(j){
+  const d=String(j.labourDesc||'').trim();
+  return !d||/^no labour( required)?\.?$/i.test(d)||(/\nTotal: /.test(d)&&/ex VAT$/.test(d));
+}
 function labourDescFromLines(j){
   const lines=srtLines(j);if(!lines.length)return '';
   const rate=(j.labourCost&&j.srtCharged)?(j.labourCost/j.srtCharged):70;
@@ -10381,7 +10387,7 @@ window.brainApplyToJob = function(jobId){
   const rates = (KITH_SOP&&KITH_SOP.rates)||{LOW:50,MED:60,TOP:70,BODY:90};
   try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainFixAlloy(j);brainFixBody(j);addTyreParts(j);}catch(e){}
   j.srtLines = inc.map(b=>{
-    if(b.fixedAlloy)return {op:'Alloy wheel refurb',book:0,charged:0,qty:b.alloyQty||1,fixed:true,code:'BODY',labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.alloyEach)||0,src:'fixed',by:brainWho(),at:ts()};
+    if(b.fixedAlloy)return {op:'Alloy wheel refurb \u00d7'+(b.alloyQty||1)+' (\u00a3'+(parseFloat(b.alloyEach)||0).toFixed(0)+' each)',book:0,charged:0,qty:b.alloyQty||1,fixed:true,code:'BODY',labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.alloyEach)||0,src:'fixed',by:brainWho(),at:ts()};
     if(b.fixedBody)return {op:String(b.job_label||b.bodyPanel||'Bodywork'),book:0,charged:0,qty:1,fixed:true,code:'BODY',labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.labour_ex_vat)||0,src:'fixed',by:brainWho(),at:ts()};
     if(b.fixedMot)return {op:String(b.job_label||'MOT'),book:0,charged:0,qty:1,fixed:true,noVat:true,labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.labour_ex_vat)||0,src:'fixed',by:brainWho(),at:ts()};
     if(b.fixedDiag)return {op:String(b.diagTier||'Diagnostic'),book:0,charged:0,qty:1,fixed:true,labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.labour_ex_vat)||0,src:'fixed',by:brainWho(),at:ts()};
@@ -10395,7 +10401,7 @@ window.brainApplyToJob = function(jobId){
   j.srtCharged = Number(j.srtLines.reduce((a,l)=>a+l.charged,0).toFixed(2));
   j.labourCost = Number(totLabour.toFixed(2));
   j.srtSource = 'Brain pre-fill · ' + inc.length + ' lines';
-  if(!String(j.labourDesc||'').trim())j.labourDesc=labourDescFromLines(j);
+  if(labourDescReplaceable(j))j.labourDesc=labourDescFromLines(j);
   j.brainAppliedAt = ts();
   j.brainAppliedBy = brainWho();
   try{ if(j.stage==='labour'&&!j.brainPartsAutoAt)brainAutoParts(j); }catch(e){}
@@ -12236,6 +12242,8 @@ function autoPilot(){
   // quotes that went out from the job (not through Approve) before 16 Nov 12:35 stayed at sign-off
   try{jobs.forEach(j=>{const m=Math.max(j.estimateSentMs||0,j.estimateOpenedMs||0);
     if(j&&['financial','signoff'].includes(j.stage)&&m&&m>=(j.stageAt||0)){estMoveToContacted(j,'the quote already went to the customer on WhatsApp');save(j);}});}catch(e){}
+  // bodywork/fixed-price jobs applied with "No labour required" left in the description
+  try{jobs.forEach(j=>{if(j&&(parseFloat(j.labourCost)||0)>0&&Array.isArray(j.srtLines)&&j.srtLines.length&&/^no labour( required)?\.?$/i.test(String(j.labourDesc||'').trim())&&['labour','parts','financial','signoff'].includes(j.stage)){j.labourDesc=labourDescFromLines(j);save(j);}});}catch(e){}
   try{autoSplitJobs();}catch(e){console.warn('split',e);}
   let moved=0;
   window._batchSave=true;
@@ -14077,7 +14085,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1240';
+const CRM_BUILD='2026-11-16-1245';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
