@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v12.5 \u00b7 16 Nov';
+const BUILD='v12.6 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -4418,7 +4418,7 @@ function cardH(j){
       :(j.estApproved&&approvalStale(j)?'<div style="font-size:9px;font-weight:800;color:var(--amber);margin-bottom:4px">\u26a0 PRICE CHANGED SINCE APPROVAL</div>':''))+
     ((parseFloat(j.refunded)||0)>0?'<div style="font-size:9px;font-weight:800;color:var(--red);margin-bottom:4px">\u21a9 REFUNDED \u00a3'+(parseFloat(j.refunded)||0).toFixed(2)+'</div>':'')+
     (dupeJobsOf(j).length?'<div style="font-size:9px;font-weight:800;color:var(--red);margin-bottom:4px">\u26a0 DUPLICATE \u00d7'+(dupeJobsOf(j).length+1)+'</div>':'')+
-    ((['financial','contact','contacted'].includes(j.stage)&&!((j.estimateDocs||[]).length))
+    ((['contact','contacted'].includes(j.stage)&&!((j.estimateDocs||[]).length))
       ?'<div style="font-size:9px;font-weight:800;color:var(--amber);margin-bottom:4px">\ud83d\udcc4 NO ESTIMATE ATTACHED</div>':'')+
     (function(){const k=custKind(j);
       // Always show something — an unset type is itself worth knowing
@@ -12550,14 +12550,14 @@ function refreshEstimateDocs(j){
 function estimateDocsInner(j,readOnly){
   const docs=j.estimateDocs||[];
   if(estPhone(j))docs.forEach(d=>{try{prefetchEstFile(j,d);}catch(e){}});
-  const nag=(!docs.length&&!readOnly&&['financial','parts'].includes(j.stage))
-    ? '<div style="background:rgba(160,120,20,.18);border:2px solid var(--amber);border-radius:var(--rs);padding:8px 10px;margin-bottom:8px;font-size:11px;color:var(--amber);font-weight:700">'+
-      '\u26a0 Attach the Techman estimate before this goes to the adviser \u2014 they cannot quote the customer without it.</div>'
-    : '';
+  // 16 Nov 2026: quotes go out on our own KITH estimate (attached at sign-off).
+  // A Techman estimate and job number are only needed once the job is booked.
+  const nag='';
+  const booked=['ready','booked','po','raised','so','soraised','checkin','authwait','inprog','done','accounts','receivable','review','followup'].includes(j.stage);
   return '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">'+
     nag+
     '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin-bottom:6px">'+
-      '\ud83d\udcc4 Techman estimate / invoice'+(docs.length?' ('+docs.length+')':'')+'</div>'+
+      '\ud83d\udcc4 '+(booked?'Techman estimate / invoice':'Estimate PDFs')+(docs.length?' ('+docs.length+')':'')+'</div>'+
     (docs.length
       ? docs.map((d,i)=>'<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">'+
           '<a href="'+escHtml(d.url)+'" target="_blank" style="flex:1;min-width:0;font-size:12px;color:var(--gold);text-decoration:none">'+
@@ -12568,7 +12568,7 @@ function estimateDocsInner(j,readOnly){
           (readOnly?'':'<button class="btn btn-ghost btn-xs" style="color:var(--red)" onclick="removeEstimateDoc(\''+j.id+'\','+i+')">\u00d7</button>')+
         '</div>'+tmReadH(j,d,i,readOnly)).join('')+
         (estPhone(j)?'<div class="est-send-st" data-id="'+escHtml(j.id)+'" style="font-size:11px;margin-top:5px;line-height:1.5"></div>':'')
-      : '<div style="font-size:11px;color:var(--faint);margin-bottom:6px">'+(readOnly?'No estimate document attached yet.':'Attach the Techman estimate PDF so the adviser can send it straight to the customer.')+'</div>')+
+      : '<div style="font-size:11px;color:var(--faint);margin-bottom:6px">'+(readOnly?'No estimate document attached yet.':booked?'Attach the Techman estimate / invoice now the job is booked.':'The KITH estimate is attached at sign-off \u2014 no Techman estimate needed until the job is booked.')+'</div>')+
     (readOnly?'':
       '<label class="btn btn-ghost btn-sm" style="display:inline-block;margin-top:6px;cursor:pointer">\ud83d\udcc4 Attach PDF / photo'+
         '<input type="file" accept="application/pdf,image/*" style="display:none" onchange="uploadEstimateDoc(this)"/></label>'+
@@ -13951,7 +13951,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1150';
+const CRM_BUILD='2026-11-16-1155';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
