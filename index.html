@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v16.0 \u00b7 16 Nov';
+const BUILD='v16.1 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -3618,7 +3618,12 @@ async function signOff(id){
   if(_signOffBusy)return;
   const miss=unpricedAsks(j);
   if(miss.length&&!confirm('\u26a0 The customer asked for this, but it is not priced:\n\n'+miss.map(m=>'\u2022 '+m).join('\n')+'\n\nSend the quote without it anyway?'))return;
-  if(String(j.phone||'').trim()&&!kithPdfFresh(j)){
+  // B2B diagnostics: no quote to send — straight on to booking
+  if(b2bDiagNoQuote(j)){
+    if(!confirm('B2B diagnostic \u2014 no quote needs to go to '+(j.name||'the customer')+'.\n\nApprove at \u00a3'+(parseFloat(j.quote)||0).toFixed(2)+' and send it straight to booking?'))return;
+    return b2bDiagApprove(j);
+  }
+  if((String(j.phone||'').trim()||String(j.email||'').trim())&&!kithPdfFresh(j)){
     _signOffBusy=true;
     if(typeof toast==='function')toast('\ud83d\udcc4 Making the estimate PDF\u2026');
     try{await ensureKithEstPdf(j);}catch(e){_signOffBusy=false;
@@ -3627,12 +3632,30 @@ async function signOff(id){
   }
   signOffNow(id);
 }
+function b2bDiagNoQuote(j){
+  if(!j)return false;
+  const trade=j.isB2B||j.fleetAccount||/b2b|trade|fleet/i.test(String((typeof custTypeOf==='function'?custTypeOf(j):'')||j.custType||''));
+  if(!trade)return false;
+  if(realParts(j).length)return false;
+  try{return diagOnlyLabour(j)||isDiagOnly(j);}catch(e){return false;}
+}
+function b2bDiagApprove(j){
+  const from=j.stage;
+  j.signedOff=true;j.signedOffAt=ts();j.signedOffBy=currentUser.name;j.signedOffAmount=parseFloat(j.quote)||0;
+  j.estApproved=j.estApproved||{amount:parseFloat(j.quote)||0,how:'B2B diagnostic \u2014 no quote needed',at:ts(),by:currentUser.name};
+  j.stage='ready';j.stageAt=Date.now();try{stampStage(j,'ready');}catch(e){}
+  j.log=j.log||[];j.log.push({t:ts(),s:'\u2713 Approved \u2014 B2B diagnostic, no quote sent; straight to booking ['+currentUser.name+']'});
+  save(j);try{stageMoved(j,from,'ready');}catch(e){}
+  try{forceRenderDetail();}catch(e){}renderAll();
+  if(typeof toast==='function')toast('\u2713 Approved \u2014 B2B diagnostic, straight to booking');
+}
 function signOffNow(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
   const amt=parseFloat(j.quote)||parseFloat(j.finalEst)||0;
   if(!canSignOff(currentUser)){alert('Only Logan or Joel can sign a quote off.');return;}
-  if(!String(j.phone||'').trim()){
-    alert('\u26d4 No phone number on '+(j.reg||'this job')+'.\n\nThe quote is sent to the customer the moment you approve it, so it needs a number.');
+  const emailOnly=!String(j.phone||'').trim()&&/@/.test(String(j.email||''));
+  if(!String(j.phone||'').trim()&&!emailOnly){
+    alert('\u26d4 No phone number or email on '+(j.reg||'this job')+'.\n\nThe quote is sent to the customer the moment you approve it \u2014 add a mobile or an email (Edit at the top).');
     return;
   }
   // Phone, PDF not downloaded yet: get it first, so the share sheet can
@@ -3648,15 +3671,38 @@ function signOffNow(id){
   }
   const from=j.stage;
   let out;
+  if(emailOnly){
+    const amt0=parseFloat(j.quote)||parseFloat(j.finalEst)||0;
+    if(!amt0){alert('\u26d4 No quote on this job yet.');return;}
+    const jj=JSON.parse(JSON.stringify(j));
+    jj.signedOff=true;jj.signedOffAt=ts();jj.signedOffBy=currentUser.name;jj.signedOffAmount=amt0;jj.quote=amt0;jj.signOffNote='';
+    jj.stage='contacted';jj.stageAt=Date.now();jj.quoteSentVia='email';
+    const msg={id:'M'+Date.now(),kind:'quote',jobId:j.id,email:j.email,status:'queued',at:ts(),by:currentUser.name};
+    jj.msgOutbox=(jj.msgOutbox||[]).concat([msg]);
+    jj.log=(jj.log||[]).concat([{t:ts(),s:'\u2713 Approved at \u00a3'+amt0.toFixed(2)+' \u2014 quote by email (no mobile) ['+currentUser.name+']'}]);
+    out={job:jj,message:msg};
+  }else{
   try{ out=KITHBot.approveAndSend(j,currentUser.name); }
   catch(e){ alert('\u26d4 '+e.message); return; }
+  }
   // copy the approved job back over the one on screen
   Object.keys(out.job).forEach(k=>{ j[k]=out.job[k]; });
   // 6 Oct 2026: until the WhatsApp Business connection is on, the outbox
   // can't send anything, so Approve opens WhatsApp itself in this same
   // tap — message written, Techman PDF attached on a phone. Nothing to type.
   let byHand='';
-  if(!waAuto()){
+  if(emailOnly){
+    // 16 Nov 2026: no mobile, but an email — the quote goes by email with the PDF link
+    const d=estDocFor(j);
+    const body=estimateWAMsg(j).replace(/\*/g,'')+(d?'\n\nYour estimate (PDF): '+d.url:'')+'\n\n'+KITH_CO.name+' \u00b7 '+KITH_CO.tel+' \u00b7 '+KITH_CO.web;
+    window.open('mailto:'+encodeURIComponent(j.email)+'?subject='+encodeURIComponent('Your estimate \u2014 '+(j.reg||'')+' \u2014 KITH Cars')+'&body='+encodeURIComponent(body),'_blank');
+    j.estimateSentAt=ts();j.estimateSentMs=Date.now();j.estimateSentBy=currentUser.name;
+    j.log=j.log||[];j.log.push({t:ts(),s:'\u2709 Estimate emailed to '+j.email+' (email opened with the PDF link) ['+currentUser.name+']'});
+    out.message.status='sent';out.message.sentVia='email (from the CRM, by hand)';
+    j.msgOutbox=(j.msgOutbox||[]).map(m=>m&&m.id===out.message.id?out.message:m);
+    byHand='email';
+  }
+  if(!waAuto()&&!emailOnly){
     const d=estDocFor(j), num=estPhone(j);
     if(num){
       const text=d?estimateWAMsg(j):(out.message.text||estimateWAMsg(j));
@@ -3676,7 +3722,7 @@ function signOffNow(id){
     }
   }
   save(j);
-  queueOutbox(out.message);
+  if(!emailOnly)queueOutbox(out.message);
   try{stampStage(j,'contacted');}catch(e){}
   curId=j.id;lastJobId=j.id;
   try{forceRenderDetail();}catch(e){}
@@ -14627,7 +14673,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1810';
+const CRM_BUILD='2026-11-16-1820';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
