@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v10.5 \u00b7 16 Nov';
+const BUILD='v10.6 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6521,10 +6521,10 @@ function actH(j){
     case 'labour':
       h+=damageMapCrmH(j)+photoStripH(j,true)+bodySizeH(j)+estimateSummaryH(j)+estimateDocsH(j,false);
       h+='<div class="notice n-blue" style="margin-bottom:12px">Estimator: enter the labour hours and list any parts needed for the Parts team to price. No Techman number needed yet \u2014 that comes once the customer approves and it is booked.</div>'+
-        '<div class="fg" style="margin-bottom:8px"><label class="fl2">Assign to Estimator <span class="req">*</span></label>'+
+        '<div class="fg" style="margin-bottom:8px"><label class="fl2">Estimator</label>'+
         '<select class="fsel" id="a-estimator">'+
           '<option value="">— Select Estimator —</option>'+
-          estimatorPickList().map(s=>'<option value="'+s.name+'"'+(j.assignedEstimator===s.name?' selected':'')+'>'+s.icon+' '+estName(s)+'</option>').join('')+
+          estimatorPickList().map(s=>'<option value="'+s.name+'"'+((j.assignedEstimator||(currentUser&&estimatorPickList().some(x=>x.name===currentUser.name)?currentUser.name:''))===s.name?' selected':'')+'>'+s.icon+' '+estName(s)+'</option>').join('')+
         '</select></div>'+
         // 16 Nov 2026: no Techman number at the estimate stage — it is only needed once approved / booked
         '<input type="hidden" id="a-tj" value="'+escHtml(j.tmJob||'')+'"/>'+
@@ -9160,8 +9160,7 @@ function renderShiftBar(){
 function noLabourDone(){
   const j=gj();if(!j)return;
   const tj=document.getElementById('a-tj')?.value.trim();
-  const estimator=document.getElementById('a-estimator')?.value;
-  if(!estimator){alert('Please assign to an estimator first.');return;}
+  const estimator=document.getElementById('a-estimator')?.value||j.assignedEstimator||(currentUser&&currentUser.name)||'';
   if(tj) j.tmJob=tj;
   if(estimator) j.assignedEstimator=estimator;
   j.labourCost=0;
@@ -9235,7 +9234,7 @@ function labourDescFromLines(j){
     if(l.fixed)return (l.op||'Fixed price')+' \u2014 \u00a3'+v.toFixed(2);
     const h=(c||b);
     return (l.op||'Operation')+' \u2014 '+h.toFixed(2).replace(/\.?0+$/,'')+'h \u2014 \u00a3'+v.toFixed(2);
-  }).join('\n')+'\nTotal: '+(srtLinesTotal(j,'charged')||srtLinesTotal(j,'book')).toFixed(2).replace(/\.?0+$/,'')+'h \u2014 \u00a3'+
+  }).join('\n')+'\nTotal: '+((srtLinesTotal(j,'charged')||srtLinesTotal(j,'book'))?(srtLinesTotal(j,'charged')||srtLinesTotal(j,'book')).toFixed(2).replace(/\.?0+$/,'')+'h \u2014 ':'')+'\u00a3'+
     lines.reduce((a,l)=>a+(l.labour!=null?parseFloat(l.labour):(parseFloat(l.charged)||0)*rate),0).toFixed(2)+' ex VAT';
 }
 function fillLabourDesc(id,ask){
@@ -9278,7 +9277,7 @@ function srtBreakdownH(j,editable){
             '<span>Total</span>'+
             '<span style="text-align:right">'+tb.toFixed(1)+'h</span>'+
             '<span style="text-align:right;color:'+(tc>tb+0.049?'var(--amber)':'var(--fg)')+'">'+tc.toFixed(1)+'h</span>'+
-            '<span style="text-align:right;color:var(--gold)">\u00a3'+(tc*rate).toFixed(2)+'</span>'+
+            '<span style="text-align:right;color:var(--gold)">\u00a3'+lines.reduce((a,l)=>a+(l.labour!=null?parseFloat(l.labour)||0:(parseFloat(l.charged)||0)*rate),0).toFixed(2)+'</span>'+
             (editable?'<span></span>':'')+'</div>'+
           '<div style="font-size:10px;color:var(--faint);margin-top:4px">At \u00a3'+rate.toFixed(2)+'/hr'+
             (tc>tb+0.049?' \u00b7 charging '+(tc-tb).toFixed(1)+'h over book':'')+'</div>'+
@@ -11630,11 +11629,11 @@ function renderAutoSettings(){
 
 function labourDone(){
   const j=gj();if(!j)return;
-  const estimator=document.getElementById('a-estimator')?.value;
+  // 16 Nov 2026: whoever is logged in and doing it is the estimator — never ask
+  const estimator=document.getElementById('a-estimator')?.value||j.assignedEstimator||(currentUser&&currentUser.name)||'';
   const tj=document.getElementById('a-tj')?.value.trim();
   const desc=document.getElementById('a-labour-desc')?.value.trim();
   const cost=parseFloat(document.getElementById('a-labour-cost')?.value);
-  if(!estimator){alert('Assign to an estimator first.');return;}
   if(isBodyJob(j)&&!j.bodySize){alert('Bodywork: pick the vehicle size first \u2014 Small, Medium, Large or Van.');return;}
   const fixedLab=!!document.getElementById('a-fixed')?.checked;
   const srt=parseFloat(document.getElementById('a-srt')?.value);
