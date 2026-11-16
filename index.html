@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v9.9 \u00b7 16 Nov';
+const BUILD='v10.0 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -3593,7 +3593,22 @@ async function queueOutbox(msg){
     return true;
   }catch(e){console.warn('outbox:',e);return false;}
 }
-function signOff(id){
+// 16 Nov 2026: make our own estimate PDF first, so the quote goes WITH it
+let _signOffBusy=false;
+async function signOff(id){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
+  if(!currentUser||currentUser.name!=='Logkith'){alert('Only Logkith can sign a quote off.');return;}
+  if(_signOffBusy)return;
+  if(String(j.phone||'').trim()&&!kithPdfFresh(j)){
+    _signOffBusy=true;
+    if(typeof toast==='function')toast('\ud83d\udcc4 Making the estimate PDF\u2026');
+    try{await ensureKithEstPdf(j);}catch(e){_signOffBusy=false;
+      if(!confirm('Could not make the estimate PDF ('+e.message+').\n\nSend the quote without the PDF?'))return;}
+    _signOffBusy=false;
+  }
+  signOffNow(id);
+}
+function signOffNow(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
   const amt=parseFloat(j.quote)||parseFloat(j.finalEst)||0;
   if(!currentUser||currentUser.name!=='Logkith'){alert('Only Logkith can sign a quote off.');return;}
@@ -6340,7 +6355,10 @@ function estDocPanelH(j,open){
   return '<details'+(open?' open':'')+' style="margin-bottom:12px;border:1px solid var(--gold);border-radius:var(--r);padding:8px 10px;background:var(--surface2)">'+
     '<summary style="cursor:pointer;font-weight:800;color:var(--gold);font-size:13px">📄 KITH Cars estimate — '+escHtml(estDocNo(j))+' · £'+d.total.toFixed(2)+' inc VAT</summary>'+
     (diff?'<div style="font-size:11px;color:var(--amber);margin:6px 0">⚠ The final quote on the job is £'+quote.toFixed(2)+' but the lines add up to £'+d.total.toFixed(2)+' — check the lines or the quote before it goes out.</div>':'')+
-    '<div style="display:flex;gap:6px;margin:8px 0"><button class="btn btn-gold btn-sm" onclick="printEstDoc(\''+j.id+'\')">🖨 Print / save as PDF</button></div>'+
+    '<div style="display:flex;gap:6px;margin:8px 0;flex-wrap:wrap"><button class="btn btn-gold btn-sm" onclick="printEstDoc(\''+j.id+'\')">\ud83d\udda8 Print / save as PDF</button>'+
+      (kithPdfFresh(j)?'<span style="font-size:11px;color:var(--green);align-self:center">\u2713 Attached to the job \u2014 goes with the WhatsApp quote</span>'+
+          (['contact','contacted','waiting','waiting2','ready'].includes(j.stage)?'<button class="btn btn-green btn-sm" onclick="sendEstimateWA(\''+j.id+'\','+((j.estimateDocs||[]).length-1)+')">\ud83d\udcac Send this PDF on WhatsApp</button>':'')
+        :'<button class="btn btn-ghost btn-sm" onclick="attachKithEstPdf(\''+j.id+'\',this)">\ud83d\udcce Attach as the estimate PDF</button>')+'</div>'+
     '<div style="overflow:auto;max-height:70vh;border-radius:6px">'+estDocHTML(j)+'</div>'+
   '</details>';
 }
@@ -6353,6 +6371,65 @@ function printEstDoc(id){
     '<style>@page{size:A4;margin:10mm}body{margin:0;background:#fff}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}</style></head><body>'+
     estDocHTML(j)+'<script>setTimeout(function(){window.print();},300);<\/script></body></html>');
   w.document.close();
+}
+// ── KITH ESTIMATE AS A PDF ON THE JOB (16 Nov 2026) ─────────────────
+// Sign-off sends the quote WITH our own estimate PDF (no TechMan PDF
+// needed): the estimate is drawn to a PDF, stored like an uploaded
+// estimate, and becomes the job's latest estimate document — which the
+// WhatsApp send (CRM and autopilot) attaches.
+function loadHtml2Pdf(){
+  if(window.html2pdf)return Promise.resolve(window.html2pdf);
+  return new Promise((res,rej)=>{
+    const sc=document.createElement('script');
+    sc.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    sc.onload=()=>window.html2pdf?res(window.html2pdf):rej(new Error('PDF maker did not load'));
+    sc.onerror=()=>rej(new Error('PDF maker did not load'));
+    document.head.appendChild(sc);
+  });
+}
+function kithPdfFresh(j){
+  const docs=j.estimateDocs||[], last=docs[docs.length-1];
+  return !!(last&&last.kith&&Math.abs((parseFloat(last.total)||0)-estDocData(j).total)<0.01);
+}
+async function ensureKithEstPdf(j){
+  if(kithPdfFresh(j))return (j.estimateDocs||[]).slice(-1)[0];
+  const h2p=await loadHtml2Pdf();
+  if(!j.estDocAt)j.estDocAt=Date.now();
+  const box=document.createElement('div');
+  box.style.cssText='position:fixed;left:-10000px;top:0;width:794px;background:#fff';
+  box.innerHTML=estDocHTML(j);
+  document.body.appendChild(box);
+  let blob;
+  try{
+    blob=await h2p().set({margin:0,filename:'estimate.pdf',image:{type:'jpeg',quality:0.95},
+      html2canvas:{scale:2,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}})
+      .from(box.firstChild).outputPdf('blob');
+  }finally{box.remove();}
+  const reg=String(j.reg||j.id).replace(/[^A-Z0-9]/gi,'').toUpperCase();
+  const path='estimates/'+reg+'-kith-'+Date.now()+'.pdf';
+  const res=await fetch(SB_URL+'/storage/v1/object/'+SHEET_BUCKET+'/'+path,{method:'POST',headers:{...SB_HDR,'Content-Type':'application/pdf','x-upsert':'true'},body:blob});
+  if(!res.ok)throw new Error('upload failed ('+res.status+')');
+  const url=SB_URL+'/storage/v1/object/public/'+SHEET_BUCKET+'/'+path;
+  const total=estDocData(j).total;
+  j.estimateDocs=j.estimateDocs||[];
+  const rec={url,name:'KITH Cars estimate '+reg+'.pdf',at:ts(),by:currentUser?currentUser.name:'',kith:true,total,no:estDocNo(j)};
+  j.estimateDocs.push(rec);
+  j.log=j.log||[];
+  j.log.push({t:ts(),s:'📄 KITH estimate '+estDocNo(j)+' made as a PDF (£'+total.toFixed(2)+' inc VAT)'+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);
+  try{ if(typeof prefetchEstFile==='function')prefetchEstFile(j,rec); }catch(e){}
+  return rec;
+}
+async function attachKithEstPdf(id,btn){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
+  if(btn){btn.disabled=true;btn.textContent='Making the PDF…';}
+  try{
+    await ensureKithEstPdf(j);
+    if(typeof toast==='function')toast('✓ Estimate PDF attached to '+(j.reg||'the job')+' — the WhatsApp send now includes it');
+    try{refreshEstimateDocs(j);}catch(e){}
+    try{forceRenderDetail();}catch(e){renderDetail();}
+  }catch(e){alert('Could not make the estimate PDF: '+e.message);}
+  finally{if(btn){btn.disabled=false;btn.textContent='📎 Attach as the estimate PDF';}}
 }
 function estimateSummaryH(j){
   const e=j.estimate;
@@ -6379,6 +6456,10 @@ function estimateSummaryH(j){
 function actH(j){
   const f=j.name?firstName(j):'Customer';
   let h='<div class="stitle">Actions — '+(stg(j.stage).owner||'All')+'</div>'+dupeJobBanner(j)+custTypeBanner(j);
+  // 16 Nov 2026: the KITH estimate stays on the job from Final Estimate until
+  // it becomes a job card (Techman job card made). Open at sign-off.
+  if(['financial','signoff','disapproved','contact','contacted','waiting','waiting2','ready'].includes(j.stage)&&!j.tmJob)
+    h+=estDocPanelH(j,j.stage==='signoff');
   switch(j.stage){
     case 'intake':
       h+=(j.assignedEstimator&&!j.notifiedAt
@@ -6487,7 +6568,7 @@ function actH(j){
       const exSubtotal=labourEx+partsEx;
       const vatAmount=vatExempt?0:exSubtotal*0.20;
       const incVAT=exSubtotal+vatAmount;
-      h+=estDocPanelH(j,false)+estimateSummaryH(j)+'<div class="notice n-teal" style="margin-bottom:12px">Estimator: review and confirm. Parts team entered <strong>raw cost prices</strong> — markup is applied automatically below.</div>'+
+      h+=estimateSummaryH(j)+'<div class="notice n-teal" style="margin-bottom:12px">Estimator: review and confirm. Parts team entered <strong>raw cost prices</strong> — markup is applied automatically below.</div>'+
         srtBreakdownH(j,true)+
         photoStripH(j,true)+
         '<div style="background:var(--surface2);border-radius:var(--rs);padding:12px 14px;margin-bottom:12px">'+
@@ -6552,7 +6633,7 @@ function actH(j){
         estimateDocsH(j,false)+photoStripH(j);
       break;
     case 'signoff':
-      h+=signOffH(j)+(LF_OPEN[j.id]?labourFixH(j,'signoff'):'')+estDocPanelH(j,true)+estimateSummaryH(j)+
+      h+=signOffH(j)+(LF_OPEN[j.id]?labourFixH(j,'signoff'):'')+estimateSummaryH(j)+
         estimateDocsH(j,false)+
         photoStripH(j)+
         srtBreakdownH(j,false);
@@ -6564,7 +6645,6 @@ function actH(j){
         photoStripH(j)+
         phoneRowH(j)+
         estSendH(j)+
-        estDocPanelH(j,false)+
         estimateDocsH(j,false)+
         '<div class="wascript" style="white-space:pre-wrap">'+escHtml(estimateWAMsg(j))+'</div>'+(estIsLate(j)?'<div style="font-size:10px;color:var(--amber);margin-top:3px">Includes an apology \u2014 this enquiry came in more than a day ago.</div>':'')+
         '<button class="btn btn-blue btn-full" style="margin-top:8px" onclick="mv(\'contacted\',\'Service Adviser contacted customer\')">Customer Contacted \u2192 next</button>'+
@@ -6590,7 +6670,6 @@ function actH(j){
         chaseH(j)+
         preBookingH(j)+
         estSendH(j)+
-        estDocPanelH(j,false)+
         estimateDocsH(j,false)+
         '<div style="display:flex;flex-direction:column;gap:8px">'+
           '<button class="btn btn-green btn-full" onclick="bookIntoCalendar(\''+j.id+'\')">Customer YES → Book In</button>'+
