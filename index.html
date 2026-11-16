@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v11.9 \u00b7 16 Nov';
+const BUILD='v12.0 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -9830,6 +9830,8 @@ function vehAgeYears(j){
   const y=parseInt((j.dvla&&j.dvla.yearOfManufacture)||j.year||0);
   return y>1950?(new Date().getFullYear()-y):0;
 }
+// SOP bodywork prices (panels, dents, blends) are quoted INC VAT — the job holds ex VAT.
+function bodyExVat(inc){return Math.round(inc/1.2*100)/100;}
 function brainFixBody(j){
   const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
   if(!(typeof isBodyJob==='function'&&isBodyJob(j)))return false;
@@ -9864,9 +9866,9 @@ function brainFixBody(j){
   // dearest panel full, every other panel 20% off (painting only — dent and blend extras stay full)
   painted.sort((a,b)=>b.panelPrice-a.panelPrice).forEach((bj,ix)=>{
     const p=ix===0?bj.panelPrice:Math.round(bj.panelPrice*(1-E.disc)*100)/100;
-    bj.labour_ex_vat=Math.round((p+bj.dentPrice+bj.blendPrice)*100)/100;
+    const inc=Math.round((p+bj.dentPrice+bj.blendPrice)*100)/100;bj.labour_ex_vat=bodyExVat(inc);
     bj.srt_source=bj.bodyPanel+' ('+cat+') £'+p.toFixed(2)+(ix?' (−20% second panel)':'')+(old?' · 25% off, over 10 years old':'')+
-      (bj.dentPrice?' + dent straightening £'+bj.dentPrice:'')+(bj.blendPrice?' + blend £'+bj.blendPrice:'')+' — SOP panel price, not hours';
+      (bj.dentPrice?' + dent straightening £'+bj.dentPrice:'')+(bj.blendPrice?' + blend £'+bj.blendPrice:'')+' = £'+inc.toFixed(2)+' inc VAT → £'+bj.labour_ex_vat.toFixed(2)+' ex VAT — SOP panel price, not hours';
   });
   return ch;
 }
@@ -9943,11 +9945,11 @@ function bodyAIFromDamage(j){
   }).sort((a,b)=>b.price-a.price);
   priced.forEach((p,ix)=>{
     const paint=ix===0?p.price:Math.round(p.price*(1-E.disc)*100)/100;
-    const tot=Math.round((paint+p.dent+p.blend)*100)/100;
+    const inc=Math.round((paint+p.dent+p.blend)*100)/100, tot=bodyExVat(inc);
     jobsOut.push({job_label:(p.d.label||p.panel)+' — '+(p.d.type==='dent'?'dent repair, prep and paint full panel':'prep and paint full panel'),job_normalised:'body_'+(p.d.panel||ix),
       srt_hours:0,labour_ex_vat:tot,tier:'BODY',fixedBody:true,fromDamage:true,bodyPanel:p.panel,
       srt_source:'Full panel: '+p.panel+' ('+cat+') £'+paint.toFixed(2)+(p.d.type?'':' · damage type not marked, priced as full panel paint')+(ix?' (−20%, not the dearest panel)':' (dearest panel, full price)')+(old?' · 25% off, over 10 years old':'')+
-        (p.dent?' + dent straightening £'+p.dent+' ('+(p.d.markSize||'size not marked')+')':'')+(p.blend?' + blend into the next panel £'+p.blend+' (£100 if into a door)':'')});
+        (p.dent?' + dent straightening £'+p.dent+' ('+(p.d.markSize||'size not marked')+')':'')+(p.blend?' + blend into the next panel £'+p.blend+' (£100 if into a door)':'')+' = £'+inc.toFixed(2)+' inc VAT → £'+tot.toFixed(2)+' ex VAT'});
   });
   const wheels=dm.filter(d=>d.wheel||d.type==='alloy').length;
   if(wheels){const e=alloyEach(),each=Math.round((e.min+e.max)/2);
@@ -9956,7 +9958,7 @@ function bodyAIFromDamage(j){
       srt_source:wheels+' alloy'+(wheels===1?'':'s')+' × £'+each+' + VAT (SOP £'+e.min+'–£'+e.max+' each by condition) — set the price per alloy'});}
   const tot=jobsOut.reduce((a,b)=>a+b.labour_ex_vat,0);
   return {jobs:jobsOut,lo:Math.round(tot*1.2*0.9/10)*10,hi:Math.round(tot*1.2*1.1/10)*10,total:tot*1.2,conf:'good',allFirm:false,fromDamage:true,
-    damageSig:JSON.stringify(dm.map(d=>[d.panel,d.type,d.mark&&d.mark.size,d.blend])),bodySize:j.bodySize||'',at:ts(),ms:Date.now()};
+    damageSig:'exv1'+JSON.stringify(dm.map(d=>[d.panel,d.type,d.mark&&d.mark.size,d.blend])),bodySize:j.bodySize||'',at:ts(),ms:Date.now()};
 }
 function ensureBodyAI(j){
   if(!j||j.brainAppliedAt||!(typeof isBodyJob==='function'&&isBodyJob(j)))return false;
@@ -13803,7 +13805,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1100';
+const CRM_BUILD='2026-11-16-1105';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
