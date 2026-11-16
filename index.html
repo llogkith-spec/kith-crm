@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v16.2 \u00b7 16 Nov';
+const BUILD='v16.3 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -3619,10 +3619,7 @@ async function signOff(id){
   const miss=unpricedAsks(j);
   if(miss.length&&!confirm('\u26a0 The customer asked for this, but it is not priced:\n\n'+miss.map(m=>'\u2022 '+m).join('\n')+'\n\nSend the quote without it anyway?'))return;
   // B2B diagnostics: no quote to send — straight on to booking
-  if(b2bDiagNoQuote(j)){
-    if(!confirm('B2B diagnostic \u2014 no quote needs to go to '+(j.name||'the customer')+'.\n\nApprove at \u00a3'+(parseFloat(j.quote)||0).toFixed(2)+' and send it straight to booking?'))return;
-    return b2bDiagApprove(j);
-  }
+
   if((String(j.phone||'').trim()||String(j.email||'').trim())&&!kithPdfFresh(j)){
     _signOffBusy=true;
     if(typeof toast==='function')toast('\ud83d\udcc4 Making the estimate PDF\u2026');
@@ -3631,6 +3628,15 @@ async function signOff(id){
     _signOffBusy=false;
   }
   signOffNow(id);
+}
+const SEND_BY_COMPANY=[[/wallington/i,'email'],[/\bstj\b|st\.? ?joseph/i,'whatsapp']];
+function sendPref(j){
+  const who=[j.name,j.judgement&&j.judgement.company_name,j.company].filter(Boolean).join(' ');
+  for(const [rx,via] of SEND_BY_COMPANY)if(rx.test(who))return via;
+  const v=String(j.sendEstimateBy||'').toLowerCase();
+  if(/mail/.test(v))return 'email';
+  if(/whats|wa\b/.test(v))return 'whatsapp';
+  return '';
 }
 function b2bDiagNoQuote(j){
   if(!j)return false;
@@ -3653,7 +3659,15 @@ function signOffNow(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
   const amt=parseFloat(j.quote)||parseFloat(j.finalEst)||0;
   if(!canSignOff(currentUser)){alert('Only Logan or Joel can sign a quote off.');return;}
-  const emailOnly=!String(j.phone||'').trim()&&/@/.test(String(j.email||''));
+  // 16 Nov 2026: each customer gets it the way they want it — Wallington Cars
+  // by email, STJ by WhatsApp; otherwise what the intake said ("Send the
+  // estimate by"), and email when there is no mobile.
+  const pref=sendPref(j);
+  const emailOnly=/@/.test(String(j.email||''))&&(pref==='email'||!String(j.phone||'').trim());
+  if(pref==='email'&&!/@/.test(String(j.email||''))){
+    alert('\u26d4 '+(j.name||'This customer')+' gets estimates by email, but there is no email on '+(j.reg||'this job')+'.\n\nAdd it with Edit at the top of the job.');
+    return;
+  }
   if(!String(j.phone||'').trim()&&!emailOnly){
     alert('\u26d4 No phone number or email on '+(j.reg||'this job')+'.\n\nThe quote is sent to the customer the moment you approve it \u2014 add a mobile or an email (Edit at the top).');
     return;
@@ -6840,7 +6854,27 @@ function estPdfSig(j){
 }
 // 16 Nov 2026: one clear button to (re)send the estimate — makes the PDF
 // first if the price changed, then sends it with the PDF attached.
+async function emailEstimate(id){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
+  if(!/@/.test(String(j.email||''))){alert('No email on this job \u2014 add it with Edit at the top.');return;}
+  if(!kithPdfFresh(j)){try{await ensureKithEstPdf(j);}catch(e){}}
+  const d=estDocFor(j);
+  const body=estimateWAMsg(j).replace(/\*/g,'')+(d?'\n\nYour estimate (PDF): '+d.url:'')+'\n\n'+KITH_CO.name+' \u00b7 '+KITH_CO.tel+' \u00b7 '+KITH_CO.web;
+  const href='mailto:'+encodeURIComponent(j.email)+'?subject='+encodeURIComponent('Your estimate \u2014 '+(j.reg||'')+' \u2014 KITH Cars')+'&body='+encodeURIComponent(body);
+  estSetStatus(j,'<a class="btn btn-sm" style="background:var(--blue);color:#fff;font-weight:700" href="'+escHtml(href)+'" target="_blank" onclick="emailEstimateDone(\''+j.id+'\')">\u2709 Open the email to '+escHtml(j.email)+'</a>','var(--blue)');
+}
+function emailEstimateDone(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  j.estimateSentAt=ts();j.estimateSentMs=Date.now();j.estimateSentBy=currentUser?currentUser.name:'';
+  j.log=j.log||[];j.log.push({t:ts(),s:'\u2709 Estimate emailed to '+j.email+(currentUser?' ['+currentUser.name+']':'')});
+  try{estMoveToContacted(j,'the quote went to the customer by email');}catch(e){}
+  save(j);
+}
 function sendEstBtnH(j){
+  if(sendPref(j)==='email'||(!estPhone(j)&&/@/.test(String(j.email||''))))
+    return '<button class="btn btn-full" style="margin-bottom:6px;background:var(--blue);color:#fff;font-weight:800" onclick="emailEstimate(\''+j.id+'\')">\u2709 Email the estimate'+(j.email?' to '+escHtml(j.email):'')+'</button>'+
+      '<div style="font-size:10px;color:var(--faint);margin-bottom:10px">'+(sendPref(j)==='email'?escHtml(j.name||'This customer')+' gets estimates by email.':'No mobile \u2014 by email.')+(j.email?'':' <span style="color:var(--amber)">Add their email with Edit first.</span>')+'</div>'+
+      '<div class="est-send-st" data-id="'+escHtml(j.id)+'" style="font-size:11px;margin-bottom:8px"></div>';
   if(!estPhone(j))return '<div style="font-size:11px;color:var(--amber);margin-bottom:8px">No mobile number on the job \u2014 add one to WhatsApp the estimate.</div>';
   const last=Math.max(j.estimateSentMs||0,j.estimateOpenedMs||0);
   const stale=!kithPdfFresh(j);
@@ -14690,7 +14724,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1830';
+const CRM_BUILD='2026-11-16-1840';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
