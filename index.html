@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v8.6 \u00b7 16 Nov';
+const BUILD='v8.7 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -9522,6 +9522,26 @@ function splitDiagRepair(j){
   save(j);save(rep);
   return rep;
 }
+// Jobs whose work is only the intake area label ("🚙 Bodywork & paint") while the
+// customer's own words say what they want — use their words (16 Nov 2026).
+const LABEL_ONLY_RX=/^[^A-Za-z0-9]*(bodywork & paint|vehicle for sale|recovery \/ collection|new job|servicing & mot|brakes|other)\s*$/i;
+function fixLabelOnlyWork(){
+  let n=0;
+  jobs.forEach(j=>{
+    if(!j||j.mergedInto||j.workFixedAt)return;
+    if(!LABEL_ONLY_RX.test(String(j.work||'').trim()))return;
+    const w=String(j.judgement&&j.judgement.customer_words||'').trim();
+    if(!w||LABEL_ONLY_RX.test(w))return;
+    if(['followup','lost'].includes(j.stage))return;
+    j.log=j.log||[];
+    j.log.push({t:ts2(),s:'✏ Work said only "'+j.work+'" — replaced with what the customer told us: "'+w.slice(0,120)+'"'});
+    j.workLabel=j.work;j.work=w;j.workFixedAt=Date.now();
+    delete j.brainAI;delete j._brainTriedMs;
+    save(j);n++;
+  });
+  if(n){try{renderAll();}catch(e){}}
+  return n;
+}
 function autoSplitJobs(){
   let n=0;
   try{jobs.slice().forEach(j=>{try{if(splitDiagRepair(j))n++;}catch(e){}});}catch(e){}
@@ -11093,6 +11113,7 @@ function toggleAutoHold(id){
 var AUTO_LOG=[];                // what the engine has moved this session
 function autoPilot(){
   if(!AUTO_ON)return 0;
+  try{fixLabelOnlyWork();}catch(e){console.warn('labelfix',e);}
   try{autoSplitJobs();}catch(e){console.warn('split',e);}
   let moved=0;
   window._batchSave=true;

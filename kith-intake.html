@@ -1289,8 +1289,14 @@ function collectAnswers(){
     .forEach(function(g){var v=getChips(g);if(v)a['chips-'+g]=v;});
   return a;
 }
+var MECH_WORDS=/\b(exhaust|brake|pads?|discs?|service|mot|engine|clutch|gearbox|tyres?|oil|sensor|suspension|battery|diagnos\w*|leak\w*|noise|warning light|eml|dpf|egr|turbo|timing|cambelt|coolant|radiator|alternator|starter|steering|wishbone|shock|spring|wheel bearing|ac|air ?con|remap)\b/i;
+var BODY_WORDS=/\b(dent|scratch|scuff|paint|panel|bumper|wing|door|bonnet|respray|body\s?work|crack|alloy|polish|smart repair)\b/i;
 async function submitJob(){
   var btn=document.getElementById('sub-btn');
+  // Wrong area picked? "Full exhaust pipe replacement" under Bodywork is mechanical.
+  if(area==='bodywork'&&MECH_WORDS.test(fval('f-words'))&&!BODY_WORDS.test(fval('f-words'))){
+    if(!confirm('This sounds like MECHANICAL work:\n\n"'+fval('f-words').slice(0,120)+'"\n\nbut Bodywork & paint is picked. Press Cancel to go back and change it, or OK to send it as bodywork anyway.'))return;
+  }
   if(needsCustomer()){
     if(!fval('f-name')&&!b2bAcct){alert('Customer name required.');return;}
     if(!fval('f-phone')&&!b2bAcct){alert('Phone number required.');return;}
@@ -1382,7 +1388,8 @@ async function submitJob(){
     if(answers['chips-tyre-brand'])parts.push(answers['chips-tyre-brand']);}
   ['f-other-work','f-sale-work','f-body-desc'].forEach(function(k){if(fval(k))parts.push(fval(k));});
   if(jobType==='recovery')parts.push('Recovery: '+fval('f-rec-from')+' → '+fval('f-rec-to'));
-  var work=parts.join(' · ')||f.label||jt.n;
+  // 16 Nov 2026: with no detail picked, the customer's own words are the work — never just the area label
+  var work=parts.join(' · ')||fval('f-words')||f.label||jt.n;
   if(mechCat==='diagnostic'&&parts.length)work='Diagnostic — '+work;
   if(jobType==='comeback')work='COMEBACK — '+work;
   if(needsDiag&&mechCat!=='diagnostic')work='DIAGNOSTIC FIRST — '+work;
