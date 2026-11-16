@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v12.9 \u00b7 16 Nov';
+const BUILD='v13.0 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -3643,6 +3643,14 @@ function signOffNow(id){
     const d=estDocFor(j), num=estPhone(j);
     if(num){
       const text=d?estimateWAMsg(j):(out.message.text||estimateWAMsg(j));
+      // 16 Nov 2026: on a Mac that can share files, the PDF goes through the
+      // WhatsApp app with the "Send with the PDF attached" button (needs a
+      // fresh tap) — don't open WhatsApp Web with the text only.
+      if(d&&!estIsPhone()&&canShareFiles()){
+        byHand='mac';
+        setTimeout(()=>{try{estSetStatus(j,'<button class="btn btn-sm" style="background:var(--green);color:#111;font-weight:700" onclick="estShareNow(\''+j.id+'\')">\ud83d\udce4 Send it now with the PDF attached</button>','var(--green)');}catch(e){}},400);
+        if(typeof toast==='function')toast('Approved \u2014 press \u201cSend it now with the PDF attached\u201d');
+      }else
       byHand=estManualSend(j,d,num,text,false)||'';
       if(byHand==='share'||byHand==='opened'){
         out.message.status='sent';out.message.sentVia='whatsapp (from the CRM, by hand)';
@@ -6205,9 +6213,18 @@ function confirmEstimateSent(id){
 }
 // No relay: must run inside the tap, before anything is awaited, or the
 // browser blocks the WhatsApp window.
+function estShareNow(id){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
+  const d=estDocFor(j);if(!d)return;
+  estManualSend(j,d,estPhone(j),estimateWAMsg(j),true,false);
+}
 function estManualSend(j,d,num,text,viaShare,waited){
   const name=d?estDocName(j,d):'';
   const f=d&&EST_FILES[d.url];
+  if(d&&f&&f!=='loading'&&canShareFiles()&&(estIsPhone()||viaShare)&&waited){
+    estSetStatus(j,'<button class="btn btn-sm" style="background:var(--green);color:#111;font-weight:700" onclick="estShareNow(\''+j.id+'\')">\ud83d\udce4 PDF ready \u2014 tap to send it with the estimate attached</button>','var(--green)');
+    return 'wait';
+  }
   if(d&&f&&f!=='loading'&&canShareFiles()&&(estIsPhone()||viaShare)){
     try{navigator.clipboard&&navigator.clipboard.writeText(text).catch(()=>{});}catch(e){}
     navigator.share({files:[f],text}).then(()=>{
@@ -6631,6 +6648,7 @@ async function ensureKithEstPdf(j){
   const rec={url,name:'KITH Cars estimate'+(two?'s (2 options) ':' ')+reg+'.pdf',at:ts(),by:currentUser?currentUser.name:'',kith:true,total,no:estDocNo(j),sig:estPdfSig(j)};
   if(two){rec.two=true;rec.totalMd=estDocData(j,'md').total;rec.totalAf=total;}
   j.estimateDocs.push(rec);
+  try{EST_FILES[url]=new File([blob],estDocName(j,rec),{type:'application/pdf'});}catch(e){}
   j.log=j.log||[];
   j.log.push({t:ts(),s:'📄 KITH estimate '+estDocNo(j)+' made as a PDF ('+(two?'two options: main dealer £'+rec.totalMd.toFixed(2)+' / non-dealer £'+total.toFixed(2):'£'+total.toFixed(2))+' inc VAT)'+(currentUser?' ['+currentUser.name+']':'')});
   save(j);
@@ -14034,7 +14052,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1215';
+const CRM_BUILD='2026-11-16-1225';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
