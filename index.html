@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v10.7 \u00b7 16 Nov';
+const BUILD='v10.8 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -9588,6 +9588,46 @@ function brainToggleLine(id,i,on){
   j.log=j.log||[];j.log.push({t:ts(),s:'\ud83e\udde0 Brain line '+(on?'put back':'left out')+': '+(bj.job_label||bj.job_normalised||'')+(currentUser?' ['+currentUser.name+']':'')});
   save(j);renderDetail();
 }
+// ── DIAGNOSTICS IN THE BRAIN PRE-FILL (16 Nov 2026) ─────────────────
+// Diagnostics are fixed prices by level (SOP): mechanical £60, oil & coolant
+// leak £90, deep £120, electrical £150 ex VAT. The Brain's guess at hours is
+// replaced by the level, which the estimator can change on the line.
+function diagTiers(){
+  let t=null;try{t=KITH_SOP&&KITH_SOP.diagnostics;}catch(e){}
+  return t&&Object.keys(t).length?t:{'Mechanical diagnostic':60,'Oil and coolant leak diagnostic':90,'Deep diagnostic':120,'Electrical diagnostic':150};
+}
+function diagGuess(txt){
+  const t=String(txt||'').toLowerCase(), T=diagTiers(), k=Object.keys(T);
+  const pick=re=>k.find(x=>re.test(x.toLowerCase()));
+  if(/deep/.test(t))return pick(/deep/)||k[0];
+  if(/leak|oil|coolant/.test(t))return pick(/leak/)||k[0];
+  if(/electric|wiring|battery drain|parasitic|module|ecu/.test(t))return pick(/electric/)||k[0];
+  return pick(/mechanical/)||k[0];
+}
+const DIAG_LINE_RX=/\b(diagnos\w*|fault[- ]?find\w*|inspection|investigat\w*)\b/i;
+function brainFixDiag(j){
+  const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
+  const ct=String(j.custType||'').toLowerCase();
+  if(/aa|warranty|insurance/.test(ct))return false;           // their own rate cards
+  let ch=false;const T=diagTiers();
+  ai.jobs.forEach(bj=>{
+    const lab=String(bj.job_label||bj.job_normalised||'');
+    if(bj.fixedTyre||!DIAG_LINE_RX.test(lab))return;
+    const tier=bj.diagTier&&T[bj.diagTier]!=null?bj.diagTier:diagGuess(lab+' '+(j.work||''));
+    const price=parseFloat(T[tier])||60;
+    if(bj.fixedDiag&&bj.diagTier===tier&&bj.labour_ex_vat===price)return;
+    bj.fixedDiag=true;bj.diagTier=tier;bj.srt_hours=0;bj.labour_ex_vat=price;bj.tier='DIAG';
+    bj.srt_source='Fixed diagnostic price (SOP) \u2014 '+tier+' \u00a3'+price.toFixed(2)+' + VAT. Change the level if needed.';
+    ch=true;
+  });
+  return ch;
+}
+function brainSetDiagTier(id,i,tier){
+  const j=_brainJob(id);if(!j||!j.brainAI||!j.brainAI.jobs[i])return;
+  j.brainAI.jobs[i].diagTier=tier;brainFixDiag(j);
+  j.log=j.log||[];j.log.push({t:ts(),s:'\ud83e\udde0 Diagnostic level set to '+tier+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);renderDetail();
+}
 function brainPrefillH(j){
   if(!j||j.stage!=='labour')return '';
   if(j.brainPrefillDismissedAt)return '';
@@ -9598,7 +9638,7 @@ function brainPrefillH(j){
   }
   const ai = j.brainAI;
   if(!ai||!ai.jobs||!ai.jobs.length)return '';
-  if(brainFixTyres(j)){try{save(j);}catch(e){}}
+  if(brainFixTyres(j)|brainFixDiag(j)){try{save(j);}catch(e){}}
   const applied = !!j.brainAppliedAt;
   const firmN = ai.jobs.filter(b=>b.is_firm).length;
   const totN = ai.jobs.length;
@@ -9608,7 +9648,7 @@ function brainPrefillH(j){
   const rows = ai.jobs.map((bj,i) => {
     const firm = !!bj.is_firm;
     const verified = !!(j.brainVerified&&j.brainVerified[bj.job_normalised]);
-    const chip = bj.fixedTyre
+    const chip = (bj.fixedTyre||bj.fixedDiag)
       ? '<span style="background:var(--green);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">FIXED</span>'
       : firm
       ? '<span style="background:var(--green);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">FIRM</span>'
@@ -9624,7 +9664,9 @@ function brainPrefillH(j){
         '<div style="font-size:13px;font-weight:600;color:var(--fg)">'+escHtml(bj.job_label||bj.job_normalised)+'</div>'+
         '<div style="font-size:10px;color:var(--faint);margin-top:2px">'+escHtml(bj.srt_source||'')+(off?' \u2014 <b>left out</b>':'')+'</div>'+
       '</div></div>'+
-      (bj.fixedTyre?'<div style="text-align:right;font-size:11px;color:var(--dim)">fixed \u00d7'+(bj.tyreQty||1)+'</div>':
+      (bj.fixedDiag?'<div style="text-align:right"><select '+(applied?'disabled':'')+' onchange="brainSetDiagTier(\''+j.id+'\','+i+',this.value)" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:3px;font-size:11px;color:var(--fg)">'+
+          Object.keys(diagTiers()).map(t=>'<option value="'+escHtml(t)+'"'+(t===bj.diagTier?' selected':'')+'>'+escHtml(t.replace(/ diagnostic$/i,''))+' \u00a3'+diagTiers()[t]+'</option>').join('')+'</select></div>':
+      bj.fixedTyre?'<div style="text-align:right;font-size:11px;color:var(--dim)">fixed \u00d7'+(bj.tyreQty||1)+'</div>':
       '<div style="text-align:right">'+
         '<input type="number" step="0.1" min="0" value="'+srtH.toFixed(1)+'" '+(applied?'disabled':'')+' '+
           'style="width:70px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px 6px;font-family:inherit;font-size:13px;color:var(--fg);text-align:right" '+
@@ -9634,7 +9676,7 @@ function brainPrefillH(j){
       '<div style="text-align:right;font-family:ui-monospace,monospace;font-size:13px;font-weight:600;color:var(--gold)">£'+Math.round(bj.labour_ex_vat||0)+'</div>'+
       '<div style="display:flex;gap:4px;justify-content:flex-end;align-items:center">'+
         chip +
-        (!bj.fixedTyre&&!firm&&!verified&&!applied?' <button onclick="brainVerifySrt(\''+j.id+'\','+i+')" style="background:var(--gold);color:#000;border:none;padding:3px 8px;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer">✓</button>':'')+
+        (!bj.fixedTyre&&!bj.fixedDiag&&!firm&&!verified&&!applied?' <button onclick="brainVerifySrt(\''+j.id+'\','+i+')" style="background:var(--gold);color:#000;border:none;padding:3px 8px;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer">✓</button>':'')+
       '</div>'+
     '</div>';
   }).join('');
@@ -9725,8 +9767,9 @@ window.brainApplyToJob = function(jobId){
   // charged hours carry the SOP multiplier / minimum. Keep one line per job
   // so the breakdown shows book vs charged, and the rate reads right.
   const rates = (KITH_SOP&&KITH_SOP.rates)||{LOW:50,MED:60,TOP:70,BODY:90};
-  try{brainFixTyres(j);addTyreParts(j);}catch(e){}
+  try{brainFixTyres(j);brainFixDiag(j);addTyreParts(j);}catch(e){}
   j.srtLines = inc.map(b=>{
+    if(b.fixedDiag)return {op:String(b.diagTier||'Diagnostic'),book:0,charged:0,qty:1,fixed:true,labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.labour_ex_vat)||0,src:'fixed',by:brainWho(),at:ts()};
     if(b.fixedTyre)return {op:'Tyre fitting \u00d7'+(b.tyreQty||1)+' (fixed \u00a3'+tyreFitEach().toFixed(2)+' each)',book:0,charged:0,qty:b.tyreQty||1,fixed:true,labour:parseFloat(b.labour_ex_vat)||0,rate:tyreFitEach(),src:'fixed',by:brainWho(),at:ts()};
     const book=parseFloat(b.srt_hours)||0, lab=parseFloat(b.labour_ex_vat)||0;
     const rate=rates[b.tier]||rates.TOP||70;
