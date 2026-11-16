@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v15.0 \u00b7 16 Nov';
+const BUILD='v15.1 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -1104,7 +1104,7 @@ const STAGES=[
   {id:'labour',    label:'2 · Labour Estimate',    cls:'s-labour',    badge:'b-labour',    owner:'Estimator'},
   {id:'parts',     label:'3 · Parts Estimate',     cls:'s-parts',     badge:'b-parts',     owner:'Parts'},
   {id:'financial', label:'4 · Final Estimate', cls:'s-financial', badge:'b-financial', owner:'Estimator'},
-  {id:'signoff',   label:'5 · Logan Sign-Off',     cls:'s-financial', badge:'b-financial', owner:'Logkith'},
+  {id:'signoff',   label:'4 · Final Estimate & Sign-Off',     cls:'s-financial', badge:'b-financial', owner:'Logkith'},
   {id:'disapproved',label:'5b · Disapproved',      cls:'s-lost',      badge:'b-lost',      owner:'Logkith'},
   {id:'contact',   label:'6 · Service Adviser',    cls:'s-contact',   badge:'b-contact',   owner:'Service Adviser'},
   {id:'contacted', label:'7 · Contacted',          cls:'s-waiting',   badge:'b-waiting',   owner:'Service Adviser'},
@@ -2445,6 +2445,7 @@ function renderBoard(){
   try{
   let _lastDept=null;
   STAGES.forEach(s=>{
+    if(HIDDEN_STAGES.includes(s.id)&&!jobs.some(j=>j.stage===s.id))return;
     if(onCheckinTab&&!ARRIVAL_FROM.concat(['checkin']).includes(s.id))return;
     const _d=deptOf(s.id);
     if(_d&&_d!==_lastDept&&!onCheckinTab){
@@ -3607,6 +3608,13 @@ let _signOffBusy=false;
 async function signOff(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
   if(!canSignOff(currentUser)){alert('Only Logan or Joel can sign a quote off.');return;}
+  try{
+    const fq=parseFloat(document.getElementById('a-final-quote')?.value);
+    const fn=document.getElementById('a-final-notes')?.value;
+    if(fq>0){j.finalEst=fq;j.quote=fq;}
+    if(fn!=null&&String(fn).trim())j.finalNotes=String(fn).trim();
+  }catch(e){}
+  if(!(parseFloat(j.quote)>0)){alert('Put the final quote in first.');return;}
   if(_signOffBusy)return;
   const miss=unpricedAsks(j);
   if(miss.length&&!confirm('\u26a0 The customer asked for this, but it is not priced:\n\n'+miss.map(m=>'\u2022 '+m).join('\n')+'\n\nSend the quote without it anyway?'))return;
@@ -5102,10 +5110,11 @@ function sbarH(j,s){
 // Move from the picker in the panel header. Deliberately does not go
 // through mv(), so it works from a phone with nothing else focused.
 // The stage that normally comes next, skipping Lost.
+const HIDDEN_STAGES=['financial','contact'];   // merged into sign-off (16 Nov 2026)
 function nextStage(id){
   const i=STAGES.findIndex(x=>x.id===id);
   if(i<0)return null;
-  for(let k=i+1;k<STAGES.length;k++){if(STAGES[k].id!=='lost')return STAGES[k];}
+  for(let k=i+1;k<STAGES.length;k++){if(STAGES[k].id!=='lost'&&!HIDDEN_STAGES.includes(STAGES[k].id))return STAGES[k];}
   return null;
 }
 function moveFromPanel(id){
@@ -6894,94 +6903,16 @@ function actH(j){
         '<div style="margin-top:8px">'+notifyRole('estimator','Parts priced for '+j.reg+' '+j.make+' '+j.model+'. Please complete final estimate.')+'</div>';
       break;}
     case 'financial':{
-      const labourCost=parseFloat(j.labourCost)||0;
-      const partsCostRaw=(j.parts||[]).reduce((s,p)=>{
-        const best=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
-        return s+best*(parseInt(p.qty)||1);
-      },0);
-      // Parts team enters RAW cost - system applies markup to get sell price
-      const partsCost=(j.parts||[]).reduce((s,p)=>{
-        const best=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
-        return s+applyMarkup(best,p)*(parseInt(p.qty)||1);
-      },0);
-      const addLabour=parseFloat(j.addLabourCost)||0;
-      const addParts=parseFloat(j.addPartsCost)||0;
-      const vatExempt=j.vatExempt||false;
-      // Labour ex-VAT + parts ex-VAT = subtotal ex-VAT, then VAT on top.
-      const labourEx=labourCost+addLabour;
-      const partsEx=partsCost+applyMarkup(addParts);
-      const exSubtotal=labourEx+partsEx;
-      const vatAmount=vatExempt?0:exSubtotal*0.20;
-      const incVAT=exSubtotal+vatAmount;
-      h+=estimateSummaryH(j)+'<div class="notice n-teal" style="margin-bottom:12px">Estimator: review and confirm. Parts team entered <strong>raw cost prices</strong> — markup is applied automatically below.</div>'+
-        srtBreakdownH(j,true)+
-        photoStripH(j,true)+
-        '<div style="background:var(--surface2);border-radius:var(--rs);padding:12px 14px;margin-bottom:12px">'+
-          '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center;margin-bottom:10px">'+
-            '<div><div style="font-size:10px;color:var(--faint);text-transform:uppercase">Labour ex-VAT</div><div style="font-size:18px;font-weight:800;color:var(--blue)">£'+labourEx.toFixed(2)+'</div></div>'+
-            '<div><div style="font-size:10px;color:var(--faint);text-transform:uppercase">Parts ex-VAT</div><div style="font-size:18px;font-weight:800;color:var(--green)">£'+partsEx.toFixed(2)+'</div><div style="font-size:10px;color:var(--faint);margin-top:2px">raw cost £'+partsCostRaw.toFixed(2)+'</div></div>'+
-            '<div><div style="font-size:10px;color:var(--faint);text-transform:uppercase">Subtotal ex-VAT</div><div id="ex-subtotal-display" style="font-size:18px;font-weight:800">£'+exSubtotal.toFixed(2)+'</div></div>'+
-          '</div>'+
-          '<div style="border-top:1px solid var(--border);padding-top:8px;margin-bottom:8px">'+
-            '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px">'+
-              '<input type="checkbox" id="a-vat-exempt" '+(vatExempt?'checked':'')+' onchange="toggleVATExempt(this.checked)" style="width:16px;height:16px"/>'+
-              '<span>VAT Exempt (e.g. MOT, insurance-related work)</span>'+
-            '</label>'+
-          '</div>'+
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:center">'+
-            '<div><div style="font-size:10px;color:var(--faint);text-transform:uppercase">VAT (20%)</div><div id="vat-display" style="font-size:15px;font-weight:700;color:var(--dim)">£'+vatAmount.toFixed(2)+(vatExempt?' <span style=\"font-size:10px\">(exempt)</span>':'')+'</div></div>'+
-            '<div><div style="font-size:10px;color:var(--gold);text-transform:uppercase;font-weight:700">Total inc-VAT</div><div id="inc-vat-display" style="font-size:22px;font-weight:900;color:var(--gold)">£'+incVAT.toFixed(2)+'</div></div>'+
-          '</div>'+
-        '</div>'+
-        '<div class="fg" style="margin-bottom:4px"><label class="fl2">Final Quote to Customer (£) <span class="req">*</span></label><input class="fi2" id="a-final-quote" type="number" value="'+((j.estimate&&parseFloat(j.quote))?parseFloat(j.quote):incVAT).toFixed(2)+'" placeholder="0.00"/></div>'+
-        '<div style="font-size:11px;color:var(--faint);margin-bottom:12px">Adjust if needed. This is the price quoted to the customer.</div>'+
-        (j.parts&&j.parts.length?
-          '<div class="stitle" style="margin-bottom:6px">Parts Breakdown (cost → markup → sell price)</div>'+
-          '<div style="background:var(--surface2);border-radius:var(--rs);padding:8px 10px;margin-bottom:12px">'+
-            '<div style="display:grid;grid-template-columns:2fr 60px 70px 60px 80px;gap:4px;padding:4px 0;border-bottom:1px solid var(--border);font-size:10px;color:var(--faint);text-transform:uppercase">'+
-              '<span>Part</span><span>Qty</span><span>Cost</span><span>Markup</span><span>Sell (ex-VAT)</span>'+
-            '</div>'+
-            j.parts.map((p,pi)=>{
-              const cost=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
-              const sell=applyMarkup(cost,p);
-              const qty=parseInt(p.qty)||1;
-              const markupPct=cost>0?Math.round((sell/cost-1)*100):0;
-              const bestSup=p.supplier||p.supplier1||p.supplier2||p.supplier3||'';
-              return'<div style="display:grid;grid-template-columns:2fr 60px 70px 60px 80px;gap:4px;padding:5px 0;border-bottom:1px solid var(--border);align-items:center;font-size:12px">'+
-                '<div><span style="font-weight:600">'+escHtml(p.name||'\u2014')+'</span>'+(p.isKit?'<span style="font-size:9px;font-weight:800;color:var(--blue);margin-left:4px">KIT</span>':'')+(bestSup?'<span style="color:var(--faint);font-size:10px;margin-left:4px">\u00b7 '+escHtml(bestSup)+'</span>':'')+
-                  (p.kitContents?'<div style="font-size:10px;color:var(--faint);white-space:pre-line;padding-left:6px;border-left:2px solid var(--border);margin-top:2px">'+escHtml(p.kitContents)+'</div>':'')+' </div>'+
-                '<div><input type="number" min="0" value="'+qty+'" style="width:46px;background:var(--surface);border:1px solid var(--border);color:var(--fg);border-radius:4px;padding:2px 4px;font-size:12px;text-align:center" onchange="setPartQty(\''+j.id+'\','+pi+',this.value)" title="Change quantity \u2014 set 0 to remove"/></div>'+
-                '<div><input type="number" step="0.01" min="0" value="'+cost.toFixed(2)+'" style="width:62px;background:var(--surface);border:1px solid var(--border);color:var(--fg);border-radius:4px;padding:2px 4px;font-size:12px" onchange="setPartCost(\''+j.id+'\','+pi+',this.value)" title="Change cost"/></div>'+
-                '<div><span style="color:'+(isNoMarkup(p)?'var(--faint)':'var(--amber)')+';font-weight:700">'+(isNoMarkup(p)?'no mkup':'+'+markupPct+'%')+'</span>'+
-                  '<button class="btn btn-ghost btn-xs" style="padding:0 5px;margin-left:4px;font-size:9px" onclick="setPartNoMarkup(\''+j.id+'\','+pi+')" title="Switch markup off for this line">'+(p.noMarkup?'undo':'\u00d7')+'</button></div>'+
-                '<div style="font-weight:800;color:var(--green)">\u00a3'+(sell*qty).toFixed(2)+'</div>'+
-              '</div>';
-            }).join('')+
-            '<div style="display:grid;grid-template-columns:2fr 60px 70px 60px 80px;gap:4px;padding:6px 0;font-weight:700;font-size:12px;border-top:2px solid var(--border);margin-top:2px">'+
-              '<span style="color:var(--dim)">Total parts</span><span></span>'+
-              '<span style="color:var(--dim)">\u00a3'+partsCostRaw.toFixed(2)+'</span>'+
-              '<span style="color:var(--amber)">\u2192</span>'+
-              '<span style="color:var(--green)">\u00a3'+partsCost.toFixed(2)+'</span>'+
-            '</div>'+
-            '<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addPartAtFinal(\''+j.id+'\')">+ Add another part</button>'+
-            partsPOButtons(j)+
-            '<div style="font-size:10px;color:var(--faint);margin-top:6px">Change a quantity or cost above and the quote updates itself. Set a quantity to 0 to remove the line.</div>'+
-          '</div>':
-          '<button class="btn btn-ghost btn-sm" style="margin-bottom:12px" onclick="addPartAtFinal(\''+j.id+'\')">+ Add a part</button>')+
-        estimateDocsH(j,false)+
-        '<div class="fg" style="margin-bottom:12px"><label class="fl2">Notes for Service Adviser</label><textarea class="fta" id="a-final-notes" placeholder="Any caveats or scope notes...">'+(j.finalNotes||'')+'</textarea></div>'+
-        '<button class="btn btn-gold btn-full" onclick="financialDone()">\u2713 Quote Confirmed \u2192 Service Adviser</button>'+
-        '<div style="margin-top:8px">'+notifyRole('adviser','Quote ready for '+j.reg+' '+j.make+' '+j.model+' \u2014 \u00a3'+incVAT.toFixed(2)+' inc-VAT. Please contact the customer.')+'</div>';
+      h+=finEditH(j,false);
       break;}
     case 'disapproved':
       h+=disapprovedH(j)+labourFixH(j,'disapproved')+estimateSummaryH(j)+
         estimateDocsH(j,false)+photoStripH(j);
       break;
     case 'signoff':
-      h+=signOffH(j)+(LF_OPEN[j.id]?labourFixH(j,'signoff'):'')+estimateSummaryH(j)+
-        estimateDocsH(j,false)+
-        photoStripH(j)+
-        srtBreakdownH(j,false);
+      // 16 Nov 2026: Final Estimate and Logan Sign-Off are one step — the
+      // quote is checked and changed here, and Approve sends it to the customer.
+      h+=signOffH(j)+(LF_OPEN[j.id]?labourFixH(j,'signoff'):'')+finEditH(j,true);
       break;
     case 'contact':
       if(j.declined&&!j.declined.closed){h+=declinedH(j)+phoneRowH(j);break;}
@@ -9341,6 +9272,8 @@ function renderMyNextJob(){
 }
 
 function mv(stage,msg){
+  if(stage==='financial')stage='signoff';
+  if(stage==='contact')stage='contacted';
   // A move to the stage it is already on does nothing but look broken
   try{
     const cur=gj();
@@ -9686,9 +9619,9 @@ function autoSkipNoParts(){
     if(realParts(j).length)return;
     if(!(parseFloat(j.labourCost)>0))return;
     if(!(j.noParts||isClearlyBodywork(j)))return;
-    j.stage='financial';
+    j.stage='signoff';
     j.stageAt=Date.now();
-    try{stampStage(j,'financial');}catch(e){}
+    try{stampStage(j,'signoff');}catch(e){}
     j.log=j.log||[];
     j.log.push({t:ts(),s:'\u26a1 No parts needed \u2014 moved on from Parts Estimate automatically'+(j.noParts?'':' (bodywork, labour only)')});
     save(j);n++;
@@ -12525,6 +12458,14 @@ function autoPilot(){
       save(j);
     });}catch(e){}
   try{jobs.forEach(j=>{if(j&&!j.mergedInto&&comebackJob(j)&&!j.comebackHandled&&['intake','range','labour','parts','financial','signoff'].includes(j.stage)){j.comebackHandled=true;if(comebackToBook(j,'comebacks are put right free'))save(j);}});}catch(e){}
+  try{jobs.forEach(j=>{
+    if(!j||j.mergedInto)return;
+    if(j.stage==='financial'){j.stage='signoff';j.stageAt=Date.now();try{stampStage(j,'signoff');}catch(e){}
+      j.log=j.log||[];j.log.push({t:ts2(),s:'\u2192 Final Estimate & Sign-Off (one step now \u2014 Logan or Joel checks the quote and sends it)'});save(j);}
+    else if(j.stage==='contact'){const sent=j.estimateSentMs||j.estimateOpenedMs;
+      j.stage=sent?'contacted':'signoff';j.stageAt=Date.now();try{stampStage(j,j.stage);}catch(e){}
+      j.log=j.log||[];j.log.push({t:ts2(),s:sent?'\u2192 Contacted (quote already went to the customer)':'\u2192 Final Estimate & Sign-Off \u2014 the Service Adviser step is gone; Approve sends the quote'});save(j);}
+  });}catch(e){}
   try{autoSplitJobs();}catch(e){console.warn('split',e);}
   let moved=0;
   window._batchSave=true;
@@ -12667,6 +12608,88 @@ function toggleVATExempt(exempt){
   if(quoteEl) quoteEl.value=total.toFixed(2);
 }
 
+function finEditH(j,merged){
+      const labourCost=parseFloat(j.labourCost)||0;
+  const partsCostRaw=(j.parts||[]).reduce((s,p)=>{
+    const best=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
+    return s+best*(parseInt(p.qty)||1);
+  },0);
+  // Parts team enters RAW cost - system applies markup to get sell price
+  const partsCost=(j.parts||[]).reduce((s,p)=>{
+    const best=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
+    return s+applyMarkup(best,p)*(parseInt(p.qty)||1);
+  },0);
+  const addLabour=parseFloat(j.addLabourCost)||0;
+  const addParts=parseFloat(j.addPartsCost)||0;
+  const vatExempt=j.vatExempt||false;
+  // Labour ex-VAT + parts ex-VAT = subtotal ex-VAT, then VAT on top.
+  const labourEx=labourCost+addLabour;
+  const partsEx=partsCost+applyMarkup(addParts);
+  const exSubtotal=labourEx+partsEx;
+  const vatAmount=vatExempt?0:exSubtotal*0.20;
+  const incVAT=exSubtotal+vatAmount;
+  let h='';
+  h+=estimateSummaryH(j)+'<div class="notice n-teal" style="margin-bottom:12px">Estimator: review and confirm. Parts team entered <strong>raw cost prices</strong> — markup is applied automatically below.</div>'+
+    srtBreakdownH(j,true)+
+    photoStripH(j,true)+
+    '<div style="background:var(--surface2);border-radius:var(--rs);padding:12px 14px;margin-bottom:12px">'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center;margin-bottom:10px">'+
+        '<div><div style="font-size:10px;color:var(--faint);text-transform:uppercase">Labour ex-VAT</div><div style="font-size:18px;font-weight:800;color:var(--blue)">£'+labourEx.toFixed(2)+'</div></div>'+
+        '<div><div style="font-size:10px;color:var(--faint);text-transform:uppercase">Parts ex-VAT</div><div style="font-size:18px;font-weight:800;color:var(--green)">£'+partsEx.toFixed(2)+'</div><div style="font-size:10px;color:var(--faint);margin-top:2px">raw cost £'+partsCostRaw.toFixed(2)+'</div></div>'+
+        '<div><div style="font-size:10px;color:var(--faint);text-transform:uppercase">Subtotal ex-VAT</div><div id="ex-subtotal-display" style="font-size:18px;font-weight:800">£'+exSubtotal.toFixed(2)+'</div></div>'+
+      '</div>'+
+      '<div style="border-top:1px solid var(--border);padding-top:8px;margin-bottom:8px">'+
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px">'+
+          '<input type="checkbox" id="a-vat-exempt" '+(vatExempt?'checked':'')+' onchange="toggleVATExempt(this.checked)" style="width:16px;height:16px"/>'+
+          '<span>VAT Exempt (e.g. MOT, insurance-related work)</span>'+
+        '</label>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:center">'+
+        '<div><div style="font-size:10px;color:var(--faint);text-transform:uppercase">VAT (20%)</div><div id="vat-display" style="font-size:15px;font-weight:700;color:var(--dim)">£'+vatAmount.toFixed(2)+(vatExempt?' <span style=\"font-size:10px\">(exempt)</span>':'')+'</div></div>'+
+        '<div><div style="font-size:10px;color:var(--gold);text-transform:uppercase;font-weight:700">Total inc-VAT</div><div id="inc-vat-display" style="font-size:22px;font-weight:900;color:var(--gold)">£'+incVAT.toFixed(2)+'</div></div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="fg" style="margin-bottom:4px"><label class="fl2">Final Quote to Customer (£) <span class="req">*</span></label><input class="fi2" id="a-final-quote" type="number" value="'+((j.estimate&&parseFloat(j.quote))?parseFloat(j.quote):incVAT).toFixed(2)+'" placeholder="0.00"/></div>'+
+    '<div style="font-size:11px;color:var(--faint);margin-bottom:12px">Adjust if needed. This is the price quoted to the customer.</div>'+
+    (j.parts&&j.parts.length?
+      '<div class="stitle" style="margin-bottom:6px">Parts Breakdown (cost → markup → sell price)</div>'+
+      '<div style="background:var(--surface2);border-radius:var(--rs);padding:8px 10px;margin-bottom:12px">'+
+        '<div style="display:grid;grid-template-columns:2fr 60px 70px 60px 80px;gap:4px;padding:4px 0;border-bottom:1px solid var(--border);font-size:10px;color:var(--faint);text-transform:uppercase">'+
+          '<span>Part</span><span>Qty</span><span>Cost</span><span>Markup</span><span>Sell (ex-VAT)</span>'+
+        '</div>'+
+        j.parts.map((p,pi)=>{
+          const cost=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
+          const sell=applyMarkup(cost,p);
+          const qty=parseInt(p.qty)||1;
+          const markupPct=cost>0?Math.round((sell/cost-1)*100):0;
+          const bestSup=p.supplier||p.supplier1||p.supplier2||p.supplier3||'';
+          return'<div style="display:grid;grid-template-columns:2fr 60px 70px 60px 80px;gap:4px;padding:5px 0;border-bottom:1px solid var(--border);align-items:center;font-size:12px">'+
+            '<div><span style="font-weight:600">'+escHtml(p.name||'\u2014')+'</span>'+(p.isKit?'<span style="font-size:9px;font-weight:800;color:var(--blue);margin-left:4px">KIT</span>':'')+(bestSup?'<span style="color:var(--faint);font-size:10px;margin-left:4px">\u00b7 '+escHtml(bestSup)+'</span>':'')+
+              (p.kitContents?'<div style="font-size:10px;color:var(--faint);white-space:pre-line;padding-left:6px;border-left:2px solid var(--border);margin-top:2px">'+escHtml(p.kitContents)+'</div>':'')+' </div>'+
+            '<div><input type="number" min="0" value="'+qty+'" style="width:46px;background:var(--surface);border:1px solid var(--border);color:var(--fg);border-radius:4px;padding:2px 4px;font-size:12px;text-align:center" onchange="setPartQty(\''+j.id+'\','+pi+',this.value)" title="Change quantity \u2014 set 0 to remove"/></div>'+
+            '<div><input type="number" step="0.01" min="0" value="'+cost.toFixed(2)+'" style="width:62px;background:var(--surface);border:1px solid var(--border);color:var(--fg);border-radius:4px;padding:2px 4px;font-size:12px" onchange="setPartCost(\''+j.id+'\','+pi+',this.value)" title="Change cost"/></div>'+
+            '<div><span style="color:'+(isNoMarkup(p)?'var(--faint)':'var(--amber)')+';font-weight:700">'+(isNoMarkup(p)?'no mkup':'+'+markupPct+'%')+'</span>'+
+              '<button class="btn btn-ghost btn-xs" style="padding:0 5px;margin-left:4px;font-size:9px" onclick="setPartNoMarkup(\''+j.id+'\','+pi+')" title="Switch markup off for this line">'+(p.noMarkup?'undo':'\u00d7')+'</button></div>'+
+            '<div style="font-weight:800;color:var(--green)">\u00a3'+(sell*qty).toFixed(2)+'</div>'+
+          '</div>';
+        }).join('')+
+        '<div style="display:grid;grid-template-columns:2fr 60px 70px 60px 80px;gap:4px;padding:6px 0;font-weight:700;font-size:12px;border-top:2px solid var(--border);margin-top:2px">'+
+          '<span style="color:var(--dim)">Total parts</span><span></span>'+
+          '<span style="color:var(--dim)">\u00a3'+partsCostRaw.toFixed(2)+'</span>'+
+          '<span style="color:var(--amber)">\u2192</span>'+
+          '<span style="color:var(--green)">\u00a3'+partsCost.toFixed(2)+'</span>'+
+        '</div>'+
+        '<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addPartAtFinal(\''+j.id+'\')">+ Add another part</button>'+
+        partsPOButtons(j)+
+        '<div style="font-size:10px;color:var(--faint);margin-top:6px">Change a quantity or cost above and the quote updates itself. Set a quantity to 0 to remove the line.</div>'+
+      '</div>':
+      '<button class="btn btn-ghost btn-sm" style="margin-bottom:12px" onclick="addPartAtFinal(\''+j.id+'\')">+ Add a part</button>')+
+    estimateDocsH(j,false)+
+    '<div class="fg" style="margin-bottom:12px"><label class="fl2">Notes for Service Adviser</label><textarea class="fta" id="a-final-notes" placeholder="Any caveats or scope notes...">'+(j.finalNotes||'')+'</textarea></div>'+
+    (merged?'<div style="font-size:11px;color:var(--dim);margin-bottom:10px">Change the quote above if needed \u2014 Approve below sends exactly this to the customer.</div>'
+      :'<button class="btn btn-gold btn-full" onclick="financialDone()">\u2713 Quote Confirmed \u2192 Sign-off</button>');
+  return h;
+}
 function financialDone(){
   const j=gj();if(!j)return;
   const fq=parseFloat(document.getElementById('a-final-quote')?.value);
@@ -14383,7 +14406,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1625';
+const CRM_BUILD='2026-11-16-1640';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
