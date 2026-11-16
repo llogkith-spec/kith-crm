@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v9.4 \u00b7 16 Nov';
+const BUILD='v9.5 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6308,7 +6308,9 @@ function actH(j){
         '<div class="fg" id="srt-src-wrap" style="margin-bottom:8px;display:'+(j.labourFixed?'none':'block')+'"><label class="fl2">SRT source</label>'+
           '<input class="fi2" id="a-srt-src" placeholder="HaynesPro operation / code" value="'+escHtml(j.srtSource||'')+'"/></div>'+
         '<div id="srt-preview" style="font-size:11px;color:var(--dim);margin-bottom:10px"></div>'+
-        '<div class="fg" style="margin-bottom:8px"><label class="fl2">Labour Description <span class="req">*</span></label><textarea class="fta" id="a-labour-desc" placeholder="e.g. Full service - 3hrs @ \u00a350/hr&#10;Brake pads front - 1hr @ \u00a372/hr">'+(j.labourDesc||'')+'</textarea></div>'+
+        '<div class="fg" style="margin-bottom:8px"><label class="fl2" style="display:flex;justify-content:space-between;align-items:center">Labour Description <span class="req">*</span>'+
+          (srtLines(j).length?'<button type="button" class="btn btn-ghost btn-xs" onclick="fillLabourDesc(\''+j.id+'\',true)">\u21bb Fill from the breakdown</button>':'')+'</label>'+
+          '<textarea class="fta" id="a-labour-desc" placeholder="e.g. Full service - 3hrs @ \u00a350/hr&#10;Brake pads front - 1hr @ \u00a372/hr">'+escHtml(j.labourDesc||labourDescFromLines(j))+'</textarea></div>'+
         '<div class="fg" style="margin-bottom:12px"><label class="fl2">Labour Total (\u00a3 ex-VAT) <span class="req">*</span></label><input class="fi2" id="a-labour-cost" type="number" placeholder="0.00 ex-VAT" value="'+(j.labourCost||'')+'" oninput="srtPreview()"/></div>'+
         // Parts request section
         '<div class="stitle" style="margin-top:4px">Parts Needed <span style="font-size:11px;color:var(--dim);font-weight:400">(list parts for the Parts team to find and price)</span></div>'+
@@ -8988,6 +8990,25 @@ function removeSrtLine(id,i){
   syncSrtTotals(j);save(j);renderDetail();renderAll();
 }
 // Keep the headline SRT figures equal to the sum of the lines
+// The labour breakdown written out as the labour description (16 Nov 2026)
+function labourDescFromLines(j){
+  const lines=srtLines(j);if(!lines.length)return '';
+  const rate=(j.labourCost&&j.srtCharged)?(j.labourCost/j.srtCharged):70;
+  return lines.map(l=>{
+    const b=parseFloat(l.book)||0,c=parseFloat(l.charged)||0,v=l.labour!=null?parseFloat(l.labour):c*rate;
+    return (l.op||'Operation')+' \u2014 '+b.toFixed(1)+'h book'+(Math.abs(c-b)>0.049?', '+c.toFixed(2).replace(/0$/,'')+'h charged':'')+' \u2014 \u00a3'+v.toFixed(2);
+  }).join('\n')+'\nTotal: '+srtLinesTotal(j,'book').toFixed(1)+'h book, '+srtLinesTotal(j,'charged').toFixed(2).replace(/0$/,'')+'h charged \u2014 \u00a3'+
+    lines.reduce((a,l)=>a+(l.labour!=null?parseFloat(l.labour):(parseFloat(l.charged)||0)*rate),0).toFixed(2)+' ex VAT';
+}
+function fillLabourDesc(id,ask){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
+  const ta=document.getElementById('a-labour-desc');
+  const cur=ta?ta.value.trim():String(j.labourDesc||'').trim();
+  if(ask&&cur&&!confirm('Replace the labour description with the breakdown?'))return;
+  j.labourDesc=labourDescFromLines(j);
+  if(ta)ta.value=j.labourDesc;
+  save(j);
+}
 function syncSrtTotals(j){
   const lines=srtLines(j);
   if(!lines.length)return;
@@ -9409,6 +9430,7 @@ window.brainApplyToJob = function(jobId){
   j.srtCharged = Number(j.srtLines.reduce((a,l)=>a+l.charged,0).toFixed(2));
   j.labourCost = Number(totLabour.toFixed(2));
   j.srtSource = 'Brain pre-fill · ' + j.brainAI.jobs.length + ' lines';
+  if(!String(j.labourDesc||'').trim())j.labourDesc=labourDescFromLines(j);
   j.brainAppliedAt = ts();
   j.brainAppliedBy = brainWho();
   save(j); renderDetail();
