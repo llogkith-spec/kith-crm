@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v12.4 \u00b7 16 Nov';
+const BUILD='v12.5 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -7697,6 +7697,13 @@ function labourH(j){
   // A job mixing tiers (a LOW service plus TOP work) lands between two rates — fine.
   const mixed=rate&&!onCard&&rate>cardMin&&rate<cardMax;
   const rateCol=!rate?'var(--dim)':(onCard?'var(--green)':(mixed?'var(--gold)':'var(--red)'));
+  // 16 Nov: a blended rate (£66.36/hr) means nothing to anyone — when the
+  // lines are on different rates, show each line's own rate instead.
+  let _ln=[];try{_ln=(srtLines(j)||[]).filter(l=>!l.fixed&&parseFloat(l.charged)>0);}catch(e){}
+  const _lr=l=>(parseFloat(l.labour)||0)/(parseFloat(l.charged)||1);
+  const _rates=[...new Set(_ln.map(l=>Math.round(_lr(l)*100)/100))];
+  const _tierOf=x=>{const f=card.rates.find(c=>Math.abs(c.r-x)<0.01);return f?f.t:'';};
+  const byLine=_rates.length>1;
   const cell=(lbl,val,col)=>'<div><div style="font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.5px">'+lbl+'</div>'+
     '<div style="font-size:14px;font-weight:700;color:'+(col||'var(--fg)')+'">'+val+'</div></div>';
   return '<div style="margin-bottom:14px">'+
@@ -7705,9 +7712,15 @@ function labourH(j){
       cell('SRT (book)',srt?srt.toFixed(1)+'h':'\u2014')+
       cell('Charging',chg?chg.toFixed(1)+'h':'\u2014',Math.abs(diff)>0.049?(diff>0?'var(--amber)':'var(--green)'):null)+
       cell('Labour ex-VAT',cost?'\u00a3'+cost.toFixed(2):'\u2014')+
-      cell('Rate',rate?'\u00a3'+rate.toFixed(2)+'/hr':'\u2014',rateCol)+
+      cell(byLine?'Rates':'Rate',byLine?_rates.map(x=>'\u00a3'+x.toFixed(0)).join(' + ')+'/hr':(rate?'\u00a3'+rate.toFixed(2)+'/hr':'\u2014'),byLine?'var(--green)':rateCol)+
     '</div>'+
-    (rate
+    (byLine
+      ? '<div style="font-size:11px;margin-top:6px;line-height:1.6">'+_ln.map(l=>{const x=_lr(l),t=_tierOf(Math.round(x*100)/100);
+          return '<div style="display:flex;gap:8px;border-bottom:1px solid var(--border);padding:2px 0"><span style="flex:1">'+escHtml(l.op||'Labour')+'</span>'+
+            '<span style="color:var(--dim)">'+(parseFloat(l.book)||0).toFixed(1)+'h book \u2192 '+(+l.charged).toFixed(1)+'h \u00d7 \u00a3'+x.toFixed(0)+(t?' ('+t+')':'')+'</span>'+
+            '<span style="min-width:70px;text-align:right;font-weight:700">\u00a3'+(parseFloat(l.labour)||0).toFixed(2)+'</span></div>';}).join('')+'</div>'
+      : '')+
+    (rate&&!byLine
       ? '<div style="font-size:11px;margin-top:5px;color:'+rateCol+'">'+
         (onCard
           ? '\u2713 '+onCard.t+' rate'
@@ -10208,7 +10221,7 @@ function brainAutoParts(j){
   let n=0;const added=[];
   const add=(name,qty,why,extra)=>{
     const k=_pkey(name);if(!k)return;
-    const ks=k.replace(/s\b/g,'');if(have().some(h=>h===k||h.replace(/s\b/g,'')===ks))return;
+    const ks=k.replace(/s\b/g,'');if(have().some(h=>{const hs=h.replace(/s\b/g,'');return hs===ks||(extra&&extra.rule&&hs.includes(ks));}))return;
     j.parts.push(Object.assign({name:name,num:'',qty:qty||1,price1:'',price2:'',price3:'',supplier1:'',supplier2:'',supplier3:'',eta1:'',eta2:'',eta3:'',status:'pending',fromBrain:true,brainWhy:why},extra||{}));
     n++;added.push(name+(qty>1?' ×'+qty:''));
   };
@@ -10217,7 +10230,7 @@ function brainAutoParts(j){
     const pl=(bj.parts_lines||[]).filter(p=>p&&(p.part_label||p.part_normalised));
     pl.forEach(p=>add(String(p.part_label||p.part_normalised).replace(/_/g,' '),parseInt(p.qty)||1,lab,{brand:p.brand||'',aiNet:parseFloat(p.net)||0}));
     if(!pl.length){const mp=mainPartOf(lab);if(mp)add(mp.charAt(0).toUpperCase()+mp.slice(1),1,lab);}
-    partsForOp(lab,j).forEach(x=>add(x.name,x.qty,lab+' \u2014 goes with this job'));
+    partsForOp(lab,j).forEach(x=>add(x.name,x.qty,lab+' \u2014 goes with this job',{rule:true}));
   });
   j.brainPartsAutoAt=ts();
   if(n){
@@ -13938,7 +13951,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1145';
+const CRM_BUILD='2026-11-16-1150';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
