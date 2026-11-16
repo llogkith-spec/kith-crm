@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v16.6 \u00b7 16 Nov';
+const BUILD='v16.7 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -10173,6 +10173,42 @@ function brainFixTyres(j){
   });
   return ch;
 }
+// ── ONE LINE PER PART (16 Nov 2026) ───────────────────────────────
+// "Tyre 205/45 R17 88H" was going on the parts list two or three times —
+// once from the labour apply and again from the parts pre-fill. A part
+// already on the list is never added again; any copies are merged.
+function partDupKey(name){
+  const t=String(name||'').toLowerCase();
+  if(/\btyres?\b/.test(t)&&!/valve|tpms|sensor|fitting|repair|puncture|pressure/.test(t)){const z=t.match(/(\d{3})\s*\/\s*(\d{2})\s*z?r?\s*(\d{2})/);return 'tyre'+(z?z[1]+z[2]+z[3]:'');}
+  return _pkey(t).replace(/s\b/g,'');
+}
+function partHasWork(p){
+  return ['price1','price2','price3','price','cost','supplier1','supplier2','supplier3','num','partNo','po','poId'].some(k=>p[k]!=null&&String(p[k]).trim()!==''&&String(p[k])!=='0');
+}
+function dedupeParts(j){
+  if(!j||!Array.isArray(j.parts)||j.parts.length<2)return 0;
+  const keep=[],gone=[];
+  j.parts.forEach(p=>{
+    const k=partDupKey(p&&p.name);
+    const i=k?keep.findIndex(x=>partDupKey(x.name)===k):-1;
+    if(i<0){keep.push(p);return;}
+    const a=keep[i];
+    if(partHasWork(a)&&partHasWork(p)){keep.push(p);return;}      // both priced by hand — leave them for a person
+    const winner=partHasWork(p)?p:a, loser=winner===p?a:p;
+    // the longer name keeps the full spec ("… 88H XL")
+    if(String(loser.name||'').length>String(winner.name||'').length&&!partHasWork(loser))winner.name=loser.name;
+    keep[i]=winner;gone.push(loser.name);
+  });
+  if(!gone.length)return 0;
+  j.parts=keep;
+  // a tyre's quantity is what the customer asked for, not the copies added together
+  try{const hm=(j.intakeAnswers||[]).find(a=>/^how many/i.test(String(a.q||''))&&/tyre/i.test(String(a.a||'')));
+    const q=hm?tyreQtyFrom(hm.a):0;
+    if(q>0)keep.filter(x=>/^tyre/.test(partDupKey(x.name))).forEach(x=>{x.qty=q;});}catch(e){}
+  j.log=j.log||[];
+  j.log.push({t:ts2(),s:'\ud83e\uddf9 Removed '+gone.length+' duplicate part line'+(gone.length===1?'':'s')+': '+gone.join(', ')});
+  return gone.length;
+}
 // Tyres the Brain found become parts lines for the parts team to price
 function addTyreParts(j){
   const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return 0;
@@ -11011,7 +11047,9 @@ window.brainApplyPartsToJob = function(jobId){
   const j = _brainJob(jobId); if(!j||!j.brainPartsDraft)return;
   j.parts = j.parts || [];
   // Push each Brain part as a new row in j.parts (matching the psH shape)
+  // — but never a second copy of one already on the list (16 Nov 2026)
   j.brainPartsDraft.forEach(p => {
+    if(j.parts.some(x=>partDupKey(x.name)===partDupKey(p.part_label)))return;
     j.parts.push({
       name: p.part_label,
       qty: p.qty || 1,
@@ -11022,6 +11060,7 @@ window.brainApplyPartsToJob = function(jobId){
       _brainPartNormalised: p.part_normalised
     });
   });
+  try{dedupeParts(j);}catch(e){}
   j.brainPartsAppliedAt = ts();
   j.brainPartsAppliedBy = brainWho();
   save(j); renderDetail();
@@ -12847,6 +12886,8 @@ function autoPilot(){
       const from=j.stage;j.doneToAcc1=true;j.stage='accounts';j.stageAt=Date.now();try{stampStage(j,'accounts');}catch(e){}
       j.log=j.log||[];j.log.push({t:ts2(),s:'\u2713 Work completed \u2014 sent to Accounts (Logan, 16 Nov)'});
       try{stageMoved(j,from,'accounts');}catch(e){}save(j);}});}catch(e){}
+  // v16.7: one line per part — merge copies the Brain added twice
+  try{jobs.forEach(j=>{if(j&&!j.mergedInto&&['labour','parts','signoff'].includes(j.stage)&&dedupeParts(j))save(j);});}catch(e){}
   // v16.5: an MOT is subcontracted (SO) at a fixed price — no labour or parts estimate, straight to sign-off
   try{jobs.forEach(j=>{if(j&&!j.mergedInto&&!j.motRouted&&!comebackJob(j)&&['intake','range','labour','parts'].includes(j.stage)&&motOnlyJob(j)){if(motToSignOff(j))save(j);}});}catch(e){}
   // v16.5: comebacks go straight into Booked — move any left in Deposit & T&Cs
@@ -14791,7 +14832,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1915';
+const CRM_BUILD='2026-11-16-1925';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
