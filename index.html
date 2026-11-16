@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v8.5 \u00b7 16 Nov';
+const BUILD='v8.6 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -4553,7 +4553,7 @@ function copyFurtherOf(j){
 // on a job made during that flood.
 const FORM_FLOOD_FROM=Date.UTC(2026,10,13,13,0), FORM_FLOOD_TO=Date.UTC(2026,10,16,10,0);
 function formRowFresh(j,made){
-  if(!j||!String(j.id||'').startsWith('JF'))return true;
+  if(!j||!String(j.id||'').startsWith('JF')||!j.srcTs||j.splitFrom)return true;
   made=made||parseLogTime((j.log||[])[0]&&j.log[0].t)||j.stageAt||Date.now();
   let form=NaN;try{form=tsDate(j.srcTs).getTime();}catch(e){}
   if(isNaN(form))return !(made>=FORM_FLOOD_FROM&&made<=FORM_FLOOD_TO);
@@ -9473,6 +9473,61 @@ function rangeWords(t){
   return [...new Set(String(t||'').toLowerCase().replace(/[^a-z0-9 ]+/g,' ').split(/\s+/)
     .map(w=>w.replace(/(ing|es|s)$/,'')).filter(w=>w.length>=3&&!RANGE_STOP.has(w)&&!/^\d+$/.test(w)))];
 }
+// ── DIAGNOSTIC + REPAIR IN ONE REQUEST → TWO JOBS (16 Nov 2026) ─────
+// "oxygen sensor and deep diagnostic" is two jobs for two people: the
+// diagnostic (estimator sets the level) and the repair (priced on its own).
+const DIAG_RX=/\b(diag\w*|health ?check|fault[ -]?find\w*|investigat\w*|inspect\w*|check (why|what)|find (the )?(fault|cause))\b/i;
+function splitWorkParts(work){
+  const segs=String(work||'').split(/\s*(?:,|;|\+|&|\n|\band then\b|\bthen\b|\band\b|\bplus\b|\balso\b)\s*/i)
+    .map(x=>x.replace(/^[\s\-–—.]+|[\s\-–—.]+$/g,'')).filter(x=>x&&x.length>=3);
+  const diag=segs.filter(x=>DIAG_RX.test(x));
+  // a bit like "bank 2" or "both sides" is part of the line before, not a job of its own
+  const rep=segs.filter(x=>!DIAG_RX.test(x)&&/[a-z]{3,}/i.test(x.replace(/\b(bank|banks|side|sides|front|rear|left|right|both|nearside|offside|ns|os|one|two|three|four|the|a|an|of|on|in)\b/gi,'')));
+  return {diag,rep};
+}
+function isDiagOnly(j){
+  const w=String(j&&j.work||'');if(!DIAG_RX.test(w))return false;
+  const p=splitWorkParts(w);return p.diag.length>0&&p.rep.length===0;
+}
+function canSplitDiag(j){
+  if(!j||j.mergedInto||j.noSplit||j.splitFrom||j.splitInto)return false;
+  if(!['intake','range','labour'].includes(j.stage))return false;
+  if(Date.now()-(j.stageAt||0)>14*864e5)return false;
+  if(j.rangeSentAt||j.rangeYesAt||parseFloat(j.quote)>0||parseFloat(j.srt)>0||j.tmJob)return false;
+  try{if(typeof formRowFresh==='function'&&!formRowFresh(j))return false;}catch(e){}
+  const p=splitWorkParts(j.work);
+  return p.diag.length>0&&p.rep.length>0;
+}
+function splitDiagRepair(j){
+  if(!canSplitDiag(j))return null;
+  const p=splitWorkParts(j.work);
+  const rid=String(j.id)+'R';
+  if(jobs.some(x=>x&&x.id===rid))return null;                      // another screen already did it
+  const repWork=p.rep.join(', ');
+  const rep={
+    id:rid,name:j.name,phone:j.phone,wa:j.wa,email:j.email,reg:j.reg,make:j.make,model:j.model,ramp:j.ramp,
+    work:repWork,photos:j.photos,source:j.source,by:j.by,custType:j.custType||'',fleetAccount:j.fleetAccount,
+    isB2B:j.isB2B,isAA:j.isAA,tmPart:'',tmJob:'',parts:[],est:null,finalEst:null,finalNotes:'',fromForm:j.fromForm,
+    stage:'intake',stageAt:Date.now(),createdAt:new Date().toISOString(),
+    splitFrom:j.id,linkedJobId:j.id,linkedRef:j.tmJob||j.id,afterDiagnostic:true,
+    log:[{t:ts2(),s:'✂ Repair split out of '+j.id+' ("'+String(j.work||'').slice(0,80)+'") — the diagnostic is its own job'}]
+  };
+  j.workOriginal=j.workOriginal||j.work;
+  j.work=p.diag.join(', ');
+  j.splitInto=rid;
+  delete j.brainAI;delete j._brainTriedMs;                          // re-price on the new wording
+  j.log=j.log||[];
+  j.log.push({t:ts2(),s:'✂ Split in two: this job is now the diagnostic ("'+j.work+'"); the repair ("'+repWork+'") is job '+rid});
+  jobs.unshift(rep);
+  save(j);save(rep);
+  return rep;
+}
+function autoSplitJobs(){
+  let n=0;
+  try{jobs.slice().forEach(j=>{try{if(splitDiagRepair(j))n++;}catch(e){}});}catch(e){}
+  if(n&&typeof toast==='function')toast('✂ '+n+' job'+(n===1?'':'s')+' split into diagnostic + repair');
+  return n;
+}
 // Where a job on Intake goes next. {to:''} = wait (the Brain is still working).
 function intakeRoute(j){
   if(!j||j.stage!=='intake')return {to:''};
@@ -9507,6 +9562,7 @@ function skipsRange(j){
       String(x.reg||'').toUpperCase().replace(/[^A-Z0-9]/g,'')===rk0&&Date.now()-(x.stageAt||0)<30*864e5);
     if(inNow)return 'Car is already in with us ('+(inNow.tmJob||inNow.id)+' at '+stg(inNow.stage).label+')';
   }catch(e){}
+  if(isDiagOnly(j))return 'Diagnostic \u2014 the estimator sets the level';
   // Already diagnosed — we know the fault, so price it properly instead of a range
   if(j.diagnosed||/\b(diagnosed|after (the |a |our )?diag(nostic)?s?|diag(nostic)? (results?|report|found|done|showed?)|fault codes? (show|read|found)|(found|confirmed) (on|in|during) (the )?(diag(nostic)?|health ?check)|from (the |our )?(diag(nostic)?|health ?check))\b/i.test(String(j.work||'')))return 'Already diagnosed \u2014 the fault is known';
   try{
@@ -11037,6 +11093,7 @@ function toggleAutoHold(id){
 var AUTO_LOG=[];                // what the engine has moved this session
 function autoPilot(){
   if(!AUTO_ON)return 0;
+  try{autoSplitJobs();}catch(e){console.warn('split',e);}
   let moved=0;
   window._batchSave=true;
   try{
