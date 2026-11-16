@@ -28,7 +28,7 @@
     { name: 'Ali',     icon: '📞', filter: 'adviser',   roles: ['adviser', 'parts'],               pin: '7777', wa: '2348126024190', label: 'Service Adviser' },
     { name: 'Joel',    icon: '📋', filter: 'estimator', roles: ['estimator'],                      pin: '2222', wa: '639072943859',  label: 'Estimator (12pm–5pm)' },
     { name: 'Paul',    icon: '📋', filter: 'estimator', roles: ['estimator', 'parts'],             pin: '3333', wa: '',              label: 'Estimator (parts + labour)' },
-    { name: 'Elvis',   icon: '📞', filter: 'adviser',   roles: ['adviser', 'estimator'],           pin: '8888', wa: '',              label: 'Service Adviser + Estimator' },
+    { name: 'Elvis',   icon: '📞', filter: 'adviser',   roles: ['adviser', 'estimator', 'parts'],  pin: '8888', wa: '',              label: 'Service Adviser + Estimator (parts + labour)' },
     { name: 'Sudha',   icon: '🔩', filter: 'parts',     roles: ['parts', 'accounts', 'onsite'],    pin: '6666', wa: '447514422991',  label: 'Accounts / Parts' },
     { name: 'Giles',   icon: '🔧', filter: 'parts',     roles: ['parts', 'workshop'],              pin: '4444', wa: '447496673248',  label: 'Parts / Workshop' },
     { name: 'Harith',  icon: '📋', filter: 'estimator', roles: ['estimator'],                      pin: '5555', wa: '',              label: 'Parts' },
