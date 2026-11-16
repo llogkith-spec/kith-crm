@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v13.1 \u00b7 16 Nov';
+const BUILD='v13.2 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6195,6 +6195,19 @@ function prefetchEstFile(j,d){
 function estSetStatus(j,html,col){
   document.querySelectorAll('.est-send-st[data-id="'+j.id+'"]').forEach(el=>{el.innerHTML=html;el.style.color=col||'var(--dim)';});
 }
+// 16 Nov 2026: a quote that has gone to the customer — however it was
+// sent — puts the job at Contacted (waiting on the customer), so nobody
+// sends it again or thinks it's still sitting with Logan.
+function estMoveToContacted(j,why){
+  if(!j||!['financial','signoff','contact'].includes(j.stage))return;
+  const from=j.stage;
+  j.stage='contacted';j.stageAt=Date.now();
+  if(!j.signedOffAt&&from!=='contact'){j.signedOffAt=ts();j.signedOffBy=currentUser?currentUser.name:'';j.signedOffAmount=parseFloat(j.quote)||parseFloat(j.finalEst)||0;}
+  try{stampStage(j,'contacted');}catch(e){}
+  j.log=j.log||[];
+  j.log.push({t:ts(),s:'\u2192 Contacted \u2014 '+why+(currentUser?' ['+currentUser.name+']':'')});
+  try{stageMoved(j,from,'contacted');}catch(e){}
+}
 function markEstimateSent(j,d,how){
   j.estimateSentAt=ts();j.estimateSentMs=Date.now();
   j.estimateSentBy=currentUser?currentUser.name:'';
@@ -6202,6 +6215,7 @@ function markEstimateSent(j,d,how){
   delete j.estimateOpenedMs;delete j.estimateOpenedAt;
   j.log=j.log||[];
   j.log.push({t:ts(),s:'📄 Estimate '+(d?'PDF ':'')+'sent to '+firstName(j)+' on WhatsApp — '+how+(currentUser?' ['+currentUser.name+']':'')});
+  estMoveToContacted(j,'the quote has gone to the customer');
   save(j);
   try{autoPilot();}catch(e){}
 }
@@ -6265,9 +6279,10 @@ function estManualSend(j,d,num,text,viaShare,waited){
       '3. Press send, then tap <strong>✓ Yes, it’s sent</strong> below'+
       '<div style="margin-top:6px"><button class="btn btn-ghost btn-xs" onclick="estResave(\''+j.id+'\')">⬇ Save the PDF again</button></div></div>'),300);
   }
-  j.estimateOpenedAt=ts();j.estimateOpenedMs=Date.now();
+  j.estimateOpenedAt=ts();j.estimateOpenedMs=Date.now();j.estimateOpenedBy=currentUser?currentUser.name:'';
   j.log=j.log||[];
   j.log.push({t:ts(),s:'💬 WhatsApp opened with the estimate for '+firstName(j)+(currentUser?' ['+currentUser.name+']':'')});
+  estMoveToContacted(j,'WhatsApp opened with the quote for the customer');
   save(j);
   refreshEstimateDocs(j);renderDetail();
   return 'opened';
@@ -6276,6 +6291,11 @@ async function sendEstimateWA(id,i,viaShare){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
   const num=estPhone(j);
   if(!num){alert('There is no mobile number on this job — add the customer’s number first.');return;}
+  const lastMs=Math.max(j.estimateSentMs||0,j.estimateOpenedMs||0);
+  if(lastMs&&Date.now()-lastMs<3*864e5){
+    const when=j.estimateSentMs>=lastMs?(j.estimateSentAt+(j.estimateSentBy?' by '+j.estimateSentBy:'')):(j.estimateOpenedAt+(j.estimateOpenedBy?' by '+j.estimateOpenedBy:''));
+    if(!confirm('\u26a0 This quote already went to '+firstName(j)+' \u2014 '+when+'.\n\nSend it again?'))return;
+  }
   let d=estDocFor(j,i), waited=false;
   // 16 Nov 2026: never send the quote without our estimate — make the
   // KITH PDF (both options when two prices are out) if it isn't there yet.
@@ -12212,6 +12232,9 @@ function autoPilot(){
   // Brain pre-fills applied before 16 Nov put book hours in "charged" — redo the rollup
   try{jobs.forEach(j=>{if(j&&j.brainAppliedAt&&j.brainAI&&Array.isArray(j.brainAI.jobs)&&j.brainAI.jobs.length&&!(Array.isArray(j.srtLines)&&j.srtLines.length)&&['labour','parts','financial'].includes(j.stage)){
     const at=j.brainAppliedAt,by=j.brainAppliedBy;try{window.brainApplyToJob(j.id);}catch(e){} j.brainAppliedAt=at;j.brainAppliedBy=by;}});}catch(e){}
+  // quotes that went out from the job (not through Approve) before 16 Nov 12:35 stayed at sign-off
+  try{jobs.forEach(j=>{const m=Math.max(j.estimateSentMs||0,j.estimateOpenedMs||0);
+    if(j&&['financial','signoff'].includes(j.stage)&&m&&m>=(j.stageAt||0)){estMoveToContacted(j,'the quote already went to the customer on WhatsApp');save(j);}});}catch(e){}
   try{autoSplitJobs();}catch(e){console.warn('split',e);}
   let moved=0;
   window._batchSave=true;
@@ -14053,7 +14076,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1230';
+const CRM_BUILD='2026-11-16-1235';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
