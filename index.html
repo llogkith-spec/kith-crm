@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v8.4 \u00b7 16 Nov';
+const BUILD='v8.5 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -9497,6 +9497,16 @@ function skipsRange(j){
   if(/warranty/i.test(String(j.custType||'')))return 'Warranty job';
   if(j.isComeback||/^COMEBACK/i.test(String(j.work||'')))return 'Comeback';
   if(j.additionalWork)return 'Additional work on a car already in';
+  // The car is already with us (a live job in Operations on the same reg) or
+  // has additional work raised on it — it is known work, not a new lead
+  if(j.hasAdditional)return 'Additional work already raised on this vehicle';
+  try{
+    const rk0=String(j.reg||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+    const ops=(DEPTS.find(d=>d.id==='operations')||{stages:[]}).stages;
+    const inNow=rk0&&jobs.find(x=>x&&x.id!==j.id&&!x.mergedInto&&ops.includes(x.stage)&&
+      String(x.reg||'').toUpperCase().replace(/[^A-Z0-9]/g,'')===rk0&&Date.now()-(x.stageAt||0)<30*864e5);
+    if(inNow)return 'Car is already in with us ('+(inNow.tmJob||inNow.id)+' at '+stg(inNow.stage).label+')';
+  }catch(e){}
   // Already diagnosed — we know the fault, so price it properly instead of a range
   if(j.diagnosed||/\b(diagnosed|after (the |a |our )?diag(nostic)?s?|diag(nostic)? (results?|report|found|done|showed?)|fault codes? (show|read|found)|(found|confirmed) (on|in|during) (the )?(diag(nostic)?|health ?check)|from (the |our )?(diag(nostic)?|health ?check))\b/i.test(String(j.work||'')))return 'Already diagnosed \u2014 the fault is known';
   try{
@@ -10897,6 +10907,11 @@ const AUTO_RULES=[
     why:j=>intakeRoute(j).why,
     when:j=>!!intakeRoute(j).to },
 
+  { id:'range-should-skip', from:'range', to:'labour',
+    label:'Price Range → Labour Estimate when the job should not get a range (car already in, additional work, diagnosed, trade…) and no range has gone out',
+    why:j=>(skipsRange(j)||'')+' \u2014 no instant range, straight to the full estimate',
+    when:j=>!j.rangeSentAt&&!j.rangeYesAt&&!!skipsRange(j) },
+
   { id:'parts-priced', from:'parts', to:'financial',
     label:'Parts Estimate → Final Estimate once every part is priced',
     why:'every part priced',
@@ -11036,11 +11051,12 @@ function autoPilot(){
       if(!ok)continue;
       const from=j.stage;
       const to=(typeof r.to==='function')?r.to(j):r.to;
+      if(!to)continue;
+      const why=(typeof r.why==='function')?(r.why(j)||''):r.why;
       j.stage=to;
       j.stageAt=Date.now();
       try{stampStage(j,to);}catch(e){}
       j.log=j.log||[];
-      const why=(typeof r.why==='function')?(r.why(j)||''):r.why;
       j.log.push({t:ts(),s:'⚡ '+stg(from).label+' → '+stg(to).label+' — '+why+' (automatic)'});
       if(to==='labour'&&!j.assignedEstimator){try{if(autoAssignEstimator(j)&&typeof pingEstimator==='function')pingEstimator(j);}catch(e){}}
       if(to==='lost'&&!j.lostReason)j.lostReason='No reply after three days of chasing';
