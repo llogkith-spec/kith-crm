@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v17.3 \u00b7 16 Nov';
+const BUILD='v17.4 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6494,20 +6494,21 @@ function confirmEstimateSent(id){
 // ── SEND IT NOW (16 Nov 2026) ───────────────────────────────────────
 // After Approve: one box, one tap to send. Nothing is called "sent"
 // until WhatsApp's share box finishes or you tick "Yes, it's sent".
-function openSendNowBox(id){
+function openSendNowBox(id,docI,notJustApproved){
   const j=jobs.find(x=>x.id===id);if(!j)return;
-  const d=estDocFor(j), num=estPhone(j);
+  window._sbDoc=(docI==null||docI==='')?null:docI;
+  const d=estDocFor(j,window._sbDoc), num=estPhone(j);
   try{if(d&&!(EST_FILES[d.url] instanceof File))prefetchEstFile(j,d);}catch(e){}
   document.getElementById('sendnow-box')?.remove();
   const w=document.createElement('div');w.id='sendnow-box';
   w.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1500;display:flex;align-items:center;justify-content:center;padding:20px';
   const share=!!(d&&num&&canShareFiles());
   w.innerHTML='<div style="background:var(--surface);border:2px solid var(--green);border-radius:var(--r);padding:20px;max-width:460px;width:100%">'+
-    '<div style="font-weight:800;font-size:16px;margin-bottom:4px">✓ Approved — now send it to '+escHtml(firstName(j))+'</div>'+
-    '<div style="font-size:12px;color:var(--dim);margin-bottom:14px">Nothing has gone to the customer yet. '+(num?'WhatsApp: <strong>+'+escHtml(num)+'</strong> · '+money2(parseFloat(j.quote)||0):'<span style="color:var(--red)">No valid mobile on this job — fix it with Edit first.</span>')+'</div>'+
+    '<div style="font-weight:800;font-size:16px;margin-bottom:4px">'+(notJustApproved?'💬 Send the estimate PDF to ':'✓ Approved — now send the PDF to ')+escHtml(firstName(j))+'</div>'+
+    '<div style="font-size:12px;color:var(--dim);margin-bottom:14px">'+(notJustApproved?'':'Nothing has gone to the customer yet. ')+(num?'WhatsApp: <strong>+'+escHtml(num)+'</strong> · '+money2(parseFloat(j.quote)||0):'<span style="color:var(--red)">No valid mobile on this job — fix it with Edit first.</span>')+'</div>'+
     (share?'<button id="sb-share" class="btn btn-full" disabled style="margin-bottom:6px;font-weight:800;background:var(--surface2);color:var(--dim)" onclick="sendBoxShare(\''+j.id+'\')">⏳ Getting the PDF ready…</button>'+
       '<div style="font-size:11px;color:var(--faint);margin-bottom:10px">Opens the share box — pick <strong>WhatsApp</strong>, then the customer, then send.</div>':'')+
-    (num?'<button class="btn btn-full" style="margin-bottom:8px;'+(share?'background:var(--surface2);border:1px solid var(--green);color:var(--green)':'background:var(--green);color:#111;font-weight:800')+'" onclick="sendBoxChat(\''+j.id+'\')">💬 Open the WhatsApp chat (message + PDF link)</button>':'')+
+    (num?'<button class="btn btn-full" style="margin-bottom:8px;'+(share?'background:var(--surface2);border:1px solid var(--green);color:var(--green)':'background:var(--green);color:#111;font-weight:800')+'" onclick="sendBoxChat(\''+j.id+'\')">💬 Open the WhatsApp chat + download the PDF to drag in</button>':'')+
     '<div id="sb-msg" style="font-size:12px;margin:6px 0 10px;line-height:1.5"></div>'+
     '<button class="btn btn-ghost btn-full btn-sm" onclick="sendBoxClose()">Later — the green Send button stays on the job</button>'+
   '</div>';
@@ -6528,7 +6529,7 @@ function sendBoxMsg(h,col){const m=document.getElementById('sb-msg');if(m){m.inn
 // The share box opens on this click (the PDF is already in hand, so nothing waits)
 function sendBoxShare(id){
   const j=jobs.find(x=>x.id===id);if(!j)return;
-  const d=estDocFor(j), f=d&&EST_FILES[d.url];
+  const d=estDocFor(j,window._sbDoc), f=d&&EST_FILES[d.url];
   if(!(f instanceof File)){sendBoxMsg('The PDF is still loading — try again in a second.','var(--amber)');return;}
   const text=estimateWAMsg(j);
   try{navigator.clipboard&&navigator.clipboard.writeText(text).catch(()=>{});}catch(e){}
@@ -6545,9 +6546,10 @@ function sendBoxShare(id){
 }
 function sendBoxChat(id){
   const j=jobs.find(x=>x.id===id);if(!j)return;
-  const d=estDocFor(j), num=estPhone(j);if(!num)return;
-  estManualSend(j,d,num,estimateWAMsg(j),false,false);
-  sendBoxMsg('💬 WhatsApp opened with the message'+(d?' and the PDF link. The PDF is in Downloads — drag it into the chat.':'.')+'<br><strong>Press send in WhatsApp</strong>, then:'+
+  const d=estDocFor(j,window._sbDoc), num=estPhone(j);if(!num)return;
+  window._estNoLink=true;
+  try{estManualSend(j,d,num,estimateWAMsg(j),false,false);}finally{window._estNoLink=false;}
+  sendBoxMsg('💬 WhatsApp opened with the message (no link).'+(d?'<br><strong>The PDF is in your Downloads — drag it into the chat</strong> (or 📎 / + → Document → pick it).':'')+'<br><strong>Press send in WhatsApp</strong>, then:'+
     '<div style="margin-top:8px"><button class="btn btn-green btn-sm" onclick="confirmEstimateSent(\''+j.id+'\');sendBoxClose()">✓ Yes, it’s sent</button></div>','var(--text,#eee)');
 }
 function estShareNow(id){
@@ -6588,7 +6590,7 @@ function estManualSend(j,d,num,text,viaShare,waited){
   // proper name so it can be dropped straight in as a document.
   // WhatsApp Web can't take a file from a link, so the message carries
   // the estimate's own link too — the customer can open it either way.
-  const textL=d?text+'\n\nYour estimate (PDF): '+d.url:text;
+  const textL=(d&&!window._estNoLink)?text+'\n\nYour estimate (PDF): '+d.url:text;
   if(waited){
     estSetStatus(j,'<a href="'+escHtml(waLink(num,textL))+'" target="_blank" class="btn btn-sm" style="background:var(--green);color:#111;font-weight:700;display:inline-block">\ud83d\udcac Open WhatsApp with the estimate</a>','var(--green)');
   }else window.open(waLink(num,textL),'_blank');
@@ -6630,7 +6632,8 @@ async function sendEstimateWA(id,i,viaShare){
   if(!d&&!confirm('The estimator has not attached the estimate PDF yet.\n\nSend the price as a plain message without it?'))return;
   const mm=estMismatch(j,d);
   if(mm&&!confirm('\u26a0 The PDF total is \u00a3'+mm.pdf.toFixed(2)+' but the CRM says \u00a3'+mm.crm.toFixed(2)+'.\n\nThe customer would get a message and a PDF with two different prices.\n\nPress Cancel, then "Update the CRM to match" under the PDF \u2014 or OK to send anyway.'))return;
-  if(!waAuto())return estManualSend(j,d,num,text,!!viaShare,waited);
+  // 16 Nov 2026: by hand, every Send button opens the Send box — the PDF goes as a document, not a link
+  if(!waAuto())return openSendNowBox(j.id,i,true);
   estSetStatus(j,'Sending…','var(--amber)');
   const r=await waSend(num,text,d?{template:EST_TEMPLATE,
       params:[firstName(j),vehDesc(j),estTotalTxt(j)||'on the attached estimate'],
@@ -14899,7 +14902,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-2040';
+const CRM_BUILD='2026-11-16-2050';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
