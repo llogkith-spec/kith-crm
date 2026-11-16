@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v13.5 \u00b7 16 Nov';
+const BUILD='v13.6 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -10174,7 +10174,67 @@ function ensureBodyAI(j){
   const b=bodyAIFromDamage(j);if(!b)return false;
   const cur=j.brainAI;
   if(cur&&cur.fromDamage&&cur.damageSig===b.damageSig&&cur.bodySize===b.bodySize)return false;
+  const keep=(cur&&Array.isArray(cur.jobs)?cur.jobs:[]).filter(x=>x&&x.manual);
+  b.jobs=b.jobs.concat(keep);
   j.brainAI=b;return true;
+}
+// ── ADD A LINE YOU CAN SEE ON THE PHOTOS (16 Nov 2026) ─────────────
+// The estimator adds a panel (priced from the SOP like the picker lines)
+// or any other line at a set price, before applying to the job.
+function brainAddLineH(j){
+  const E=bodyEng(), panels=Object.keys(E.base);
+  const sel='background:var(--surface);color:inherit;border:1px solid var(--border);border-radius:4px;padding:6px 7px;font-size:12px';
+  return '<details style="margin-top:10px;border-top:1px dashed var(--border);padding-top:8px"'+(BRAIN_ADD_OPEN[j.id]?' open':'')+' ontoggle="BRAIN_ADD_OPEN[\''+j.id+'\']=this.open">'+
+    '<summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--gold)">+ Add a line \u2014 something you can see on the photos</summary>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px">'+
+      '<select id="bal-panel-'+j.id+'" style="'+sel+'" onchange="document.getElementById(\'bal-other-'+j.id+'\').style.display=this.value===\'__other\'?\'flex\':\'none\';document.getElementById(\'bal-body-'+j.id+'\').style.display=this.value===\'__other\'?\'none\':\'flex\'">'+
+        panels.map(p=>'<option>'+escHtml(p)+'</option>').join('')+'<option value="__alloy">Alloy wheel refurb</option><option value="__other">Other \u2014 type it and set the price</option></select>'+
+      '<span id="bal-body-'+j.id+'" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+
+        '<select id="bal-side-'+j.id+'" style="'+sel+'"><option value="">\u2014 side \u2014</option><option>Left</option><option>Right</option><option>Front</option><option>Rear</option></select>'+
+        '<select id="bal-work-'+j.id+'" style="'+sel+'"><option value="paint">Prep and paint full panel</option><option value="s">Dent (coin) + paint</option><option value="m">Dent (phone) + paint</option><option value="l">Dent (dinner plate) + paint</option><option value="xl">Dent (bigger) + paint</option></select>'+
+        '<label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="bal-blend-'+j.id+'"> blend</label>'+
+      '</span>'+
+      '<span id="bal-other-'+j.id+'" style="display:none;gap:6px;align-items:center">'+
+        '<input id="bal-desc-'+j.id+'" placeholder="What needs doing" style="'+sel+';width:200px">'+
+        '<span style="font-size:12px;color:var(--dim)">\u00a3</span><input id="bal-price-'+j.id+'" type="number" step="0.01" placeholder="ex VAT" style="'+sel+';width:90px">'+
+      '</span>'+
+      '<button class="btn btn-gold btn-xs" onclick="brainAddLine(\''+j.id+'\')">Add</button>'+
+    '</div>'+
+    '<div style="font-size:10px;color:var(--faint);margin-top:4px">Panels are priced from the SOP (inc VAT \u2192 ex VAT on the job), same as the lines above.</div>'+
+  '</details>';
+}
+var BRAIN_ADD_OPEN={};
+function brainAddLine(id){
+  const j=_brainJob(id);if(!j)return;
+  const v=x=>{const el=document.getElementById(x+'-'+id);return el?(el.type==='checkbox'?el.checked:el.value):'';};
+  const panel=v('bal-panel');
+  if(!j.brainAI)j.brainAI={jobs:[],at:ts(),ms:Date.now(),conf:'good'};
+  j.brainAI.jobs=j.brainAI.jobs||[];
+  let line;
+  if(panel==='__other'){
+    const desc=String(v('bal-desc')).trim(),pr=parseFloat(v('bal-price'));
+    if(!desc||!(pr>=0)){alert('Type what needs doing and the price ex VAT.');return;}
+    line={job_label:desc,job_normalised:'manual',srt_hours:0,labour_ex_vat:Math.round(pr*100)/100,tier:'BODY',fixedBody:true,fromDamage:true,manual:true,
+      srt_source:'Added by '+(currentUser?estName(currentUser):'the estimator')+' \u2014 \u00a3'+pr.toFixed(2)+' ex VAT'};
+  }else if(panel==='__alloy'){
+    const e=alloyEach(),each=Math.round((e.min+e.max)/2);
+    line={job_label:'Alloy wheel refurb \u00d71',job_normalised:'alloy_refurb',srt_hours:0,labour_ex_vat:each,tier:'BODY',fixedAlloy:true,fromDamage:true,manual:true,alloyQty:1,alloyEach:each,
+      srt_source:'1 alloy \u00d7 \u00a3'+each+' + VAT (SOP \u00a3'+e.min+'\u2013\u00a3'+e.max+') \u2014 added by hand'};
+  }else{
+    const E=bodyEng(),cat=BODY_CAT[j.bodySize]||'5-seater',up=E.uplift[cat]||0,old=vehAgeYears(j)>10;
+    let price=(E.base[panel]!=null?E.base[panel]:300)+up;if(old)price=Math.round(price*0.75*100)/100;
+    const w=v('bal-work'),dent=w==='paint'?0:(DENT_BY_MARK[w]||150),blend=v('bal-blend')?50:0;
+    const inc=Math.round((price+dent+blend)*100)/100,tot=bodyExVat(inc);
+    const side=v('bal-side'),name=(side?side+' ':'')+panel.replace(/\s*\(each\)/,'').toLowerCase();
+    line={job_label:name.charAt(0).toUpperCase()+name.slice(1)+' \u2014 '+(dent?'dent repair, prep and paint full panel':'prep and paint full panel'),job_normalised:'body_manual',
+      srt_hours:0,labour_ex_vat:tot,tier:'BODY',fixedBody:true,fromDamage:true,manual:true,bodyPanel:panel,
+      srt_source:'Full panel: '+panel+' ('+cat+') \u00a3'+price.toFixed(2)+(old?' \u00b7 25% off, over 10 years old':'')+(dent?' + dent straightening \u00a3'+dent:'')+(blend?' + blend \u00a3'+blend:'')+' = \u00a3'+inc.toFixed(2)+' inc VAT \u2192 \u00a3'+tot.toFixed(2)+' ex VAT \u00b7 added from the photos'};
+  }
+  j.brainAI.jobs.push(line);
+  delete j.brainPrefillDismissedAt;
+  j.log=j.log||[];j.log.push({t:ts(),s:'\ud83e\udde0 Line added to the estimate: '+line.job_label+' \u2014 \u00a3'+line.labour_ex_vat.toFixed(2)+' ex VAT'+(currentUser?' ['+currentUser.name+']':'')});
+  BRAIN_ADD_OPEN[id]=true;
+  save(j);renderDetail();
 }
 function brainPrefillH(j){
   if(!j||j.stage!=='labour')return '';
@@ -10233,6 +10293,7 @@ function brainPrefillH(j){
       '</div>'+
     '</div>';
   }).join('');
+  const addLine = applied?'':brainAddLineH(j);
   const buttons = applied
     ? '<div style="display:flex;gap:8px;align-items:center;margin-top:10px"><div style="color:var(--green);font-size:12px;font-weight:600">✓ Applied '+fmtWhen(j.brainAppliedAt)+'</div><button onclick="brainResetApply(\''+j.id+'\')" style="background:transparent;color:var(--dim);border:1px solid var(--border);padding:4px 10px;border-radius:3px;font-size:11px;cursor:pointer;margin-left:auto">Reset</button></div>'
     : '<div style="display:flex;gap:8px;margin-top:10px"><button onclick="brainApplyToJob(\''+j.id+'\')" style="background:var(--gold);color:#000;border:none;padding:8px 14px;border-radius:4px;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.5px;text-transform:uppercase">Apply to job</button>'+
@@ -10251,7 +10312,7 @@ function brainPrefillH(j){
       '<div style="text-align:right"><div style="font-family:ui-monospace,monospace;font-size:16px;font-weight:800;color:var(--gold)">£'+totLabour.toFixed(2)+' <span style="font-size:11px;font-weight:600;color:var(--dim)">ex VAT</span></div>'+
         '<div style="font-size:11px;color:var(--dim)">+ VAT £'+(totLabour*0.2).toFixed(2)+' = <strong style="color:var(--text)">£'+(totLabour*1.2).toFixed(2)+' inc VAT</strong> to the customer</div></div>'+
     '</div>'+
-    buttons +
+    addLine + buttons +
   '</div>';
 }
 
@@ -14115,7 +14176,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1250';
+const CRM_BUILD='2026-11-16-1300';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
