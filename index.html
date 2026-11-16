@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v11.1 \u00b7 16 Nov';
+const BUILD='v11.2 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -4935,8 +4935,12 @@ function nextAutoH(j){
   const r=AUTO_RULES.find(x=>x.from===j.stage&&autoRuleOn(x.id));
   if(!r)return '';
   let ready=false;try{ready=!!r.when(j);}catch(e){}
-  if(typeof r.to==='function'&&!r.to(j))return '<div style="font-size:10px;color:var(--faint);margin-top:6px">\u26a1 Brain working out the instant range\u2026</div>';
-  if(typeof r.why==='function')return '<div style="font-size:10px;color:var(--green);margin-top:6px">\u26a1 moving to '+escHtml(stg(r.to(j)).label)+' on the next pass \u2014 '+escHtml(r.why(j)||'')+'</div>';
+  const toId=(typeof r.to==='function')?r.to(j):r.to;
+  if(!toId)return '<div style="font-size:10px;color:var(--faint);margin-top:6px">\u26a1 Brain working out the instant range\u2026</div>';
+  if(typeof r.why==='function'){
+    if(!ready)return '';
+    return '<div style="font-size:10px;color:var(--green);margin-top:6px">\u26a1 moving to '+escHtml(stg(toId).label)+' on the next pass \u2014 '+escHtml(r.why(j)||'')+'</div>';
+  }
   return '<div style="font-size:10px;color:'+(ready?'var(--green)':'var(--faint)')+';margin-top:6px">\u26a1 '+
     (ready?'moving to '+escHtml(stg(typeof r.to==='function'?r.to(j):r.to).label)+' on the next pass':'moves to '+escHtml(stg(typeof r.to==='function'?r.to(j):r.to).label)+' by itself once '+escHtml(r.why))+'</div>';
 }
