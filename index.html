@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v13.7 \u00b7 16 Nov';
+const BUILD='v13.8 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -7022,6 +7022,7 @@ function actH(j){
     case 'booked':
       h+=approvalH(j)+unreadyBandH(j)+
         '<div class="notice n-green" style="margin-bottom:10px">\u2713 Booked in'+(j.bookedFor?' for '+escHtml(fmtBookDate(j.bookedFor))+(j.bookedTime?' at '+escHtml(fmt12(j.bookedTime)):''):'')+(j.tmJob?' \u00b7 Techman '+escHtml(j.tmJob):'')+'.</div>'+
+        jobCardAttachH(j)+
         '<button class="btn btn-ghost btn-xs" style="margin-bottom:8px;'+(j.fleetAccount?'color:var(--blue);border-color:var(--blue)':'')+'" onclick="setAccountType(\''+j.id+'\')">\ud83c\udfe2 '+(j.fleetAccount?'Fleet / account customer':'Mark as fleet / account')+'</button>'+
         reminderH(j)+
         soNeedH(j)+
@@ -7036,6 +7037,7 @@ function actH(j){
         '<button class="btn btn-gold btn-full" onclick="mv(\'checkin\',\'Vehicle arrived \\u2014 ready for check-in\')">\u2192 Vehicle has arrived</button>';
       break;
     case 'po':
+      h+=jobCardAttachH(j);
       if(!j.estApproved){
         h+='<div style="background:rgba(160,30,30,.18);border:2px solid var(--red);border-radius:var(--r);padding:11px;margin-bottom:10px">'+
           '<div style="font-size:12px;font-weight:800;color:var(--red)">\u26d4 Not approved \u2014 do not order anything</div>'+
@@ -7091,7 +7093,7 @@ function actH(j){
       break;
     case 'soraised':
     case 'raised':
-      h+=approvalH(j);
+      h+=jobCardAttachH(j)+approvalH(j);
       h+='<div class="notice" style="margin-bottom:10px">Orders raised. Waiting on parts and subcontractors to come in.</div>'+
         raisedOrdersH(j)+
         (function(){
@@ -7107,7 +7109,7 @@ function actH(j){
             h+=soNeedH(j);
       break;
     case 'checkin':
-      h+=approvalH(j);
+      h+=jobCardAttachH(j)+approvalH(j);
       h+=unreadyBandH(j)+
         '<div class="notice" style="margin-bottom:10px">Workshop: check the vehicle over before any work starts.</div>'+
         vehicleCheckH(j)+
@@ -7123,7 +7125,7 @@ function actH(j){
         '<button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="mv(\'inprog\',\'Back on the job\')">\u2192 Back to In Progress</button>';
       break;
     case 'inprog':
-      h+=approvalH(j);
+      h+=jobCardAttachH(j)+approvalH(j);
       h+='<div class="notice" style="margin-bottom:10px">Car is in. Keep the customer updated while it is with us.</div>'+
         extraWorkH(j)+
         updatesH(j)+
@@ -12828,7 +12830,8 @@ function estimateDocsInner(j,readOnly){
 async function uploadJobSheet(input){
   const f=input.files&&input.files[0];if(!f)return;
   const j=gj();if(!j)return;
-  const st=document.getElementById('js-status');
+  const box=input.closest&&input.closest('[data-jc]');
+  const st=(box&&box.querySelector('.jc-st'))||document.getElementById('js-status');
   const set=(t,c)=>{if(st){st.textContent=t;st.style.color=c||'var(--dim)';}};
   set('Preparing\u2026','var(--amber)');
   try{
@@ -12858,7 +12861,7 @@ async function uploadJobSheet(input){
     j.jobSheets=j.jobSheets||[];
     j.jobSheets.push({url,name:f.name||path,at:ts(),by:currentUser?currentUser.name:''});
     j.log=j.log||[];
-    j.log.push({t:ts(),s:'\ud83d\udcce Job sheet attached'+(currentUser?' ['+currentUser.name+']':'')});
+    j.log.push({t:ts(),s:'\ud83d\udcce Job card attached'+(currentUser?' ['+currentUser.name+']':'')});
     save(j);
     set('\u2713 Attached','var(--green)');
     notify('\u2713 Job sheet attached to '+escHtml(j.reg||'this job'),'ok');
@@ -13975,6 +13978,21 @@ function setInvoiceNo(id,v){
   j.invoiceNo=String(v||'').trim();
   save(j);
 }
+// ── ATTACH THE JOB CARD FROM BOOKING ONWARDS (16 Nov 2026) ─────────
+// Once the job is booked the adviser attaches the Techman job card (PDF or
+// a photo) here; it lives on the job with the job sheets.
+function jobCardAttachH(j){
+  const sheets=j.jobSheets||[];
+  return '<div data-jc="1" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;margin-bottom:10px">'+
+    '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin-bottom:6px">\ud83d\udccb Job card'+(sheets.length?' ('+sheets.length+')':'')+'</div>'+
+    (sheets.length?sheets.map(x=>'<div style="font-size:12px;margin-bottom:4px">\ud83d\udcce <a href="'+escHtml(x.url)+'" target="_blank" style="color:var(--gold)">'+escHtml(x.name)+'</a> '+
+        '<span style="font-size:10px;color:var(--faint)">'+escHtml(x.at)+(x.by?' \u00b7 '+escHtml(x.by):'')+'</span></div>').join(''):
+      '<div style="font-size:11px;color:var(--amber);margin-bottom:6px">No job card attached yet.</div>')+
+    '<label class="btn btn-gold btn-sm btn-full" style="display:block;text-align:center;cursor:pointer;margin-top:4px">\ud83d\udcce Attach the job card (PDF or photo)'+
+      '<input type="file" accept="image/*,application/pdf" style="display:none" onchange="uploadJobSheet(this)"/></label>'+
+    '<div class="jc-st" style="font-size:11px;color:var(--dim);margin-top:4px"></div>'+
+  '</div>';
+}
 function jobSheetH(j){
   const sheets=j.jobSheets||[];
   const st=j.payStatus||'Unpaid';
@@ -14200,7 +14218,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1305';
+const CRM_BUILD='2026-11-16-1310';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
