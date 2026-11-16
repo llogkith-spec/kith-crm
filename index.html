@@ -379,11 +379,12 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
     <div id="inbox-list"><div class="empty">Syncing...</div></div>
   </div>
 </div>
+<div id="v-pipe" style="display:none;padding:10px 10px 90px"></div>
 <div id="v-board"><div class="board-wrap"><div class="board" id="board"></div></div></div>
 <div id="v-list" style="display:none"><div class="list-wrap"><table class="ltable"><thead><tr><th>Reg</th><th>Customer</th><th>Vehicle</th><th>Stage</th><th>Techman</th><th>Work</th><th></th></tr></thead><tbody id="list-body"></tbody></table></div></div>
 
 <div class="mob-nav" id="mob-nav">
-  <button onclick="mobGo(this,()=>setFilter('all',null))" class="on"><span>📋</span>All</button>
+  <button onclick="mobGo(this,()=>openPipeline())" class="on"><span>🧭</span>Pipeline</button>
   <button onclick="mobGo(this,()=>openInbox())"><span>📨</span>Inbox</button>
   <button onclick="mobGo(this,()=>setFilter('action',null))"><span>⚡</span>Action</button>
   <button onclick="mobGo(this,()=>openDayView())"><span>📆</span>Today</button>
@@ -402,6 +403,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
     <div style="flex:1;overflow:auto;padding:4px 14px 24px">
       <div class="mob-group">Jobs</div>
       <div class="mob-grid">
+        <button onclick="mobMoreGo(()=>openPipeline())">🧭 Whole pipeline</button>
         <button onclick="mobMoreGo(()=>setFilter('all',null))">📋 All Jobs<span class="mg-c" id="m-cnt-all"></span></button>
         <button onclick="mobMoreGo(()=>setFilter('action',null))">⚡ Needs Action</button>
         <button onclick="mobMoreGo(()=>setFilter('waiting',null))">⏳ Awaiting Cust</button>
@@ -879,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v17.6 \u00b7 16 Nov';
+const BUILD='v17.7 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -888,8 +890,8 @@ try{document.addEventListener('DOMContentLoaded',()=>{
     const vBoard=document.getElementById('v-board');
     const vList=document.getElementById('v-list');
     if(vBoard) vBoard.style.display='none';
-    if(vList) vList.style.display='block';
-    try{ if(typeof renderList==='function') renderList(); }catch(e){}
+    if(window._pipeOn===false){ if(vList) vList.style.display='block'; try{ if(typeof renderList==='function') renderList(); }catch(e){} return; }
+    try{ openPipeline(); }catch(e){ if(vList) vList.style.display='block'; }
   };
   show();
   // re-apply after initial render passes (sheets load triggers renderAll etc.)
@@ -5199,7 +5201,7 @@ function renderAll(){
   const own=!_dupeIdx; if(own)_dupeIdx=buildDupeIdx();
   try{ renderAllInner(); }finally{ if(own)_dupeIdx=null; }
 }
-function renderAllInner(){renderBoard();renderList();renderInbox();try{renderMyNextJob();}catch(e){}try{updateQueueBadge();}catch(e){}try{updateLeadBadge();}catch(e){}
+function renderAllInner(){try{if(window._pipeOn)renderPipeline();}catch(e){}renderBoard();renderList();renderInbox();try{renderMyNextJob();}catch(e){}try{updateQueueBadge();}catch(e){}try{updateLeadBadge();}catch(e){}
   try{const el=document.getElementById('cnt-chase');if(el){const c=chaseDueCount()+remindersDue().length;el.textContent=c?'('+c+')':'';
     const ae=document.getElementById('cnt-assign');if(ae){const ac=unnotifiedJobs().length;ae.textContent=ac?'('+ac+')':'';ae.style.color=ac?'var(--amber)':'var(--faint)';}
     const ue=document.getElementById('cnt-unap');if(ue){const uc=unapprovedInOrdering().length;ue.textContent=uc?'('+uc+')':'';ue.style.color=uc?'var(--red)':'var(--faint)';}
@@ -5207,6 +5209,64 @@ function renderAllInner(){renderBoard();renderList();renderInbox();try{renderMyN
 }
 
 // ── DETAIL ───────────────────────────────────────────────
+// ── PHONE: THE WHOLE PIPELINE (16 Nov 2026) ─────────────────────────
+// Every stage in order with its count; tap a stage to see its jobs, tap a job to open it.
+var PIPE_OPEN={};
+function openPipeline(){
+  window._pipeOn=true;
+  ['v-board','v-list','v-inbox'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
+  const vp=document.getElementById('v-pipe');if(vp)vp.style.display='block';
+  renderPipeline();
+}
+function pipeToggle(id){PIPE_OPEN[id]=!PIPE_OPEN[id];renderPipeline();}
+function pipeAll(open){STAGES.forEach(s=>{PIPE_OPEN[s.id]=!!open;});renderPipeline();}
+function pipeSearch(v){window._pipeQ=v;clearTimeout(window._pipeT);window._pipeT=setTimeout(()=>{renderPipeline();const i=document.getElementById('pipe-q');if(i){i.focus();try{i.setSelectionRange(v.length,v.length);}catch(e){}}},250);}
+function renderPipeline(){
+  const vp=document.getElementById('v-pipe');if(!vp||vp.style.display==='none')return;
+  if(document.activeElement&&document.activeElement.id==='pipe-q'&&!window._pipeT)return;
+  window._pipeT=null;
+  const live=jobs.filter(j=>j&&!j.mergedInto);
+  const week=Date.now()-7*864e5;
+  const q=String(window._pipeQ||'').trim().toLowerCase();
+  const match=j=>!q||[j.reg,j.name,j.vehicle,j.make,j.model,j.work,j.phone].join(' ').toLowerCase().includes(q);
+  const anyOpen=Object.values(PIPE_OPEN).some(Boolean);
+  let h='<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">'+
+    '<input id="pipe-q" type="search" placeholder="Search reg, name, work…" value="'+escHtml(window._pipeQ||'')+'" oninput="pipeSearch(this.value)" style="flex:1;min-height:42px">'+
+    '<button class="btn btn-ghost btn-sm" style="min-height:42px" onclick="pipeAll('+(!anyOpen)+')">'+(anyOpen?'Close all':'Open all')+'</button></div>';
+  let lastDept=null,total=0;
+  STAGES.forEach(s=>{
+    let sj=live.filter(j=>j.stage===s.id);
+    if(s.id==='done'||s.id==='lost')sj=sj.filter(j=>(j.stageAt||0)>=week);
+    if(HIDDEN_STAGES.includes(s.id)&&!sj.length)return;
+    const shown=sj.filter(match);
+    if(q&&!shown.length)return;
+    total+=shown.length;
+    const d=deptOf(s.id);
+    if(d&&d!==lastDept)h+='<div style="margin:14px 2px 6px;font-size:10px;font-weight:800;letter-spacing:.12em;color:'+d.col+'">'+escHtml(d.label)+'</div>';
+    if(d)lastDept=d;
+    const open=q?true:!!PIPE_OPEN[s.id];
+    const st=stg(s.id);
+    h+='<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid '+(st.col||'var(--border)')+';border-radius:10px;margin-bottom:6px;overflow:hidden">'+
+      '<div onclick="pipeToggle(\''+s.id+'\')" style="display:flex;justify-content:space-between;align-items:center;padding:12px;min-height:46px;cursor:pointer">'+
+        '<span style="font-weight:800;font-size:14px">'+(open?'▾ ':'▸ ')+escHtml(s.label)+(s.id==='done'||s.id==='lost'?' <span style="font-size:10px;color:var(--faint);font-weight:400">last 7 days</span>':'')+'</span>'+
+        '<span style="font-weight:800;font-size:14px;min-width:30px;text-align:center;padding:2px 8px;border-radius:12px;background:'+(shown.length?'var(--surface2)':'transparent')+';color:'+(shown.length?'inherit':'var(--faint)')+'">'+shown.length+'</span>'+
+      '</div>'+
+      (open?(shown.length?shown.slice(0,150).map(j=>{
+        const age=j.stageAt?Math.floor((Date.now()-j.stageAt)/864e5):0;
+        const veh=j.vehicle||((j.make||'')+' '+(j.model||'')).trim();
+        return '<div onclick="openJob(\''+j.id+'\')" style="padding:10px 12px;border-top:1px solid var(--border);cursor:pointer">'+
+          '<div style="display:flex;justify-content:space-between;gap:8px"><span style="font-family:monospace;font-weight:800;color:var(--gold)">'+escHtml(j.reg||'—')+'</span>'+
+          '<span style="font-size:11px;color:'+(age>=3?'var(--red)':'var(--faint)')+'">'+(age?age+'d in stage':'today')+'</span></div>'+
+          '<div style="font-size:13px">'+escHtml(j.name||'')+(veh?' <span style="color:var(--dim)">· '+escHtml(veh)+'</span>':'')+'</div>'+
+          '<div style="font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(String(j.work||'').slice(0,90))+'</div>'+
+          (parseFloat(j.quote)>0?'<div style="font-size:11px;color:var(--green)">£'+(parseFloat(j.quote)).toFixed(2)+'</div>':'')+
+        '</div>';}).join('')+(shown.length>150?'<div style="padding:8px 12px;font-size:11px;color:var(--faint)">+'+(shown.length-150)+' more — search to narrow</div>':'')
+        :'<div style="padding:8px 12px;border-top:1px solid var(--border);font-size:12px;color:var(--faint)">Nothing here</div>'):'')+
+    '</div>';
+  });
+  if(q&&!total)h+='<div style="padding:20px;text-align:center;color:var(--faint)">No jobs match “'+escHtml(q)+'”</div>';
+  vp.innerHTML=h;
+}
 function openJob(id){curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
 
 // Redraw even if something still has focus. Only ever called straight
@@ -14913,7 +14973,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-2105';
+const CRM_BUILD='2026-11-16-2115';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -15619,6 +15679,7 @@ function setFilter(f,btn){
   if(vBoard) vBoard.style.display=(f==='inbox'||showList)?'none':'block';
   if(vList) vList.style.display=showList?'block':'none';
   if(vInbox) vInbox.style.display=f==='inbox'?'block':'none';
+  window._pipeOn=false;{const vp=document.getElementById('v-pipe');if(vp)vp.style.display='none';}
   if(f==='inbox') renderInbox();
   if(f!=='inbox' && !showList) renderBoard();
   if(showList && typeof renderList==='function') renderList();
