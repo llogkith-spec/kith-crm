@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v17.8 \u00b7 16 Nov';
+const BUILD='v17.9 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6266,12 +6266,26 @@ async function testRelay(){
     const r=d.ready||{};
     const line=(ok,label)=>'<div style="color:'+(ok?'var(--green)':'var(--amber)')+'">'+(ok?'\u2713':'\u2715')+' '+label+'</div>';
     if(out)out.innerHTML='<div style="font-size:11px;margin-top:4px">'+
-      line(true,'Relay answered')+line(r.token,'Meta token')+line(r.phoneId,'WhatsApp number')+line(r.key,'Can write to the inbox')+
+      line(true,'Relay answered')+line(!!d.email,'Email sending (relay v3)'+(d.email?'':' \u2014 paste kith-relay.gs v3 and deploy a new version'))+
+      line(r.token,'Meta token')+line(r.phoneId,'WhatsApp number')+line(r.key,'Can write to the inbox')+
       (d.sentThisHour!=null?'<div style="color:var(--faint)">'+d.sentThisHour+' sent in the last hour</div>':'')+'</div>';
   }catch(e){
     if(out)out.innerHTML='<span style="color:var(--red)">Could not reach it \u2014 '+escHtml(e.message||'no answer')+
       '<br>Check the deployment is set to "Anyone".</span>';
   }
+}
+async function testRelayEmail(){
+  const out=document.getElementById('ch-test');
+  const to=prompt('Send a test estimate email to which address?',(currentUser&&currentUser.email)||'');
+  if(!to||!/@/.test(to))return;
+  if(out)out.innerHTML='Sending a test email\u2026';
+  // use any job that has an estimate PDF, so the attachment is tested too
+  const j=jobs.find(x=>x&&!x.mergedInto&&(x.estimateDocs||[]).length&&estDocFor(x));
+  const d=j?estDocFor(j):null;
+  const rr=await relayEmail(to,'KITH Cars \u2014 test email from the CRM','This is a test from the KITH CRM. If you can read this'+(d?' and open the PDF attached':'')+', emailing estimates works.',d,j);
+  if(out)out.innerHTML=rr&&rr.ok
+    ?'<span style="color:var(--green)">\u2713 Sent'+(rr.from?' from '+escHtml(rr.from):'')+' \u2014 check '+escHtml(to)+(d?' (PDF attached)':'')+'</span>'
+    :'<span style="color:var(--red)">\u2715 Not sent \u2014 '+escHtml((rr&&rr.error)||'no answer')+(/unknown action/i.test((rr&&rr.error)||'')?'. The relay is the old version: paste kith-relay.gs v3, then Deploy \u2192 Manage deployments \u2192 New version, and allow Gmail.':'')+'</span>';
 }
 function renderChannels(){
   const el=document.getElementById('channel-box');if(!el)return;
@@ -6291,7 +6305,8 @@ function renderChannels(){
     '<div class="fg" style="margin-bottom:8px"><label class="fl2">Pass phrase (SHARED_SECRET)</label>'+
       '<input class="fi2" id="ch-secret" value="'+escHtml(CHANNELS.secret||'')+'" placeholder="the phrase you put in the script"/></div>'+
     '<button class="btn btn-gold btn-sm" onclick="saveChannels()">Save</button> '+
-    '<button class="btn btn-ghost btn-sm" onclick="testRelay()">Test the connection</button>'+
+    '<button class="btn btn-ghost btn-sm" onclick="testRelay()">Test the connection</button> '+
+    '<button class="btn btn-ghost btn-sm" onclick="testRelayEmail()">\u2709 Send a test email</button>'+
     '<div id="ch-test" style="font-size:11px;margin-top:7px;line-height:1.5"></div>'+
     (on?'':'<div style="font-size:10px;color:var(--faint);margin-top:8px;line-height:1.6">Until it is connected everything still works \u2014 '+
       'replies open WhatsApp, and messages can be put in the Inbox by hand.</div>');
@@ -7014,6 +7029,7 @@ async function emailEstimate(id){
   }
   const d=d0;
   const body=estimateWAMsg(j).replace(/\*/g,'')+(d?'\n\nYour estimate (PDF): '+d.url:'')+'\n\n'+KITH_CO.name+' \u00b7 '+KITH_CO.tel+' \u00b7 '+KITH_CO.web;
+  try{if(d)estSaveFile(j,d);}catch(e){}
   const href='mailto:'+encodeURIComponent(j.email)+'?subject='+encodeURIComponent('Your estimate \u2014 '+(j.reg||'')+' \u2014 KITH Cars')+'&body='+encodeURIComponent(body);
   estSetStatus(j,'<a class="btn btn-sm" style="background:var(--blue);color:#fff;font-weight:700" href="'+escHtml(href)+'" target="_blank" onclick="emailEstimateDone(\''+j.id+'\')">\u2709 Open the email to '+escHtml(j.email)+'</a>','var(--blue)');
 }
@@ -13017,6 +13033,19 @@ function autoPilot(){
       try{stageMoved(j,from,'accounts');}catch(e){}save(j);}});}catch(e){}
   // v16.7: one line per part — merge copies the Brain added twice
   try{jobs.forEach(j=>{if(j&&!j.mergedInto&&['labour','parts','signoff'].includes(j.stage)&&dedupeParts(j))save(j);});}catch(e){}
+  // v17.9 (Logan, 16 Nov 2026): anything in Sign-Off or Contacted/Awaiting with nothing
+  // happening for 14+ days goes to Lost — ready for a win-back campaign in Lost & follow-ups
+  try{const DAYQ=14;jobs.forEach(j=>{
+    if(!j||j.mergedInto||j.autoHold||j.customerYesAt)return;
+    if(!['signoff','contacted','waiting','waiting2'].includes(j.stage))return;
+    if(quietDays(j)<DAYQ)return;
+    const from=j.stage;
+    j.stage='lost';j.stageAt=Date.now();try{stampStage(j,'lost');}catch(e){}
+    j.lostReason=from==='signoff'?'Old estimate \u2014 never signed off or sent ('+DAYQ+'+ days quiet)':'No response ('+DAYQ+'+ days quiet)';
+    j.lostAuto=true;
+    j.log=j.log||[];j.log.push({t:ts2(),s:'\u2715 Moved to Lost \u2014 '+j.lostReason+'. Bring it back with the stage dropdown if it is still live.'});
+    try{stageMoved(j,from,'lost');}catch(e){}
+    save(j);});}catch(e){console.warn('quiet-to-lost',e);}
   // v17.3: undo splits made from the intake safety flag ("DIAGNOSTIC FIRST — 1 tyre") — the
   // tyre was already being priced on the original, so the copy back in Labour is a duplicate
   try{jobs.forEach(c=>{
@@ -14975,7 +15004,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-2135';
+const CRM_BUILD='2026-11-16-2230';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
