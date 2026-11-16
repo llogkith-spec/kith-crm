@@ -354,7 +354,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
   <button class="tab" onclick="setFilter('parts',this)">🔩 Parts</button>
   <button class="tab" onclick="setFilter('estimator',this)">📋 Estimator</button>
   <button class="tab" onclick="setFilter('adviser',this)">📞 Service Adviser</button>
-  <button class="tab" onclick="setFilter('lost',this)">✕ Lost</button>
+  <button class="tab" onclick="openLostView()">✕ Lost &amp; follow-ups</button>
   <button class="tab" id="tab-checkin" onclick="setFilter('checkin',this)">🚗 Check-In <span id="cnt-checkin" style="color:var(--faint);font-size:10px"></span></button>
   <button class="tab" onclick="openAwaitingDash()">🤝 Awaiting Decision</button>
   <button class="tab" onclick="openPOView()">📦 Purchase Orders</button>
@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v15.1 \u00b7 16 Nov';
+const BUILD='v15.2 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -3809,6 +3809,22 @@ function runRepriceSweep(){
 function disapproveJob(id,opts){
   opts=opts||{};
   const j=jobs.find(x=>x.id===id);if(!j)return false;
+  // 16 Nov 2026: no Disapproved lane — a disapproved quote is closed as Lost
+  // with its reason, after the customer is told (same as "we can't do it").
+  if(!opts.via){
+    if(!canSignOff(currentUser)){alert('Only Logan or Joel can disapprove a quote.');return false;}
+    const why=prompt('Disapproved \u2014 why? (goes in the Lost records, and a version of it to the customer)','');
+    if(why===null)return false;
+    const r=String(why).trim().replace(/[.\s]+$/,'');if(!r){alert('Give a reason.');return false;}
+    j.disapproval={at:ts(),atMs:Date.now(),who:currentUser.name,via:'sign-off',note:r,amount:parseFloat(j.quote)||0,by:currentUser.name};
+    j.declined={reason:r,at:ts(),atMs:Date.now(),by:currentUser.name,from:j.stage,kind:'disapproved'};
+    j.signedOff=false;
+    if(j.stage!=='signoff'){const from=j.stage;j.stage='signoff';j.stageAt=Date.now();try{stampStage(j,'signoff');}catch(e){}try{stageMoved(j,from,'signoff');}catch(e){}}
+    j.log=j.log||[];j.log.push({t:ts(),s:'\u2717 DISAPPROVED at \u00a3'+(parseFloat(j.quote)||0).toFixed(2)+' \u2014 '+r+' \u2014 tell the customer, then it closes as Lost ['+currentUser.name+']'});
+    save(j);try{renderDetail();}catch(e){}try{renderAll();}catch(e){}
+    if(typeof toast==='function')toast('\u2717 Disapproved \u2014 now tell '+firstName(j));
+    return true;
+  }
   if(!opts.via&&!canSignOff(currentUser)){alert('Only Logkith can mark a quote disapproved.');return false;}
   let who=opts.who;
   if(!who){who=prompt('Who said no?','Logan (father)');if(who===null)return false;who=who||'Logan (father)';}
@@ -4191,6 +4207,139 @@ function offerSendBackNotify(j,why,estWas){
 }
 
 // ---- declining a job ----
+// ══════════════════════════════════════════════════════════════════
+// LOST RECORDS + FOLLOW-UP CAMPAIGNS (16 Nov 2026)
+// Every lost job with why, who and when; reasons summed up; tick jobs and
+// send a follow-up WhatsApp (win-back) — each one logged on the job.
+// ══════════════════════════════════════════════════════════════════
+function lostCat(j){
+  const r=String(j.lostReason||'').toLowerCase();
+  if(/duplicate/.test(r))return 'Duplicate';
+  if(/old\b.*no activity|30\+ days|old system|finished under/.test(r))return 'Old / clean-up';
+  if(/disapprov/.test(r))return 'Disapproved';
+  if(/declin|can.?t do/.test(r))return 'We declined';
+  if(/price|expensive|too much|dear|cheaper|cost/.test(r))return 'Price';
+  if(/no (reply|response|answer)|chasing|ghost/.test(r))return 'No reply';
+  if(/said no|not now|changed (their|his|her) mind|went elsewhere|somewhere else|another garage|sold/.test(r))return 'Customer said no';
+  return r?'Other':'No reason given';
+}
+var LOST_F={cat:'',days:90,showClean:false,q:'',sel:{}};
+function lostJobs(){
+  const cut=LOST_F.days?Date.now()-LOST_F.days*864e5:0;
+  return jobs.filter(j=>j&&j.stage==='lost'&&!j.mergedInto&&!j.historic)
+    .filter(j=>LOST_F.showClean||!['Duplicate','Old / clean-up'].includes(lostCat(j)))
+    .filter(j=>!cut||(j.lostAt||j.stageAt||0)>=cut)
+    .filter(j=>!LOST_F.cat||lostCat(j)===LOST_F.cat)
+    .filter(j=>!LOST_F.q||[j.reg,j.name,j.work,j.lostReason].join(' ').toLowerCase().includes(LOST_F.q.toLowerCase()))
+    .sort((a,b)=>(b.lostAt||b.stageAt||0)-(a.lostAt||a.stageAt||0));
+}
+function openLostView(){
+  let w=document.getElementById('lost-modal');if(w)w.remove();
+  w=document.createElement('div');w.id='lost-modal';
+  w.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:1300;display:flex;align-items:flex-start;justify-content:center;padding:30px 16px';
+  w.innerHTML='<div id="lost-body" style="background:var(--surface);border-radius:var(--r);padding:18px;max-width:1100px;width:100%;max-height:90vh;overflow-y:auto"></div>';
+  w.addEventListener('click',e=>{if(e.target===w)w.remove();});
+  document.body.appendChild(w);renderLostView();
+}
+function renderLostView(){
+  const el=document.getElementById('lost-body');if(!el)return;
+  const all=jobs.filter(j=>j&&j.stage==='lost'&&!j.mergedInto&&!j.historic);
+  const list=lostJobs();
+  const cats={};list.concat([]).forEach(j=>{const c=lostCat(j);cats[c]=cats[c]||{n:0,v:0};cats[c].n++;cats[c].v+=parseFloat(j.quote)||0;});
+  const value=list.reduce((a,j)=>a+(parseFloat(j.quote)||0),0);
+  const nSel=Object.keys(LOST_F.sel).filter(k=>LOST_F.sel[k]).length;
+  const chip=(c,o)=>'<button class="btn btn-xs '+(LOST_F.cat===c?'btn-gold':'btn-ghost')+'" style="margin:0 5px 5px 0" onclick="LOST_F.cat='+(c?'\''+c.replace(/'/g,'')+'\'':'\'\'')+';renderLostView()">'+escHtml(c||'All')+(o?' <span style="opacity:.7">'+o.n+(o.v?' · £'+Math.round(o.v):'')+'</span>':'')+'</button>';
+  el.innerHTML=
+    '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;font-size:17px">✕ Lost jobs — why, and follow-ups</div>'+
+      '<button onclick="document.getElementById(\'lost-modal\').remove()" style="background:none;border:none;color:var(--dim);font-size:22px;cursor:pointer">×</button></div>'+
+    '<div style="font-size:12px;color:var(--dim);margin:4px 0 12px">'+list.length+' lost in the last '+(LOST_F.days||'all')+(LOST_F.days?' days':' time')+' · £'+value.toFixed(0)+' of quotes'+(LOST_F.showClean?'':' · duplicates and old clean-up hidden')+'</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">'+
+      '<input placeholder="Search reg, name, work, reason" value="'+escHtml(LOST_F.q)+'" onchange="LOST_F.q=this.value;renderLostView()" style="flex:1;min-width:200px;background:var(--surface2);border:1px solid var(--border);color:var(--fg);border-radius:4px;padding:6px 8px;font-size:12px">'+
+      '<select onchange="LOST_F.days=parseInt(this.value)||0;renderLostView()" style="background:var(--surface2);border:1px solid var(--border);color:var(--fg);border-radius:4px;padding:6px;font-size:12px">'+
+        [[7,'7 days'],[30,'30 days'],[90,'90 days'],[365,'12 months'],[0,'All time']].map(([v,l])=>'<option value="'+v+'"'+(LOST_F.days===v?' selected':'')+'>'+l+'</option>').join('')+'</select>'+
+      '<label style="font-size:12px;display:flex;gap:4px;align-items:center"><input type="checkbox" '+(LOST_F.showClean?'checked':'')+' onchange="LOST_F.showClean=this.checked;renderLostView()"> show duplicates / clean-up</label>'+
+    '</div>'+
+    '<div style="margin-bottom:8px">'+chip('',{n:list.length,v:value})+Object.keys(cats).sort((a,b)=>cats[b].n-cats[a].n).map(c=>chip(c,cats[c])).join('')+'</div>'+
+    '<div style="display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap">'+
+      '<button class="btn btn-ghost btn-xs" onclick="lostSelAll(true)">Tick all with a mobile</button>'+
+      '<button class="btn btn-ghost btn-xs" onclick="lostSelAll(false)">Untick all</button>'+
+      '<button class="btn btn-gold btn-sm" '+(nSel?'':'disabled')+' onclick="openLostCampaign()">📣 Follow-up campaign to '+nSel+' customer'+(nSel===1?'':'s')+'</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:24px 90px 1.1fr 1.6fr 80px 1.6fr 110px 120px;gap:6px;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);padding:4px 0;border-bottom:1px solid var(--border)">'+
+      '<span></span><span>Reg</span><span>Customer</span><span>Work</span><span>Quote</span><span>Why lost</span><span>When</span><span>Follow-ups</span></div>'+
+    (list.length?list.map(j=>{
+      const fu=j.followUps||[];const last=fu[fu.length-1];
+      return '<div style="display:grid;grid-template-columns:24px 90px 1.1fr 1.6fr 80px 1.6fr 110px 120px;gap:6px;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border);align-items:start">'+
+        '<input type="checkbox" '+(LOST_F.sel[j.id]?'checked':'')+(estPhone(j)?'':' disabled title="No mobile"')+' onchange="LOST_F.sel[\''+j.id+'\']=this.checked;renderLostView()">'+
+        '<a href="#" onclick="document.getElementById(\'lost-modal\').remove();openJob(\''+j.id+'\');return false" style="color:var(--gold);font-weight:800;font-family:ui-monospace,monospace">'+escHtml(j.reg||'—')+'</a>'+
+        '<span>'+escHtml(j.name||'')+'<div style="font-size:10px;color:var(--faint)">'+escHtml([j.make,j.model].filter(Boolean).join(' '))+'</div></span>'+
+        '<span style="color:var(--dim)">'+escHtml(String(j.work||'').slice(0,90))+'</span>'+
+        '<span>'+(parseFloat(j.quote)?'£'+(+j.quote).toFixed(0):'—')+'</span>'+
+        '<span><strong style="font-size:10px;color:var(--amber)">'+escHtml(lostCat(j))+'</strong><div>'+escHtml(j.lostReason||'—')+'</div></span>'+
+        '<span style="font-size:11px;color:var(--dim)">'+escHtml(j.lostAt?new Date(j.lostAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'}):'')+(j.lostBy?'<div>'+escHtml(j.lostBy)+'</div>':'')+'</span>'+
+        '<span style="font-size:11px;color:var(--dim)">'+(fu.length?fu.length+' sent'+(last?'<div>'+escHtml(last.at)+'</div>':''):'—')+'</span>'+
+      '</div>';}).join(''):'<div style="padding:20px;text-align:center;color:var(--faint)">Nothing lost in this view.</div>');
+}
+function lostSelAll(on){LOST_F.sel={};if(on)lostJobs().forEach(j=>{if(estPhone(j))LOST_F.sel[j.id]=true;});renderLostView();}
+const LOST_TEMPLATES={
+  checkin:{label:'Still need it doing?',text:'Hi {name}, it’s {garage}. You asked us about the {work} on your {car} a while back — is it still something you need doing? If so, reply here and we’ll get you an up-to-date price and a date that suits.'},
+  price:{label:'Price was the issue',text:'Hi {name}, it’s {garage}. You weren’t sure about our price for the {work} on your {car}. We’ve had another look — reply here and we’ll see what we can do for you, including a parts option that keeps the cost down.'},
+  offer:{label:'Money off to come back',text:'Hi {name}, it’s {garage}. We’d love to look after your {car}. If you book the {work} with us this month, we’ll take {offer} off the bill. Just reply here and we’ll find you a date.'},
+  service:{label:'Anything else due?',text:'Hi {name}, it’s {garage}. Just checking in about your {car} — is a service or MOT coming up? Reply here and we’ll give you a price and a date in minutes.'}
+};
+function lostFill(t,j,offer){
+  return t.replace(/\{name\}/g,firstName(j)).replace(/\{garage\}/g,GARAGE.name).replace(/\{car\}/g,vehDesc(j))
+    .replace(/\{work\}/g,String(j.work||'work').replace(/\s+/g,' ').trim().slice(0,70)).replace(/\{offer\}/g,offer||'£20');
+}
+function openLostCampaign(){
+  const ids=Object.keys(LOST_F.sel).filter(k=>LOST_F.sel[k]);
+  const sel=jobs.filter(j=>ids.includes(j.id));if(!sel.length)return;
+  const el=document.getElementById('lost-body');if(!el)return;
+  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;font-size:17px">📣 Follow-up campaign — '+sel.length+' customer'+(sel.length===1?'':'s')+'</div>'+
+      '<button class="btn btn-ghost btn-sm" onclick="renderLostView()">← Back to the list</button></div>'+
+    '<div style="font-size:11px;color:var(--dim);margin:6px 0 10px">Pick a message, change it if you like. {name}, {car} and {work} fill in for each customer.</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'+Object.keys(LOST_TEMPLATES).map(k=>'<button class="btn btn-ghost btn-xs" onclick="document.getElementById(\'lc-text\').value=LOST_TEMPLATES[\''+k+'\'].text;lostPreview()">'+escHtml(LOST_TEMPLATES[k].label)+'</button>').join('')+'</div>'+
+    '<textarea class="fta" id="lc-text" oninput="lostPreview()" style="width:100%;min-height:110px;font-size:12px">'+escHtml(LOST_TEMPLATES.checkin.text)+'</textarea>'+
+    '<div style="display:flex;gap:8px;align-items:center;margin:6px 0"><label style="font-size:12px">Offer (for {offer})</label><input id="lc-offer" value="£20" oninput="lostPreview()" style="width:90px;background:var(--surface2);border:1px solid var(--border);color:var(--fg);border-radius:4px;padding:4px 6px;font-size:12px"></div>'+
+    '<div style="font-size:10px;text-transform:uppercase;color:var(--faint);margin-top:8px">How it reads for '+escHtml(firstName(sel[0]))+'</div>'+
+    '<div id="lc-prev" style="white-space:pre-wrap;font-size:12px;background:var(--surface2);border-radius:var(--rs);padding:8px 10px;margin:4px 0 12px"></div>'+
+    '<button class="btn btn-gold btn-full" onclick="sendLostCampaign()">💬 Send to '+sel.length+' customer'+(sel.length===1?'':'s')+'</button>'+
+    '<div id="lc-out" style="margin-top:10px"></div>';
+  window._lcSel=sel;lostPreview();
+}
+function lostPreview(){const j=(window._lcSel||[])[0];const p=document.getElementById('lc-prev');if(j&&p)p.textContent=lostFill(document.getElementById('lc-text').value,j,document.getElementById('lc-offer').value);}
+async function sendLostCampaign(){
+  const sel=window._lcSel||[];const t=document.getElementById('lc-text').value,offer=document.getElementById('lc-offer').value;
+  if(!sel.length||!t.trim())return;
+  const out=document.getElementById('lc-out');
+  const camp={id:'LC'+Date.now(),at:ts(),by:currentUser?currentUser.name:'',text:t,n:sel.length};
+  if(!waAuto()){
+    // by hand: one WhatsApp at a time, ticked off as you go
+    out.innerHTML='<div style="font-size:11px;color:var(--amber);margin-bottom:6px">WhatsApp auto-send isn’t on yet — open each one and press send there.</div>'+
+      sel.map(j=>{const txt=lostFill(t,j,offer);return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">'+
+        '<span>'+escHtml((j.reg||'')+' · '+(j.name||''))+'</span><a class="btn btn-sm" style="background:var(--green);color:#111;font-weight:700" target="_blank" href="'+escHtml(waLink(estPhone(j),txt))+'" onclick="lostLogFU(\''+j.id+'\',\''+camp.id+'\',this)">Open WhatsApp</a></div>';}).join('');
+    window._lcCamp=camp;window._lcText=t;window._lcOffer=offer;return;
+  }
+  let ok=0,bad=0;out.innerHTML='Sending…';
+  for(const j of sel){
+    const r=await waSend(estPhone(j),lostFill(t,j,offer));
+    if(r&&r.ok){ok++;lostRecordFU(j,camp);}else bad++;
+    out.innerHTML='Sent '+ok+(bad?' · '+bad+' failed':'')+' of '+sel.length;
+  }
+  LOST_F.sel={};
+  if(typeof toast==='function')toast('📣 Follow-up sent to '+ok);
+}
+function lostRecordFU(j,camp){
+  j.followUps=j.followUps||[];j.followUps.push({at:ts(),ms:Date.now(),by:camp.by,campaign:camp.id,text:String(camp.text).slice(0,200)});
+  j.log=j.log||[];j.log.push({t:ts(),s:'📣 Follow-up sent (lost job win-back)'+(camp.by?' ['+camp.by+']':'')});
+  save(j);
+}
+function lostLogFU(id,cid,btn){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  lostRecordFU(j,window._lcCamp||{id:cid,by:currentUser?currentUser.name:'',text:window._lcText||''});
+  if(btn){btn.textContent='✓ Opened';btn.style.opacity='.6';}
+}
+
 function declineMsg(j,reason){
   const what=String(j.work||'this job').replace(/\s+/g,' ').trim().slice(0,70);
   return 'Hi '+firstName(j)+', thanks for asking '+GARAGE.name+' to look at your '+vehDesc(j)+'.\n\n'+
@@ -4207,21 +4356,17 @@ function declineJob(id){
   const from=j.stage;
   j.declined={reason:r,at:ts(),atMs:Date.now(),by:currentUser.name,from};
   j.signedOff=false;
-  j.stage='contact';j.stageAt=Date.now();
-  try{stampStage(j,'contact');}catch(e){}
   j.log=j.log||[];
-  j.log.push({t:ts(),s:'🚫 DECLINED — we can’t do this job: '+r+' — sent to the service adviser to tell the customer ['+currentUser.name+']'});
+  j.log.push({t:ts(),s:'🚫 DECLINED — we can’t do this job: '+r+' — tell the customer, then it closes as Lost ['+currentUser.name+']'});
   save(j);
-  try{pushNotif('adviser','🚫 Tell the customer we can’t do it — '+(j.reg||''),r,{jobId:j.id,key:'declined|'+j.id+'|'+j.declined.atMs});}catch(e){}
-  try{stageMoved(j,from,'contact');}catch(e){}
   try{renderDetail();}catch(e){}try{renderAll();}catch(e){}
-  if(typeof toast==='function')toast('🚫 Sent to the adviser to tell '+firstName(j));
+  if(typeof toast==='function')toast('🚫 Now tell '+firstName(j)+' — the message is ready');
 }
 function declinedH(j){
   const d=j.declined;if(!d||d.closed)return '';
   const told=!!d.toldAt;
   return '<div style="background:rgba(180,40,30,.14);border:2px solid var(--red);border-radius:var(--r);padding:11px 13px;margin-bottom:10px">'+
-    '<div style="font-size:13px;font-weight:800;color:var(--red)">🚫 We can’t do this job — tell '+escHtml(firstName(j))+'</div>'+
+    '<div style="font-size:13px;font-weight:800;color:var(--red)">'+(d.kind==='disapproved'?'\u2717 Disapproved':'🚫 We can’t do this job')+' — tell '+escHtml(firstName(j))+', then it closes as Lost</div>'+
     '<div style="font-size:11px;color:var(--dim);margin-top:2px">'+escHtml(d.by||'')+' · '+escHtml(d.at||'')+'</div>'+
     '<div style="font-size:12px;margin:6px 0"><strong>Reason:</strong> '+escHtml(d.reason)+'</div>'+
     '<div style="font-size:11px;color:var(--faint);margin-bottom:3px">Message to the customer (you can edit it):</div>'+
@@ -4258,7 +4403,7 @@ function closeDeclined(id){
   if(!j.declined.toldAt&&!confirm('The WhatsApp hasn’t been sent from here.\n\nHave you told '+firstName(j)+' another way?'))return;
   const from=j.stage;
   j.declined.closed=true;j.declined.closedAt=ts();
-  j.lostReason='We declined — '+j.declined.reason;
+  j.lostReason=(j.declined.kind==='disapproved'?'Disapproved — ':'We declined — ')+j.declined.reason;
   j.lostAt=Date.now();j.lostBy=currentUser?currentUser.name:'';
   j.stage='lost';j.stageAt=Date.now();
   try{stampStage(j,'lost');}catch(e){}
@@ -5110,7 +5255,7 @@ function sbarH(j,s){
 // Move from the picker in the panel header. Deliberately does not go
 // through mv(), so it works from a phone with nothing else focused.
 // The stage that normally comes next, skipping Lost.
-const HIDDEN_STAGES=['financial','contact'];   // merged into sign-off (16 Nov 2026)
+const HIDDEN_STAGES=['financial','contact','disapproved'];   // merged into sign-off (16 Nov 2026)
 function nextStage(id){
   const i=STAGES.findIndex(x=>x.id===id);
   if(i<0)return null;
@@ -6912,6 +7057,7 @@ function actH(j){
     case 'signoff':
       // 16 Nov 2026: Final Estimate and Logan Sign-Off are one step — the
       // quote is checked and changed here, and Approve sends it to the customer.
+      if(j.declined&&!j.declined.closed){h+=declinedH(j);break;}
       h+=signOffH(j)+(LF_OPEN[j.id]?labourFixH(j,'signoff'):'')+finEditH(j,true);
       break;
     case 'contact':
@@ -12462,6 +12608,11 @@ function autoPilot(){
     if(!j||j.mergedInto)return;
     if(j.stage==='financial'){j.stage='signoff';j.stageAt=Date.now();try{stampStage(j,'signoff');}catch(e){}
       j.log=j.log||[];j.log.push({t:ts2(),s:'\u2192 Final Estimate & Sign-Off (one step now \u2014 Logan or Joel checks the quote and sends it)'});save(j);}
+    else if(j.stage==='disapproved'){const d=j.disapproval||{};
+      j.declined=j.declined||{reason:d.note||'disapproved at sign-off',at:d.at||ts2(),atMs:d.atMs||Date.now(),by:d.by||'',from:'signoff',kind:'disapproved'};
+      j.stage='signoff';j.stageAt=Date.now();try{stampStage(j,'signoff');}catch(e){}
+      j.log=j.log||[];j.log.push({t:ts2(),s:'\u2192 Disapproved lane removed \u2014 tell the customer, then it closes as Lost'});save(j);}
+    else if(j.stage==='contact'&&j.declined&&!j.declined.closed){j.stage='signoff';j.stageAt=Date.now();save(j);}
     else if(j.stage==='contact'){const sent=j.estimateSentMs||j.estimateOpenedMs;
       j.stage=sent?'contacted':'signoff';j.stageAt=Date.now();try{stampStage(j,j.stage);}catch(e){}
       j.log=j.log||[];j.log.push({t:ts2(),s:sent?'\u2192 Contacted (quote already went to the customer)':'\u2192 Final Estimate & Sign-Off \u2014 the Service Adviser step is gone; Approve sends the quote'});save(j);}
@@ -14406,7 +14557,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1640';
+const CRM_BUILD='2026-11-16-1700';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
