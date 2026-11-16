@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v8.8 \u00b7 16 Nov';
+const BUILD='v8.9 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6277,21 +6277,14 @@ function actH(j){
       break;
     case 'labour':
       h+=damageMapCrmH(j)+photoStripH(j,true)+bodySizeH(j)+estimateSummaryH(j)+estimateDocsH(j,false);
-      h+='<div class="notice n-blue" style="margin-bottom:12px">Estimator: enter Techman number, labour hours, and list any parts needed for the Parts team to price.</div>'+
+      h+='<div class="notice n-blue" style="margin-bottom:12px">Estimator: enter the labour hours and list any parts needed for the Parts team to price. No Techman number needed yet \u2014 that comes once the customer approves and it is booked.</div>'+
         '<div class="fg" style="margin-bottom:8px"><label class="fl2">Assign to Estimator <span class="req">*</span></label>'+
         '<select class="fsel" id="a-estimator">'+
           '<option value="">— Select Estimator —</option>'+
           STAFF.filter(s=>s.filter!=='all'&&hasRole(s,'estimator')).map(s=>'<option value="'+s.name+'"'+(j.assignedEstimator===s.name?' selected':'')+'>'+s.icon+' '+s.name+'</option>').join('')+
         '</select></div>'+
-        '<div class="fg" style="margin-bottom:8px"><label class="fl2">Techman Job # <span class="req">*</span></label>'+
-        '<div style="display:flex;gap:6px">'+
-          '<input class="fi2 tm-in" id="a-tj" placeholder="TM-xxxx" value="'+(j.tmJob||'')+'"/>'+
-          '<button class="btn btn-ghost btn-sm" style="flex-shrink:0;'+(j.privatePlate?'color:var(--amber);border-color:var(--amber)':'')+'" onclick="flagPrivatePlate()" title="Private/cherished plate — cannot find on Techman">'+
-            (j.privatePlate?'\uD83D\uDD12 Private Plate':'\uD83D\uDD12 Private Plate?')+
-          '</button>'+
-        '</div>'+
-        (j.privatePlate?'<div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:var(--rs);padding:6px 10px;margin-top:4px;font-size:12px;color:var(--amber)">⚠ Private plate — '+escHtml(j.privatePlate)+'</div>':'')+
-        '</div>'+
+        // 16 Nov 2026: no Techman number at the estimate stage — it is only needed once approved / booked
+        '<input type="hidden" id="a-tj" value="'+escHtml(j.tmJob||'')+'"/>'+
         '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">'+
           '<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">'+
             '<input type="checkbox" id="a-fixed" '+(j.labourFixed?'checked':'')+' onchange="toggleFixedLabour()"/> Fixed price labour (no SRT \u2014 e.g. tyre fit)'+
@@ -11194,14 +11187,13 @@ function labourDone(){
   const cost=parseFloat(document.getElementById('a-labour-cost')?.value);
   if(!estimator){alert('Assign to an estimator first.');return;}
   if(isBodyJob(j)&&!j.bodySize){alert('Bodywork: pick the vehicle size first \u2014 Small, Medium, Large or Van.');return;}
-  if(!tj&&!j.privatePlate){alert('Enter Techman Job # first. If this is a private plate tap the Private Plate button.');return;}
   const fixedLab=!!document.getElementById('a-fixed')?.checked;
   const srt=parseFloat(document.getElementById('a-srt')?.value);
   if(!fixedLab&&(isNaN(srt)||srt<=0)){alert('Enter the original SRT (book hours), or tick "Fixed price labour" if there is no book time.');return;}
   if(!desc){alert('Enter labour description.');return;}
   if(isNaN(cost)||cost<=0){alert('Enter labour total amount.');return;}
   j.assignedEstimator=estimator;
-  j.tmJob=tj;
+  if(tj)j.tmJob=tj;
   j.labourDesc=desc;
   j.labourCost=cost;
   j.labourFixed=fixedLab;
@@ -11227,8 +11219,8 @@ function labourDone(){
     }
   });
   const partMsg=j.parts.length?' — '+j.parts.length+' part(s) requested':'';
-  if(skipPartsIfNone(j,'Labour \u00a3'+cost.toFixed(2)+' — Techman '+tj))return;
-  mv('parts','Labour \u00a3'+cost.toFixed(2)+' — Techman '+tj+partMsg);
+  if(skipPartsIfNone(j,'Labour \u00a3'+cost.toFixed(2)+(tj?' — Techman '+tj:'')))return;
+  mv('parts','Labour \u00a3'+cost.toFixed(2)+(tj?' — Techman '+tj:'')+partMsg);
 }
 
 function toggleVATExempt(exempt){
@@ -13578,11 +13570,10 @@ function joelDone(){
   const j=gj();if(!j)return;
   const tj=document.getElementById('a-tj')?.value.trim();
   const est=parseFloat(document.getElementById('a-est')?.value);
-  if(!tj){alert('Enter Techman Job # before proceeding.');return;}
-  j.tmJob=tj;
+  if(tj)j.tmJob=tj;
   if(!isNaN(est)&&est>0) j.est=est;
-  if(skipPartsIfNone(j,'Estimate '+(j.est?'£'+j.est.toLocaleString():'')+' complete — Techman '+tj))return;
-  mv('parts','Estimate '+(j.est?'£'+j.est.toLocaleString():'')+' complete — Techman '+tj);
+  if(skipPartsIfNone(j,'Estimate '+(j.est?'£'+j.est.toLocaleString():'')+' complete'+(tj?' — Techman '+tj:'')))return;
+  mv('parts','Estimate '+(j.est?'£'+j.est.toLocaleString():'')+' complete'+(tj?' — Techman '+tj:''));
 }
 
 function saveTM(){
@@ -13904,7 +13895,6 @@ function removePart(i){
 function raiseParts(){
   const j=gj();if(!j)return;
   const tj=document.getElementById('a-tj')?.value.trim();
-  if(!tj){alert('Enter Techman Job # first.');return;}
   if(!j.parts||!j.parts.length){alert('Add at least one part before raising to the Parts team.');return;}
   // Save any un-oninput'd values
   j.parts.forEach((p,i)=>{
