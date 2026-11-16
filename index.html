@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v9.2 \u00b7 16 Nov';
+const BUILD='v9.3 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -9004,7 +9004,7 @@ function srtBreakdownH(j,editable){
               '<span'+(editable?' style="cursor:pointer" onclick="editSrtLine(\''+j.id+'\','+i+')"':'')+'>'+escHtml(l.op||'\u2014')+'</span>'+
               '<span style="text-align:right;color:var(--dim)">'+b.toFixed(1)+'h</span>'+
               '<span style="text-align:right;color:'+(over?'var(--amber)':'var(--dim)')+';font-weight:'+(over?'700':'400')+'">'+c.toFixed(1)+'h</span>'+
-              '<span style="text-align:right;color:var(--gold)">\u00a3'+(c*rate).toFixed(2)+'</span>'+
+              '<span style="text-align:right;color:var(--gold)">\u00a3'+(l.labour!=null?parseFloat(l.labour):c*rate).toFixed(2)+'</span>'+
               (editable?'<button class="btn btn-ghost btn-xs" style="padding:0 4px;color:var(--red)" onclick="removeSrtLine(\''+j.id+'\','+i+')">\u00d7</button>':'')+
             '</div>';}).join('')+
           '<div style="display:grid;grid-template-columns:1fr 52px 52px 62px'+(editable?' 22px':'')+';gap:6px;font-size:11px;font-weight:800;padding-top:5px">'+
@@ -9387,8 +9387,18 @@ window.brainApplyToJob = function(jobId){
   const j = _brainJob(jobId); if(!j||!j.brainAI)return;
   const totSrt = j.brainAI.jobs.reduce((s,b)=>s+(parseFloat(b.srt_hours)||0),0);
   const totLabour = j.brainAI.jobs.reduce((s,b)=>s+(parseFloat(b.labour_ex_vat)||0),0);
+  // 16 Nov 2026: book time (SRT) and hours CHARGED are different — the
+  // charged hours carry the SOP multiplier / minimum. Keep one line per job
+  // so the breakdown shows book vs charged, and the rate reads right.
+  const rates = (KITH_SOP&&KITH_SOP.rates)||{LOW:50,MED:60,TOP:70,BODY:90};
+  j.srtLines = j.brainAI.jobs.map(b=>{
+    const book=parseFloat(b.srt_hours)||0, lab=parseFloat(b.labour_ex_vat)||0;
+    const rate=rates[b.tier]||rates.TOP||70;
+    const charged=rate>0?Math.round(lab/rate*100)/100:book;
+    return {op:b.job_label||b.job_normalised||'Job',book,charged,rate,labour:lab,src:b.is_firm?'firm':'ai',by:brainWho(),at:ts()};
+  });
   j.srt = Number(totSrt.toFixed(2));
-  j.srtCharged = Number(totSrt.toFixed(2));
+  j.srtCharged = Number(j.srtLines.reduce((a,l)=>a+l.charged,0).toFixed(2));
   j.labourCost = Number(totLabour.toFixed(2));
   j.srtSource = 'Brain pre-fill · ' + j.brainAI.jobs.length + ' lines';
   j.brainAppliedAt = ts();
@@ -11213,6 +11223,9 @@ var AUTO_LOG=[];                // what the engine has moved this session
 function autoPilot(){
   if(!AUTO_ON)return 0;
   try{fixLabelOnlyWork();}catch(e){console.warn('labelfix',e);}
+  // Brain pre-fills applied before 16 Nov put book hours in "charged" — redo the rollup
+  try{jobs.forEach(j=>{if(j&&j.brainAppliedAt&&j.brainAI&&Array.isArray(j.brainAI.jobs)&&j.brainAI.jobs.length&&!(Array.isArray(j.srtLines)&&j.srtLines.length)&&['labour','parts','financial'].includes(j.stage)){
+    const at=j.brainAppliedAt,by=j.brainAppliedBy;try{window.brainApplyToJob(j.id);}catch(e){} j.brainAppliedAt=at;j.brainAppliedBy=by;}});}catch(e){}
   try{autoSplitJobs();}catch(e){console.warn('split',e);}
   let moved=0;
   window._batchSave=true;
