@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v17.4 \u00b7 16 Nov';
+const BUILD='v17.5 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6503,12 +6503,18 @@ function openSendNowBox(id,docI,notJustApproved){
   const w=document.createElement('div');w.id='sendnow-box';
   w.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1500;display:flex;align-items:center;justify-content:center;padding:20px';
   const share=!!(d&&num&&canShareFiles());
+  // 16 Nov 2026: on the Mac, WhatsApp is not in the share box unless it is switched on there,
+  // so the chat + PDF download comes first (like before, without the link); phones share first.
+  const phone=estIsPhone();
+  const shareBtn=share?'<button id="sb-share" class="btn btn-full" disabled style="margin-bottom:6px;font-weight:800;background:var(--surface2);color:var(--dim)" onclick="sendBoxShare(\''+j.id+'\')">⏳ Getting the PDF ready…</button>'+
+      '<div style="font-size:11px;color:var(--faint);margin-bottom:10px">'+(phone?'Opens the share box — pick <strong>WhatsApp</strong>, then the customer, then send.':'Share box — only works if WhatsApp is listed in it. Not there? In the share box press <strong>Edit Extensions…</strong> and tick <strong>WhatsApp</strong>.')+'</div>':'';
+  const chatBtn=num?'<button class="btn btn-full" style="margin-bottom:6px;'+(phone&&share?'background:var(--surface2);border:1px solid var(--green);color:var(--green)':'background:var(--green);color:#111;font-weight:800')+'" onclick="sendBoxChat(\''+j.id+'\')">💬 Open WhatsApp + download the PDF to drop in</button>'+
+      (phone?'':'<div style="font-size:11px;color:var(--faint);margin-bottom:10px">Opens '+escHtml(firstName(j))+'’s chat with the message, and saves the PDF to Downloads — drag it into the chat as a document.</div>'):'';
+  window._sbPhone=phone;
   w.innerHTML='<div style="background:var(--surface);border:2px solid var(--green);border-radius:var(--r);padding:20px;max-width:460px;width:100%">'+
     '<div style="font-weight:800;font-size:16px;margin-bottom:4px">'+(notJustApproved?'💬 Send the estimate PDF to ':'✓ Approved — now send the PDF to ')+escHtml(firstName(j))+'</div>'+
     '<div style="font-size:12px;color:var(--dim);margin-bottom:14px">'+(notJustApproved?'':'Nothing has gone to the customer yet. ')+(num?'WhatsApp: <strong>+'+escHtml(num)+'</strong> · '+money2(parseFloat(j.quote)||0):'<span style="color:var(--red)">No valid mobile on this job — fix it with Edit first.</span>')+'</div>'+
-    (share?'<button id="sb-share" class="btn btn-full" disabled style="margin-bottom:6px;font-weight:800;background:var(--surface2);color:var(--dim)" onclick="sendBoxShare(\''+j.id+'\')">⏳ Getting the PDF ready…</button>'+
-      '<div style="font-size:11px;color:var(--faint);margin-bottom:10px">Opens the share box — pick <strong>WhatsApp</strong>, then the customer, then send.</div>':'')+
-    (num?'<button class="btn btn-full" style="margin-bottom:8px;'+(share?'background:var(--surface2);border:1px solid var(--green);color:var(--green)':'background:var(--green);color:#111;font-weight:800')+'" onclick="sendBoxChat(\''+j.id+'\')">💬 Open the WhatsApp chat + download the PDF to drag in</button>':'')+
+    (phone?shareBtn+chatBtn:chatBtn+shareBtn)+
     '<div id="sb-msg" style="font-size:12px;margin:6px 0 10px;line-height:1.5"></div>'+
     '<button class="btn btn-ghost btn-full btn-sm" onclick="sendBoxClose()">Later — the green Send button stays on the job</button>'+
   '</div>';
@@ -6518,9 +6524,9 @@ function openSendNowBox(id,docI,notJustApproved){
     window._sbTimer=setInterval(()=>{
       const b=document.getElementById('sb-share');if(!b){clearInterval(window._sbTimer);return;}
       const f=EST_FILES[d.url];
-      if(f instanceof File){clearInterval(window._sbTimer);b.disabled=false;b.style.cssText='margin-bottom:6px;font-weight:800;background:var(--green);color:#111';b.innerHTML='📤 Send on WhatsApp with the PDF attached';return;}
+      if(f instanceof File){clearInterval(window._sbTimer);b.disabled=false;b.style.cssText=window._sbPhone?'margin-bottom:6px;font-weight:800;background:var(--green);color:#111':'margin-bottom:6px;background:var(--surface2);border:1px solid var(--green);color:var(--green)';b.innerHTML='📤 '+(window._sbPhone?'Send on WhatsApp with the PDF attached':'Or: share box with the PDF attached');return;}
       if(!f&&(EST_FAILS[d.url]||0)<3)prefetchEstFile(j,d);
-      if(++n>40||(EST_FAILS[d.url]||0)>=3){clearInterval(window._sbTimer);b.innerHTML='Could not load the PDF — use Open the WhatsApp chat below';}
+      if(++n>40||(EST_FAILS[d.url]||0)>=3){clearInterval(window._sbTimer);b.innerHTML='Could not load the PDF — use Open WhatsApp';}
     },500);
   }
 }
@@ -6540,8 +6546,8 @@ function sendBoxShare(id){
     try{refreshEstimateDocs(j);renderDetail();renderAll();}catch(e){}
   }).catch(e=>{
     sendBoxMsg(e&&e.name==='AbortError'
-      ?'✕ <strong>Not sent.</strong> If WhatsApp wasn’t in that list, use <strong>Open the WhatsApp chat</strong> — the PDF downloads so you can drag it in.'
-      :'✕ <strong>Not sent</strong> — the share box would not open ('+escHtml(e&&e.message||'blocked')+'). Use <strong>Open the WhatsApp chat</strong>.','var(--red)');
+      ?'✕ <strong>Not sent.</strong> If WhatsApp wasn’t in that list, use <strong>Open WhatsApp</strong> — the PDF downloads so you can drag it in.'
+      :'✕ <strong>Not sent</strong> — the share box would not open ('+escHtml(e&&e.message||'blocked')+'). Use <strong>Open WhatsApp</strong>.','var(--red)');
   });
 }
 function sendBoxChat(id){
@@ -14902,7 +14908,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-2050';
+const CRM_BUILD='2026-11-16-2100';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
