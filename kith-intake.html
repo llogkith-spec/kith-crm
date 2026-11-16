@@ -463,7 +463,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
 var SB_URL=KithCore.URL;
 var SB_KEY=KithCore.KEY;
 var SOP_VERSION='8.0';
-var INTAKE_BUILD='3.2';
+var INTAKE_BUILD='3.3';
 // The CRM keeps one row per job in `jobs` ({id, data, updated_at}).
 // Earlier builds wrote to `kith_jobs`, which nothing reads — jobs vanished.
 var JOBS_TABLE='jobs';
@@ -533,6 +533,7 @@ var MECH={
         'Anything else they have noticed — noises, smells, vibrations?',
         'Do they want an MOT at the same time?'])+
       fld('Service type','f-svc-type','select',['Interim service (25-point)','Full service (40-point)','Major service (60-point)','Oil & filter change only','MOT only','MOT + interim service','MOT + full service','MOT + major service','Standalone inspection'])+
+      fld('MOT class (if they want an MOT)','f-mot-class','select',['Class 4 — cars & small vans (£50)','Class 7 — vans 3,000–3,500 kg (£58)'])+
       fld('Last service (date / mileage)','f-last-service','text','e.g. Jan 2025 / 60,000 miles')+
       fld('Other issues reported','f-other-issues','textarea','Noises, smells, vibrations...')+ motRef());}},
 
@@ -1305,6 +1306,20 @@ function collectAnswers(){
 }
 var MECH_WORDS=/\b(exhaust|brake|pads?|discs?|service|mot|engine|clutch|gearbox|tyres?|oil|sensor|suspension|battery|diagnos\w*|leak\w*|noise|warning light|eml|dpf|egr|turbo|timing|cambelt|coolant|radiator|alternator|starter|steering|wishbone|shock|spring|wheel bearing|ac|air ?con|remap)\b/i;
 var BODY_WORDS=/\b(dent|scratch|scuff|paint|panel|bumper|wing|door|bonnet|respray|body\s?work|crack|alloy|polish|smart repair)\b/i;
+// Diagnostic + repair in one request? Same test the CRM uses (16 Nov 2026).
+var INTAKE_DIAG_RX=/\b(diag\w*|health ?check|fault[ -]?find\w*|investigat\w*|inspect\w*|check (why|what)|find (the )?(fault|cause))\b/i;
+function diagRepairSplit(){
+  if(jobType==='comeback')return null;
+  var txt=[fval('f-words'),fval('f-other-work'),fval('f-diag-type')].filter(Boolean).join(', ');
+  if(hasCat('diagnostic')&&!INTAKE_DIAG_RX.test(txt))txt='Diagnostic, '+txt;
+  var segs=String(txt).split(/\s*(?:,|;|\+|&|\n|\band then\b|\bthen\b|\band\b|\bplus\b|\balso\b)\s*/i)
+    .map(function(x){return x.replace(/^[\s\-\u2013\u2014.]+|[\s\-\u2013\u2014.]+$/g,'');}).filter(function(x){return x&&x.length>=3;});
+  var diag=segs.filter(function(x){return INTAKE_DIAG_RX.test(x);});
+  // a symptom ("engine light on", "knocking noise") is what the diagnostic looks at, not a repair
+  var SYMPTOM_RX=/\b(light|lights|warning|noise|noises|knock\w*|rattl\w*|squeak\w*|grind\w*|smoke|smok\w*|leak\w*|won'?t|wont|doesn'?t|not (start|working)|judder\w*|vibrat\w*|pull\w* to|overheat\w*|stall\w*|misfir\w*|limp mode|fault|issue|problem|symptom\w*)\b/i;
+  var rep=segs.filter(function(x){return !INTAKE_DIAG_RX.test(x)&&!(SYMPTOM_RX.test(x)&&!/\b(replace\w*|fit\w*|change|renew|new|repair)\b/i.test(x))&&/[a-z]{3,}/i.test(x.replace(/\b(bank|banks|side|sides|front|rear|left|right|both|nearside|offside|ns|os|one|two|three|four|the|a|an|of|on|in|it|car|please|can|you|my|is|and)\b/gi,''));});
+  return diag.length&&rep.length?{diag:diag,rep:rep}:null;
+}
 async function submitJob(){
   var btn=document.getElementById('sub-btn');
   // Wrong area picked? "Full exhaust pipe replacement" under Bodywork is mechanical.
@@ -1323,6 +1338,14 @@ async function submitJob(){
   if(mustMissing.length&&!confirm('Still missing:\n• '+mustMissing.join('\n• ')+
      '\n\nSubmit anyway? These will show on the job as MISSING so the next person chases them.'))return;
   if(intakePics.some(function(p){return p.busy;})&&!confirm('Photos are still uploading. Submit now without them?'))return;
+  // 16 Nov 2026: a diagnostic AND a repair in one request — ask here, not later in the CRM
+  var splitAsk=diagRepairSplit(), splitChoice=null;
+  if(splitAsk){
+    splitChoice=confirm('\u270b Hold up \u2014 this looks like a DIAGNOSTIC and a REPAIR in one:\n\n'+
+      '\u2022 Diagnostic: '+splitAsk.diag.join(', ')+'\n\u2022 Repair: '+splitAsk.rep.join(', ')+'\n\n'+
+      'OK = split into TWO jobs (the diagnostic, and the repair priced on its own).\n'+
+      'Cancel = keep it as ONE job.')?'split':'one';
+  }
   btn.textContent='Submitting…';btn.disabled=true;
 
   var jt=JOB_TYPES.filter(function(x){return x.k===jobType;})[0]||{};
@@ -1374,7 +1397,7 @@ async function submitJob(){
     ramp_exempt_pending:rampState.pending, ramp_criteria_signed_off:false,
     vehicle_shape:fval('f-shape'), seats:fval('f-seats'),
     roof_load:fval('f-roof'), gross_weight:fval('f-gvw'),
-    bodywork_category:window._bodyCat||null, mot_class:window._motClass||null,
+    bodywork_category:window._bodyCat||null, mot_class:(fval('f-mot-class').match(/Class (\d)/)||[])[1]||window._motClass||null,
     customer_supplied_parts:fchk('f-custparts'),
     safety_flags:safetyHits, needs_diagnostic_first:needsDiag,
     diagnostic_override:diagOverride,
@@ -1385,11 +1408,12 @@ async function submitJob(){
     photos_in_hand:(area==='bodywork'||alsoBody)?fchk('f-photos'):null,
     missing_at_intake:stillMissing.map(function(x){return (x.lvl==='must'?'MUST: ':'ASK: ')+x.l;}),
     ai_triage:triageResult||null,
+    split_choice:splitChoice, split_diag:splitAsk?splitAsk.diag:null, split_rep:splitAsk?splitAsk.rep:null,
     captured_by:staffName, captured_at:new Date().toISOString()
   };
 
   var parts=[];
-  if(fval('f-svc-type'))parts.push(fval('f-svc-type'));
+  if(fval('f-svc-type'))parts.push(fval('f-svc-type')+(/\bmot\b/i.test(fval('f-svc-type'))&&fval('f-mot-class')?' ('+fval('f-mot-class').replace(/ —.*$/,'')+' MOT)':''));
   ['axle','brakework','exhaust-type','elec-work','eng-work','clutch-work','susp-work','panels','body-type']
     .forEach(function(g){if(answers['chips-'+g])parts.push(answers['chips-'+g]);});
   if(hasCat('diagnostic')){
@@ -2294,6 +2318,7 @@ function needGroups(){
     job.push(it('Insurance or private',fval('f-body-pay'),'ask'));
   }
   if(area==='mechanical'&&hasCat('service'))job.push(it('Type of service',fval('f-svc-type'),'must'));
+  if(area==='mechanical'&&hasCat('service')&&/\bmot\b/i.test(fval('f-svc-type')+' '+fval('f-words')))job.push(it('MOT class — 4 or 7',fval('f-mot-class'),'must','Class 4 cars & small vans £50 · Class 7 vans 3,000–3,500 kg £58'));
   if(area==='mechanical'&&hasCat('tyres')){job.push(it('How many tyres',fval('f-tyre-qty'),'must'));
     job.push(it('Tyre size',fval('f-tyre-size'),'ask','Printed on the side of the tyre'));}
   if(area==='mechanical'&&hasCat('diagnostic'))job.push(it('Warning lights / what it’s doing',fval('f-diag-lights')||fval('f-diag-symptoms'),'must'));

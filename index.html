@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v16.4 \u00b7 16 Nov';
+const BUILD='v16.6 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -4593,7 +4593,7 @@ function signOffH(j){
       (stale&&isBoss?'<button class="btn btn-gold btn-xs btn-full" style="margin-top:6px" onclick="signOff(\''+j.id+'\')">Re-approve at \u00a3'+amt.toFixed(2)+'</button>':'')+
     '</div>';
   }
-  return soToggleH(j)+'<div style="background:rgba(160,120,20,.16);border:2px solid var(--amber);border-radius:var(--r);padding:11px 13px;margin-bottom:10px">'+
+  return motSoNoteH(j)+soToggleH(j)+'<div style="background:rgba(160,120,20,.16);border:2px solid var(--amber);border-radius:var(--r);padding:11px 13px;margin-bottom:10px">'+
     '<div style="font-size:12px;font-weight:800;color:var(--amber)">\u23f3 Waiting on sign-off \u2014 \u00a3'+amt.toFixed(2)+'</div>'+
     '<div style="font-size:11px;color:var(--dim);margin:3px 0 8px">Nothing goes to the customer until this has been looked at. Approving sends the quote to them straight away \u2014 WhatsApp, or a text if they have no WhatsApp.</div>'+
     (j.signOffNote?'<div style="font-size:11px;color:var(--red);margin-bottom:7px">Last sent back: '+escHtml(j.signOffNote)+'</div>':'')+
@@ -5521,6 +5521,7 @@ function undoTwoChoice(id){
   save(j);renderDetail();renderAll();
 }
 function twoPriceH(j){
+  try{if(motOnlyJob(j))return '';}catch(e){}
   const parts=j.parts||[];
   if(!j.twoPrice){
     const hint=TWO_HINT.test(String(j.work||'')+' '+String(j.notes||'')+' '+String(j.finalNotes||''));
@@ -7257,6 +7258,8 @@ function actH(j){
       h+=approvalH(j)+readyH(j);
       break;
     case 'booked':
+      h+=motSoNoteH(j);
+      if(j.comebackNoCharge)h+='<div class="notice n-green" style="margin-bottom:10px">\u21a9 <strong>Comeback \u2014 no charge.</strong> No estimate, deposit or T&amp;Cs.'+(j.bookedFor?'':' <strong>Pick the day the car comes in.</strong>')+'</div>'+(j.bookedFor?'':'<button class="btn btn-gold btn-full" style="margin-bottom:10px" onclick="bookIntoCalendar(\''+j.id+'\')">\ud83d\udcc5 Book the comeback in</button>');
       h+=approvalH(j)+unreadyBandH(j)+
         '<div class="notice n-green" style="margin-bottom:10px">\u2713 Booked in'+(j.bookedFor?' for '+escHtml(fmtBookDate(j.bookedFor))+(j.bookedTime?' at '+escHtml(fmt12(j.bookedTime)):''):'')+(j.tmJob?' \u00b7 Techman '+escHtml(j.tmJob):'')+'.</div>'+
         jobCardAttachH(j)+
@@ -10306,8 +10309,10 @@ function brainPairRule(j){
 }
 function motPrice(j){
   let T=null;try{T=KITH_SOP&&KITH_SOP.mot;}catch(e){}
-  T=T||{4:50,5:58,7:55};
-  const cls=String((j.judgement&&j.judgement.mot_class)||'4').replace(/\D/g,'')||'4';
+  T=T||{4:50,5:58,7:58};
+  // the class asked at intake, or written on the job ("MOT class 7")
+  const said=(String(j.work||'')+' '+String(j.labourDesc||'')+' '+String(j.judgement&&j.judgement.customer_words||'')).match(/class\s*([457])\b/i);
+  const cls=(said&&said[1])||String((j.judgement&&j.judgement.mot_class)||'4').replace(/\D/g,'')||'4';
   return {cls,price:parseFloat(T[cls]||T['4']||50)};
 }
 function brainFixSop(j){
@@ -11054,6 +11059,9 @@ function isDiagOnly(j){
 // done for £60 … front brake pads, discs, caliper, brake bleed, suspension arms".
 // The split uses whichever has more, and says what was found and why.
 function splitSource(j){
+  const jd=j.judgement||{};
+  if(jd.split_choice==='split'&&Array.isArray(jd.split_diag)&&Array.isArray(jd.split_rep)&&jd.split_diag.length&&jd.split_rep.length)
+    return {diag:jd.split_diag,rep:jd.split_rep,fromWords:true,atIntake:true};
   const p=splitWorkParts(j.work);
   let cw=[];try{cw=askedItems(j);}catch(e){}
   const cd=cw.filter(x=>DIAG_RX.test(x)), cr=cw.filter(x=>!DIAG_RX.test(x));
@@ -11063,6 +11071,7 @@ function splitSource(j){
 const DIAG_DONE_RX=/\b(done|already|carried out|paid|completed|did)\b/i;
 function canSplitDiag(j){
   if(!j||j.mergedInto||j.noSplit||j.splitFrom||j.splitInto)return false;
+  if(j.judgement&&j.judgement.split_choice==='one')return false;   // intake said keep it as one job
   if(!['intake','range','labour'].includes(j.stage))return false;
   if(Date.now()-(j.stageAt||0)>14*864e5)return false;
   if(j.rangeSentAt||j.rangeYesAt||parseFloat(j.quote)>0||parseFloat(j.srt)>0||j.tmJob)return false;
@@ -11084,7 +11093,7 @@ function splitDiagRepair(j){
     stage:'intake',stageAt:Date.now(),createdAt:new Date().toISOString(),
     splitFrom:j.id,linkedJobId:j.id,linkedRef:j.tmJob||j.id,afterDiagnostic:true,repWorkFixed:true,
     judgement:j.judgement,
-    log:[{t:ts2(),s:'✂ Split from '+j.id+' \u2014 '+(done?'the diagnostic is already done ('+diagTxt+')':'the diagnostic ('+diagTxt+') is its own job')+'. This job prices the repair of what it found: '+repWork}]
+    log:[{t:ts2(),s:'✂ Split from '+j.id+(p.atIntake?' (chosen at intake)':'')+' \u2014 '+(done?'the diagnostic is already done ('+diagTxt+')':'the diagnostic ('+diagTxt+') is its own job')+'. This job prices the repair of what it found: '+repWork}]
   };
   j.workOriginal=j.workOriginal||j.work;
   j.work=diagTxt;
@@ -11171,10 +11180,34 @@ function skipsRange(j){
 }
 function _pct(a,p){if(!a.length)return 0;const i=(a.length-1)*p,lo=Math.floor(i),hi=Math.ceil(i);return a[lo]+(a[hi]-a[lo])*(i-lo);}
 function motOnlyJob(j){
-  const t=(String(j.work||'')+' '+String(j.judgement&&j.judgement.customer_words||'')).toLowerCase().replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();
+  if(!j)return false;
+  // notes in brackets ("MOT (14th of Ahmad)") are who/when, not more work
+  const t=(String(j.work||'')+' '+String(j.judgement&&j.judgement.customer_words||'')).replace(/\([^)]*\)/g,' ').toLowerCase().replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();
   if(!/\bmot\b/.test(t))return false;
-  const rest=t.replace(/\b(mot|only|test|class|just|an|a|the|please|needed|need|due|booking|book|in|for|car|vehicle|[0-9]+)\b/g,'').trim();
+  const rest=t.replace(/\b(mot|only|test|class|just|retest|re|booked|date|on|at|by|th|st|nd|rd|today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|an|a|the|please|needed|need|due|booking|book|in|for|car|vehicle|[0-9]+)\b/g,'').trim();
   return !rest;
+}
+// 16 Nov 2026: an MOT never sits in Labour or Parts — it is an SO at a fixed price.
+function motToSignOff(j){
+  if(!j||!motOnlyJob(j))return false;
+  const from=j.stage,m=motPrice(j);
+  j.motRouted=true;
+  j.srtLines=[{op:'MOT Class '+m.cls+' (subcontracted)',book:0,charged:0,qty:1,fixed:true,noVat:true,labour:m.price,rate:m.price,src:'fixed',by:'auto',at:ts2()}];
+  j.srt=0;j.srtCharged=0;
+  j.labourCost=m.price;j.labourDesc='MOT Class '+m.cls+' \u2014 \u00a3'+m.price.toFixed(2)+' (no VAT)';
+  j.parts=[];j.noParts=true;j.soNeeded=true;j.twoPrice=false;
+  j.quote=m.price;j.finalEst=m.price;
+  j.stage='signoff';j.stageAt=Date.now();
+  try{stampStage(j,'signoff');}catch(e){}
+  j.log=j.log||[];
+  j.log.push({t:ts2(),s:'\ud83d\udccb MOT Class '+m.cls+' \u2014 fixed \u00a3'+m.price.toFixed(2)+', no VAT. It is an SO (subcontracted), so no labour or parts estimate \u2014 straight to sign-off.'});
+  try{stageMoved(j,from,'signoff');}catch(e){}
+  return true;
+}
+function motSoNoteH(j){
+  if(!motOnlyJob(j))return '';
+  const m=motPrice(j);
+  return '<div class="notice n-blue" style="margin-bottom:10px">\ud83d\udccb <strong>MOT Class '+m.cls+' \u2014 \u00a3'+m.price.toFixed(2)+', no VAT.</strong> This is an <strong>SO</strong>: the MOT is done by the test centre. Once the customer agrees, book a day the test centre has a slot, then raise the SO for that day.</div>';
 }
 function brainRange(j){
   // MOT only: fixed price by class, outside VAT — never a spread (16 Nov 2026)
@@ -11757,15 +11790,15 @@ function comebackJob(j){
   return !!(j.isComeback||jd.comeback||/^\s*comeback/i.test(String(j.work||''))||/comeback|come back/i.test(String(jd.job_type||'')));
 }
 function comebackToBook(j,why){
-  if(!j||!['intake','range','labour','parts','financial','signoff','disapproved','contact','contacted','waiting','waiting2'].includes(j.stage))return false;
+  if(!j||!['intake','range','labour','parts','financial','signoff','disapproved','contact','contacted','waiting','waiting2','ready'].includes(j.stage))return false;
   const from=j.stage;
-  j.stage='ready';j.stageAt=Date.now();
+  j.stage='booked';j.stageAt=Date.now();
   j.quote=0;j.finalEst=0;j.comebackNoCharge=true;j.noDeposit=true;
   j.estApproved=j.estApproved||{amount:0,how:'Comeback \u2014 no charge',at:ts2(),by:currentUser?currentUser.name:'auto'};
-  try{stampStage(j,'ready');}catch(e){}
+  try{stampStage(j,'booked');}catch(e){}
   j.log=j.log||[];
-  j.log.push({t:ts2(),s:'\u21a9 Comeback \u2014 no charge. Straight to booking (no estimate, no sign-off, no deposit)'+(why?' \u2014 '+why:'')+(currentUser?' ['+currentUser.name+']':'')});
-  try{stageMoved(j,from,'ready');}catch(e){}
+  j.log.push({t:ts2(),s:'\u21a9 Comeback \u2014 no charge. Straight into Booked (no estimate, no sign-off, no deposit, no T&Cs)'+(why?' \u2014 '+why:'')+(currentUser?' ['+currentUser.name+']':'')});
+  try{stageMoved(j,from,'booked');}catch(e){}
   return true;
 }
 function comebackBookNow(id){
@@ -12814,6 +12847,10 @@ function autoPilot(){
       const from=j.stage;j.doneToAcc1=true;j.stage='accounts';j.stageAt=Date.now();try{stampStage(j,'accounts');}catch(e){}
       j.log=j.log||[];j.log.push({t:ts2(),s:'\u2713 Work completed \u2014 sent to Accounts (Logan, 16 Nov)'});
       try{stageMoved(j,from,'accounts');}catch(e){}save(j);}});}catch(e){}
+  // v16.5: an MOT is subcontracted (SO) at a fixed price — no labour or parts estimate, straight to sign-off
+  try{jobs.forEach(j=>{if(j&&!j.mergedInto&&!j.motRouted&&!comebackJob(j)&&['intake','range','labour','parts'].includes(j.stage)&&motOnlyJob(j)){if(motToSignOff(j))save(j);}});}catch(e){}
+  // v16.5: comebacks go straight into Booked — move any left in Deposit & T&Cs
+  try{jobs.forEach(j=>{if(j&&!j.mergedInto&&j.comebackNoCharge&&j.stage==='ready'){if(comebackToBook(j,'comebacks skip deposit and T&Cs'))save(j);}});}catch(e){}
   try{autoSplitJobs();}catch(e){console.warn('split',e);}
   let moved=0;
   window._batchSave=true;
@@ -14754,7 +14791,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1850';
+const CRM_BUILD='2026-11-16-1915';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
