@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v12.7 \u00b7 16 Nov';
+const BUILD='v12.8 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -9269,17 +9269,8 @@ function mv(stage,msg){
       return;
     }
   }
-  // The adviser can't sell a quote they haven't got. Don't let the job
-  // reach them without the Techman estimate attached.
-  if(stage==='signoff'){
-    const jj=gj();
-    if(jj&&!((jj.estimateDocs||[]).length)){
-      if(!confirm('\u26a0 No estimate document attached to '+(jj.reg||'this job')+'.\n\n'+
-        'The adviser needs the Techman estimate to send to the customer.\n\nPass it over without one?'))return;
-      jj.log=jj.log||[];
-      jj.log.push({t:ts(),s:'\u26a0 Sent to Service Adviser with no estimate attached'+(currentUser?' ['+currentUser.name+']':'')});
-    }
-  }
+  // 16 Nov 2026: no Techman estimate needed here — the KITH estimate PDF
+  // is made and attached automatically at sign-off.
   // Retail jobs over the threshold need the deposit before a slot is given
   // away. Fleet/B2B accounts skip this entirely.
   if(stage==='booked'){
@@ -14032,7 +14023,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1205';
+const CRM_BUILD='2026-11-16-1210';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
