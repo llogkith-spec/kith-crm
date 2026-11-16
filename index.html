@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v13.2 \u00b7 16 Nov';
+const BUILD='v13.3 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -5199,7 +5199,7 @@ function askTwoPrices(id){
 function disableTwoPrice(id){
   const j=jobs.find(x=>x.id===id);if(!j)return;
   if(!confirm('Go back to a single price on '+(j.reg||'this job')+'?\n\nThe main dealer / non-dealer figures stay saved on the parts in case you switch it back on.'))return;
-  j.twoPrice=false;j.twoPriceChoice=null;
+  j.twoPrice=false;j.twoPriceChoice=null;delete j.twoPriceAsked;
   j.log=j.log||[];
   j.log.push({t:ts(),s:'\u2696 Two prices switched off'+(currentUser?' ['+currentUser.name+']':'')});
   save(j);renderDetail();renderAll();
@@ -6763,7 +6763,8 @@ function actH(j){
   if(['contact','contacted','waiting','waiting2','signoff','financial'].includes(j.stage)&&!j.twoPrice)
     h+='<button class="btn btn-ghost btn-sm btn-full" style="margin-bottom:8px;border-color:var(--gold);color:var(--gold)" onclick="askTwoPrices(\''+j.id+'\')">\u2696 Customer wants two prices \u2014 ask parts (main dealer + non-dealer)</button>';
   if(j.twoPrice&&j.twoPriceAsked&&!j.twoPriceChoice)
-    h+='<div style="font-size:11px;color:var(--gold);margin-bottom:8px">\u2696 Two prices asked for by '+escHtml(j.twoPriceAsked.by||'')+' \u00b7 '+escHtml(j.twoPriceAsked.at||'')+'</div>';
+    h+='<div style="font-size:11px;color:var(--gold);margin-bottom:8px">\u2696 Two prices asked for by '+escHtml(j.twoPriceAsked.by||'')+' \u00b7 '+escHtml(j.twoPriceAsked.at||'')+
+      ' <button class="btn btn-ghost btn-xs" style="margin-left:6px" onclick="disableTwoPrice(\''+j.id+'\')">\u21a9 Undo \u2014 one price only</button></div>';
   // 16 Nov 2026: the KITH estimate stays on the job from Final Estimate until
   // it becomes a job card (Techman job card made). Open at sign-off.
   if(['labour','parts','financial','signoff','disapproved','contact','contacted','waiting','waiting2'].includes(j.stage))
@@ -14076,7 +14077,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1235';
+const CRM_BUILD='2026-11-16-1240';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
