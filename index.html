@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v15.9 \u00b7 16 Nov';
+const BUILD='v16.0 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6775,6 +6775,16 @@ function estPdfSig(j){
   if(!estTwo(j))return 'one:'+estDocData(j).total.toFixed(2)+nh;
   return 'two:'+estDocData(j,'md').total.toFixed(2)+'/'+estDocData(j,'af').total.toFixed(2)+nh;
 }
+// 16 Nov 2026: one clear button to (re)send the estimate — makes the PDF
+// first if the price changed, then sends it with the PDF attached.
+function sendEstBtnH(j){
+  if(!estPhone(j))return '<div style="font-size:11px;color:var(--amber);margin-bottom:8px">No mobile number on the job \u2014 add one to WhatsApp the estimate.</div>';
+  const last=Math.max(j.estimateSentMs||0,j.estimateOpenedMs||0);
+  const stale=!kithPdfFresh(j);
+  return '<button class="btn btn-full" style="margin-bottom:6px;background:var(--green);color:#111;font-weight:800" onclick="sendEstimateWA(\''+j.id+'\')">\ud83d\udcac '+(last?'Send the estimate again':'Send the estimate')+' on WhatsApp (PDF attached)</button>'+
+    '<div style="font-size:10px;color:var(--faint);margin-bottom:10px">'+(last?'Last sent '+escHtml(j.estimateSentAt||j.estimateOpenedAt||'')+'. ':'Not sent from here yet. ')+(stale?'<span style="color:var(--amber)">The price changed since the PDF was made \u2014 a new one is made first.</span>':'')+'</div>'+
+    '<div class="est-send-st" data-id="'+escHtml(j.id)+'" style="font-size:11px;margin-bottom:8px"></div>';
+}
 function estDocPanelH(j,open){
   if(estTwo(j))return estDocPanelTwoH(j,open);
   return estDocPanelOneH(j,open);
@@ -7089,6 +7099,7 @@ function actH(j){
       break;
     case 'contacted':
       h+='<div class="notice n-purple" style="margin-bottom:12px">Customer has been spoken to. Waiting to hear back?</div>'+
+        sendEstBtnH(j)+
         approvalH(j)+
         photoStripH(j)+
         phoneRowH(j)+
@@ -7100,6 +7111,7 @@ function actH(j){
     case 'waiting2':
     case 'waiting':
       h+='<div class="notice n-purple" style="margin-bottom:12px">Awaiting customer response.</div>'+
+        sendEstBtnH(j)+
         approvalH(j)+
         photoStripH(j)+
         phoneRowH(j)+
@@ -14615,7 +14627,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1800';
+const CRM_BUILD='2026-11-16-1810';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
