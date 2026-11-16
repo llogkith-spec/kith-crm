@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v9.6 \u00b7 16 Nov';
+const BUILD='v9.7 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -5158,7 +5158,11 @@ function jobH(j){
     (function(){const k=custKind(j);
       return k?'<div class="fi"><div class="fl">Customer type</div><div class="fv" style="color:'+k.col+';font-weight:700">'+k.icon+' '+escHtml(k.label)+'</div></div>':'';})()+
     (j.source?'<div class="fi"><div class="fl">Source</div><div class="fv">'+escHtml(j.source)+'</div></div>':'')+
-    '<div class="fi" style="grid-column:1/-1"><div class="fl">Work Required</div><div class="fv" style="line-height:1.5">'+j.work+'</div></div>'+
+    '<div class="fi" style="grid-column:1/-1"><div class="fl">Work Required</div><div class="fv" style="line-height:1.5">'+j.work+'</div>'+
+      (function(){const w=String(j.judgement&&j.judgement.customer_words||'').trim();
+        if(!w||String(j.work||'').toLowerCase().includes(w.toLowerCase()))return '';
+        return '<div style="font-size:12px;margin-top:4px;color:var(--amber);line-height:1.45">\u26a0 The customer also said: <span style="color:var(--fg)">'+escHtml(w)+'</span> \u2014 check nothing is missing from the work</div>';})()+
+    '</div>'+
     twoPriceH(j)+
     intakeToldH(j)+
 

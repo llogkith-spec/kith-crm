@@ -851,7 +851,7 @@ function diagRef(){return'<div class="ref"><b>Diagnostics — the other price yo
 // STATE
 // =============================================================================
 var staffName=localStorage.getItem('kith_staff')||null;
-var jobType=null,area=null,mechCat=null,custType=null,curStep=0;
+var jobType=null,area=null,mechCat=null,mechCats=[],alsoBody=false,custType=null,curStep=0;
 var rampState={exempt:false,reason:'',pending:false};
 var warrantyState=null,safetyHits=[],diagOverride=null;
 
@@ -885,7 +885,7 @@ function changeStaff(){if(confirm('Change staff member?')){
 // LEVEL 1 → 2 → 3 DRILL DOWN
 // =============================================================================
 function pickJobType(k){
-  jobType=k;area=null;mechCat=null;
+  jobType=k;area=null;mechCat=null;mechCats=[];alsoBody=false;
   document.querySelectorAll('[id^=jt-]').forEach(function(b){b.classList.remove('sel');});
   document.getElementById('jt-'+k).classList.add('sel');
   var jt=JOB_TYPES.filter(function(x){return x.k===k;})[0];
@@ -905,25 +905,33 @@ function pickJobType(k){
   }
 }
 function pickArea(k){
-  area=k;mechCat=null;
+  area=k;mechCat=null;mechCats=[];alsoBody=false;
   document.querySelectorAll('[id^=ar-]').forEach(function(b){b.classList.remove('sel');});
   document.getElementById('ar-'+k).classList.add('sel');
   var cd=document.getElementById('cat-drill');
   if(k==='mechanical'){
-    cd.innerHTML='<div class="drill"><div class="drill-lbl">What part of the car?</div><div class="svc-grid">'+
+    // 16 Nov 2026: tap every part of the car they want doing — e.g. service + brakes + bodywork
+    cd.innerHTML='<div class="drill"><div class="drill-lbl">What part of the car? <span style="font-weight:500;opacity:.75">Tap all that apply</span></div><div class="svc-grid">'+
       Object.keys(MECH).map(function(m){return'<button class="svc-btn" id="mc-'+m+'" onclick="pickMech(\''+m+'\')">'+
-        MECH[m].label+'<span class="svc-sub">'+MECH[m].sub+'</span></button>';}).join('')+'</div></div>';
+        MECH[m].label+'<span class="svc-sub">'+MECH[m].sub+'</span></button>';}).join('')+
+      '<button class="svc-btn" id="mc-__body" onclick="pickMech(\'__body\')">🚙 Bodywork too<span class="svc-sub">Panels, mirrors, dents, paint</span></button>'+
+      '</div><button class="btn btn-gold" id="mc-next" style="width:100%;margin-top:10px;display:none" onclick="go(1)">Next →</button></div>';
   } else {
     cd.innerHTML='';
     setTimeout(function(){go(1);},250);
   }
 }
 function pickMech(k){
-  mechCat=k;
-  document.querySelectorAll('[id^=mc-]').forEach(function(b){b.classList.remove('sel');});
-  document.getElementById('mc-'+k).classList.add('sel');
-  setTimeout(function(){go(1);},250);
+  if(k==='__body'){alsoBody=!alsoBody;}
+  else{var i=mechCats.indexOf(k);if(i>=0)mechCats.splice(i,1);else mechCats.push(k);}
+  mechCat=mechCats[0]||null;
+  document.querySelectorAll('[id^=mc-]').forEach(function(b){
+    var id=b.id.slice(3);if(id==='next')return;
+    b.classList.toggle('sel',id==='__body'?alsoBody:mechCats.indexOf(id)>=0);});
+  var nx=document.getElementById('mc-next');if(nx){nx.style.display=mechCat?'block':'none';
+    nx.textContent=mechCat?('Next → '+mechCats.map(function(c){return MECH[c].label;}).concat(alsoBody?['🚙 Bodywork']:[]).join(' + ')):'Next →';}
 }
+function hasCat(k){return mechCats.indexOf(k)>=0||mechCat===k;}
 
 // =============================================================================
 // CUSTOMER TYPE
@@ -1215,7 +1223,13 @@ function activeFlow(){
   if(jobType==='recovery')return{safety:false,guided:RECOVERY_FLOW,label:'🚛 Recovery / collection'};
   if(jobType==='sale')return{safety:area==='mechanical',guided:SALE_FLOW,label:'🏷️ Vehicle for sale'};
   if(area==='bodywork')return{safety:false,guided:BODY_FLOW,label:'🚙 Bodywork & paint'};
-  return MECH[mechCat]||MECH.other;
+  // several parts of the car picked: one combined set of questions
+  var list=(mechCats.length?mechCats:[mechCat||'other']).map(function(c){return MECH[c]||MECH.other;});
+  if(alsoBody)list.push({safety:false,guided:BODY_FLOW,label:'🚙 Bodywork & paint'});
+  if(list.length===1)return list[0];
+  return {safety:list.some(function(f){return f.safety;}),
+    guided:function(){return list.map(function(f){return f.guided();}).join('');},
+    label:list.map(function(f){return f.label;}).join(' + ')};
 }
 function buildStep3(){
   var f=activeFlow();
@@ -1231,7 +1245,7 @@ function buildStep4(){
   var c=CUSTOMERS.filter(function(x){return x.k===custType;})[0]||{};
   var f=activeFlow();
   var rows=[['Job type',jt.n||'—'],
-    ['Area',area?(area==='mechanical'?('Mechanical — '+(MECH[mechCat]?MECH[mechCat].label:'')):'Bodywork'):'n/a'],
+    ['Area',area?(area==='mechanical'?('Mechanical — '+(mechCats.length?mechCats:[mechCat]).filter(Boolean).map(function(c){return MECH[c]?MECH[c].label:c;}).join(' + ')+(alsoBody?' + Bodywork':'')):'Bodywork'):'n/a'],
     ['Customer',needsCustomer()?((fval('f-name')||'—')+' · '+(c.n||'—')):'Internal — our own stock'],
     ['Vehicle',(fval('f-reg')+' '+fval('f-make')+' '+fval('f-model')).trim()||'—'],
     ['Bodywork column',window._bodyCat||'—'],
@@ -1337,7 +1351,7 @@ async function submitJob(){
 
   var judgement={
     sop_version:SOP_VERSION,
-    job_type:jobType, area:area, mechanical_category:mechCat,
+    job_type:jobType, area:area, mechanical_category:mechCat, mechanical_categories:mechCats.slice(), also_bodywork:alsoBody,
     customer_type:needsCustomer()?custType:'internal',
     company_name:fval('f-company')||null,
     trade_status:custType==='business'?'resolve_in_crm':null,
@@ -1368,7 +1382,7 @@ async function submitJob(){
     customer_words:fval('f-words')||null,
     channel:channel||null,
     safety_list_read:fchk('f-safety-asked'),
-    photos_in_hand:area==='bodywork'?fchk('f-photos'):null,
+    photos_in_hand:(area==='bodywork'||alsoBody)?fchk('f-photos'):null,
     missing_at_intake:stillMissing.map(function(x){return (x.lvl==='must'?'MUST: ':'ASK: ')+x.l;}),
     ai_triage:triageResult||null,
     captured_by:staffName, captured_at:new Date().toISOString()
@@ -1378,21 +1392,24 @@ async function submitJob(){
   if(fval('f-svc-type'))parts.push(fval('f-svc-type'));
   ['axle','brakework','exhaust-type','elec-work','eng-work','clutch-work','susp-work','panels','body-type']
     .forEach(function(g){if(answers['chips-'+g])parts.push(answers['chips-'+g]);});
-  if(mechCat==='diagnostic'){
+  if(hasCat('diagnostic')){
     if(fval('f-diag-type'))parts.push(fval('f-diag-type'));
     if(fval('f-diag-lights'))parts.push('Lights: '+fval('f-diag-lights'));
     if(fval('f-diag-symptoms'))parts.push(fval('f-diag-symptoms'));
     if(fval('f-driveable')==='No — needs recovery')parts.push('Needs recovery');}
-  if(mechCat==='tyres'){
+  if(hasCat('tyres')){
     ['f-tyre-qty','f-tyre-size'].forEach(function(k){if(fval(k))parts.push(fval(k));});
     if(answers['chips-tyre-brand'])parts.push(answers['chips-tyre-brand']);}
   ['f-other-work','f-sale-work','f-body-desc'].forEach(function(k){if(fval(k))parts.push(fval(k));});
   if(jobType==='recovery')parts.push('Recovery: '+fval('f-rec-from')+' → '+fval('f-rec-to'));
   // 16 Nov 2026: with no detail picked, the customer's own words are the work — never just the area label
   var work=parts.join(' · ')||fval('f-words')||f.label||jt.n;
-  if(mechCat==='diagnostic'&&parts.length)work='Diagnostic — '+work;
+  // never lose what the customer actually asked for — "and front pads, and a mirror"
+  var wds=fval('f-words');
+  if(parts.length&&wds&&work.toLowerCase().indexOf(wds.toLowerCase())<0)work+=' — customer said: '+wds;
+  if(mechCats.length<=1&&hasCat('diagnostic')&&parts.length)work='Diagnostic — '+work;
   if(jobType==='comeback')work='COMEBACK — '+work;
-  if(needsDiag&&mechCat!=='diagnostic')work='DIAGNOSTIC FIRST — '+work;
+  if(needsDiag&&!hasCat('diagnostic'))work='DIAGNOSTIC FIRST — '+work;
 
   var job={
     id:id,reg:reg,
@@ -1416,14 +1433,14 @@ async function submitJob(){
     source:fval('f-source'),notes:fval('f-notes'),by:staffName,
     asap:fchk('f-asap')||custType==='business',priority:fchk('f-asap')||custType==='business',
     stage:'intake',stageAt:Date.now(),
-    damage:area==='bodywork'?damageList():[],
-    damagePanels:area==='bodywork'?damageList().filter(function(d){return d.type;}).map(function(d){return d.panel;}):[],
+    damage:(area==='bodywork'||alsoBody)?damageList():[],
+    damagePanels:(area==='bodywork'||alsoBody)?damageList().filter(function(d){return d.type;}).map(function(d){return d.panel;}):[],
     custType:needsCustomer()?(CRM_CUST[custType]||''):'Internal (stock)',
     fleetAccount:false,fromIntakeApp:true,intakeKey:newIntakeKey(),
     tmJob:'',tmPart:'',est:null,finalEst:null,parts:[],finalNotes:'',fromForm:false,
     log:[{t:ts,s:'Intake v'+INTAKE_BUILD+' by '+staffName+' — '+jt.n+(area?' / '+area:'')+
       ' · customer '+(needsCustomer()?custType:'internal')+
-      (rampState.exempt?' · RAMP-EXEMPT':'')+(needsDiag&&mechCat!=='diagnostic'?' · DIAGNOSTIC FIRST':'')+
+      (rampState.exempt?' · RAMP-EXEMPT':'')+(needsDiag&&!hasCat('diagnostic')?' · DIAGNOSTIC FIRST':'')+
       (warrantyState?' · warranty '+warrantyState.verdict:'')+
       (escalations.length?' · ESCALATE ('+escalations.length+')':'')+
       (custType==='business'?' · BUSINESS — set Retail or Trade in the CRM':'')+
@@ -1590,7 +1607,7 @@ async function addIntakePhotos(input){
 function resetForm(){
   _qSent=[];intakePics=[];drawPics();b2bClear();
   var vb=document.getElementById('visit-banner');if(vb){vb.style.display='none';vb.innerHTML='';}
-  jobType=null;area=null;mechCat=null;custType=null;curStep=0;
+  jobType=null;area=null;mechCat=null;mechCats=[];alsoBody=false;custType=null;curStep=0;
   safetyHits=[];diagOverride=null;warrantyState=null;triageResult=null;
   rampState={exempt:false,reason:'',pending:false};
   _veh={reg:'',data:null,busy:false};
@@ -2269,16 +2286,16 @@ function needGroups(){
   }
   if(jobType==='recovery')job.push(it('Pick-up, drop-off, does it drive, distance',
     fval('f-rec-from')&&fval('f-rec-to')&&fval('f-rec-drives')&&fval('f-rec-dist'),'must'));
-  if(area==='bodywork'&&jobType!=='sale'){
+  if((area==='bodywork'||alsoBody)&&jobType!=='sale'){
     job.push(it('Which panels',getChips('panels'),'must'));
     job.push(it('Photos',fchk('f-photos'),'must','The estimator prices from photos'));
     job.push(it('Insurance or private',fval('f-body-pay'),'ask'));
   }
-  if(area==='mechanical'&&mechCat==='service')job.push(it('Type of service',fval('f-svc-type'),'must'));
-  if(area==='mechanical'&&mechCat==='tyres'){job.push(it('How many tyres',fval('f-tyre-qty'),'must'));
+  if(area==='mechanical'&&hasCat('service'))job.push(it('Type of service',fval('f-svc-type'),'must'));
+  if(area==='mechanical'&&hasCat('tyres')){job.push(it('How many tyres',fval('f-tyre-qty'),'must'));
     job.push(it('Tyre size',fval('f-tyre-size'),'ask','Printed on the side of the tyre'));}
-  if(area==='mechanical'&&mechCat==='diagnostic')job.push(it('Warning lights / what it’s doing',fval('f-diag-lights')||fval('f-diag-symptoms'),'must'));
-  if(area==='mechanical'&&mechCat==='clutch')job.push(it('Manual or automatic',fval('f-gearbox-type'),'must'));
+  if(area==='mechanical'&&hasCat('diagnostic'))job.push(it('Warning lights / what it’s doing',fval('f-diag-lights')||fval('f-diag-symptoms'),'must'));
+  if(area==='mechanical'&&hasCat('clutch'))job.push(it('Manual or automatic',fval('f-gearbox-type'),'must'));
   if(jobType==='sale')job.push(it('What needs doing',fval('f-sale-work'),'must'));
   if(job.length)G.push({g:'This job',items:job});
   return G;
