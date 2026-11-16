@@ -2063,6 +2063,11 @@ function createIntakeJob(raw,ts,logLine,fixedId){
 // 13 Nov 2026: nothing is held back any more. Every row not already on the
 // board goes to 1 · Intake; duplicates, old rows and gaps get a ⚠ log line.
 const AUTO_INTAKE_DAYS=14;
+// 16 Nov 2026: only rows submitted in the last few days go on the board by
+// themselves. Older rows kept being pulled in as "new" on every device
+// (the added/dismissed record is per-browser), refilling Intake with jobs
+// that were done long ago. Older rows stay under New Intake for a person.
+const AUTO_INTAKE_FRESH_DAYS=3;
 let _autoIntakeBusy=false;
 function _autoIntakeId(ts){
   // the same row gets the same job number on every device, so two
@@ -2084,13 +2089,15 @@ function autoImportIntake(){
       if(!t)return;
       let st;try{st=intakeRowStatus(raw);}catch(e){return;}
       if(st.state!=='pending')return;
+      const when=tsDate(t).getTime();
+      if(!(when>=Date.now()-AUTO_INTAKE_FRESH_DAYS*86400000))return;   // old row — leave it for a person
       const d=st.d;
       if(!d.name&&!d.reg&&!d.work)return;                         // a completely blank row
       const fid=_autoIntakeId(t);
       if(jobs.some(j=>j&&j.id===fid))return;                     // another screen already did it
-      // Everything goes on the board now (13 Nov 2026) — old rows, rows
-      // marked added with no job, and possible duplicates. Anything that
-      // needs a second look gets a warning in the job log instead.
+      // Recent rows go straight on the board — including possible
+      // duplicates; anything that needs a second look gets a warning in
+      // the job log instead.
       const job=createIntakeJob(raw,t,'⚡ Came in from the intake form — put straight on the board',fid);
       try{
         const notes=[];
@@ -2335,7 +2342,7 @@ function renderInbox(){
   }
   const autoNote='<div style="font-size:11px;margin-bottom:10px;padding:7px 10px;background:var(--surface2);border-radius:var(--rs);border-left:3px solid var(--green)">'+
       '<strong style="color:var(--green)">New form submissions now go straight onto the board at 1 \u00b7 Intake.</strong> '+
-      '<span style="color:var(--dim)">Everything goes on \u2014 possible duplicates, old rows and gaps get a \u26a0 note in the job log to check.</span></div>';
+      '<span style="color:var(--dim)">Anything under \u201cNot Yet Added\u201d is older than '+AUTO_INTAKE_FRESH_DAYS+' days \u2014 add it by hand only if it is still live work.</span></div>';
   el.innerHTML=staleBanner+jobHint+autoNote+(dupCount?'<div style="font-size:11px;margin-bottom:10px;padding:7px 10px;background:var(--surface2);border-radius:var(--rs);border-left:3px solid var(--red)">'+
       '<strong style="color:var(--red)">'+dupCount+' submission'+(dupCount===1?'':'s')+' already in the pipeline</strong> '+
       '<span style="color:var(--dim)">\u2014 same reg and same work submitted more than once.</span> '+
@@ -4529,9 +4536,24 @@ function copyFurtherOf(j){
   const d=(typeof dupeJobsOf==='function'?dupeJobsOf(j):[]).filter(x=>ix(x.stage)>ix(j.stage)||CLEAN_CLOSED.includes(x.stage));
   return d[0]||null;
 }
+// Jobs the intake auto-import pulled in from OLD form rows (13–16 Nov 2026)
+// that nobody has touched since. The form row was weeks older than the job,
+// so the work had already been dealt with.
+function oldFormPulls(){
+  return jobs.filter(j=>{
+    if(!j||j.mergedInto||!String(j.id||'').startsWith('JF'))return false;
+    if(!['intake','range'].includes(j.stage))return false;
+    if(j.tmJob||j.quote||j.est||j.finalEst)return false;
+    const made=parseLogTime((j.log||[])[0]&&j.log[0].t);
+    let form=NaN;try{form=tsDate(j.srcTs).getTime();}catch(e){}
+    if(!made||isNaN(form))return false;
+    return made-form>AUTO_INTAKE_FRESH_DAYS*864e5;
+  });
+}
 function cleanupGroups(){
-  const A=oldCompletedJobs(),B=oldUnclearJobs();
-  const used=new Set([...A,...B].map(j=>j.id));
+  const F=oldFormPulls();
+  const A=oldCompletedJobs().filter(j=>!F.includes(j)),B=oldUnclearJobs().filter(j=>!F.includes(j));
+  const used=new Set([...F,...A,...B].map(j=>j.id));
   const live=jobs.filter(j=>j&&!j.mergedInto&&!CLEAN_CLOSED.includes(j.stage)&&!used.has(j.id));
   const C=live.filter(j=>copyFurtherOf(j));C.forEach(j=>used.add(j.id));
   const past=d=>{if(!d)return false;const t=new Date(d+'T00:00:00').getTime();return !isNaN(t)&&Date.now()-t>30*864e5;};
@@ -4539,6 +4561,7 @@ function cleanupGroups(){
   D.forEach(j=>used.add(j.id));
   const E=live.filter(j=>!used.has(j.id)&&['intake','range','labour','parts','financial','signoff','disapproved','contact','contacted','waiting','waiting2'].includes(j.stage)&&quietDays(j)>=30);
   return [
+    {k:'F',title:'Old form submissions pulled back onto Intake',why:'The form row was weeks older than the job — this work was already dealt with',list:F,tick:true,act:'finished'},
     {k:'A',title:'Finished on 3 Aug under the old system',why:'"All orders raised" — in the old pipeline that was the last step',list:A,tick:true,act:'finished'},
     {k:'B',title:'Moved to POs on 3 Aug with no "complete" line',why:'Same afternoon as the ones above — probably finished, check them',list:B,tick:false,act:'finished'},
     {k:'C',title:'Copies of a job that is further along',why:'Same Techman number (or same reg + work) already further on — closed as a duplicate of that one',list:C,tick:true,act:'dupe'},
@@ -4601,7 +4624,7 @@ function cuApply(k){
   if(!confirm(ids.length+' job'+(ids.length===1?'':'s')+' — '+(g.act==='finished'?'close as finished':g.act==='dupe'?'close as duplicates':'close as lost')+'?\n\nNothing is deleted.'))return;
   window._batchSave=true;
   try{ids.forEach(id=>{const j=jobs.find(x=>x.id===id);if(!j)return;
-    if(g.act==='finished'){const line=[...(j.log||[])].reverse().find(x=>/all orders raised|job complete/i.test(String(x.s||'')));closeJobFinished(j,line?line.t+' — '+line.s:(k==='D'?'booked '+(j.bookedFor||''):'3 Aug 2026'));}
+    if(g.act==='finished'){const line=[...(j.log||[])].reverse().find(x=>/all orders raised|job complete/i.test(String(x.s||'')));closeJobFinished(j,k==='F'?'old form submission '+String(j.srcTs||'')+' — already dealt with':line?line.t+' — '+line.s:(k==='D'?'booked '+(j.bookedFor||''):'3 Aug 2026'));}
     else if(g.act==='dupe')closeJobDupe(j,copyFurtherOf(j));
     else closeJobLost(j);
     save(j);});}
