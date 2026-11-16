@@ -1,5 +1,5 @@
 /* =============================================================================
-   KITH WHATSAPP RELAY  ·  kith-relay.gs  ·  v2 (Nov 2026)
+   KITH WHATSAPP + EMAIL RELAY  ·  kith-relay.gs  ·  v3 (16 Nov 2026)
    =============================================================================
    Paste this whole file into a Google Apps Script project, set the Script
    Properties below, and Deploy → New deployment → Web app:
@@ -15,6 +15,14 @@
      3. REPLIES   customer messages land in the unified Inbox (through the
                   inbox-ingest function), so a "YES" shows up against the job
                   it answers in Awaiting Decision.
+     4. EMAIL     the CRM posts {action:'email', ...}; this sends it from the
+                  Gmail of the Google account the script is deployed under
+                  (use kithcarsinfo@gmail.com), with the estimate PDF attached.
+                  Works straight away — it doesn't need Meta at all.
+
+   Updating from v2: paste this file over the old one, Save, then
+   Deploy → Manage deployments → ✏ edit → Version: New version → Deploy.
+   (Keeps the same /exec address.) Google asks once to allow Gmail — Allow.
 
    Script Properties (Project Settings → Script properties)
      META_TOKEN      permanent access token from Meta (System User token)
@@ -61,11 +69,12 @@ function doPost(e) {
   if (!P('SHARED_SECRET') || body.secret !== P('SHARED_SECRET')) return json({ ok: false, error: 'wrong secret' });
 
   if (body.action === 'ping') {
-    return json({ ok: true, version: 2,
+    return json({ ok: true, version: 3, email: true,
       ready: { token: !!P('META_TOKEN'), phoneId: !!P('PHONE_ID'), key: !!(P('SB_URL') && P('SB_KEY')), webhook: !!P('VERIFY_TOKEN') },
       sentThisHour: countThisHour(false) });
   }
   if (body.action === 'send') return json(sendMessage(body));
+  if (body.action === 'email') return json(sendEmail(body));
   return json({ ok: false, error: 'unknown action' });
 }
 
@@ -237,4 +246,27 @@ function saveIncomingTable(m, name) {
     sb('kith_leads', { method: 'post', prefer: 'resolution=merge-duplicates,return=minimal',
       body: [{ id: lead.id, data: lead, updated_at: lead.updatedAt }] });
   } finally { lock.releaseLock(); }
+}
+
+
+/* -------------------------------------------------------------- EMAIL ----- */
+// From the Gmail of the account this script runs as. The PDF is fetched from
+// its link and attached, so the customer gets a real attachment.
+function sendEmail(b) {
+  var to = String(b.to || '').trim();
+  if (!/@/.test(to)) return { ok: false, error: 'no email address' };
+  var opts = { name: b.fromName || 'KITH Cars' };
+  if (b.replyTo) opts.replyTo = b.replyTo;
+  if (b.html) opts.htmlBody = b.html;
+  try {
+    if (b.pdfUrl) {
+      var blob = UrlFetchApp.fetch(b.pdfUrl, { muteHttpExceptions: true }).getBlob();
+      blob.setName(b.pdfName || 'KITH Cars estimate.pdf');
+      opts.attachments = [blob];
+    }
+    GmailApp.sendEmail(to, b.subject || 'Your estimate — KITH Cars', b.text || '', opts);
+    return { ok: true, via: 'gmail', from: Session.getEffectiveUser().getEmail() };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message || err) };
+  }
 }

@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v16.3 \u00b7 16 Nov';
+const BUILD='v16.4 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -3706,7 +3706,14 @@ function signOffNow(id){
   // tap — message written, Techman PDF attached on a phone. Nothing to type.
   let byHand='';
   if(emailOnly){
-    // 16 Nov 2026: no mobile, but an email — the quote goes by email with the PDF link
+    // 16 Nov 2026: by email — through the relay (Gmail, PDF attached) when it can,
+    // otherwise opens your email with the PDF link
+    setTimeout(()=>{try{emailEstimate(j.id);}catch(e){}},300);
+    j.log=j.log||[];
+    out.message.status='sent';out.message.sentVia='email';
+    byHand='email';
+  }
+  if(false){
     const d=estDocFor(j);
     const body=estimateWAMsg(j).replace(/\*/g,'')+(d?'\n\nYour estimate (PDF): '+d.url:'')+'\n\n'+KITH_CO.name+' \u00b7 '+KITH_CO.tel+' \u00b7 '+KITH_CO.web;
     window.open('mailto:'+encodeURIComponent(j.email)+'?subject='+encodeURIComponent('Your estimate \u2014 '+(j.reg||'')+' \u2014 KITH Cars')+'&body='+encodeURIComponent(body),'_blank');
@@ -6854,11 +6861,34 @@ function estPdfSig(j){
 }
 // 16 Nov 2026: one clear button to (re)send the estimate — makes the PDF
 // first if the price changed, then sends it with the PDF attached.
+// Email through the relay (Gmail, PDF attached). false = relay can't email yet.
+async function relayEmail(to,subject,text,d,j){
+  if(!relayConnected())return {ok:false,error:'no relay'};
+  try{
+    const res=await fetch(relayUrl(),{method:'POST',headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'email',secret:relaySecret(),to,subject,text,fromName:'KITH Cars',replyTo:KITH_CO.email,
+        pdfUrl:d&&d.url,pdfName:d?estDocName(j,d):undefined})});
+    return await res.json();
+  }catch(e){return {ok:false,error:e.message};}
+}
 async function emailEstimate(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
   if(!/@/.test(String(j.email||''))){alert('No email on this job \u2014 add it with Edit at the top.');return;}
-  if(!kithPdfFresh(j)){try{await ensureKithEstPdf(j);}catch(e){}}
-  const d=estDocFor(j);
+  if(!kithPdfFresh(j)){estSetStatus(j,'\ud83d\udcc4 Making the estimate PDF\u2026','var(--amber)');try{await ensureKithEstPdf(j);}catch(e){}}
+  const d0=estDocFor(j);
+  const text0=estimateWAMsg(j).replace(/\*/g,'')+'\n\n'+KITH_CO.name+' \u00b7 '+KITH_CO.tel+' \u00b7 '+KITH_CO.web;
+  estSetStatus(j,'\u2709 Sending\u2026','var(--amber)');
+  const rr=await relayEmail(j.email,'Your estimate \u2014 '+(j.reg||'')+' \u2014 KITH Cars',text0,d0,j);
+  if(rr&&rr.ok){
+    j.estimateSentAt=ts();j.estimateSentMs=Date.now();j.estimateSentBy=currentUser?currentUser.name:'';
+    j.log=j.log||[];j.log.push({t:ts(),s:'\u2709 Estimate emailed to '+j.email+' with the PDF attached (sent by the CRM'+(rr.from?' from '+rr.from:'')+')'+(currentUser?' ['+currentUser.name+']':'')});
+    try{estMoveToContacted(j,'the quote went to the customer by email');}catch(e){}
+    save(j);estSetStatus(j,'\u2713 Emailed to '+escHtml(j.email)+' with the PDF','var(--green)');
+    if(typeof toast==='function')toast('\u2713 Estimate emailed to '+j.email);
+    try{renderDetail();}catch(e){}
+    return;
+  }
+  const d=d0;
   const body=estimateWAMsg(j).replace(/\*/g,'')+(d?'\n\nYour estimate (PDF): '+d.url:'')+'\n\n'+KITH_CO.name+' \u00b7 '+KITH_CO.tel+' \u00b7 '+KITH_CO.web;
   const href='mailto:'+encodeURIComponent(j.email)+'?subject='+encodeURIComponent('Your estimate \u2014 '+(j.reg||'')+' \u2014 KITH Cars')+'&body='+encodeURIComponent(body);
   estSetStatus(j,'<a class="btn btn-sm" style="background:var(--blue);color:#fff;font-weight:700" href="'+escHtml(href)+'" target="_blank" onclick="emailEstimateDone(\''+j.id+'\')">\u2709 Open the email to '+escHtml(j.email)+'</a>','var(--blue)');
@@ -14724,7 +14754,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1840';
+const CRM_BUILD='2026-11-16-1850';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
