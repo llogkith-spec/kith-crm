@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v13.9 \u00b7 16 Nov';
+const BUILD='v14.0 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -9796,7 +9796,8 @@ function afterPOsStage(j){return (j&&jobNeedsSO(j))?(soRaised(j)?'soraised':'so'
 // any brain-consuming view is first opened; caches to j.brainAI.
 const BRAIN_URL = SB_URL + '/functions/v1/brain';
 function _brainCustType(j){
-  const t = String(j.custType||'').toLowerCase().trim();
+  const t = String((typeof custTypeOf==='function'?custTypeOf(j):'')||j.custType||'').toLowerCase().trim();
+  if((j.isB2B||j.fleetAccount)&&!/aa|warranty|insur/.test(t))return 'trade';
   if(/^aa.*smart/.test(t)||t==='aa_smart')return 'aa_smart';
   if(/^aa.*to.?win/.test(t)||t==='aa_towin')return 'aa_towin';
   if(/^aa.*pgc/.test(t)||t==='aa_pgc')return 'aa_pgc';
@@ -9978,7 +9979,7 @@ function brainRecalc(j,bj){
   const h=parseFloat(bj.srt_hours)||0;if(h<=0)return;
   let lower=2,upper=1.5,threshold=2;
   try{const M=KITH_SOP&&KITH_SOP.multiplier&&KITH_SOP.multiplier.normal;if(M){lower=M.lower||2;upper=M.upper||1.5;}
-    const c=_brainCustType(j);const t=KITH_SOP&&KITH_SOP.customers&&KITH_SOP.customers[c]&&KITH_SOP.customers[c].threshold;if(t)threshold=t;}catch(e){}
+    const c=_brainCustType(j);if(c==='trade')threshold=1.5;const t=KITH_SOP&&KITH_SOP.customers&&KITH_SOP.customers[c]&&KITH_SOP.customers[c].threshold;if(t)threshold=t;}catch(e){}
   const rate=sopRates()[bj.tier]||sopRates().TOP||70;
   bj.labour_ex_vat=Math.round(Math.max(h*(h<threshold?lower:upper),0.5)*rate*100)/100;
 }
@@ -10005,9 +10006,17 @@ function brainFixSop(j){
       }
       return;
     }
-    // Retail has two tiers: LOW for servicing and brakes, TOP for everything else
-    if(retail&&!bj.fixedTyre&&!bj.fixedDiag&&/service|brake|pads?|discs?|caliper/i.test(lab)&&bj.tier!=='LOW'){
-      bj.tier='LOW';brainRecalc(j,bj);bj.srt_source=(bj.srt_source||'')+' \u00b7 LOW rate (retail servicing / brakes)';ch=true;
+    if(bj.fixedTyre||bj.fixedDiag||bj.fixedBody||bj.fixedAlloy||bj.fixedMot||bj.tier==='BODY')return;
+    // SOP rate tiers (16 Nov 2026): LOW only for servicing and brakes;
+    // everything else TOP for retail, MED for trade / B2B.
+    const ct=_brainCustType(j);
+    if(ct!=='retail'&&ct!=='trade')return;            // AA / warranty: their own cards
+    const svc=/service|brake|pads?|discs?|caliper|oil (and|&) filter|oil change/i.test(lab);
+    const want=svc?'LOW':(ct==='trade'?'MED':'TOP');
+    if(bj.tier!==want){
+      bj.tier=want;brainRecalc(j,bj);
+      bj.srt_source=(bj.srt_source||'')+' \u00b7 '+want+' rate ('+(svc?'servicing / brakes':(ct==='trade'?'trade \u2014 MED for everything but servicing and brakes':'retail \u2014 TOP for everything but servicing and brakes'))+')';
+      ch=true;
     }
   });
   return ch;
@@ -14218,7 +14227,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1315';
+const CRM_BUILD='2026-11-16-1330';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
