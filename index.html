@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v12.2 \u00b7 16 Nov';
+const BUILD='v12.3 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -10140,6 +10140,99 @@ window.brainVerifySrt = async function(jobId, idx){
   }
 };
 
+// ── PARTS THE WORK NEEDS, ADDED BY THE BRAIN (16 Nov 2026) ─────────
+// When the labour goes on, the parts list is filled for the parts team:
+// the part being replaced plus what always goes with it — gaskets, seals,
+// bolts, clips, fluids. Each one says why it was added. The parts team
+// prices them (or removes what isn't needed); nothing is priced here.
+const PART_RULES=[
+  [/rocker|cam ?cover|valve cover/i,['Rocker cover gasket',{n:'Spark plug tube seals',q:4,petrol:1},'Rocker cover bolt seals / grommets']],
+  [/turbo (inlet|intake)|intake pipe|inlet pipe|boost (hose|pipe)|intercooler (hose|pipe)/i,['Pipe O-ring / seal','Hose clips ×2']],
+  [/turbo(?! (inlet|intake))(charger)?\b.*(replace|renew|new|fit)|(replace|renew|new|fit).*\bturbo\b(?! (inlet|intake))/i,['Turbo gasket kit','Turbo oil feed and return seals','Engine oil','Oil filter','Sump plug washer']],
+  [/exhaust|centre box|center box|back ?box|rear box|tail ?pipe|front pipe|catalytic|\bcat\b|\bdpf\b|flexi/i,['Exhaust gaskets','Exhaust clamps','Exhaust nuts and bolts kit','Exhaust mounting rubbers']],
+  [/manifold/i,['Manifold gasket','Manifold studs and nuts']],
+  [/sump(?! plug)/i,['Sump gasket / sealant','Sump plug washer','Engine oil','Oil filter']],
+  [/head gasket/i,['Head gasket set','Cylinder head bolts','Coolant','Engine oil','Oil filter','Sump plug washer']],
+  [/timing belt|cam ?belt/i,['Timing belt kit (belt, tensioner, idlers)','Water pump','Coolant','Auxiliary belt']],
+  [/timing chain/i,['Timing chain kit','Timing cover gasket / sealant','Engine oil','Oil filter','Sump plug washer']],
+  [/water pump/i,['Water pump gasket','Coolant']],
+  [/thermostat/i,['Thermostat gasket / seal','Coolant']],
+  [/radiator(?! (hose|cap))/i,['Coolant','Hose clips']],
+  [/(coolant|radiator|heater) hose/i,['Hose clips ×2','Coolant']],
+  [/clutch/i,['Clutch kit','Release bearing / concentric slave cylinder','Flywheel and pressure plate bolts','Gearbox oil']],
+  [/flywheel/i,['Flywheel bolts']],
+  [/injector/i,['Injector copper washers',{n:'Injector return pipe seals',diesel:1},'Injector clamp bolts']],
+  [/\begr\b/i,['EGR valve gasket']],
+  [/brake pad/i,['Brake pad wear sensor (if fitted)','Brake grease']],
+  [/brake dis[ck]/i,['Brake pads (same axle)','Brake grease']],
+  [/caliper/i,['Brake fluid','Brake hose copper washers']],
+  [/brake (hose|pipe)|brake fluid/i,['Brake fluid']],
+  [/shock|strut|spring/i,['Top mount','Bump stop and dust cover kit']],
+  [/wishbone|control arm|track control/i,['Wishbone mounting bolts']],
+  [/wheel bearing|hub bearing/i,['Hub nut']],
+  [/drive ?shaft|cv joint|cv boot/i,['Hub nut','CV boot clips']],
+  [/full service|major service/i,['Engine oil','Oil filter','Sump plug washer','Air filter','Pollen / cabin filter',{n:'Fuel filter',diesel:1}]],
+  [/interim service|oil (and filter|change)|basic service/i,['Engine oil','Oil filter','Sump plug washer']],
+  [/spark plug/i,[{n:'Spark plugs',q:4}]],
+  [/gearbox oil|transmission oil|gearbox fluid/i,['Gearbox oil','Drain plug washer']],
+  [/coolant flush|coolant change/i,['Coolant']]
+];
+function _pkey(t){return String(t||'').toLowerCase().replace(/\(.*?\)|×\s*\d+/g,'').replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();}
+function partsFuel(j){return String((j.dvla&&j.dvla.fuelType)||j.fuel||'').toLowerCase();}
+function partsForOp(label,j){
+  const lab=String(label||''), fuel=partsFuel(j), out=[];
+  const diesel=/diesel/.test(fuel), petrol=/petrol|hybrid/.test(fuel);
+  if(/electric/.test(fuel)&&!/hybrid/.test(fuel))return out;
+  PART_RULES.forEach(([rx,list])=>{
+    if(!rx.test(lab))return;
+    list.forEach(x=>{
+      const o=typeof x==='string'?{n:x}:x;
+      if(o.diesel&&!diesel)return;
+      if(o.petrol&&diesel)return;
+      let n=o.n,q=o.q||1;const m=n.match(/\s*×\s*(\d+)$/);if(m){q=parseInt(m[1]);n=n.replace(m[0],'');}
+      out.push({name:n,qty:q});
+    });
+  });
+  return out;
+}
+function mainPartOf(label){
+  const t=String(label||'');
+  if(!/replace|renew|\bnew\b|supply and fit|fit new/i.test(t))return '';
+  if(/service|fitting|tyre|diagnos|inspection|check|bodywork|paint|panel/i.test(t))return '';
+  return t.replace(/\b(replacement|replace|renew(al)?|supply and fit|fit new|new|and refit|remove)\b/ig,' ').replace(/\s+/g,' ').replace(/^[\s\-—]+|[\s\-—]+$/g,'').trim();
+}
+function brainAutoParts(j){
+  const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return 0;
+  j.parts=j.parts||[];
+  const have=()=>j.parts.map(p=>_pkey(p.name)).filter(Boolean);
+  let n=0;const added=[];
+  const add=(name,qty,why,extra)=>{
+    const k=_pkey(name);if(!k)return;
+    const ks=k.replace(/s\b/g,'');if(have().some(h=>h===k||h.replace(/s\b/g,'')===ks))return;
+    j.parts.push(Object.assign({name:name,num:'',qty:qty||1,price1:'',price2:'',price3:'',supplier1:'',supplier2:'',supplier3:'',eta1:'',eta2:'',eta3:'',status:'pending',fromBrain:true,brainWhy:why},extra||{}));
+    n++;added.push(name+(qty>1?' ×'+qty:''));
+  };
+  ai.jobs.filter(b=>!b.excluded&&!b.fixedBody&&!b.fixedAlloy&&!b.fixedDiag&&!b.fixedMot&&!b.fixedTyre).forEach(bj=>{
+    const lab=String(bj.job_label||bj.job_normalised||'');
+    const pl=(bj.parts_lines||[]).filter(p=>p&&(p.part_label||p.part_normalised));
+    pl.forEach(p=>add(String(p.part_label||p.part_normalised).replace(/_/g,' '),parseInt(p.qty)||1,lab,{brand:p.brand||'',aiNet:parseFloat(p.net)||0}));
+    if(!pl.length){const mp=mainPartOf(lab);if(mp)add(mp.charAt(0).toUpperCase()+mp.slice(1),1,lab);}
+    partsForOp(lab,j).forEach(x=>add(x.name,x.qty,lab+' \u2014 goes with this job'));
+  });
+  j.brainPartsAutoAt=ts();
+  if(n){
+    j.brainPartsAppliedAt=j.brainPartsAppliedAt||ts();  // parts stage won't add them twice
+    j.log=j.log||[];
+    j.log.push({t:ts(),s:'\ud83e\udde0 Brain added '+n+' part'+(n===1?'':'s')+' the work needs: '+added.join(', ')+' \u2014 parts team to price'});
+  }
+  return n;
+}
+window.brainAutoPartsNow=function(id){
+  const j=_brainJob(id);if(!j)return;
+  const n=brainAutoParts(j);save(j);
+  if(typeof toast==='function')toast(n?'\ud83e\udde0 '+n+' part'+(n===1?'':'s')+' added to the parts list':'Nothing new to add \u2014 the parts list already has them');
+  renderDetail();
+};
 // Roll up the pre-fill to the job's single labour fields
 window.brainApplyToJob = function(jobId){
   const j = _brainJob(jobId); if(!j||!j.brainAI)return;
@@ -10169,6 +10262,7 @@ window.brainApplyToJob = function(jobId){
   if(!String(j.labourDesc||'').trim())j.labourDesc=labourDescFromLines(j);
   j.brainAppliedAt = ts();
   j.brainAppliedBy = brainWho();
+  try{ if(j.stage==='labour'&&!j.brainPartsAutoAt)brainAutoParts(j); }catch(e){}
   save(j); renderDetail();
 };
 
@@ -13844,7 +13938,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1135';
+const CRM_BUILD='2026-11-16-1140';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -14649,13 +14743,15 @@ function createJob(){
 
 // ── INLINE PARTS FLOW ────────────────────────────────────
 function renderPartsEditList(j){
-  if(!j.parts||!j.parts.length) return'<div style="color:var(--faint);font-size:12px;padding:8px 0">No parts added yet.</div>';
-  return j.parts.map((p,i)=>'<div class="part-row" id="pr-'+i+'" style="display:grid;grid-template-columns:2fr 1fr 80px 32px;gap:6px;margin-bottom:6px;align-items:center">'+
+  try{ if(j.stage==='labour'&&j.brainAppliedAt&&!j.brainPartsAutoAt&&brainAutoParts(j)>=0)save(j); }catch(e){}
+  const btn=(j.brainAI&&j.brainAppliedAt)?'<button class="btn btn-ghost btn-xs" style="margin:2px 0 8px" onclick="brainAutoPartsNow(\''+j.id+'\')">\ud83e\udde0 Add the parts this work needs (gaskets, seals, bolts\u2026)</button>':'';
+  if(!j.parts||!j.parts.length) return'<div style="color:var(--faint);font-size:12px;padding:8px 0">No parts added yet.</div>'+btn;
+  return btn+j.parts.map((p,i)=>'<div class="part-row" id="pr-'+i+'" style="display:grid;grid-template-columns:2fr 1fr 80px 32px;gap:6px;margin-bottom:'+(p.brainWhy?'1px':'6px')+';align-items:center">'+
     '<input class="fi2" value="'+escHtml(p.name||'')+'" placeholder="Part name" oninput="updatePartField('+i+',\'name\',this.value)"/>'+
     '<input class="fi2" value="'+escHtml(p.num||'')+'" placeholder="Part #" oninput="updatePartField('+i+',\'num\',this.value)"/>'+
     '<input class="fi2" type="number" value="'+(p.qty||1)+'" placeholder="Qty" oninput="updatePartField('+i+',\'qty\',this.value)"/>'+
     '<button class="btn btn-red btn-xs" onclick="removePart('+i+')">✕</button>'+
-  '</div>').join('');
+  '</div>'+(p.brainWhy?'<div style="font-size:10px;color:var(--faint);margin:0 0 7px 2px">\ud83e\udde0 added by the Brain \u2014 for '+escHtml(p.brainWhy)+(p.aiNet?' \u00b7 AI guide \u00a3'+(+p.aiNet).toFixed(2):'')+'</div>':'')).join('');
 }
 
 function renderPartsPriceList(j){
