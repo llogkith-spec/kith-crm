@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v11.2 \u00b7 16 Nov';
+const BUILD='v11.3 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6655,7 +6655,7 @@ function actH(j){
         '<div id="parts-list">'+renderPartsEditList(j)+'</div>'+
         '<button class="btn btn-ghost btn-sm btn-full" style="margin-top:6px" onclick="addPartRow()">+ Add Part</button>'+
         '<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">'+
-          '<button class="btn btn-gold btn-full" onclick="labourDone()">Labour Done → Parts Team</button>'+
+          '<button class="btn btn-gold btn-full" onclick="labourDone()">'+((!realParts(j).length&&diagOnlyLabour(j))?'Labour Done \u2192 Final Estimate (diagnostic, no parts)':'Labour Done \u2192 Parts Team')+'</button>'+
           '<button class="btn btn-ghost btn-full" onclick="noLabourDone()">⚡ No Labour — Go to Parts / Sub Booking</button>'+
           '<button class="btn btn-blue btn-full" onclick="cx(\'ov-detail\');openNewSub()">🔧 Raise Subcontractor Booking</button>'+
         '</div>'+
@@ -9428,8 +9428,19 @@ function realParts(j){
   return (j&&j.parts||[]).filter(p=>p&&String(p.name||p.num||'').trim());
 }
 // Asked when the estimator finishes. true = moved on, stop here.
+// 16 Nov 2026: a diagnostic on its own needs no parts — straight to Final Estimate
+function diagOnlyLabour(j){
+  const lines=(typeof srtLines==='function')?srtLines(j):[];
+  if(lines.length)return lines.every(l=>/diagnos|inspection|fault[- ]?find/i.test(String(l.op||'')));
+  try{return isDiagOnly(j);}catch(e){return false;}
+}
 function skipPartsIfNone(j,msg){
   if(realParts(j).length)return false;
+  if(diagOnlyLabour(j)){
+    j.parts=realParts(j);j.noParts=true;
+    mv('financial',msg+' \u2014 diagnostic only, no parts \u2014 straight to Final Estimate');
+    return true;
+  }
   if(!confirm('No parts listed on '+(j.reg||'this job')+'.\n\n'+
     'OK \u2014 no parts needed, send it straight to 4 \u00b7 Final Estimate.\n'+
     'Cancel \u2014 send it to the parts team to check.'))return false;
