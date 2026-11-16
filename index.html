@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v11.8 \u00b7 16 Nov';
+const BUILD='v11.9 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -9730,7 +9730,8 @@ function brainFixDiag(j){
   let ch=false;const T=diagTiers();
   ai.jobs.forEach(bj=>{
     const lab=String(bj.job_label||bj.job_normalised||'');
-    if(bj.fixedTyre||!DIAG_LINE_RX.test(lab))return;
+    if(bj.fixedTyre||bj.fixedBody||!DIAG_LINE_RX.test(lab))return;
+    if(isBodyJob(j)&&/panel|trim|moulding|paint|bumper|wing|door|quarter|bonnet|boot|dent|scratch|scuff|sill|mirror cover/i.test(lab))return;
     const tier=bj.diagTier&&T[bj.diagTier]!=null?bj.diagTier:diagGuess(lab+' '+(j.work||''));
     const price=parseFloat(T[tier])||60;
     if(bj.fixedDiag&&bj.diagTier===tier&&bj.labour_ex_vat===price)return;
@@ -9928,7 +9929,7 @@ function brainSetAlloyEach(id,i,v){
 // dents, alloys — and shown as the pre-fill to audit and apply. No AI guess.
 const DENT_BY_MARK={s:70,m:150,l:220,xl:300};
 function bodyAIFromDamage(j){
-  const dm=(j.damage||[]).filter(d=>d&&(d.type||d.wheel));
+  const dm=(j.damage||[]).filter(d=>d&&(d.panel||d.type||d.wheel));
   if(!dm.length)return null;
   const E=bodyEng(), cat=BODY_CAT[j.bodySize]||'5-seater', up=E.uplift[cat]||0, old=vehAgeYears(j)>10;
   const jobsOut=[];
@@ -9943,9 +9944,9 @@ function bodyAIFromDamage(j){
   priced.forEach((p,ix)=>{
     const paint=ix===0?p.price:Math.round(p.price*(1-E.disc)*100)/100;
     const tot=Math.round((paint+p.dent+p.blend)*100)/100;
-    jobsOut.push({job_label:p.d.label+' — '+(p.d.type==='dent'?'dent repair and paint':'paint repair'),job_normalised:'body_'+(p.d.panel||ix),
+    jobsOut.push({job_label:(p.d.label||p.panel)+' — '+(p.d.type==='dent'?'dent repair, prep and paint full panel':'prep and paint full panel'),job_normalised:'body_'+(p.d.panel||ix),
       srt_hours:0,labour_ex_vat:tot,tier:'BODY',fixedBody:true,fromDamage:true,bodyPanel:p.panel,
-      srt_source:p.panel+' ('+cat+') £'+paint.toFixed(2)+(ix?' (−20%, not the dearest panel)':' (dearest panel, full price)')+(old?' · 25% off, over 10 years old':'')+
+      srt_source:'Full panel: '+p.panel+' ('+cat+') £'+paint.toFixed(2)+(p.d.type?'':' · damage type not marked, priced as full panel paint')+(ix?' (−20%, not the dearest panel)':' (dearest panel, full price)')+(old?' · 25% off, over 10 years old':'')+
         (p.dent?' + dent straightening £'+p.dent+' ('+(p.d.markSize||'size not marked')+')':'')+(p.blend?' + blend into the next panel £'+p.blend+' (£100 if into a door)':'')});
   });
   const wheels=dm.filter(d=>d.wheel||d.type==='alloy').length;
@@ -10425,7 +10426,7 @@ function skipsRange(j){
         Date.now()-(x.stageAt||0)<60*864e5))return 'Had a diagnostic with us recently \u2014 the fault is known';
   }catch(e){}
   // Bodywork skips the range UNLESS the damage picker gave us enough to work with
-  if((typeof isBodywork==='function')&&isBodywork(j)&&!(j.damagePanels&&j.damagePanels.length))return 'Bodywork without damage picker data';
+  if((typeof isBodywork==='function')&&isBodywork(j)&&!(Array.isArray(j.damage)&&j.damage.length))return 'Bodywork without damage picker data';
   return '';
 }
 function _pct(a,p){if(!a.length)return 0;const i=(a.length-1)*p,lo=Math.floor(i),hi=Math.ceil(i);return a[lo]+(a[hi]-a[lo])*(i-lo);}
@@ -13802,7 +13803,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-0922';
+const CRM_BUILD='2026-11-16-1100';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
