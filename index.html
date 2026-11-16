@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v10.2 \u00b7 16 Nov';
+const BUILD='v10.3 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6316,7 +6316,9 @@ function estDocData(j){
     if(!(cost>0))return;
     const q=parseInt(p.qty)||1, unit=applyMarkup(cost,p);
     const mot=/\bmot\b/i.test(String(p.name||''));
-    products.push({no:p.partNo||p.number||'',desc:p.name||'Part',qty:q,unit:unit,total:r2(unit*q),noVat:mot});
+    // brand the customer is getting (manufacturer), never the shop we buy from
+    const brand=String(p.brand||p.make||p.manufacturer||'').trim();
+    products.push({no:p.partNo||p.number||p.num||'',desc:p.name||'Part',brand:brand,qty:q,unit:unit,total:r2(unit*q),noVat:mot});
   });
   if(parseFloat(j.addPartsCost)>0){const u=applyMarkup(parseFloat(j.addPartsCost));products.push({no:'',desc:'Additional parts',qty:1,unit:u,total:r2(u)});}
   const lt=labour.reduce((a,x)=>a+x.total,0), pt=products.reduce((a,x)=>a+x.total,0);
@@ -6363,7 +6365,7 @@ function estDocHTML(j){
       '<tr><td colspan="5" style="text-align:right;padding:6px 10px;font-weight:700">Labour Total Ex Vat: &nbsp;'+f(d.lt)+'</td></tr></table>':'')+
     (d.products.length?'<div style="font-size:16px;margin:12px 0 6px">Products</div>'+
       '<table style="width:100%;border-collapse:collapse;font-size:12px"><tr>'+th('Product No.')+th('Description')+thr('Quantity')+thr('Unit Price')+thr('Total (ex. VAT)')+'</tr>'+
-      d.products.map(x=>'<tr>'+td(escHtml(x.no))+td(escHtml(String(x.desc).toUpperCase())+(x.noVat?' <span style="font-size:10px">(no VAT)</span>':''))+tdr(String(x.qty))+tdr(f(x.unit))+tdr(f(x.total))+'</tr>').join('')+
+      d.products.map(x=>'<tr>'+td(escHtml(x.no))+td(escHtml(String(x.desc).toUpperCase())+(x.noVat?' <span style="font-size:10px">(no VAT)</span>':'')+(x.brand?'<div style="font-size:10.5px;color:#444;margin-top:2px">Brand: '+escHtml(x.brand)+'</div>':''))+tdr(String(x.qty))+tdr(f(x.unit))+tdr(f(x.total))+'</tr>').join('')+
       '<tr><td colspan="5" style="text-align:right;padding:6px 10px;font-weight:700">Products Total Ex Vat: &nbsp;'+f(d.pt)+'</td></tr></table>':'')+
     '<table style="margin:12px 0 0 auto;border-collapse:collapse;font-size:12px;font-weight:700">'+
       '<tr><td style="padding:2px 30px 2px 0">Sub Total:</td><td style="text-align:right">'+f(d.sub)+'</td></tr>'+
