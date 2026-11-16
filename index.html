@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v13.8 \u00b7 16 Nov';
+const BUILD='v13.9 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -4060,7 +4060,7 @@ function sendBackPeople(j,estimatorWas){
     .forEach(e=>add(e.name,'estimator'+shiftTag(e),!!e.onShift,{est:true,onShift:!!e.onShift}));
   add(j.partsBy,'parts',false);
   add(j.by,'took the intake',false);
-  (typeof STAFF!=='undefined'?STAFF:[]).filter(s=>s.filter==='adviser').forEach(s=>add(s.name,'service adviser',false));
+  (typeof STAFF!=='undefined'?STAFF:[]).filter(s=>(s.filter==='adviser'||hasRole(s,'adviser'))).forEach(s=>add(s.name,'service adviser',false));
   return out;
 }
 const SB_CHIPS=['Labour too high','Labour too low','Missing parts','Parts price wrong','Wrong vehicle / reg','Needs two prices (main dealer / non-dealer)','Split the labour into operations','Attach the Techman PDF'];
@@ -5912,7 +5912,7 @@ function openQueue(){
 
 function notifyRole(filter,msg){
 
-  const targets=STAFF.filter(s=>s.filter===filter&&s.wa);
+  const targets=STAFF.filter(s=>(s.filter===filter||(filter!=='all'&&hasRole(s,filter)))&&s.wa);
   if(!targets.length)return'';
   return targets.map(s=>
     '<a href="https://wa.me/'+s.wa+'?text='+encodeURIComponent(msg)+'" target="_blank" class="btn btn-green btn-sm" style="margin-right:4px">WhatsApp '+s.name+'</a>'
@@ -14218,7 +14218,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1310';
+const CRM_BUILD='2026-11-16-1315';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
