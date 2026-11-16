@@ -343,6 +343,9 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 </div>
 
 <div class="tabs">
+  <button class="tab" onclick="openDayView()" style="color:var(--gold);font-weight:800">📆 Today</button>
+  <button class="tab" onclick="openWeekView('mechanical')" style="color:var(--gold);font-weight:800">📅 Mechanical Cal</button>
+  <button class="tab" onclick="openWeekView('bodywork')" style="color:var(--gold);font-weight:800">🎨 Bodywork Cal</button>
   <button class="tab on" onclick="setFilter('all',this)">All Jobs <span id="cnt-all" style="color:var(--faint);font-size:10px"></span></button>
   <button class="tab" onclick="openInbox()">📨 Inbox <span id="cnt-leads" style="color:var(--faint);font-size:10px"></span></button>
   <span id="cnt-inbox" style="display:none"></span>
@@ -363,9 +366,6 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
   <button class="tab" onclick="openDupeScan()">⚠ Duplicates <span id="cnt-dupe" style="color:var(--faint);font-size:10px"></span></button>
   <button class="tab" onclick="openChaseList()">💬 Chase List <span id="cnt-chase" style="color:var(--faint);font-size:10px"></span></button>
   <button class="tab" onclick="openTimings()">⏱ Timings</button>
-  <button class="tab" onclick="openDayView()">📆 Today</button>
-  <button class="tab" onclick="openWeekView('mechanical')">📅 Mechanical Cal</button>
-  <button class="tab" onclick="openWeekView('bodywork')">🎨 Bodywork Cal</button>
   <button class="tab" onclick="openBulkStage()">⚡ Bulk Update</button>
   <button class="tab" onclick="openAccountsView()">&#128202; Accounts</button>
   <button class="tab" onclick="openSettings()">⚙ Settings</button>
@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v14.7 \u00b7 16 Nov';
+const BUILD='v14.8 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -14283,7 +14283,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1415';
+const CRM_BUILD='2026-11-16-1420';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
