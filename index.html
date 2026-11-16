@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v11.6 \u00b7 16 Nov';
+const BUILD='v11.7 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -9868,6 +9868,55 @@ function brainFixBody(j){
   });
   return ch;
 }
+// ── ALLOY WHEEL REFURB (16 Nov 2026) ─────────────────────────────────
+// Priced per alloy: £80 – £120 + VAT each depending on how bad the rim is.
+// The range and the Brain line count the alloys and price them that way.
+function alloyEach(){let a=null;try{a=KITH_SOP&&KITH_SOP.alloyRefurb;}catch(e){}return {min:parseFloat(a&&a.min)||80,max:parseFloat(a&&a.max)||120};}
+function alloyCount(j){
+  const dm=(j.damage||[]).filter(d=>d&&(d.wheel||/alloy/i.test(String(d.type||'')+' '+String(d.typeLabel||''))));
+  if(dm.length)return dm.length;
+  const t=(String(j.work||'')+' '+String(j.judgement&&j.judgement.customer_words||'')).toLowerCase();
+  if(!/alloy|wheel refurb|rim/.test(t))return 0;
+  if(/\b(all four|all 4|four|4 (alloys|wheels|rims)|full set|set of)\b/.test(t))return 4;
+  let m=t.match(/(\d)\s*(?:x\s*)?(alloys?|wheels?|rims?)/);if(m)return Math.min(5,parseInt(m[1]));
+  if(/\b(three)\b/.test(t))return 3;if(/\b(two|pair|both)\b/.test(t))return 2;
+  const named=(t.match(/(front|rear) (left|right|nearside|offside|ns|os) (alloy|wheel)/g)||[]).length;
+  return named||1;
+}
+function alloyOnly(j){
+  if(!alloyCount(j))return false;
+  const t=String(j.work||'').replace(/\([^)]*\)/g,' ').toLowerCase();
+  return !/\b(dent|scratch|bumper|door|wing|bonnet|panel|paint(?!ed alloy)|service|brake|mot|tyre fit)\b/.test(t.replace(/alloy wheel refurb/g,''));
+}
+function alloyRange(j){
+  const n=alloyCount(j),e=alloyEach();
+  return {n,lo:Math.round(n*e.min*1.2/10)*10,hi:Math.round(n*e.max*1.2/10)*10,e};
+}
+function brainFixAlloy(j){
+  const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
+  const n=alloyCount(j);if(!n)return false;
+  const e=alloyEach();let ch=false,first=true;
+  ai.jobs.forEach(bj=>{
+    const lab=String(bj.job_label||bj.job_normalised||'');
+    if(!/alloy|wheel refurb|rim refurb|diamond cut/i.test(lab))return;
+    if(!first){if(!bj.fixedAlloy||!bj.excluded){bj.fixedAlloy=true;bj.excluded=true;bj.srt_hours=0;bj.labour_ex_vat=0;bj.srt_source='Covered by the per-alloy line above';ch=true;}return;}
+    first=false;
+    const each=parseFloat(bj.alloyEach)||Math.round((e.min+e.max)/2);
+    const tot=n*each;
+    if(bj.fixedAlloy&&bj.labour_ex_vat===tot&&bj.alloyQty===n)return;
+    bj.fixedAlloy=true;bj.alloyQty=n;bj.alloyEach=each;bj.srt_hours=0;bj.labour_ex_vat=tot;bj.tier='BODY';
+    bj.job_label='Alloy wheel refurb ×'+n;
+    bj.srt_source=n+' alloy'+(n===1?'':'s')+' × £'+each+' + VAT (SOP £'+e.min+'–£'+e.max+' each by condition) — set the price per alloy';
+    ch=true;
+  });
+  if(ch&&alloyOnly(j)){const r=alloyRange(j);ai.lo=r.lo;ai.hi=r.hi;}
+  return ch;
+}
+function brainSetAlloyEach(id,i,v){
+  const j=_brainJob(id);if(!j||!j.brainAI||!j.brainAI.jobs[i])return;
+  const e=alloyEach(),x=Math.max(e.min,Math.min(e.max,parseFloat(v)||e.min));
+  j.brainAI.jobs[i].alloyEach=x;j.brainAI.jobs[i].fixedAlloy=false;brainFixAlloy(j);save(j);renderDetail();
+}
 function brainPrefillH(j){
   if(!j||j.stage!=='labour')return '';
   if(j.brainPrefillDismissedAt)return '';
@@ -9879,7 +9928,7 @@ function brainPrefillH(j){
   }
   const ai = j.brainAI;
   if(!ai||!ai.jobs||!ai.jobs.length)return '';
-  if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)|brainFixBody(j)){try{save(j);}catch(e){}}
+  if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)|brainFixAlloy(j)|brainFixBody(j)){try{save(j);}catch(e){}}
   const applied = !!j.brainAppliedAt;
   const firmN = ai.jobs.filter(b=>b.is_firm).length;
   const totN = ai.jobs.length;
@@ -9889,7 +9938,7 @@ function brainPrefillH(j){
   const rows = ai.jobs.map((bj,i) => {
     const firm = !!bj.is_firm;
     const verified = !!(j.brainVerified&&j.brainVerified[bj.job_normalised]);
-    const chip = (bj.fixedTyre||bj.fixedDiag||bj.fixedMot||bj.fixedBody)
+    const chip = (bj.fixedTyre||bj.fixedDiag||bj.fixedMot||bj.fixedBody||bj.fixedAlloy)
       ? '<span style="background:var(--green);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">FIXED</span>'
       : firm
       ? '<span style="background:var(--green);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">FIRM</span>'
@@ -9908,6 +9957,7 @@ function brainPrefillH(j){
       (bj.fixedDiag?'<div style="text-align:right"><select '+(applied?'disabled':'')+' onchange="brainSetDiagTier(\''+j.id+'\','+i+',this.value)" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:3px;font-size:11px;color:var(--fg)">'+
           Object.keys(diagTiers()).map(t=>'<option value="'+escHtml(t)+'"'+(t===bj.diagTier?' selected':'')+'>'+escHtml(t.replace(/ diagnostic$/i,''))+' \u00a3'+diagTiers()[t]+'</option>').join('')+'</select></div>':
       bj.fixedTyre?'<div style="text-align:right;font-size:11px;color:var(--dim)">fixed \u00d7'+(bj.tyreQty||1)+'</div>':
+      (bj.fixedAlloy&&!bj.excluded)?'<div style="text-align:right;font-size:11px;color:var(--dim)">\u00a3<input type="number" min="'+alloyEach().min+'" max="'+alloyEach().max+'" step="5" value="'+(bj.alloyEach||100)+'" '+(applied?'disabled':'')+' onchange="brainSetAlloyEach(\''+j.id+'\','+i+',this.value)" style="width:52px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:3px;font-size:12px;color:var(--fg);text-align:right"> each</div>':
       bj.fixedMot?'<div style="text-align:right;font-size:11px;color:var(--dim)">fixed \u00b7 no VAT</div>':
       bj.fixedBody?'<div style="text-align:right;font-size:11px;color:var(--dim)">'+(bj.bodyNote==='included'?'included':'per panel')+'</div>':
       '<div style="text-align:right">'+
@@ -9919,7 +9969,7 @@ function brainPrefillH(j){
       '<div style="text-align:right;font-family:ui-monospace,monospace;font-size:13px;font-weight:600;color:var(--gold)">£'+Math.round(bj.labour_ex_vat||0)+'</div>'+
       '<div style="display:flex;gap:4px;justify-content:flex-end;align-items:center">'+
         chip +
-        (!bj.fixedTyre&&!bj.fixedDiag&&!bj.fixedMot&&!bj.fixedBody&&!firm&&!verified&&!applied?' <button onclick="brainVerifySrt(\''+j.id+'\','+i+')" style="background:var(--gold);color:#000;border:none;padding:3px 8px;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer">✓</button>':'')+
+        (!bj.fixedTyre&&!bj.fixedDiag&&!bj.fixedMot&&!bj.fixedBody&&!bj.fixedAlloy&&!firm&&!verified&&!applied?' <button onclick="brainVerifySrt(\''+j.id+'\','+i+')" style="background:var(--gold);color:#000;border:none;padding:3px 8px;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer">✓</button>':'')+
       '</div>'+
     '</div>';
   }).join('');
@@ -10010,8 +10060,9 @@ window.brainApplyToJob = function(jobId){
   // charged hours carry the SOP multiplier / minimum. Keep one line per job
   // so the breakdown shows book vs charged, and the rate reads right.
   const rates = (KITH_SOP&&KITH_SOP.rates)||{LOW:50,MED:60,TOP:70,BODY:90};
-  try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainFixBody(j);addTyreParts(j);}catch(e){}
+  try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainFixAlloy(j);brainFixBody(j);addTyreParts(j);}catch(e){}
   j.srtLines = inc.map(b=>{
+    if(b.fixedAlloy)return {op:'Alloy wheel refurb',book:0,charged:0,qty:b.alloyQty||1,fixed:true,code:'BODY',labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.alloyEach)||0,src:'fixed',by:brainWho(),at:ts()};
     if(b.fixedBody)return {op:String(b.job_label||b.bodyPanel||'Bodywork'),book:0,charged:0,qty:1,fixed:true,code:'BODY',labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.labour_ex_vat)||0,src:'fixed',by:brainWho(),at:ts()};
     if(b.fixedMot)return {op:String(b.job_label||'MOT'),book:0,charged:0,qty:1,fixed:true,noVat:true,labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.labour_ex_vat)||0,src:'fixed',by:brainWho(),at:ts()};
     if(b.fixedDiag)return {op:String(b.diagTier||'Diagnostic'),book:0,charged:0,qty:1,fixed:true,labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.labour_ex_vat)||0,src:'fixed',by:brainWho(),at:ts()};
@@ -10331,6 +10382,10 @@ function skipsRange(j){
 }
 function _pct(a,p){if(!a.length)return 0;const i=(a.length-1)*p,lo=Math.floor(i),hi=Math.ceil(i);return a[lo]+(a[hi]-a[lo])*(i-lo);}
 function brainRange(j){
+  // Alloy refurb only: count the alloys x the SOP per-alloy price (16 Nov 2026)
+  try{if(alloyOnly(j)){const r=alloyRange(j);
+    return {n:r.n,matches:[],low:r.lo,high:r.hi,conf:'good',src:'sop',
+      note:r.n+' alloy'+(r.n===1?'':'s')+' \u00d7 \u00a3'+r.e.min+'\u2013\u00a3'+r.e.max+' + VAT each (SOP) \u2014 depends how bad each rim is'};}}catch(e){}
   brainMaybeFire(j);  // kick off SRT-informed call in background if not already done
   const mine=rangeWords(j.work);
   if(!mine.length)return {n:0,matches:[],why:'No work description to match on'};
