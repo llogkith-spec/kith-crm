@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v8.7 \u00b7 16 Nov';
+const BUILD='v8.8 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -1063,7 +1063,7 @@ function login(name){
     if(mgmtTab) mgmtTab.style.display=s.name==='Logkith'?'':'none';
     // Show New Job button only for estimators and Logkith
     const newJobBtn=document.getElementById('btn-new-job');
-    if(newJobBtn) newJobBtn.style.display=(s.filter==='estimator'||s.name==='Logkith')?'':'none';
+    if(newJobBtn) newJobBtn.style.display=(hasRole(s,'estimator')||s.name==='Logkith')?'':'none';
   }catch(e){
     console.error('Login error:',e);
     // Force hide login screen anyway
@@ -2265,7 +2265,7 @@ function renderInbox(){
           : '')+
       '</div>'+
       '<button class="btn btn-ghost btn-xs" onclick="openJob(\''+job.id+'\')">View</button>'+
-      (currentUser&&(currentUser.filter==='estimator'||currentUser.name==='Logkith')?'<button class="btn btn-ghost btn-xs" style="color:var(--amber)" onclick="importRow(\''+t+'\')">+New</button>':'')+
+      (currentUser&&(hasRole(currentUser,'estimator')||currentUser.name==='Logkith')?'<button class="btn btn-ghost btn-xs" style="color:var(--amber)" onclick="importRow(\''+t+'\')">+New</button>':'')+
       (d.additional?'<span style="font-size:9px;font-weight:800;color:var(--blue);background:var(--surface3);border-radius:8px;padding:2px 6px;margin-right:4px">\u2795 ADDITIONAL</span>':'')+
       '<button class="btn btn-ghost btn-xs" onclick="dismissRow(\''+t+'\')">\u00d7</button>'+
     '</div>';
@@ -2273,7 +2273,7 @@ function renderInbox(){
 
   function pendingRowHTML({r,d}){
     const t=String(r['Timestamp']||r['timestamp']||'').replace(/'/g,"\\'");
-    const canAdd=currentUser&&(currentUser.filter==='estimator'||currentUser.name==='Logkith');
+    const canAdd=currentUser&&(hasRole(currentUser,'estimator')||currentUser.name==='Logkith');
     // Is this reg already a live job? The same vehicle often gets submitted
     // more than once, which is why one reg could show four times.
     const dupes=d.reg?jobs.filter(j=>j.reg&&cleanR(j.reg)===cleanR(d.reg)&&j.stage!=='lost'):[];
@@ -4444,7 +4444,7 @@ function cardH(j){
       '<div style="margin-top:4px" onclick="event.stopPropagation()">'+
         '<select class="fsel" style="font-size:10px;padding:2px 6px" onchange="quickAssign(\''+j.id+'\',this.value)">'+
           '<option value="">Assign estimator...</option>'+
-          STAFF.filter(s=>s.filter==='estimator').map(s=>'<option value="'+s.name+'"'+(j.assignedEstimator===s.name?' selected':'')+'>'+s.name+'</option>').join('')+
+          STAFF.filter(s=>s.filter!=='all'&&hasRole(s,'estimator')).map(s=>'<option value="'+s.name+'"'+(j.assignedEstimator===s.name?' selected':'')+'>'+s.name+'</option>').join('')+
         '</select>'+
       '</div>':'')+
     (j.fromForm&&j.log&&j.log[0]?'<div style="font-size:10px;color:var(--faint);margin-top:3px">Added by '+escHtml((j.log[0].s||'').replace('Imported from Intake Google Form by ','').replace('Job created by ',''))+'</div>':'')+
@@ -6281,7 +6281,7 @@ function actH(j){
         '<div class="fg" style="margin-bottom:8px"><label class="fl2">Assign to Estimator <span class="req">*</span></label>'+
         '<select class="fsel" id="a-estimator">'+
           '<option value="">— Select Estimator —</option>'+
-          STAFF.filter(s=>s.filter==='estimator').map(s=>'<option value="'+s.name+'"'+(j.assignedEstimator===s.name?' selected':'')+'>'+s.icon+' '+s.name+'</option>').join('')+
+          STAFF.filter(s=>s.filter!=='all'&&hasRole(s,'estimator')).map(s=>'<option value="'+s.name+'"'+(j.assignedEstimator===s.name?' selected':'')+'>'+s.icon+' '+s.name+'</option>').join('')+
         '</select></div>'+
         '<div class="fg" style="margin-bottom:8px"><label class="fl2">Techman Job # <span class="req">*</span></label>'+
         '<div style="display:flex;gap:6px">'+
@@ -8787,7 +8787,7 @@ function getOnShiftEstimators(){
   const isWeekday=day>=1&&day<=5;
   const isSat=day===6;
   const nowH=now.getHours()+now.getMinutes()/60;
-  return STAFF.filter(s=>s.filter==='estimator').map(s=>{
+  return STAFF.filter(s=>s.filter!=='all'&&hasRole(s,'estimator')).map(s=>{
     const timing=STAFF_TIMINGS.find(t=>t.name===s.name);
     if(!timing)return{...s,onShift:false}; // not on the current roster
     const days=timing.days||'';
@@ -14398,7 +14398,7 @@ const STAFF_TIMINGS=[
   {name:'Ali',            role:'Service Adviser + Parts',        days:'Mon–Fri', hours:'8am–5pm'},
   {name:'Joel',           role:'Estimator',                      days:'Mon–Fri', hours:'12pm–5pm'},
   {name:'Paul',           role:'Estimator (parts + labour)',     days:'Mon–Fri', hours:'8am–5pm'},
-  {name:'Elvis',          role:'Service Adviser + Estimator',    days:'Mon–Fri', hours:'8am–5pm'},
+  {name:'Elvis',          role:'Service Adviser + Estimator (parts + labour)',days:'Mon–Fri', hours:'8am–5pm'},
   {name:'Sudha',          role:'Parts / Accounts',               days:'Mon–Fri', hours:'9am–5pm'},
   {name:'Giles',          role:'Workshop Manager',               days:'Mon–Sat', hours:'8am–6pm'},
   {name:'Logkith',        role:'Director',                       days:'Mon–Sun', hours:'—'},
