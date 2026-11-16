@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v11.3 \u00b7 16 Nov';
+const BUILD='v11.4 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6336,7 +6336,7 @@ function estDocData(j){
     const blended=(j.labourCost&&j.srtCharged)?j.labourCost/j.srtCharged:70;
     lines.forEach(l=>{
       if(l.fixed){const fq=parseFloat(l.qty)||1,ft=parseFloat(l.labour)||0;
-        labour.push({code:'LAB1 - BASIC',desc:String(l.op||'Fixed price').replace(/\s*\(fixed.*\)$/,''),qty:fq,unit:ft/fq,total:r2(ft)});return;}
+        labour.push({code:l.noVat?'MOT':'LAB1 - BASIC',desc:String(l.op||'Fixed price').replace(/\s*\(fixed.*\)$/,''),qty:fq,unit:ft/fq,total:r2(ft),noVat:!!l.noVat});return;}
       const q=parseFloat(l.charged)||parseFloat(l.book)||0;
       const tot=l.labour!=null?parseFloat(l.labour):q*blended;
       labour.push({code:estLabourCode(q?tot/q:blended),desc:l.op||'Labour',qty:q,unit:q?tot/q:tot,total:r2(tot)});
@@ -6379,7 +6379,7 @@ function estDocData(j){
     if(qq>0){const ex=j.vatExempt?qq:qq/1.2;labour.push({code:'LAB',desc:String(j.work||'Work as quoted').slice(0,120),qty:1,unit:ex,total:r2(ex)});}
   }
   const lt=labour.reduce((a,x)=>a+x.total,0), pt=products.reduce((a,x)=>a+x.total,0);
-  const vatable=j.vatExempt?0:lt+products.filter(x=>!x.noVat).reduce((a,x)=>a+x.total,0);
+  const vatable=j.vatExempt?0:labour.filter(x=>!x.noVat).reduce((a,x)=>a+x.total,0)+products.filter(x=>!x.noVat).reduce((a,x)=>a+x.total,0);
   const vat=r2(vatable*0.2), sub=r2(lt+pt), total=r2(sub+vat);
   return {labour,products,lt:r2(lt),pt:r2(pt),sub,vat,total};
 }
@@ -9598,7 +9598,7 @@ function _brainVeh(j){
 async function brainSupabase(j){
   if(!j||!j.id)return null;
   if(j._brainAIPending||j.brainAI)return j.brainAI||null;
-  if(!String(j.work||'').trim())return null;
+  if(!String(brainComplaint(j)||'').trim())return null;
   j._brainAIPending = true;
   try{
     const res = await fetch(BRAIN_URL, {
@@ -9608,7 +9608,7 @@ async function brainSupabase(j){
         customer_type: _brainCustType(j),
         vehicle: _brainVeh(j),
         reg: j.reg||'',
-        complaint: j.work||''
+        complaint: brainComplaint(j)
       })
     });
     const d = await res.json();
@@ -9623,6 +9623,7 @@ async function brainSupabase(j){
         allFirm: !!d.all_firm,
         usedFallback: !!d.used_ai_fallback,
         cacheStats: d.cache_stats||{},
+        complaint: brainComplaint(j),
         sopVersion: d.sop_version||null,
         at: ts(),
         ms: Date.now()
@@ -9742,9 +9743,64 @@ function brainSetDiagTier(id,i,tier){
   j.log=j.log||[];j.log.push({t:ts(),s:'\ud83e\udde0 Diagnostic level set to '+tier+(currentUser?' ['+currentUser.name+']':'')});
   save(j);renderDetail();
 }
+// ── WHAT THE BRAIN IS ASKED, AND SOP FIXES ON ITS ANSWER (16 Nov 2026) ──
+// The Brain was only sent the work line ("MOT + full service"), so it never
+// saw "front brake pads also. Left hand side mirror replacement". It now gets
+// the customer's own words too, and asks again when they change.
+function brainComplaint(j){
+  const w=String(j.work||'').trim(), c=String(j.judgement&&j.judgement.customer_words||'').trim();
+  if(c&&!w.toLowerCase().includes(c.toLowerCase()))return (w?w+' — customer said: ':'')+c;
+  return w;
+}
+function brainStale(j){
+  const ai=j&&j.brainAI;if(!ai||j.brainAppliedAt)return false;
+  const want=brainComplaint(j);
+  if(ai.complaint!=null)return ai.complaint!==want;
+  return want!==String(j.work||'').trim();      // cached before the words were sent
+}
+function sopRates(){try{return (KITH_SOP&&KITH_SOP.rates)||{LOW:50,MED:60,TOP:70,BODY:90};}catch(e){return {LOW:50,MED:60,TOP:70,BODY:90};}}
+function brainRecalc(j,bj){
+  const h=parseFloat(bj.srt_hours)||0;if(h<=0)return;
+  let lower=2,upper=1.5,threshold=2;
+  try{const M=KITH_SOP&&KITH_SOP.multiplier&&KITH_SOP.multiplier.normal;if(M){lower=M.lower||2;upper=M.upper||1.5;}
+    const c=_brainCustType(j);const t=KITH_SOP&&KITH_SOP.customers&&KITH_SOP.customers[c]&&KITH_SOP.customers[c].threshold;if(t)threshold=t;}catch(e){}
+  const rate=sopRates()[bj.tier]||sopRates().TOP||70;
+  bj.labour_ex_vat=Math.round(Math.max(h*(h<threshold?lower:upper),0.5)*rate*100)/100;
+}
+function motPrice(j){
+  let T=null;try{T=KITH_SOP&&KITH_SOP.mot;}catch(e){}
+  T=T||{4:50,5:58,7:55};
+  const cls=String((j.judgement&&j.judgement.mot_class)||'4').replace(/\D/g,'')||'4';
+  return {cls,price:parseFloat(T[cls]||T['4']||50)};
+}
+function brainFixSop(j){
+  const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
+  const retail=!/b2b|trade|fleet|aa|warranty|insurance/i.test(String(j.custType||''))&&!j.isB2B;
+  let ch=false;
+  ai.jobs.forEach(bj=>{
+    const lab=String(bj.job_label||bj.job_normalised||'');
+    // MOT: fixed price, outside VAT — never hours
+    if(/\bm\.?o\.?t\b/i.test(lab)&&!/service/i.test(lab)){
+      const m=motPrice(j);
+      if(!bj.fixedMot||bj.labour_ex_vat!==m.price){
+        bj.fixedMot=true;bj.srt_hours=0;bj.labour_ex_vat=m.price;bj.tier='MOT';bj.noVat=true;
+        bj.srt_source='MOT Class '+m.cls+' \u2014 fixed \u00a3'+m.price.toFixed(2)+', outside VAT (SOP)';
+        if((j.parts||[]).some(p=>/\bmot\b/i.test(String(p.name||'')))&&bj.excluded==null){bj.excluded=true;bj.srt_source+=' \u2014 already on the parts list, left out';}
+        ch=true;
+      }
+      return;
+    }
+    // Retail has two tiers: LOW for servicing and brakes, TOP for everything else
+    if(retail&&!bj.fixedTyre&&!bj.fixedDiag&&/service|brake|pads?|discs?|caliper/i.test(lab)&&bj.tier!=='LOW'){
+      bj.tier='LOW';brainRecalc(j,bj);bj.srt_source=(bj.srt_source||'')+' \u00b7 LOW rate (retail servicing / brakes)';ch=true;
+    }
+  });
+  return ch;
+}
 function brainPrefillH(j){
   if(!j||j.stage!=='labour')return '';
   if(j.brainPrefillDismissedAt)return '';
+  if(brainStale(j)){delete j.brainAI;delete j._brainTriedMs;}
   brainMaybeFire(j);  // kick it off if it hasn't run
   if(j._brainAIPending){
     return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:11px 14px;margin-bottom:14px;font-size:12px;color:var(--dim)">'+
@@ -9752,7 +9808,7 @@ function brainPrefillH(j){
   }
   const ai = j.brainAI;
   if(!ai||!ai.jobs||!ai.jobs.length)return '';
-  if(brainFixTyres(j)|brainFixDiag(j)){try{save(j);}catch(e){}}
+  if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)){try{save(j);}catch(e){}}
   const applied = !!j.brainAppliedAt;
   const firmN = ai.jobs.filter(b=>b.is_firm).length;
   const totN = ai.jobs.length;
@@ -9762,7 +9818,7 @@ function brainPrefillH(j){
   const rows = ai.jobs.map((bj,i) => {
     const firm = !!bj.is_firm;
     const verified = !!(j.brainVerified&&j.brainVerified[bj.job_normalised]);
-    const chip = (bj.fixedTyre||bj.fixedDiag)
+    const chip = (bj.fixedTyre||bj.fixedDiag||bj.fixedMot)
       ? '<span style="background:var(--green);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">FIXED</span>'
       : firm
       ? '<span style="background:var(--green);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">FIRM</span>'
@@ -9781,6 +9837,7 @@ function brainPrefillH(j){
       (bj.fixedDiag?'<div style="text-align:right"><select '+(applied?'disabled':'')+' onchange="brainSetDiagTier(\''+j.id+'\','+i+',this.value)" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:3px;font-size:11px;color:var(--fg)">'+
           Object.keys(diagTiers()).map(t=>'<option value="'+escHtml(t)+'"'+(t===bj.diagTier?' selected':'')+'>'+escHtml(t.replace(/ diagnostic$/i,''))+' \u00a3'+diagTiers()[t]+'</option>').join('')+'</select></div>':
       bj.fixedTyre?'<div style="text-align:right;font-size:11px;color:var(--dim)">fixed \u00d7'+(bj.tyreQty||1)+'</div>':
+      bj.fixedMot?'<div style="text-align:right;font-size:11px;color:var(--dim)">fixed \u00b7 no VAT</div>':
       '<div style="text-align:right">'+
         '<input type="number" step="0.1" min="0" value="'+srtH.toFixed(1)+'" '+(applied?'disabled':'')+' '+
           'style="width:70px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px 6px;font-family:inherit;font-size:13px;color:var(--fg);text-align:right" '+
@@ -9790,7 +9847,7 @@ function brainPrefillH(j){
       '<div style="text-align:right;font-family:ui-monospace,monospace;font-size:13px;font-weight:600;color:var(--gold)">£'+Math.round(bj.labour_ex_vat||0)+'</div>'+
       '<div style="display:flex;gap:4px;justify-content:flex-end;align-items:center">'+
         chip +
-        (!bj.fixedTyre&&!bj.fixedDiag&&!firm&&!verified&&!applied?' <button onclick="brainVerifySrt(\''+j.id+'\','+i+')" style="background:var(--gold);color:#000;border:none;padding:3px 8px;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer">✓</button>':'')+
+        (!bj.fixedTyre&&!bj.fixedDiag&&!bj.fixedMot&&!firm&&!verified&&!applied?' <button onclick="brainVerifySrt(\''+j.id+'\','+i+')" style="background:var(--gold);color:#000;border:none;padding:3px 8px;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer">✓</button>':'')+
       '</div>'+
     '</div>';
   }).join('');
@@ -9881,8 +9938,9 @@ window.brainApplyToJob = function(jobId){
   // charged hours carry the SOP multiplier / minimum. Keep one line per job
   // so the breakdown shows book vs charged, and the rate reads right.
   const rates = (KITH_SOP&&KITH_SOP.rates)||{LOW:50,MED:60,TOP:70,BODY:90};
-  try{brainFixTyres(j);brainFixDiag(j);addTyreParts(j);}catch(e){}
+  try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);addTyreParts(j);}catch(e){}
   j.srtLines = inc.map(b=>{
+    if(b.fixedMot)return {op:String(b.job_label||'MOT'),book:0,charged:0,qty:1,fixed:true,noVat:true,labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.labour_ex_vat)||0,src:'fixed',by:brainWho(),at:ts()};
     if(b.fixedDiag)return {op:String(b.diagTier||'Diagnostic'),book:0,charged:0,qty:1,fixed:true,labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.labour_ex_vat)||0,src:'fixed',by:brainWho(),at:ts()};
     if(b.fixedTyre)return {op:'Tyre fitting \u00d7'+(b.tyreQty||1)+' (fixed \u00a3'+tyreFitEach().toFixed(2)+' each)',book:0,charged:0,qty:b.tyreQty||1,fixed:true,labour:parseFloat(b.labour_ex_vat)||0,rate:tyreFitEach(),src:'fixed',by:brainWho(),at:ts()};
     const book=parseFloat(b.srt_hours)||0, lab=parseFloat(b.labour_ex_vat)||0;
