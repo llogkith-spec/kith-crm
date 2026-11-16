@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v16.8 \u00b7 16 Nov';
+const BUILD='v16.9 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -3677,12 +3677,12 @@ function signOffNow(id){
   }
   // Phone, PDF not downloaded yet: get it first, so the share sheet can
   // attach it on the next tap (iOS only allows it straight after a tap).
-  if(!waAuto()&&canShareFiles()&&estIsPhone()){
+  if(!waAuto()&&canShareFiles()&&!emailOnly){
     const d0=estDocFor(j), f0=d0&&EST_FILES[d0.url];
     if(d0&&(!f0||f0==='loading')&&(EST_FAILS[d0.url]||0)<2){
       EST_WAIT[d0.url]=true;
       if(!f0)prefetchEstFile(j,d0);
-      if(typeof toast==='function')toast('Getting the PDF ready — tap Send again in a second');
+      if(typeof toast==='function')toast('Getting the PDF ready — press Approve again in a second');
       return;
     }
   }
@@ -3733,12 +3733,8 @@ function signOffNow(id){
       // 16 Nov 2026: on a Mac that can share files, the PDF goes through the
       // WhatsApp app with the "Send with the PDF attached" button (needs a
       // fresh tap) — don't open WhatsApp Web with the text only.
-      if(d&&!estIsPhone()&&canShareFiles()){
-        byHand='mac';
-        setTimeout(()=>{try{estSetStatus(j,'<button class="btn btn-sm" style="background:var(--green);color:#111;font-weight:700" onclick="estShareNow(\''+j.id+'\')">\ud83d\udce4 Send it now with the PDF attached</button>','var(--green)');}catch(e){}},400);
-        if(typeof toast==='function')toast('Approved \u2014 press \u201cSend it now with the PDF attached\u201d');
-      }else
-      byHand=estManualSend(j,d,num,text,false)||'';
+      // 16 Nov 2026: this tap opens the share sheet with the PDF straight away (pick WhatsApp)
+      byHand=estManualSend(j,d,num,text,!!(d&&canShareFiles()))||'';
       if(byHand==='share'||byHand==='opened'){
         out.message.status='sent';out.message.sentVia='whatsapp (from the CRM, by hand)';
         j.msgOutbox=(j.msgOutbox||[]).map(m=>m&&m.id===out.message.id?out.message:m);
@@ -3753,7 +3749,13 @@ function signOffNow(id){
   renderAll();
   try{stageMoved(j,from,'contacted');}catch(e){}
   setTimeout(()=>{try{estAutoSweep();}catch(e){}},1500);
-  if(typeof toast==='function')toast('\u2713 Approved \u2014 quote on its way to '+(j.name||'the customer'));
+  // say what actually happened — never "on its way" when nothing has gone
+  if(typeof toast==='function')toast(
+    waAuto()&&!emailOnly?'\u2713 Approved \u2014 WhatsApp sending it to '+(j.name||'the customer'):
+    byHand==='share'?'\u2713 Approved \u2014 pick WhatsApp in the box that opened, then press send':
+    byHand==='opened'?'\u2713 Approved \u2014 WhatsApp is open with the message, press send there':
+    byHand==='email'?'\u2713 Approved \u2014 emailing it to '+(j.email||'the customer'):
+    '\u2713 Approved \u2014 NOT sent yet. Press \u201cSend the estimate on WhatsApp\u201d');
 }
 // Move a signed-off job to the adviser. Kept separate so both the Approve
 // button and the recovery button use exactly the same path.
@@ -6414,6 +6416,7 @@ function estimateWAMsg(j){
 }
 function estPhone(j){
   let n=String(j.phone||'').replace(/\D/g,'');
+  if(/^7\d{9}$/.test(n))n='0'+n;                 // "7456 436666" — UK mobile typed without the 0
   if(n.charAt(0)==='0')n='44'+n.slice(1);
   return n.length>=10?n:'';
 }
@@ -12603,6 +12606,8 @@ function cleanText(v){ return typeof v==='string'&&/[<>]/.test(v)?v.replace(/</g
 function cleanJob(j){
   if(!j||typeof j!=='object')return j;
   Object.keys(j).forEach(k=>{ if(typeof j[k]==='string')j[k]=cleanText(j[k]); });
+  // a UK mobile typed without its 0 ("7456 436666") can't be messaged
+  ['phone','waNumber'].forEach(k=>{const d=String(j[k]||'').replace(/\D/g,'');if(/^7\d{9}$/.test(d))j[k]='0'+d;});
   (j.parts||[]).forEach(p=>{ if(p)['name','num','supplier','supplier1','supplier2','supplier3'].forEach(k=>{if(typeof p[k]==='string')p[k]=cleanText(p[k]);}); });
   (j.extraWork||[]).forEach(x=>{ if(x)x.what=cleanText(x.what); });
   (j.payments||[]).forEach(x=>{ if(x){x.method=cleanText(x.method);x.ref=cleanText(x.ref);} });
@@ -14835,7 +14840,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1935';
+const CRM_BUILD='2026-11-16-1945';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
