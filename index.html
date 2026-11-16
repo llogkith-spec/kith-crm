@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v10.4 \u00b7 16 Nov';
+const BUILD='v10.5 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6321,6 +6321,11 @@ function estDocData(j){
     products.push({no:p.partNo||p.number||p.num||'',desc:p.name||'Part',brand:brand,qty:q,unit:unit,total:r2(unit*q),noVat:mot});
   });
   if(parseFloat(j.addPartsCost)>0){const u=applyMarkup(parseFloat(j.addPartsCost));products.push({no:'',desc:'Additional parts',qty:1,unit:u,total:r2(u)});}
+  // Older jobs priced before the labour/parts lines existed: one line for the quoted work
+  if(!labour.length&&!products.length){
+    const qq=parseFloat(j.quote)||parseFloat(j.finalEst)||0;
+    if(qq>0){const ex=j.vatExempt?qq:qq/1.2;labour.push({code:'LAB',desc:String(j.work||'Work as quoted').slice(0,120),qty:1,unit:ex,total:r2(ex)});}
+  }
   const lt=labour.reduce((a,x)=>a+x.total,0), pt=products.reduce((a,x)=>a+x.total,0);
   const vatable=j.vatExempt?0:lt+products.filter(x=>!x.noVat).reduce((a,x)=>a+x.total,0);
   const vat=r2(vatable*0.2), sub=r2(lt+pt), total=r2(sub+vat);
@@ -6491,7 +6496,7 @@ function actH(j){
     h+='<div style="font-size:11px;color:var(--gold);margin-bottom:8px">\u2696 Two prices asked for by '+escHtml(j.twoPriceAsked.by||'')+' \u00b7 '+escHtml(j.twoPriceAsked.at||'')+'</div>';
   // 16 Nov 2026: the KITH estimate stays on the job from Final Estimate until
   // it becomes a job card (Techman job card made). Open at sign-off.
-  if(['financial','signoff','disapproved','contact','contacted','waiting','waiting2','ready'].includes(j.stage)&&!j.tmJob)
+  if(['financial','signoff','disapproved','contact','contacted','waiting','waiting2','ready'].includes(j.stage))
     h+=estDocPanelH(j,j.stage==='signoff');
   switch(j.stage){
     case 'intake':
