@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v14.9 \u00b7 16 Nov';
+const BUILD='v15.0 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -3006,7 +3006,7 @@ function depositDone(j){
   return !!j.depositConfirmed;
 }
 function tcDone(j){
-  if(j.fleetAccount)return true;                 // signed once for the whole fleet
+  if(j.fleetAccount||j.comebackNoCharge)return true;   // comeback: nothing to agree to                 // signed once for the whole fleet
   return !!j.tcAgreedAt;
 }
 function readyToBook(j){return depositDone(j)&&tcDone(j);}
@@ -7022,6 +7022,7 @@ function actH(j){
         '</div>';
       break;
     case 'ready':
+      if(j.comebackNoCharge)h+='<div class="notice n-green" style="margin-bottom:10px">\u21a9 <strong>Comeback \u2014 no charge.</strong> No estimate, deposit or T&amp;Cs. Just book the car in.</div>';
       h+=approvalH(j)+readyH(j);
       break;
     case 'booked':
@@ -11483,7 +11484,31 @@ function togglePOVat(poId){
 
 // ── A £0 job that is meant to be £0 ────────────────────────────────
 const NO_CHARGE_RE=/warrant|comeback|come back|goodwill|re-?check|no charge|\bfoc\b|free of charge/i;
+// 16 Nov 2026: a comeback is put right free — no estimate, no sign-off,
+// no deposit. It goes straight to the adviser to book the car in.
+function comebackJob(j){
+  if(!j)return false;
+  const jd=j.judgement||{};
+  return !!(j.isComeback||jd.comeback||/^\s*comeback/i.test(String(j.work||''))||/comeback|come back/i.test(String(jd.job_type||'')));
+}
+function comebackToBook(j,why){
+  if(!j||!['intake','range','labour','parts','financial','signoff','disapproved','contact','contacted','waiting','waiting2'].includes(j.stage))return false;
+  const from=j.stage;
+  j.stage='ready';j.stageAt=Date.now();
+  j.quote=0;j.finalEst=0;j.comebackNoCharge=true;j.noDeposit=true;
+  j.estApproved=j.estApproved||{amount:0,how:'Comeback \u2014 no charge',at:ts2(),by:currentUser?currentUser.name:'auto'};
+  try{stampStage(j,'ready');}catch(e){}
+  j.log=j.log||[];
+  j.log.push({t:ts2(),s:'\u21a9 Comeback \u2014 no charge. Straight to booking (no estimate, no sign-off, no deposit)'+(why?' \u2014 '+why:'')+(currentUser?' ['+currentUser.name+']':'')});
+  try{stageMoved(j,from,'ready');}catch(e){}
+  return true;
+}
+function comebackBookNow(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  if(comebackToBook(j,'pressed by hand')){save(j);try{renderDetail();renderAll();}catch(e){}if(typeof toast==='function')toast('\u21a9 Comeback \u2014 sent to the adviser to book in');}
+}
 function noChargeJob(j){
+  if(j&&comebackJob(j))return true;
   if(j&&j.historic)return true;   // finished and invoiced under the old system (Techman) — not owed here
   return (parseFloat(j.quote)||0)<=0&&(j.warranty||NO_CHARGE_RE.test(String(j.work||'')+' '+String(j.notes||'')));
 }
@@ -12499,6 +12524,7 @@ function autoPilot(){
       }
       save(j);
     });}catch(e){}
+  try{jobs.forEach(j=>{if(j&&!j.mergedInto&&comebackJob(j)&&!j.comebackHandled&&['intake','range','labour','parts','financial','signoff'].includes(j.stage)){j.comebackHandled=true;if(comebackToBook(j,'comebacks are put right free'))save(j);}});}catch(e){}
   try{autoSplitJobs();}catch(e){console.warn('split',e);}
   let moved=0;
   window._batchSave=true;
@@ -13082,6 +13108,7 @@ function depositNeeded(j){
 }
 // Why no deposit is needed, in plain words (null if one IS needed)
 function noDepositReason(j){
+  if(j.comebackNoCharge)return 'comeback \u2014 no charge';
   if(j.fleetAccount)return 'fleet / account customer';
   if(j.depositMode==='off')return 'switched off'+(j.depositModeBy?' by '+j.depositModeBy:'')+' \u2014 pays on completion';
   if(j.depositMode!=='on'&&isBodywork(j))return 'bodywork \u2014 pays at the end';
@@ -14356,7 +14383,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1615';
+const CRM_BUILD='2026-11-16-1625';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
