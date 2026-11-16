@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v17.1 \u00b7 16 Nov';
+const BUILD='v17.2 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -3698,6 +3698,8 @@ function signOffNow(id){
   }
   // copy the approved job back over the one on screen
   Object.keys(out.job).forEach(k=>{ j[k]=out.job[k]; });
+  if(!waAuto()&&!emailOnly){try{const L=j.log||[];for(let i=L.length-1;i>=Math.max(0,L.length-3);i--){
+    if(/quote sent to the customer/i.test(L[i].s||'')){L[i].s=String(L[i].s).replace(/quote sent to the customer[^\[]*/i,'to send to the customer on WhatsApp (by hand \u2014 not sent yet) ');break;}}}catch(e){}}
   // 6 Oct 2026: until the WhatsApp Business connection is on, the outbox
   // can't send anything, so Approve opens WhatsApp itself in this same
   // tap — message written, Techman PDF attached on a phone. Nothing to type.
@@ -6495,22 +6497,58 @@ function confirmEstimateSent(id){
 function openSendNowBox(id){
   const j=jobs.find(x=>x.id===id);if(!j)return;
   const d=estDocFor(j), num=estPhone(j);
-  try{if(d&&!EST_FILES[d.url])prefetchEstFile(j,d);}catch(e){}
+  try{if(d&&!(EST_FILES[d.url] instanceof File))prefetchEstFile(j,d);}catch(e){}
   document.getElementById('sendnow-box')?.remove();
   const w=document.createElement('div');w.id='sendnow-box';
   w.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1500;display:flex;align-items:center;justify-content:center;padding:20px';
-  const close="document.getElementById('sendnow-box').remove()";
-  w.innerHTML='<div style="background:var(--surface);border:2px solid var(--green);border-radius:var(--r);padding:20px;max-width:440px;width:100%">'+
-    '<div style="font-weight:800;font-size:16px;margin-bottom:4px">\u2713 Approved \u2014 now send it to '+escHtml(firstName(j))+'</div>'+
-    '<div style="font-size:12px;color:var(--dim);margin-bottom:14px">Nothing has gone to the customer yet. '+(num?'WhatsApp: <strong>+'+escHtml(num)+'</strong>':'<span style="color:var(--red)">No valid mobile on this job \u2014 fix it with Edit first.</span>')+'</div>'+
-    (num?
-      (canShareFiles()?'<button class="btn btn-green btn-full" style="margin-bottom:8px;font-weight:800" onclick="'+close+';sendEstimateWA(\''+j.id+'\',null,true)">\ud83d\udce4 Send on WhatsApp with the PDF attached</button>'+
-        '<div style="font-size:11px;color:var(--faint);margin:-4px 0 10px">Pick <strong>WhatsApp</strong> in the box that opens, then the customer, then send.</div>':'')+
-      '<button class="btn btn-full" style="margin-bottom:8px;'+(canShareFiles()?'background:var(--surface2);border:1px solid var(--green);color:var(--green)':'background:var(--green);color:#111;font-weight:800')+'" onclick="'+close+';sendEstimateWA(\''+j.id+'\',null,false)">\ud83d\udcac Open the WhatsApp chat (message + PDF link)</button>'
-    :'')+
-    '<button class="btn btn-ghost btn-full btn-sm" onclick="'+close+'">Later \u2014 the green Send button stays on the job</button>'+
+  const share=!!(d&&num&&canShareFiles());
+  w.innerHTML='<div style="background:var(--surface);border:2px solid var(--green);border-radius:var(--r);padding:20px;max-width:460px;width:100%">'+
+    '<div style="font-weight:800;font-size:16px;margin-bottom:4px">✓ Approved — now send it to '+escHtml(firstName(j))+'</div>'+
+    '<div style="font-size:12px;color:var(--dim);margin-bottom:14px">Nothing has gone to the customer yet. '+(num?'WhatsApp: <strong>+'+escHtml(num)+'</strong> · '+money2(parseFloat(j.quote)||0):'<span style="color:var(--red)">No valid mobile on this job — fix it with Edit first.</span>')+'</div>'+
+    (share?'<button id="sb-share" class="btn btn-full" disabled style="margin-bottom:6px;font-weight:800;background:var(--surface2);color:var(--dim)" onclick="sendBoxShare(\''+j.id+'\')">⏳ Getting the PDF ready…</button>'+
+      '<div style="font-size:11px;color:var(--faint);margin-bottom:10px">Opens the share box — pick <strong>WhatsApp</strong>, then the customer, then send.</div>':'')+
+    (num?'<button class="btn btn-full" style="margin-bottom:8px;'+(share?'background:var(--surface2);border:1px solid var(--green);color:var(--green)':'background:var(--green);color:#111;font-weight:800')+'" onclick="sendBoxChat(\''+j.id+'\')">💬 Open the WhatsApp chat (message + PDF link)</button>':'')+
+    '<div id="sb-msg" style="font-size:12px;margin:6px 0 10px;line-height:1.5"></div>'+
+    '<button class="btn btn-ghost btn-full btn-sm" onclick="sendBoxClose()">Later — the green Send button stays on the job</button>'+
   '</div>';
   document.body.appendChild(w);
+  if(share){
+    let n=0;
+    window._sbTimer=setInterval(()=>{
+      const b=document.getElementById('sb-share');if(!b){clearInterval(window._sbTimer);return;}
+      const f=EST_FILES[d.url];
+      if(f instanceof File){clearInterval(window._sbTimer);b.disabled=false;b.style.cssText='margin-bottom:6px;font-weight:800;background:var(--green);color:#111';b.innerHTML='📤 Send on WhatsApp with the PDF attached';return;}
+      if(!f&&(EST_FAILS[d.url]||0)<3)prefetchEstFile(j,d);
+      if(++n>40||(EST_FAILS[d.url]||0)>=3){clearInterval(window._sbTimer);b.innerHTML='Could not load the PDF — use Open the WhatsApp chat below';}
+    },500);
+  }
+}
+function sendBoxClose(){try{clearInterval(window._sbTimer);}catch(e){}document.getElementById('sendnow-box')?.remove();}
+function sendBoxMsg(h,col){const m=document.getElementById('sb-msg');if(m){m.innerHTML=h;m.style.color=col||'var(--dim)';}}
+// The share box opens on this click (the PDF is already in hand, so nothing waits)
+function sendBoxShare(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const d=estDocFor(j), f=d&&EST_FILES[d.url];
+  if(!(f instanceof File)){sendBoxMsg('The PDF is still loading — try again in a second.','var(--amber)');return;}
+  const text=estimateWAMsg(j);
+  try{navigator.clipboard&&navigator.clipboard.writeText(text).catch(()=>{});}catch(e){}
+  navigator.share({files:[f],text}).then(()=>{
+    markEstimateSent(j,d,'shared with the PDF from the CRM');
+    sendBoxClose();
+    if(typeof toast==='function')toast('✓ Sent to '+firstName(j)+' — the message is copied too, paste it if WhatsApp left it off');
+    try{refreshEstimateDocs(j);renderDetail();renderAll();}catch(e){}
+  }).catch(e=>{
+    sendBoxMsg(e&&e.name==='AbortError'
+      ?'✕ <strong>Not sent.</strong> If WhatsApp wasn’t in that list, use <strong>Open the WhatsApp chat</strong> — the PDF downloads so you can drag it in.'
+      :'✕ <strong>Not sent</strong> — the share box would not open ('+escHtml(e&&e.message||'blocked')+'). Use <strong>Open the WhatsApp chat</strong>.','var(--red)');
+  });
+}
+function sendBoxChat(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const d=estDocFor(j), num=estPhone(j);if(!num)return;
+  estManualSend(j,d,num,estimateWAMsg(j),false,false);
+  sendBoxMsg('💬 WhatsApp opened with the message'+(d?' and the PDF link. The PDF is in Downloads — drag it into the chat.':'.')+'<br><strong>Press send in WhatsApp</strong>, then:'+
+    '<div style="margin-top:8px"><button class="btn btn-green btn-sm" onclick="confirmEstimateSent(\''+j.id+'\');sendBoxClose()">✓ Yes, it’s sent</button></div>','var(--text,#eee)');
 }
 function estShareNow(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
@@ -11243,7 +11281,7 @@ function motToSignOff(j){
   j.srtLines=[{op:'MOT Class '+m.cls+' (subcontracted)',book:0,charged:0,qty:1,fixed:true,noVat:true,labour:m.price,rate:m.price,src:'fixed',by:'auto',at:ts2()}];
   j.srt=0;j.srtCharged=0;
   j.labourCost=m.price;j.labourDesc='MOT Class '+m.cls+' \u2014 \u00a3'+m.price.toFixed(2)+' (no VAT)';
-  j.parts=[];j.noParts=true;j.soNeeded=true;j.twoPrice=false;
+  j.parts=[];j.noParts=true;j.soNeeded=true;j.twoPrice=false;j.vatExempt=true;
   j.quote=m.price;j.finalEst=m.price;
   j.stage='signoff';j.stageAt=Date.now();
   try{stampStage(j,'signoff');}catch(e){}
@@ -12899,6 +12937,14 @@ function autoPilot(){
       try{stageMoved(j,from,'accounts');}catch(e){}save(j);}});}catch(e){}
   // v16.7: one line per part — merge copies the Brain added twice
   try{jobs.forEach(j=>{if(j&&!j.mergedInto&&['labour','parts','signoff'].includes(j.stage)&&dedupeParts(j))save(j);});}catch(e){}
+  // v17.2: MOTs carry no VAT — put right any that picked up 20% at sign-off (£60 for a £50 MOT)
+  try{jobs.forEach(j=>{if(!j||j.mergedInto||!j.motRouted||j.motVatFixed||!motOnlyJob(j))return;
+    const m=motPrice(j);j.motVatFixed=true;j.vatExempt=true;
+    if(Math.abs((parseFloat(j.quote)||0)-m.price)>0.5){
+      j.log=j.log||[];j.log.push({t:ts2(),s:'\u270f MOT has no VAT \u2014 quote corrected from \u00a3'+(parseFloat(j.quote)||0).toFixed(2)+' to \u00a3'+m.price.toFixed(2)});
+      j.quote=m.price;j.finalEst=m.price;if(j.signedOff)j.signedOffAmount=m.price;
+      if(j.estApproved&&parseFloat(j.estApproved.amount)>0)j.estApproved.amount=m.price;}
+    save(j);});}catch(e){}
   // v16.5: an MOT is subcontracted (SO) at a fixed price — no labour or parts estimate, straight to sign-off
   try{jobs.forEach(j=>{if(j&&!j.mergedInto&&!j.motRouted&&!comebackJob(j)&&['intake','range','labour','parts'].includes(j.stage)&&motOnlyJob(j)){if(motToSignOff(j))save(j);}});}catch(e){}
   // v16.5: comebacks go straight into Booked — move any left in Deposit & T&Cs
@@ -14836,7 +14882,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-2010';
+const CRM_BUILD='2026-11-16-2025';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
