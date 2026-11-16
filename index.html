@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v15.6 \u00b7 16 Nov';
+const BUILD='v15.7 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -4758,7 +4758,7 @@ function cardH(j){
     '<div style="margin-top:8px;display:flex;gap:4px;align-items:center" onclick="event.stopPropagation()">'+
       '<select class="fsel" style="font-size:11px;padding:3px 6px;flex:1" onchange="quickStage(\''+j.id+'\',this.value)">'+
         '<option value="">Move to stage...</option>'+
-        STAGES.filter(s=>!['lost'].includes(s.id)).map(s=>'<option value="'+s.id+'"'+(s.id===j.stage?' selected':'')+'>'+s.label+'</option>').join('')+
+        STAGES.filter(s=>!['lost'].includes(s.id)&&(!HIDDEN_STAGES.includes(s.id)||s.id===j.stage)).map(s=>'<option value="'+s.id+'"'+(s.id===j.stage?' selected':'')+'>'+s.label+'</option>').join('')+
       '</select>'+
     '</div>'+
   '</div>';
@@ -5234,7 +5234,7 @@ function sbarH(j,s){
       '<div style="margin-top:7px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+
         '<select class="fsel" id="dp-stage" style="font-size:12px;padding:5px 8px;flex:1;min-width:150px">'+
           '<option value="">\u2026 or jump to another stage</option>'+
-          STAGES.filter(x=>x.id!==j.stage).map(x=>'<option value="'+x.id+'">'+escHtml(x.label)+'</option>').join('')+
+          STAGES.filter(x=>x.id!==j.stage&&!HIDDEN_STAGES.includes(x.id)).map(x=>'<option value="'+x.id+'">'+escHtml(x.label)+'</option>').join('')+
         '</select>'+
         '<button class="btn btn-ghost btn-sm" onclick="moveFromPanel(\''+j.id+'\')">Go</button>'+
       '</div>'+
@@ -12661,6 +12661,11 @@ function autoPilot(){
     const from=j.stage;j.stage='booked';j.stageAt=Date.now();try{stampStage(j,'booked');}catch(e){}
     j.log=j.log||[];j.log.push({t:ts2(),s:'\u2192 Booked \u2014 nothing to order (no parts, no subcontractor), so no PO/SO stages; goes to Check-In on its day'});
     try{stageMoved(j,from,'booked');}catch(e){}save(j);}});}catch(e){}
+  try{const DONE_TO_ACC=['MWQ103038','MWQ103385','MWQ103381','MWQ103343','MWQ103494','MWQ103010'];
+    jobs.forEach(j=>{if(j&&!j.mergedInto&&DONE_TO_ACC.includes(String(j.tmJob||'').toUpperCase().replace(/\s/g,''))&&!j.doneToAcc1&&!['accounts','receivable','review','followup','lost'].includes(j.stage)){
+      const from=j.stage;j.doneToAcc1=true;j.stage='accounts';j.stageAt=Date.now();try{stampStage(j,'accounts');}catch(e){}
+      j.log=j.log||[];j.log.push({t:ts2(),s:'\u2713 Work completed \u2014 sent to Accounts (Logan, 16 Nov)'});
+      try{stageMoved(j,from,'accounts');}catch(e){}save(j);}});}catch(e){}
   try{autoSplitJobs();}catch(e){console.warn('split',e);}
   let moved=0;
   window._batchSave=true;
@@ -14601,7 +14606,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1735';
+const CRM_BUILD='2026-11-16-1745';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -15799,7 +15804,7 @@ function openBulkStage(){
   // Populate stage dropdown
   const sel=document.getElementById('bulk-stage-select');
   sel.innerHTML='<option value="">— Move selected to stage —</option>'+
-    STAGES.filter(s=>s.id!=='lost').map(s=>'<option value="'+s.id+'">'+s.label+'</option>').join('');
+    STAGES.filter(s=>s.id!=='lost'&&!HIDDEN_STAGES.includes(s.id)).map(s=>'<option value="'+s.id+'">'+s.label+'</option>').join('');
   renderBulkList();
   document.getElementById('ov-bulk').classList.add('open');
 }
