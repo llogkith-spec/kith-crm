@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v9.3 \u00b7 16 Nov';
+const BUILD='v9.4 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -917,6 +917,14 @@ KithCore.staff().then(function(list){
 
 // Staff can hold more than one role (Ali covers adviser AND parts), so
 // every role check goes through here rather than comparing filter directly.
+// Who can be picked as the estimator on a job: everyone with the estimator
+// role, plus Logan (16 Nov 2026). Logan is pick-only — auto-assign never gives him jobs.
+function estimatorPickList(){
+  const list=STAFF.filter(s=>s.filter!=='all'&&hasRole(s,'estimator'));
+  const boss=STAFF.find(s=>s.name==='Logkith');
+  return boss?list.concat([boss]):list;
+}
+function estName(s){return s&&s.name==='Logkith'?'Logan':(s&&s.name||'');}
 function hasRole(u,role){
   if(!u)return false;
   if(u.filter==='all')return true;
@@ -4444,7 +4452,7 @@ function cardH(j){
       '<div style="margin-top:4px" onclick="event.stopPropagation()">'+
         '<select class="fsel" style="font-size:10px;padding:2px 6px" onchange="quickAssign(\''+j.id+'\',this.value)">'+
           '<option value="">Assign estimator...</option>'+
-          STAFF.filter(s=>s.filter!=='all'&&hasRole(s,'estimator')).map(s=>'<option value="'+s.name+'"'+(j.assignedEstimator===s.name?' selected':'')+'>'+s.name+'</option>').join('')+
+          estimatorPickList().map(s=>'<option value="'+s.name+'"'+(j.assignedEstimator===s.name?' selected':'')+'>'+estName(s)+'</option>').join('')+
         '</select>'+
       '</div>':'')+
     (j.fromForm&&j.log&&j.log[0]?'<div style="font-size:10px;color:var(--faint);margin-top:3px">Added by '+escHtml((j.log[0].s||'').replace('Imported from Intake Google Form by ','').replace('Job created by ',''))+'</div>':'')+
@@ -6281,7 +6289,7 @@ function actH(j){
         '<div class="fg" style="margin-bottom:8px"><label class="fl2">Assign to Estimator <span class="req">*</span></label>'+
         '<select class="fsel" id="a-estimator">'+
           '<option value="">— Select Estimator —</option>'+
-          STAFF.filter(s=>s.filter!=='all'&&hasRole(s,'estimator')).map(s=>'<option value="'+s.name+'"'+(j.assignedEstimator===s.name?' selected':'')+'>'+s.icon+' '+s.name+'</option>').join('')+
+          estimatorPickList().map(s=>'<option value="'+s.name+'"'+(j.assignedEstimator===s.name?' selected':'')+'>'+s.icon+' '+estName(s)+'</option>').join('')+
         '</select></div>'+
         // 16 Nov 2026: no Techman number at the estimate stage — it is only needed once approved / booked
         '<input type="hidden" id="a-tj" value="'+escHtml(j.tmJob||'')+'"/>'+
