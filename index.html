@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v14.3 \u00b7 16 Nov';
+const BUILD='v14.4 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -14249,7 +14249,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1355';
+const CRM_BUILD='2026-11-16-1400';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -18296,7 +18296,7 @@ function openPartsArrived(id){
   w.innerHTML='<div style="background:var(--surface);border-radius:var(--r);padding:18px;max-width:560px;width:100%;max-height:92vh;overflow-y:auto">'+
     '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;font-size:16px">📦 Parts arrived — '+escHtml(j.reg||'')+'</div>'+
       '<button onclick="closePartsArrived()" style="background:none;border:none;color:var(--dim);font-size:22px;cursor:pointer">×</button></div>'+
-    '<div style="font-size:11px;color:var(--dim);margin:3px 0 10px">Scan each part’s barcode, or tick them off by hand.</div>'+
+    '<div style="font-size:11px;color:var(--dim);margin:3px 0 10px">Scan each part\u2019s barcode \u2014 no part numbers needed. It works out which part it is (barcodes seen before, the only part left, or by reading the label) and only asks if it can\u2019t tell.</div>'+
     '<div id="pa-cam" style="display:none;margin-bottom:8px;border-radius:8px;overflow:hidden;background:#000"><video id="pa-video" playsinline muted style="width:100%;max-height:260px;object-fit:cover;display:block"></video><div id="pa-h5"></div></div>'+
     '<div style="display:flex;gap:6px;margin-bottom:8px">'+
       '<button class="btn btn-gold btn-sm" id="pa-cam-btn" onclick="paCamera()">📷 Scan with the camera</button>'+
@@ -18345,15 +18345,78 @@ function paScanned(code){
     paMsg('✓ '+escHtml(hit.it.name)+' — '+hit.it._paGot+' of '+hit.q,'var(--green)');
     return;
   }
-  // unknown code: which part is it? remember it next time
+  // unknown code — work out which part it is
   const open=items.filter(x=>x.it._paGot<x.q);
   if(!open.length){paMsg('Everything on this job is already ticked in. Code '+escHtml(code)+' not matched.','var(--amber)');return;}
+  paThink(code,items,open);
+}
+function paPick(code,items,open,why){
   paMsg('Code <strong>'+escHtml(code)+'</strong> — which part is it? '+open.map(x=>'<button class="btn btn-ghost btn-xs" style="margin:3px 4px 0 0" onclick="paLearn(\''+escHtml(code).replace(/'/g,'')+'\','+items.indexOf(x)+')">'+escHtml(x.it.name)+'</button>').join(''),'var(--fg)');
 }
-function paLearn(code,k){
+// ── WORKING OUT WHICH PART A BARCODE IS ─────────────────────────────
+// No part numbers are given when the PO is raised, so a scan is matched by:
+//  1. a barcode KITH has seen before (remembered across every job),
+//  2. it being the only part still to arrive,
+//  3. reading the label in the camera picture (supplier labels print the
+//     part name — "TIMING CHAIN KIT") and matching it to the PO lines,
+//  4. otherwise asking once — and remembering the answer for next time.
+var BARCODES=null;
+async function paLoadBarcodes(){
+  if(BARCODES)return BARCODES;
+  try{BARCODES=JSON.parse(localStorage.getItem('kith_barcodes')||'{}');}catch(e){BARCODES={};}
+  try{const r=await fetch(SB_URL+'/rest/v1/jobs?id=eq.__barcodes__&select=data',{headers:SB_HDR});
+    if(r.ok){const d=await r.json();const m=d&&d[0]&&d[0].data&&d[0].data.map;if(m)BARCODES=Object.assign({},m,BARCODES);}}catch(e){}
+  return BARCODES;
+}
+function paRemember(code,name){
+  BARCODES=BARCODES||{};BARCODES[_paNorm(code)]={name:String(name||''),at:Date.now(),by:currentUser?currentUser.name:''};
+  try{localStorage.setItem('kith_barcodes',JSON.stringify(BARCODES));}catch(e){}
+  try{sbUpsert([{id:'__barcodes__',data:{map:BARCODES},updated_at:new Date().toISOString()}]).catch(()=>{});}catch(e){}
+}
+const _PA_STOP=new Set('the a an and of for with to kit set pcs pc x new oe oem genuine part parts left right front rear lh rh ns os qty'.split(' '));
+function _paWords(t){return String(t||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(w=>w.length>=3&&!_PA_STOP.has(w)).map(w=>w.replace(/(es|s)$/,''));}
+function _paBest(text,open){
+  const tw=new Set(_paWords(text));if(!tw.size)return null;
+  const sc=open.map(x=>{const w=_paWords(x.it.name);const hit=w.filter(v=>tw.has(v)).length;return {x,s:w.length?hit/w.length:0,hit};}).sort((a,b)=>b.s-a.s);
+  if(sc[0]&&sc[0].hit>0&&sc[0].s>=0.5&&(!sc[1]||sc[0].s-sc[1].s>=0.25))return sc[0].x;
+  return null;
+}
+async function paThink(code,items,open){
+  const idx=x=>items.indexOf(x);
+  await paLoadBarcodes();
+  const known=BARCODES&&BARCODES[_paNorm(code)];
+  if(known){const b=_paBest(known.name,open);if(b)return paLearn(code,idx(b),'barcode seen before ('+known.name+')');}
+  if(open.length===1)return paLearn(code,idx(open[0]),'the only part still to arrive');
+  // read the label on the box
+  const v=document.getElementById('pa-video');
+  if(PA.stream&&v&&v.videoWidth){
+    paMsg('🧠 Reading the label…','var(--amber)');
+    try{
+      const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);
+      if(!window.Tesseract)await new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';sc.onload=res;sc.onerror=rej;document.head.appendChild(sc);});
+      const out=await Tesseract.recognize(c,'eng');
+      const txt=(out&&out.data&&out.data.text)||'';
+      const b=_paBest(txt,open);
+      if(b)return paLearn(code,idx(b),'read “'+txt.replace(/\s+/g,' ').trim().slice(0,40)+'” on the label');
+    }catch(e){}
+  }
+  paPick(code,items,open);
+}
+function paUndo(k){
+  const j=jobs.find(x=>x.id===PA.jobId);if(!j)return;
+  const x=_paItems(j)[k];if(!x)return;
+  const code=x.it.barcode;x.it._paGot=Math.max(0,x.it._paGot-1);delete x.it.barcode;
+  if(code&&BARCODES){delete BARCODES[_paNorm(code)];paRemember('__x','');delete BARCODES['X'];}
+  paRender();
+  const items=_paItems(j);paPick(code,items,items.filter(y=>y.it._paGot<y.q));
+}
+
+function paLearn(code,k,auto){
   const j=jobs.find(x=>x.id===PA.jobId);if(!j)return;
   const x=_paItems(j)[k];if(!x)return;
   x.it.barcode=code;x.it._paGot=Math.min(x.q,x.it._paGot+1);
+  paRemember(code,x.it.name);
+  if(auto){paRender();try{navigator.vibrate&&navigator.vibrate(80);}catch(e){}paMsg('\u2713 '+escHtml(x.it.name)+' \u2014 '+escHtml(auto)+' \u00b7 <a href="#" onclick="paUndo('+k+');return false" style="color:var(--amber)">not this one?</a>','var(--green)');return;}
   paRender();paMsg('✓ '+escHtml(x.it.name)+' — barcode remembered','var(--green)');
 }
 async function paCamera(){
