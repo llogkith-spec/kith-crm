@@ -2104,7 +2104,7 @@ async function b2bSearch(q){
     :'<div class="hint" style="margin-top:6px">No account called that yet — fill in the details below and it’ll be saved.</div>';
 }
 function b2bPick(i){
-  var a=b2bAccounts[i];if(!a)return;b2bAcct=a;b2bContact=null;
+  var a=b2bAccounts[i];if(!a)return;a.contacts=(a.contacts||[]).filter(function(c){return !isOwnContact(c);});b2bAcct=a;b2bContact=null;
   document.getElementById('b2b-results').innerHTML='';
   document.getElementById('f-b2b-search').value=a.company;
   // tick Business on the customer step and fill the company
@@ -2153,8 +2153,10 @@ function b2bClear(){
   var r=document.getElementById('b2b-results');if(r)r.innerHTML='';
 }
 // After a B2B job is saved: add/refresh the company and this contact in the shared list.
+// 16 Nov 2026: KITH's own name/number/email must never be saved as a company's contact
+function isOwnContact(c){return !!c&&(/kith/i.test(String(c.name||''))||/kithcars/i.test(String(c.email||''))||/^(0?7923688259|0?2046299469)$/.test(String(c.phone||'').replace(/\D/g,'').replace(/^44/,'0')));}
 async function b2bSave(company,contact){
-  if(!company||!contact||!contact.name)return;
+  if(!company||!contact||!contact.name||isOwnContact(contact))return;
   try{
     var r=await fetch(SB_URL+'/rest/v1/'+JOBS_TABLE+'?id=eq.'+B2B_ROW+'&select=data',{headers:sbHdr()});
     if(!r.ok)return;var rows=await r.json();
