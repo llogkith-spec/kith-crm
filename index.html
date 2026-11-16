@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v14.6 \u00b7 16 Nov';
+const BUILD='v14.7 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6744,6 +6744,8 @@ function pricedText(j){
 function unpricedAsks(j){
   const have=pricedText(j);
   return askedItems(j).filter(item=>{
+    if(j.splitInto&&!DIAG_RX.test(item))return false;   // that's on the repair job
+    if(j.splitFrom&&DIAG_RX.test(item))return false;    // that's the diagnostic job
     const k=askKeys(item);
     const hit=k.filter(w=>have.includes(' '+w+' ')||have.includes(' '+w.slice(0,5))).length;
     return hit/k.length<0.5;
@@ -10730,19 +10732,32 @@ function isDiagOnly(j){
   const w=String(j&&j.work||'');if(!DIAG_RX.test(w))return false;
   const p=splitWorkParts(w);return p.diag.length>0&&p.rep.length===0;
 }
+// 16 Nov 2026: the work line can be just the intake label ("DIAGNOSTIC FIRST —
+// Suspension") while the customer's own words carry the real list — "Diagnostics
+// done for £60 … front brake pads, discs, caliper, brake bleed, suspension arms".
+// The split uses whichever has more, and says what was found and why.
+function splitSource(j){
+  const p=splitWorkParts(j.work);
+  let cw=[];try{cw=askedItems(j);}catch(e){}
+  const cd=cw.filter(x=>DIAG_RX.test(x)), cr=cw.filter(x=>!DIAG_RX.test(x));
+  if(cr.length>p.rep.length&&(cd.length||p.diag.length))return {diag:cd.length?cd:p.diag,rep:cr,fromWords:true};
+  return {diag:p.diag,rep:p.rep,fromWords:false};
+}
+const DIAG_DONE_RX=/\b(done|already|carried out|paid|completed|did)\b/i;
 function canSplitDiag(j){
   if(!j||j.mergedInto||j.noSplit||j.splitFrom||j.splitInto)return false;
   if(!['intake','range','labour'].includes(j.stage))return false;
   if(Date.now()-(j.stageAt||0)>14*864e5)return false;
   if(j.rangeSentAt||j.rangeYesAt||parseFloat(j.quote)>0||parseFloat(j.srt)>0||j.tmJob)return false;
   try{if(typeof formRowFresh==='function'&&!formRowFresh(j))return false;}catch(e){}
-  const p=splitWorkParts(j.work);
+  const p=splitSource(j);
   return p.diag.length>0&&p.rep.length>0;
 }
 function splitDiagRepair(j){
   if(!canSplitDiag(j))return null;
-  const p=splitWorkParts(j.work);
+  const p=splitSource(j);
   const rid=String(j.id)+'R';
+  const diagTxt=p.diag.join(', '), done=DIAG_DONE_RX.test(diagTxt);
   if(jobs.some(x=>x&&x.id===rid))return null;                      // another screen already did it
   const repWork=p.rep.join(', ');
   const rep={
@@ -10750,15 +10765,16 @@ function splitDiagRepair(j){
     work:repWork,photos:j.photos,source:j.source,by:j.by,custType:j.custType||'',fleetAccount:j.fleetAccount,
     isB2B:j.isB2B,isAA:j.isAA,tmPart:'',tmJob:'',parts:[],est:null,finalEst:null,finalNotes:'',fromForm:j.fromForm,
     stage:'intake',stageAt:Date.now(),createdAt:new Date().toISOString(),
-    splitFrom:j.id,linkedJobId:j.id,linkedRef:j.tmJob||j.id,afterDiagnostic:true,
-    log:[{t:ts2(),s:'✂ Repair split out of '+j.id+' ("'+String(j.work||'').slice(0,80)+'") — the diagnostic is its own job'}]
+    splitFrom:j.id,linkedJobId:j.id,linkedRef:j.tmJob||j.id,afterDiagnostic:true,repWorkFixed:true,
+    judgement:j.judgement,
+    log:[{t:ts2(),s:'✂ Split from '+j.id+' \u2014 '+(done?'the diagnostic is already done ('+diagTxt+')':'the diagnostic ('+diagTxt+') is its own job')+'. This job prices the repair of what it found: '+repWork}]
   };
   j.workOriginal=j.workOriginal||j.work;
-  j.work=p.diag.join(', ');
-  j.splitInto=rid;
+  j.work=diagTxt;
+  j.splitInto=rid;if(done)j.diagDone=true;
   delete j.brainAI;delete j._brainTriedMs;                          // re-price on the new wording
   j.log=j.log||[];
-  j.log.push({t:ts2(),s:'✂ Split in two: this job is now the diagnostic ("'+j.work+'"); the repair ("'+repWork+'") is job '+rid});
+  j.log.push({t:ts2(),s:'✂ Split in two: this job is now the diagnostic ("'+j.work+'")'+(done?' \u2014 already done':'')+'; the repairs it found ("'+repWork+'") are job '+rid});
   jobs.unshift(rep);
   save(j);save(rep);
   return rep;
@@ -12397,6 +12413,19 @@ function autoPilot(){
     if(l&&l.fixed&&/^alloy wheel refurb$/i.test(String(l.op||'').trim())){const q=parseInt(l.qty)||1,e=parseFloat(l.rate)||((parseFloat(l.labour)||0)/q);
       l.op='Alloy wheel refurb \u00d7'+q+' (\u00a3'+e.toFixed(0)+' each)';ch=true;}});
     if(ch){if(labourDescReplaceable(j))j.labourDesc=labourDescFromLines(j);save(j);}});}catch(e){}
+  try{jobs.forEach(rp=>{
+    if(!rp||!rp.splitFrom||rp.repWorkFixed||rp.brainAppliedAt||!['intake','range','labour'].includes(rp.stage))return;
+    const o=jobs.find(x=>x&&x.id===rp.splitFrom);if(!o)return;
+    const src={work:o.workOriginal||o.work,judgement:o.judgement};
+    const p=splitSource(src);rp.repWorkFixed=true;
+    if(p.fromWords&&p.rep.length){
+      const was=rp.work;rp.work=p.rep.join(', ');rp.judgement=rp.judgement||o.judgement;
+      const dt=p.diag.join(', '),done=DIAG_DONE_RX.test(dt);if(done)o.diagDone=true;
+      delete rp.brainAI;delete rp._brainTriedMs;
+      rp.log=rp.log||[];rp.log.push({t:ts2(),s:'✂ Repair work corrected from "'+was+'" to what the diagnostic found: '+rp.work+(done?' (diagnostic already done: '+dt+')':'')});
+      save(rp);save(o);
+    }else save(rp);
+  });}catch(e){}
   try{autoSplitJobs();}catch(e){console.warn('split',e);}
   let moved=0;
   window._batchSave=true;
@@ -14254,7 +14283,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1410';
+const CRM_BUILD='2026-11-16-1415';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
