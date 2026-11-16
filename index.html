@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v17.5 \u00b7 16 Nov';
+const BUILD='v17.6 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6599,7 +6599,12 @@ function estManualSend(j,d,num,text,viaShare,waited){
   const textL=(d&&!window._estNoLink)?text+'\n\nYour estimate (PDF): '+d.url:text;
   if(waited){
     estSetStatus(j,'<a href="'+escHtml(waLink(num,textL))+'" target="_blank" class="btn btn-sm" style="background:var(--green);color:#111;font-weight:700;display:inline-block">\ud83d\udcac Open WhatsApp with the estimate</a>','var(--green)');
-  }else window.open(waLink(num,textL),'_blank');
+  }else{
+    // 16 Nov 2026: WhatsApp on the computer is WhatsApp Web in the browser — open the chat
+    // there (same tab every time) rather than wa.me, which asks to open an app
+    if(estIsPhone())window.open(waLink(num,textL),'_blank');
+    else window.open('https://web.whatsapp.com/send?phone='+num+'&text='+encodeURIComponent(textL),'kith-whatsapp');
+  }
   if(d){
     estSaveFile(j,d);
     setTimeout(()=>estSetStatus(j,
@@ -14908,7 +14913,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-2100';
+const CRM_BUILD='2026-11-16-2105';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
