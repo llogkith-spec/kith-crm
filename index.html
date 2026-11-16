@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v8.3 \u00b7 16 Nov';
+const BUILD='v8.4 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -1881,11 +1881,20 @@ function partsForReg(reg){
 // "Date(2026,8,15,...)" from gviz). Added/closed rows are remembered by
 // timestamp, so compare on one canonical key or they all come back.
 function tsKey(t){
+  const p=n=>String(n).padStart(2,'0');
+  const fromD=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+  if(t instanceof Date)return isNaN(t.getTime())?'':fromD(t);
   const s=String(t==null?'':t).trim();
   if(!s)return'';
-  const p=n=>String(n).padStart(2,'0');
-  let m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})[ ,T]*(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-  if(m)return m[3]+'-'+p(m[2])+'-'+p(m[1])+' '+p(m[4])+':'+m[5]+':'+p(m[6]||0);
+  // Numbers: epoch ms / epoch seconds / Google Sheets serial day number
+  if(/^\d+(\.\d+)?$/.test(s)){
+    const n=parseFloat(s);let ms=NaN;
+    if(n>1e12)ms=n;else if(n>1e9)ms=n*1000;else if(n>20000&&n<80000)ms=Math.round((n-25569)*864e5+new Date().getTimezoneOffset()*6e4);
+    if(!isNaN(ms))return fromD(new Date(ms));
+  }
+  let m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ ,T]*(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if(m){let dd=+m[1],mm=+m[2];if(mm>12&&dd<=12){const x=dd;dd=mm;mm=x;}   // US order
+    return m[3]+'-'+p(mm)+'-'+p(dd)+' '+p(m[4]||0)+':'+(m[5]||'00')+':'+p(m[6]||0);}
   m=s.match(/^Date\((\d+),(\d+),(\d+)(?:,(\d+))?(?:,(\d+))?(?:,(\d+))?/);
   if(m)return m[1]+'-'+p(+m[2]+1)+'-'+p(m[3])+' '+p(m[4]||0)+':'+p(m[5]||0)+':'+p(m[6]||0);
   const d=new Date(s);
@@ -4539,15 +4548,25 @@ function copyFurtherOf(j){
 // Jobs the intake auto-import pulled in from OLD form rows (13–16 Nov 2026)
 // that nobody has touched since. The form row was weeks older than the job,
 // so the work had already been dealt with.
+// Was this job's form row submitted around when the job was made? false =
+// an old row pulled in later (13–16 Nov 2026 flood), or a date we can't read
+// on a job made during that flood.
+const FORM_FLOOD_FROM=Date.UTC(2026,10,13,13,0), FORM_FLOOD_TO=Date.UTC(2026,10,16,10,0);
+function formRowFresh(j,made){
+  if(!j||!String(j.id||'').startsWith('JF'))return true;
+  made=made||parseLogTime((j.log||[])[0]&&j.log[0].t)||j.stageAt||Date.now();
+  let form=NaN;try{form=tsDate(j.srcTs).getTime();}catch(e){}
+  if(isNaN(form))return !(made>=FORM_FLOOD_FROM&&made<=FORM_FLOOD_TO);
+  return made-form<=AUTO_INTAKE_FRESH_DAYS*864e5;
+}
 function oldFormPulls(){
   return jobs.filter(j=>{
     if(!j||j.mergedInto||!String(j.id||'').startsWith('JF'))return false;
     if(!['intake','range'].includes(j.stage))return false;
     if(j.tmJob||j.quote||j.est||j.finalEst)return false;
     const made=parseLogTime((j.log||[])[0]&&j.log[0].t);
-    let form=NaN;try{form=tsDate(j.srcTs).getTime();}catch(e){}
-    if(!made||isNaN(form))return false;
-    return made-form>AUTO_INTAKE_FRESH_DAYS*864e5;
+    if(!made)return false;
+    return !formRowFresh(j,made);
   });
 }
 // Close them by themselves — no need to open the clean-up. Nothing is
@@ -9458,6 +9477,7 @@ function rangeWords(t){
 function intakeRoute(j){
   if(!j||j.stage!=='intake')return {to:''};
   if(Date.now()-(j.stageAt||0)>14*864e5)return {to:''};            // old — leave for the clean-up
+  if(!formRowFresh(j))return {to:''};                                 // old form row — the clean-up closes it
   const skip=skipsRange(j);
   if(skip)return {to:'labour',why:skip+' \u2014 no instant range, straight to the full estimate'};
   if(!String(j.work||'').trim())return {to:'labour',why:'no work description to price \u2014 straight to the full estimate'};
@@ -9477,6 +9497,14 @@ function skipsRange(j){
   if(/warranty/i.test(String(j.custType||'')))return 'Warranty job';
   if(j.isComeback||/^COMEBACK/i.test(String(j.work||'')))return 'Comeback';
   if(j.additionalWork)return 'Additional work on a car already in';
+  // Already diagnosed — we know the fault, so price it properly instead of a range
+  if(j.diagnosed||/\b(diagnosed|after (the |a |our )?diag(nostic)?s?|diag(nostic)? (results?|report|found|done|showed?)|fault codes? (show|read|found)|(found|confirmed) (on|in|during) (the )?(diag(nostic)?|health ?check)|from (the |our )?(diag(nostic)?|health ?check))\b/i.test(String(j.work||'')))return 'Already diagnosed \u2014 the fault is known';
+  try{
+    const rk=String(j.reg||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+    if(rk&&jobs.some(x=>x&&x.id!==j.id&&!x.mergedInto&&String(x.reg||'').toUpperCase().replace(/[^A-Z0-9]/g,'')===rk&&
+        /diag|health ?check/i.test(String(x.work||''))&&!['intake','range','labour','parts','financial','lost'].includes(x.stage)&&
+        Date.now()-(x.stageAt||0)<60*864e5))return 'Had a diagnostic with us recently \u2014 the fault is known';
+  }catch(e){}
   // Bodywork skips the range UNLESS the damage picker gave us enough to work with
   if((typeof isBodywork==='function')&&isBodywork(j)&&!(j.damagePanels&&j.damagePanels.length))return 'Bodywork without damage picker data';
   return '';
