@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v8.2 \u00b7 22 Sep';
+const BUILD='v8.3 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -1527,7 +1527,7 @@ async function loadFromSupabase(){
     setSbStatus('err');
   }
   renderAll();
-  try{autoImportIntake();}catch(x){console.warn(x);}
+  try{autoCloseOldFormPulls();}catch(x){console.warn(x);}try{autoImportIntake();}catch(x){console.warn(x);}
 }
 
 function subscribeRealtime(){
@@ -1745,7 +1745,7 @@ async function refreshSheets(){
   try{_intakeSig=_intakeSigOf(intakeData);_intakeRedrawDue=false;}catch(x){}
   updateInboxBadge();
   renderAll();
-  try{autoImportIntake();}catch(x){console.warn(x);}
+  try{autoCloseOldFormPulls();}catch(x){console.warn(x);}try{autoImportIntake();}catch(x){console.warn(x);}
   // Never re-render detail panel from sheet refresh — would wipe parts/labour form data
 }
 
@@ -1783,7 +1783,7 @@ async function autoRefreshIntake(){
     if(sig!==_intakeSig||_intakeRedrawDue){
       intakeData=normIntake(rows);_intakeSig=sig;
       updateInboxBadge();
-  try{autoImportIntake();}catch(x){console.warn(x);}
+  try{autoCloseOldFormPulls();}catch(x){console.warn(x);}try{autoImportIntake();}catch(x){console.warn(x);}
       if(_userIsTyping()){_intakeRedrawDue=true;}
       else{_intakeRedrawDue=false;try{renderInbox();}catch(e){console.warn('renderInbox:',e);}}
     }
@@ -4549,6 +4549,20 @@ function oldFormPulls(){
     if(!made||isNaN(form))return false;
     return made-form>AUTO_INTAKE_FRESH_DAYS*864e5;
   });
+}
+// Close them by themselves — no need to open the clean-up. Nothing is
+// deleted: they go to finished (off the board) and search still finds them.
+let _ofpBusy=false;
+function autoCloseOldFormPulls(){
+  if(_ofpBusy)return 0;
+  if(typeof sbReady==='undefined'||!sbReady||!currentUser)return 0;
+  const list=oldFormPulls();if(!list.length)return 0;
+  _ofpBusy=true;window._batchSave=true;
+  try{list.forEach(j=>{closeJobFinished(j,'old form submission '+String(j.srcTs||'')+' \u2014 already dealt with, closed automatically');save(j);});}
+  finally{window._batchSave=false;_ofpBusy=false;try{cacheJobs();}catch(e){}}
+  try{renderAll();}catch(e){}
+  if(typeof toast==='function')toast('\ud83e\uddf9 '+list.length+' old form job'+(list.length===1?'':'s')+' taken off Intake');
+  return list.length;
 }
 function cleanupGroups(){
   const F=oldFormPulls();
