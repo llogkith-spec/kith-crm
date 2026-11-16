@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v9.1 \u00b7 16 Nov';
+const BUILD='v9.2 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -13051,7 +13051,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-09-29-1030';
+const CRM_BUILD='2026-11-16-0922';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -13059,7 +13059,10 @@ async function checkForUpdate(){
     if(!r.ok)return;
     const t=await r.text();
     const m=t.match(/const CRM_BUILD='([^']+)'/);
-    if(!m||m[1]===CRM_BUILD)return;
+    // also notice a new version stamp, so a forgotten CRM_BUILD bump still reloads people
+    const mb=t.match(/const BUILD='([^']+)'/);let nb=null;try{nb=mb?JSON.parse('"'+mb[1]+'"'):null;}catch(e){}
+    const sameBuild=(!m||m[1]===CRM_BUILD)&&(!nb||nb===BUILD);
+    if(sameBuild)return;
     const busy=!!document.querySelector('.overlay.open')||['INPUT','TEXTAREA','SELECT'].includes((document.activeElement||{}).tagName);
     if(document.hidden&&!busy){location.reload();return;}
     if(_updateShown)return;
