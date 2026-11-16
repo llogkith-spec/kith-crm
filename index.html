@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v12.6 \u00b7 16 Nov';
+const BUILD='v12.7 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -4259,6 +4259,82 @@ function undoDecline(id){
   try{renderDetail();}catch(e){}try{renderAll();}catch(e){}
 }
 
+// ── SERVICE ADVISER NOTE TO THE CUSTOMER (16 Nov 2026) ─────────────
+// Logan (or the estimator) can tell the customer things with the quote —
+// e.g. "we've priced for the worst case; the cat is most likely not
+// needed, and if so you save £X". Parts marked "may not be needed" are
+// worked out into the saving automatically; any free note goes in too.
+// It goes on the WhatsApp quote message and on the KITH estimate PDF.
+const MAYBE_RX=/\b(not|n't)\s+(be\s+)?(likely|likly|probably|definitely)?\s*(needed|need|required)|\bmight not\b|\bmay not\b|\bprobably not\b|\bworst case\b|\bjust in case\b/i;
+function advMaybeAuto(j){
+  // estimator wrote "the cat is not likely needed" → tick the cat
+  const t=String(j.finalNotes||'').toLowerCase();
+  if(!t||!MAYBE_RX.test(t)||j.advMaybeAutoDone)return false;
+  let ch=false;
+  (j.parts||[]).forEach(p=>{
+    const n=String(p.name||'').toLowerCase();
+    const keys=n.split(/[^a-z]+/).filter(w=>w.length>=3&&!/^(and|the|for|with|new|kit|set)$/.test(w));
+    const alias=/catalytic|\bcat\b/.test(n)?['cat','catalytic']:[];
+    if(keys.concat(alias).some(k=>new RegExp('\\b'+k+'\\b').test(t))&&!p.maybe){p.maybe=true;ch=true;}
+  });
+  j.advMaybeAutoDone=true;
+  return ch;
+}
+function _advSell(j,p,which){
+  const c=which?_twoMoney(which==='md'?p.mdCost:p.afCost):(parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0);
+  if(!(c>0))return 0;
+  return applyMarkup(c,p)*(parseInt(p.qty)||1)*(j.vatExempt?1:1.2);
+}
+function advNoteTxt(j){
+  const maybe=(j.parts||[]).filter(p=>p.maybe);
+  let out='';
+  if(maybe.length){
+    const two=typeof twoPriceOpen==='function'&&twoPriceOpen(j);
+    const names=maybe.map(p=>String(p.name||'part').toLowerCase());
+    const list=names.length>1?names.slice(0,-1).join(', ')+' and '+names[names.length-1]:names[0];
+    out+='Please note: we have priced this for the worst case. The '+list+(maybe.length>1?' are':' is')+' most likely not needed — we will check '+(maybe.length>1?'them':'it')+' once the car is with us, and if '+(maybe.length>1?'they are':'it is')+' fine we take '+(maybe.length>1?'them':'it')+' off the bill.';
+    if(two){
+      const t=twoPriceTotals(j);
+      const sm=maybe.reduce((a,p)=>a+_advSell(j,p,'md'),0), sa=maybe.reduce((a,p)=>a+_advSell(j,p,'af'),0);
+      if(sm>0||sa>0)out+=' That would bring it down to '+_gbp(t.md-sm)+' with main dealer parts or '+_gbp(t.af-sa)+' with non-main-dealer parts'+(j.vatExempt?'':' (including VAT)')+'.';
+    }else{
+      const sv=maybe.reduce((a,p)=>a+_advSell(j,p,null),0), tot=parseFloat(j.quote)||parseFloat(j.finalEst)||0;
+      if(sv>0)out+=' That would save you '+_gbp(sv)+(tot>sv?', bringing the total down to '+_gbp(tot-sv):'')+(j.vatExempt?'':' (including VAT)')+'.';
+    }
+  }
+  const free=String(j.custNote||'').trim();
+  if(free)out+=(out?'\n\n':'')+free.charAt(0).toUpperCase()+free.slice(1)+(/[.!?]$/.test(free)?'':'.');
+  return out;
+}
+function advNoteH(j){
+  if(!['financial','signoff','disapproved','contact','contacted','waiting','waiting2'].includes(j.stage))return '';
+  if(advMaybeAuto(j)){try{save(j);}catch(e){}}
+  const parts=j.parts||[];
+  const note=advNoteTxt(j);
+  return '<div style="border:1px solid var(--blue);border-radius:var(--r);padding:11px 13px;margin-bottom:10px">'+
+    '<div style="font-size:12px;font-weight:800;color:var(--blue)">🤖 Service adviser — tell the customer something with the quote</div>'+
+    '<div style="font-size:11px;color:var(--dim);margin:3px 0 8px">Tick anything priced for the worst case — the saving is worked out for you. It goes on the WhatsApp message and the estimate PDF.</div>'+
+    (parts.length?'<div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin-bottom:3px">Most likely not needed</div>'+
+      parts.map((p,i)=>'<label style="display:flex;align-items:center;gap:7px;font-size:12px;padding:2px 0;cursor:pointer">'+
+        '<input type="checkbox" '+(p.maybe?'checked ':'')+'onchange="advSetMaybe(\''+j.id+'\','+i+',this.checked)" style="width:15px;height:15px">'+
+        escHtml(p.name||'Part')+'</label>').join(''):'')+
+    '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin:8px 0 3px">Anything else to tell them (optional)</div>'+
+    '<textarea class="fta" placeholder="e.g. Your rear tyres are close to the limit — worth doing at the same time." onchange="advSetNote(\''+j.id+'\',this.value)" style="width:100%;min-height:48px;font-size:12px">'+escHtml(j.custNote||'')+'</textarea>'+
+    (note?'<div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin:8px 0 3px">What the customer will read</div>'+
+      '<div style="white-space:pre-wrap;font-size:12px;background:var(--surface2);border-radius:var(--rs);padding:8px 10px;line-height:1.5">'+escHtml(note)+'</div>':'')+
+  '</div>';
+}
+function advSetMaybe(id,i,on){
+  const j=jobs.find(x=>x.id===id);if(!j||!j.parts||!j.parts[i])return;
+  j.parts[i].maybe=!!on;j.advMaybeAutoDone=true;
+  j.log=j.log||[];j.log.push({t:ts(),s:'🤖 '+(j.parts[i].name||'Part')+(on?' marked most likely not needed (priced for the worst case)':' no longer marked as maybe')+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);renderDetail();
+}
+function advSetNote(id,v){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  j.custNote=String(v||'').trim();save(j);renderDetail();
+}
+
 function signOffH(j){
   const amt=parseFloat(j.quote)||parseFloat(j.finalEst)||0;
   const isBoss=currentUser&&currentUser.name==='Logkith';
@@ -4292,7 +4368,7 @@ function signOffH(j){
         '<button class="btn btn-sm btn-full" style="margin-top:5px;background:var(--red);color:#fff;font-weight:700" onclick="declineJob(\''+j.id+'\')">\ud83d\udeab We can\u2019t do this job \u2014 tell the customer</button>'+
         '<button class="btn btn-ghost btn-xs btn-full" style="margin-top:5px" onclick="logPhoneSignOff(\''+j.id+'\')">\u260e\ufe0f Record a phone sign-off</button>'
       : '<div style="font-size:11px;color:var(--faint)">Only Logkith can approve this.</div>')+
-  '</div>';
+  '</div>'+advNoteH(j);
 }
 
 
@@ -6033,6 +6109,7 @@ function estimateWAMsg(j){
     body+='\nWe have priced it two ways (both including VAT, same labour):\n'+
       '• With main dealer parts: '+_gbp(t.md)+'\n'+
       '• With non-main-dealer parts: '+_gbp(t.af)+'\n\n'+
+      (advNoteTxt(j)?advNoteTxt(j)+'\n\n':'')+
       'Reply 1 for main dealer or 2 for non-main-dealer, and we’ll get you booked in.';
   }else{
     if(sp){
@@ -6043,6 +6120,7 @@ function estimateWAMsg(j){
     }else if(tot){
       body+='Total: '+tot+' including VAT\n';
     }
+    if(advNoteTxt(j))body+='\n'+advNoteTxt(j)+'\n';
     body+='\nTo go ahead, reply YES and we’ll send you the next available dates. Any questions, just reply here.';
   }
   return body;
@@ -6430,6 +6508,7 @@ function estDocHTML(j,opt){
       '<tr><td style="padding:2px 30px 2px 0">Sub Total:</td><td style="text-align:right">'+f(d.sub)+'</td></tr>'+
       '<tr><td style="padding:2px 30px 2px 0">VAT:</td><td style="text-align:right">'+f(d.vat)+'</td></tr>'+
       '<tr><td style="padding:4px 30px 2px 0">Total (inc. VAT):</td><td style="text-align:right;font-size:17px">'+f(d.total)+'</td></tr></table>'+
+    (advNoteTxt(j)?'<div style="margin-top:16px;border:1px solid #bbb;border-radius:4px;padding:8px 10px;font-size:11.5px;white-space:pre-wrap"><strong>Notes</strong><br>'+escHtml(advNoteTxt(j))+'</div>':'')+
     '<div style="margin-top:60px;font-size:11px">Be confident in the knowledge that under no circumstance will any additional work be carried out without prior authorisation.</div>'+
     '<div style="border-top:3px solid #1d3f8f;margin-top:8px;padding-top:8px;text-align:center;font-size:9.5px;color:#666;line-height:1.6">'+
       KITH_CO.name+', '+KITH_CO.addr+'<br>Tel: '+KITH_CO.tel+' &nbsp;|&nbsp; Email: '+KITH_CO.email+' &nbsp;|&nbsp; Website: '+KITH_CO.web+'<br>VAT No: '+KITH_CO.vat+' | Company No: '+KITH_CO.co+'</div>'+
@@ -6445,8 +6524,9 @@ function estDocFullHTML(j){
   return estDocHTML(j,'md')+'<div class="kest-break" style="page-break-before:always;break-before:page;height:0"></div>'+estDocHTML(j,'af');
 }
 function estPdfSig(j){
-  if(!estTwo(j))return 'one:'+estDocData(j).total.toFixed(2);
-  return 'two:'+estDocData(j,'md').total.toFixed(2)+'/'+estDocData(j,'af').total.toFixed(2);
+  const nt=(typeof advNoteTxt==='function'?advNoteTxt(j):'');const nh=nt?'|n'+nt.length+':'+nt.slice(-12):'';
+  if(!estTwo(j))return 'one:'+estDocData(j).total.toFixed(2)+nh;
+  return 'two:'+estDocData(j,'md').total.toFixed(2)+'/'+estDocData(j,'af').total.toFixed(2)+nh;
 }
 function estDocPanelH(j,open){
   if(estTwo(j))return estDocPanelTwoH(j,open);
@@ -6511,6 +6591,7 @@ function kithPdfFresh(j){
   const docs=j.estimateDocs||[], last=docs[docs.length-1];
   if(!(last&&last.kith))return false;
   if(last.sig)return last.sig===estPdfSig(j);
+  if(typeof advNoteTxt==='function'&&advNoteTxt(j))return false;
   return !estTwo(j)&&Math.abs((parseFloat(last.total)||0)-estDocData(j).total)<0.01;
 }
 async function ensureKithEstPdf(j){
@@ -13951,7 +14032,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1155';
+const CRM_BUILD='2026-11-16-1205';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
