@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v9.5 \u00b7 16 Nov';
+const BUILD='v9.6 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -8996,8 +8996,10 @@ function labourDescFromLines(j){
   const rate=(j.labourCost&&j.srtCharged)?(j.labourCost/j.srtCharged):70;
   return lines.map(l=>{
     const b=parseFloat(l.book)||0,c=parseFloat(l.charged)||0,v=l.labour!=null?parseFloat(l.labour):c*rate;
-    return (l.op||'Operation')+' \u2014 '+b.toFixed(1)+'h book'+(Math.abs(c-b)>0.049?', '+c.toFixed(2).replace(/0$/,'')+'h charged':'')+' \u2014 \u00a3'+v.toFixed(2);
-  }).join('\n')+'\nTotal: '+srtLinesTotal(j,'book').toFixed(1)+'h book, '+srtLinesTotal(j,'charged').toFixed(2).replace(/0$/,'')+'h charged \u2014 \u00a3'+
+    // customer-facing: charged hours only, never the book time
+    const h=(c||b);
+    return (l.op||'Operation')+' \u2014 '+h.toFixed(2).replace(/\.?0+$/,'')+'h \u2014 \u00a3'+v.toFixed(2);
+  }).join('\n')+'\nTotal: '+(srtLinesTotal(j,'charged')||srtLinesTotal(j,'book')).toFixed(2).replace(/\.?0+$/,'')+'h \u2014 \u00a3'+
     lines.reduce((a,l)=>a+(l.labour!=null?parseFloat(l.labour):(parseFloat(l.charged)||0)*rate),0).toFixed(2)+' ex VAT';
 }
 function fillLabourDesc(id,ask){
@@ -11253,6 +11255,8 @@ var AUTO_LOG=[];                // what the engine has moved this session
 function autoPilot(){
   if(!AUTO_ON)return 0;
   try{fixLabelOnlyWork();}catch(e){console.warn('labelfix',e);}
+  // Descriptions auto-written in v9.5 showed book time — rewrite with charged hours only
+  try{jobs.forEach(j=>{if(j&&/h book/.test(String(j.labourDesc||''))&&/\nTotal: .*h book/.test(String(j.labourDesc||''))&&srtLines(j).length){j.labourDesc=labourDescFromLines(j);save(j);}});}catch(e){}
   // Brain pre-fills applied before 16 Nov put book hours in "charged" — redo the rollup
   try{jobs.forEach(j=>{if(j&&j.brainAppliedAt&&j.brainAI&&Array.isArray(j.brainAI.jobs)&&j.brainAI.jobs.length&&!(Array.isArray(j.srtLines)&&j.srtLines.length)&&['labour','parts','financial'].includes(j.stage)){
     const at=j.brainAppliedAt,by=j.brainAppliedBy;try{window.brainApplyToJob(j.id);}catch(e){} j.brainAppliedAt=at;j.brainAppliedBy=by;}});}catch(e){}
