@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v13.0 \u00b7 16 Nov';
+const BUILD='v13.1 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -10191,8 +10191,9 @@ function brainPrefillH(j){
     '</div>'+
     rows +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:2px solid var(--border)">'+
-      '<div style="font-size:11px;color:var(--dim)">'+(totSrt>0?'Total SRT '+totSrt.toFixed(1)+'h · ':'')+'Labour ex VAT · <strong style="color:var(--text)">£'+(totLabour*1.2).toFixed(2)+' inc VAT</strong> to the customer</div>'+
-      '<div style="font-family:ui-monospace,monospace;font-size:16px;font-weight:800;color:var(--gold)">£'+totLabour.toFixed(2)+'</div>'+
+      '<div style="font-size:11px;color:var(--dim)">'+(totSrt>0?'Total SRT '+totSrt.toFixed(1)+'h':'')+'</div>'+
+      '<div style="text-align:right"><div style="font-family:ui-monospace,monospace;font-size:16px;font-weight:800;color:var(--gold)">£'+totLabour.toFixed(2)+' <span style="font-size:11px;font-weight:600;color:var(--dim)">ex VAT</span></div>'+
+        '<div style="font-size:11px;color:var(--dim)">+ VAT £'+(totLabour*0.2).toFixed(2)+' = <strong style="color:var(--text)">£'+(totLabour*1.2).toFixed(2)+' inc VAT</strong> to the customer</div></div>'+
     '</div>'+
     buttons +
   '</div>';
@@ -14052,7 +14053,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1225';
+const CRM_BUILD='2026-11-16-1230';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
