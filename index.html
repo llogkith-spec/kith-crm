@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v8.9 \u00b7 16 Nov';
+const BUILD='v9.0 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6776,16 +6776,72 @@ const DMG_PANELS={fbumper:'M62 14 Q130 -2 198 14 L204 46 L56 46 Z',bonnet:'M60 5
   rrq:'M238 354 L198 354 L204 452 Q230 460 238 440 Z'};
 // Everything the adviser was told at intake, so the estimator never has to ring back to ask.
 const INTAKE_LBL={"f-svc-type": "Service type", "f-last-service": "Last service", "f-other-issues": "Other issues", "f-brake-symptoms": "What they described", "f-tyre-qty": "How many", "f-tyre-size": "Tyre size", "f-tracking": "Tracking", "f-diag-type": "Diagnostic tier", "f-diag-lights": "Warning lights", "f-diag-symptoms": "What the car is doing", "f-driveable": "Can they drive it here?", "f-susp-symptoms": "What they described", "f-exhaust-symptoms": "What they described", "f-elec-symptoms": "What they described", "f-eng-symptoms": "What they described", "f-gearbox-type": "Gearbox", "f-clutch-symptoms": "What they described", "f-other-work": "Work", "f-other-lights": "Warning lights", "f-body-desc": "About the damage", "f-body-pay": "Insurance or private", "f-rec-from": "Collect from", "f-rec-to": "Deliver to", "f-rec-drives": "Does it drive?", "f-rec-dist": "Distance", "f-rec-keys": "Keys", "f-cb-job": "Original job", "f-cb-date": "Original date", "f-cb-same": "Same fault?", "f-cb-what": "Original work", "chips-axle": "Which wheels", "chips-brakework": "Asked for", "chips-tyre-brand": "Brand", "chips-susp-loc": "Where", "chips-susp-work": "They think it is", "chips-exhaust-type": "Asked for", "chips-elec-work": "Asked for", "chips-eng-work": "Asked for", "chips-clutch-work": "Asked for", "chips-body-type": "Repair type"};
+// ── INTAKE BREAKDOWN (16 Nov 2026) ─────────────────────────────────
+// Everything the person filled in at intake, on the job card: their answers,
+// the intake app's judgement (type, area, safety, missing bits) and, for
+// Google Form jobs, every filled-in column of the original form row.
+function intakeFormRow(j){
+  try{
+    if(!j||!j.srcTs||!Array.isArray(intakeData))return null;
+    const k=tsKey(j.srcTs);
+    return intakeData.find(r=>tsKey(r['Timestamp']||r['timestamp']||'')===k)||null;
+  }catch(e){return null;}
+}
 function intakeToldH(j){
-  let rows=Array.isArray(j.intakeAnswers)?j.intakeAnswers.filter(x=>x&&x.a):[];
-  if(!rows.length){
-    const w=j.judgement&&j.judgement.customer_words;if(w)rows.push({q:'In their words',a:w});
-    const g=j.guidedAnswers||{};Object.keys(g).forEach(k=>{if(INTAKE_LBL[k]&&g[k])rows.push({q:INTAKE_LBL[k],a:g[k]});});
-    if(j.notes)rows.push({q:'Notes',a:j.notes});
+  const rows=[];const seen=new Set();
+  const add=(q,a)=>{
+    if(a==null||a===''||a===false)return;
+    if(Array.isArray(a)){if(!a.length)return;a=a.join(', ');}
+    if(typeof a==='object')return;
+    a=String(a).trim();if(!a)return;
+    const key=String(q).toLowerCase().trim()+'|'+a.toLowerCase();if(seen.has(key))return;seen.add(key);
+    rows.push({q,a});
+  };
+  // 1. their answers, as the intake app recorded them
+  (Array.isArray(j.intakeAnswers)?j.intakeAnswers:[]).forEach(x=>{if(x)add(x.q,x.a);});
+  const jd=j.judgement||{};
+  if(!rows.length&&jd.customer_words)add('In their words',jd.customer_words);
+  const g=j.guidedAnswers||{};
+  Object.keys(g).forEach(k=>{if(INTAKE_LBL[k])add(INTAKE_LBL[k],g[k]);else if(/^chips-/.test(k))add(k.replace(/^chips-/,'').replace(/-/g,' '),g[k]);});
+  // 2. the intake app's judgement
+  const yes=v=>v===true?'Yes':v;
+  add('Job type',jd.job_type);add('Area',jd.area);add('Category',jd.mechanical_category);
+  add('Customer type',jd.customer_type);add('Company',jd.company_name);add('Channel',jd.channel);
+  add('Needed by',jd.needed_by);
+  if(jd.ramp_exempt)add('Ramp-exempt',jd.ramp_exempt_reason||'Yes');
+  if(jd.ramp_exempt_pending)add('Ramp-exempt','Logan to confirm');
+  add('MOT class',jd.mot_class);add('Bodywork column',jd.bodywork_category);
+  add('Safety flags',jd.safety_flags);
+  if(jd.needs_diagnostic_first)add('Diagnostic first',jd.diagnostic_override?'Overridden by Logan':'Yes');
+  add('Safety list read to them',jd.safety_list_read?'Yes':'');
+  add('Photos in hand',jd.photos_in_hand===true?'Yes':(jd.photos_in_hand===false?'No':''));
+  add('Comeback',jd.comeback&&[jd.comeback.original_job,jd.comeback.original_date,jd.comeback.original_work,jd.comeback.verdict].filter(Boolean).join(' · '));
+  add('Warranty',[jd.warranty_company,jd.warranty_claim_ref&&('ref '+jd.warranty_claim_ref),jd.warranty_authorised_total&&('authorised £'+jd.warranty_authorised_total)].filter(Boolean).join(' · '));
+  add('AA',[jd.aa_reference,jd.aa_authorised].filter(Boolean).join(' · '));
+  add('Escalations',jd.escalations);
+  add('Still missing at intake',jd.missing_at_intake);
+  add('Mileage',j.mileage);add('Year',j.year);add('Fuel',j.fuel);add('Engine',j.engineSize);
+  add('Send the estimate by',j.sendEstimateBy);
+  if(!rows.some(r=>r.q==='Notes'))add('Notes',j.notes);
+  add('Captured by',jd.captured_by);
+  if(jd.captured_at){try{add('Captured at',new Date(jd.captured_at).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}));}catch(e){}}
+  // 3. Google Form jobs — every filled-in column of the form row
+  const raw=intakeFormRow(j);
+  if(raw){
+    Object.keys(raw).forEach(c=>{
+      if(!c||/^(timestamp)$/i.test(c))return;
+      add(c,raw[c]);
+    });
+    add('Submitted',raw['Timestamp']||raw['timestamp']);
   }
   if(!rows.length)return '';
-  return '<div class="fi" style="grid-column:1/-1"><div class="fl">What they told us at intake</div><div class="fv" style="font-size:12px;line-height:1.55">'+
-    rows.map(x=>'<div style="padding:3px 0;border-bottom:1px solid var(--border)"><span style="color:var(--dim)">'+escHtml(x.q)+':</span> '+escHtml(String(x.a))+'</div>').join('')+'</div></div>';
+  const open=['intake','range','labour','parts','financial'].includes(j.stage);
+  return '<div class="fi" style="grid-column:1/-1"><details'+(open?' open':'')+' style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:8px 10px">'+
+    '<summary style="cursor:pointer;font-size:12px;font-weight:800;color:var(--gold)">📋 Intake breakdown — what was filled in <span style="color:var(--faint);font-weight:600">('+rows.length+')</span>'+
+      (raw?' <span style="color:var(--faint);font-weight:500">· from the intake form</span>':(j.fromIntakeApp?' <span style="color:var(--faint);font-weight:500">· from the intake app</span>':''))+'</summary>'+
+    '<div style="font-size:12px;line-height:1.55;margin-top:6px">'+
+    rows.map(x=>'<div style="display:flex;gap:10px;padding:4px 0;border-bottom:1px solid var(--border)"><span style="color:var(--dim);min-width:150px;max-width:45%;flex-shrink:0">'+escHtml(x.q)+'</span><span style="flex:1;white-space:pre-wrap">'+escHtml(String(x.a))+'</span></div>').join('')+
+    '</div></details></div>';
 }
 function damageMapCrmH(j){
   const d=Array.isArray(j.damage)?j.damage.filter(x=>x&&x.panel):[];
