@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v12.0 \u00b7 16 Nov';
+const BUILD='v12.1 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -10031,15 +10031,15 @@ function brainPrefillH(j){
   return '<div style="background:var(--surface2);border:1px solid '+totCard+';border-radius:var(--r);padding:12px 14px;margin-bottom:14px">'+
     '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">'+
       '<div style="font-size:12px;font-weight:800;color:'+totCard+';text-transform:uppercase;letter-spacing:.5px">🧠 Brain pre-fill — audit and apply</div>'+
-      '<div style="font-size:11px;color:var(--dim)">'+(ai.allFirm?'All '+totN+' lines firm from TechMan cache':(firmN+'/'+totN+' firm · rest AI-estimated'))+'</div>'+
+      '<div style="font-size:11px;color:var(--dim)">'+(ai.fromDamage?'Worked out from the damage picker · SOP panel prices, no AI':ai.allFirm?'All '+totN+' lines firm from TechMan cache':(firmN+'/'+totN+' firm · rest AI-estimated'))+'</div>'+
     '</div>'+
     '<div style="display:grid;grid-template-columns:1fr 100px 100px 120px;gap:10px;font-size:10px;text-transform:uppercase;color:var(--faint);letter-spacing:.5px;padding-bottom:4px;border-bottom:1px solid var(--border)">'+
       '<div>Job</div><div style="text-align:right">SRT</div><div style="text-align:right">Labour £</div><div style="text-align:right">Status</div>'+
     '</div>'+
     rows +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:2px solid var(--border)">'+
-      '<div style="font-size:11px;color:var(--dim)">Total SRT '+totSrt.toFixed(1)+'h · Labour ex VAT</div>'+
-      '<div style="font-family:ui-monospace,monospace;font-size:16px;font-weight:800;color:var(--gold)">£'+Math.round(totLabour)+'</div>'+
+      '<div style="font-size:11px;color:var(--dim)">'+(totSrt>0?'Total SRT '+totSrt.toFixed(1)+'h · ':'')+'Labour ex VAT · <strong style="color:var(--text)">£'+(totLabour*1.2).toFixed(2)+' inc VAT</strong> to the customer</div>'+
+      '<div style="font-family:ui-monospace,monospace;font-size:16px;font-weight:800;color:var(--gold)">£'+totLabour.toFixed(2)+'</div>'+
     '</div>'+
     buttons +
   '</div>';
@@ -13805,7 +13805,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1105';
+const CRM_BUILD='2026-11-16-1130';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
