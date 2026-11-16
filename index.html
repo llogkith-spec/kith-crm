@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v11.0 \u00b7 16 Nov';
+const BUILD='v11.1 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -3599,6 +3599,8 @@ async function signOff(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
   if(!currentUser||currentUser.name!=='Logkith'){alert('Only Logkith can sign a quote off.');return;}
   if(_signOffBusy)return;
+  const miss=unpricedAsks(j);
+  if(miss.length&&!confirm('\u26a0 The customer asked for this, but it is not priced:\n\n'+miss.map(m=>'\u2022 '+m).join('\n')+'\n\nSend the quote without it anyway?'))return;
   if(String(j.phone||'').trim()&&!kithPdfFresh(j)){
     _signOffBusy=true;
     if(typeof toast==='function')toast('\ud83d\udcc4 Making the estimate PDF\u2026');
@@ -6511,6 +6513,55 @@ async function attachKithEstPdf(id,btn){
   }catch(e){alert('Could not make the estimate PDF: '+e.message);}
   finally{if(btn){btn.disabled=false;btn.textContent='📎 Attach as the estimate PDF';}}
 }
+// ── WORK THE CUSTOMER ASKED FOR THAT ISN'T PRICED (16 Nov 2026) ─────
+// Kevin asked for a service, MOT, front pads AND a left-hand mirror; the
+// mirror never got labour or parts. Each thing the customer asked for is
+// checked against what's priced (labour operations, labour description,
+// parts). Anything with no match is flagged before the quote goes out.
+const ASK_STOP=new Set('the a an and also please plus with for of on to in at my its it is was be need needs needed want wants wanted do doing done get got can could would like check look looking new replace replaced replacement replacment replacing renew fit fitted fitting supply change changed changing repair repaired repairs job work left right lh rh hand side nearside offside ns os front rear back both pair full x car vehicle'.split(' '));
+function askKeys(t){
+  return String(t||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').split(/\s+/)
+    .filter(w=>w.length>=3&&!ASK_STOP.has(w)).map(w=>w.replace(/(es|s)$/,''));
+}
+function askedItems(j){
+  const w=String(j.judgement&&j.judgement.customer_words||'').trim();
+  if(!w)return [];
+  return w.split(/\s*(?:,|;|\.|\+|&|\n|\band then\b|\bthen\b|\band\b|\balso\b|\bplus\b)\s*/i)
+    .map(x=>x.trim()).filter(x=>askKeys(x).length);
+}
+function pricedText(j){
+  const bits=[j.labourDesc,j.work,j.finalNotes];
+  (typeof srtLines==='function'?srtLines(j):[]).forEach(l=>bits.push(l.op));
+  (j.parts||[]).forEach(p=>bits.push(p.name));
+  try{(j.brainAI&&j.brainAI.jobs||[]).filter(b=>!b.excluded&&j.brainAppliedAt).forEach(b=>bits.push(b.job_label));}catch(e){}
+  return ' '+askKeys(bits.filter(Boolean).join(' ')).join(' ')+' ';
+}
+function unpricedAsks(j){
+  const have=pricedText(j);
+  return askedItems(j).filter(item=>{
+    const k=askKeys(item);
+    const hit=k.filter(w=>have.includes(' '+w+' ')||have.includes(' '+w.slice(0,5))).length;
+    return hit/k.length<0.5;
+  });
+}
+function unpricedH(j){
+  const miss=unpricedAsks(j);if(!miss.length)return '';
+  return '<div style="background:rgba(160,30,30,.18);border:2px solid var(--red);border-radius:var(--r);padding:10px 12px;margin-bottom:10px">'+
+    '<div style="font-size:12px;font-weight:800;color:var(--red)">⚠ Asked for but not priced</div>'+
+    miss.map(m=>'<div style="font-size:12px;margin-top:3px">• '+escHtml(m)+'</div>').join('')+
+    '<div style="font-size:11px;color:var(--dim);margin-top:5px">No labour or parts on the job for '+(miss.length===1?'this':'these')+'. Add '+(miss.length===1?'it':'them')+', or note why it is left out.</div>'+
+    (['financial','signoff','contact','contacted','waiting','waiting2'].includes(j.stage)?'<button class="btn btn-ghost btn-sm" style="margin-top:6px;color:var(--red);border-color:var(--red)" onclick="sendBackForMissing(\''+j.id+'\')">↩ Back to Labour Estimate to add '+(miss.length===1?'it':'them')+'</button>':'')+
+  '</div>';
+}
+function sendBackForMissing(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const miss=unpricedAsks(j);
+  if(!confirm('Send '+(j.reg||'this job')+' back to Labour Estimate to price:\n\n'+miss.map(m=>'• '+m).join('\n')+'\n\nThe estimator and parts will see what is missing.'))return;
+  j.missingAsk={items:miss,at:ts(),by:currentUser?currentUser.name:''};
+  curId=j.id;
+  mv('labour','↩ Back to Labour Estimate — not priced yet: '+miss.join('; '));
+  try{pushNotif('estimator','⚠ '+(j.reg||'')+' — work not priced',miss.join('; '),{jobId:j.id,key:'missing|'+j.id+'|'+Date.now()});}catch(e){}
+}
 function estimateSummaryH(j){
   const e=j.estimate;
   const open='<button class="btn btn-ghost btn-sm btn-full" style="margin-bottom:10px" onclick="openInEstimator(\''+j.id+'\')">\ud83e\uddee Open in the estimator app</button>';
@@ -6542,6 +6593,8 @@ function actH(j){
     h+='<div style="font-size:11px;color:var(--gold);margin-bottom:8px">\u2696 Two prices asked for by '+escHtml(j.twoPriceAsked.by||'')+' \u00b7 '+escHtml(j.twoPriceAsked.at||'')+'</div>';
   // 16 Nov 2026: the KITH estimate stays on the job from Final Estimate until
   // it becomes a job card (Techman job card made). Open at sign-off.
+  if(['labour','parts','financial','signoff','disapproved','contact','contacted','waiting','waiting2'].includes(j.stage))
+    h+=unpricedH(j);
   if(['financial','signoff','disapproved','contact','contacted','waiting','waiting2','ready'].includes(j.stage))
     h+=estDocPanelH(j,j.stage==='signoff');
   switch(j.stage){
