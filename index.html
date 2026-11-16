@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v11.7 \u00b7 16 Nov';
+const BUILD='v11.8 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -9645,6 +9645,7 @@ async function brainSupabase(j){
 }
 function brainMaybeFire(j){
   if(!j||j.brainAI||j._brainAIPending)return;
+  try{if(ensureBodyAI(j)){save(j);return;}}catch(e){}
   if(!['intake','range','labour','parts','financial','signoff'].includes(j.stage))return;
   setTimeout(()=>brainSupabase(j),10);
 }
@@ -9836,7 +9837,7 @@ function brainFixBody(j){
   ai.jobs.forEach(bj=>{
     const lab=String(bj.job_label||bj.job_normalised||'');
     const panel=panelOf(lab);
-    if(!panel||bj.fixedTyre||bj.fixedDiag||bj.fixedMot)return;
+    if(bj.fromDamage||!panel||bj.fixedTyre||bj.fixedDiag||bj.fixedMot)return;
     const paint=/paint|respray|refinish|scratch|scuff|dent|chip|crack|repair/i.test(lab);
     // trim / moulding just taken off and put back = part of the panel job
     if(panel==='Trim / moulding'&&!/paint|respray|refinish/i.test(lab)){
@@ -9898,6 +9899,7 @@ function brainFixAlloy(j){
   const e=alloyEach();let ch=false,first=true;
   ai.jobs.forEach(bj=>{
     const lab=String(bj.job_label||bj.job_normalised||'');
+    if(bj.fromDamage&&!bj.alloyEachChanged)return;
     if(!/alloy|wheel refurb|rim refurb|diamond cut/i.test(lab))return;
     if(!first){if(!bj.fixedAlloy||!bj.excluded){bj.fixedAlloy=true;bj.excluded=true;bj.srt_hours=0;bj.labour_ex_vat=0;bj.srt_source='Covered by the per-alloy line above';ch=true;}return;}
     first=false;
@@ -9915,12 +9917,58 @@ function brainFixAlloy(j){
 function brainSetAlloyEach(id,i,v){
   const j=_brainJob(id);if(!j||!j.brainAI||!j.brainAI.jobs[i])return;
   const e=alloyEach(),x=Math.max(e.min,Math.min(e.max,parseFloat(v)||e.min));
-  j.brainAI.jobs[i].alloyEach=x;j.brainAI.jobs[i].fixedAlloy=false;brainFixAlloy(j);save(j);renderDetail();
+  const bj=j.brainAI.jobs[i];bj.alloyEach=x;
+  if(bj.fromDamage){bj.labour_ex_vat=(bj.alloyQty||1)*x;bj.srt_source=(bj.alloyQty||1)+' alloys \u00d7 \u00a3'+x+' + VAT (SOP \u00a3'+e.min+'\u2013\u00a3'+e.max+' each by condition)';}
+  else{bj.fixedAlloy=false;brainFixAlloy(j);}
+  save(j);renderDetail();
+}
+// ── BODYWORK ESTIMATE STRAIGHT FROM THE DAMAGE PICKER (16 Nov 2026) ──
+// When the intake / website damage picker says which panels and how bad,
+// the full estimate is worked out from the SOP — panel by panel, blends,
+// dents, alloys — and shown as the pre-fill to audit and apply. No AI guess.
+const DENT_BY_MARK={s:70,m:150,l:220,xl:300};
+function bodyAIFromDamage(j){
+  const dm=(j.damage||[]).filter(d=>d&&(d.type||d.wheel));
+  if(!dm.length)return null;
+  const E=bodyEng(), cat=BODY_CAT[j.bodySize]||'5-seater', up=E.uplift[cat]||0, old=vehAgeYears(j)>10;
+  const jobsOut=[];
+  const panels=dm.filter(d=>!d.wheel&&d.type!=='alloy');
+  const priced=panels.map(d=>{
+    const panel=panelOf(d.label)||'Door (each)';
+    let price=(E.base[panel]!=null?E.base[panel]:300)+up;if(old)price=Math.round(price*0.75*100)/100;
+    const dent=d.type==='dent'?(DENT_BY_MARK[(d.mark&&d.mark.size)||'m']||150):0;
+    const blend=d.blend?50:0;
+    return {d,panel,price,dent,blend};
+  }).sort((a,b)=>b.price-a.price);
+  priced.forEach((p,ix)=>{
+    const paint=ix===0?p.price:Math.round(p.price*(1-E.disc)*100)/100;
+    const tot=Math.round((paint+p.dent+p.blend)*100)/100;
+    jobsOut.push({job_label:p.d.label+' — '+(p.d.type==='dent'?'dent repair and paint':'paint repair'),job_normalised:'body_'+(p.d.panel||ix),
+      srt_hours:0,labour_ex_vat:tot,tier:'BODY',fixedBody:true,fromDamage:true,bodyPanel:p.panel,
+      srt_source:p.panel+' ('+cat+') £'+paint.toFixed(2)+(ix?' (−20%, not the dearest panel)':' (dearest panel, full price)')+(old?' · 25% off, over 10 years old':'')+
+        (p.dent?' + dent straightening £'+p.dent+' ('+(p.d.markSize||'size not marked')+')':'')+(p.blend?' + blend into the next panel £'+p.blend+' (£100 if into a door)':'')});
+  });
+  const wheels=dm.filter(d=>d.wheel||d.type==='alloy').length;
+  if(wheels){const e=alloyEach(),each=Math.round((e.min+e.max)/2);
+    jobsOut.push({job_label:'Alloy wheel refurb ×'+wheels,job_normalised:'alloy_refurb',srt_hours:0,labour_ex_vat:wheels*each,tier:'BODY',
+      fixedAlloy:true,fromDamage:true,alloyQty:wheels,alloyEach:each,
+      srt_source:wheels+' alloy'+(wheels===1?'':'s')+' × £'+each+' + VAT (SOP £'+e.min+'–£'+e.max+' each by condition) — set the price per alloy'});}
+  const tot=jobsOut.reduce((a,b)=>a+b.labour_ex_vat,0);
+  return {jobs:jobsOut,lo:Math.round(tot*1.2*0.9/10)*10,hi:Math.round(tot*1.2*1.1/10)*10,total:tot*1.2,conf:'good',allFirm:false,fromDamage:true,
+    damageSig:JSON.stringify(dm.map(d=>[d.panel,d.type,d.mark&&d.mark.size,d.blend])),bodySize:j.bodySize||'',at:ts(),ms:Date.now()};
+}
+function ensureBodyAI(j){
+  if(!j||j.brainAppliedAt||!(typeof isBodyJob==='function'&&isBodyJob(j)))return false;
+  const b=bodyAIFromDamage(j);if(!b)return false;
+  const cur=j.brainAI;
+  if(cur&&cur.fromDamage&&cur.damageSig===b.damageSig&&cur.bodySize===b.bodySize)return false;
+  j.brainAI=b;return true;
 }
 function brainPrefillH(j){
   if(!j||j.stage!=='labour')return '';
   if(j.brainPrefillDismissedAt)return '';
-  if(brainStale(j)){delete j.brainAI;delete j._brainTriedMs;}
+  if(ensureBodyAI(j)){try{save(j);}catch(e){}}
+  if(!(j.brainAI&&j.brainAI.fromDamage)&&brainStale(j)){delete j.brainAI;delete j._brainTriedMs;}
   brainMaybeFire(j);  // kick it off if it hasn't run
   if(j._brainAIPending){
     return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:11px 14px;margin-bottom:14px;font-size:12px;color:var(--dim)">'+
@@ -10386,6 +10434,10 @@ function brainRange(j){
   try{if(alloyOnly(j)){const r=alloyRange(j);
     return {n:r.n,matches:[],low:r.lo,high:r.hi,conf:'good',src:'sop',
       note:r.n+' alloy'+(r.n===1?'':'s')+' \u00d7 \u00a3'+r.e.min+'\u2013\u00a3'+r.e.max+' + VAT each (SOP) \u2014 depends how bad each rim is'};}}catch(e){}
+  // Bodywork with the damage picker filled in: the SOP panel estimate itself
+  try{if(isBodyJob(j)&&!alloyOnly(j)){const b=bodyAIFromDamage(j);if(b&&b.jobs.length)
+    return {n:b.jobs.length,matches:b.jobs.map(x=>({x:{reg:j.reg,make:j.make,work:x.job_label},sc:0,q:x.labour_ex_vat*1.2,label:'\u00a3'+Math.round(x.labour_ex_vat*1.2)})),
+      low:b.lo,high:b.hi,conf:'good',src:'sop',note:'From the damage picker \u2014 '+b.jobs.length+' line'+(b.jobs.length===1?'':'s')+' priced per panel (SOP), \u00b110%'};}}catch(e){}
   brainMaybeFire(j);  // kick off SRT-informed call in background if not already done
   const mine=rangeWords(j.work);
   if(!mine.length)return {n:0,matches:[],why:'No work description to match on'};
