@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v11.5 \u00b7 16 Nov';
+const BUILD='v11.6 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6633,7 +6633,7 @@ function actH(j){
         '<input type="hidden" id="a-tj" value="'+escHtml(j.tmJob||'')+'"/>'+
         '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">'+
           '<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">'+
-            '<input type="checkbox" id="a-fixed" '+((j.labourFixed||sopFixedPriceJob(j))?'checked':'')+' onchange="toggleFixedLabour()"/> '+(sopFixedPriceJob(j)?'Fixed price under the SOP \u2014 no SRT needed':'Fixed price labour (no SRT)')+
+            '<input type="checkbox" id="a-fixed" '+((j.labourFixed||sopFixedPriceJob(j))?'checked':'')+' onchange="toggleFixedLabour()"/> '+(sopFixedPriceJob(j)?(isBodyJob(j)?'Bodywork \u2014 priced per panel, no SRT':'Fixed price under the SOP \u2014 no SRT needed'):'Fixed price labour (no SRT)')+
           '</label>'+
         '</div>'+
         '<div id="srt-fields" style="display:'+((j.labourFixed||sopFixedPriceJob(j))?'none':'flex')+';gap:8px;margin-bottom:8px">'+
@@ -9264,6 +9264,8 @@ function renderShiftBar(){
 // (Brain tyre fitting), or work that is one of the SOP's fixed-price items.
 const SOP_FIXED_RX=/\b(tyre fit\w*|fit\w* (a |the |\d+ )?tyres?|tyres? fit\w*|puncture|mot\b|m\.o\.t|remap|stage [12]\b|recovery|collect(ion)? and return|diagnostic|diag\b|wheel alignment|tracking|valet)\b/i;
 function sopFixedPriceJob(j){
+  // Bodywork has no SRT — it is priced per panel (16 Nov 2026)
+  try{if(typeof isBodyJob==='function'&&isBodyJob(j)&&(typeof isClearlyBodywork!=='function'||isClearlyBodywork(j)||!/\b(engine|brake|clutch|gearbox|suspension|service|mot|exhaust|timing|coolant|battery|tyre)\b/i.test(String(j.work||''))))return true;}catch(e){}
   const lines=(typeof srtLines==='function')?srtLines(j):[];
   if(lines.length&&lines.every(l=>l.fixed))return true;
   if(lines.length&&lines.some(l=>!l.fixed&&(parseFloat(l.book)||0)>0))return false;
@@ -9397,7 +9399,7 @@ function srtBreakdownH(j,editable){
         '</div>'
       : (function(){
           // Comma or "and" in the work usually means several operations
-          const multi=/[,;]|\band\b|\+/i.test(String(j.work||''))&&String(j.work||'').length>12;
+          const multi=!sopFixedPriceJob(j)&&/[,;]|\band\b|\+/i.test(String(j.work||''))&&String(j.work||'').length>12;
           return '<div style="font-size:11px;'+(multi?'color:var(--amber);font-weight:600':'color:var(--dim)')+';margin-bottom:6px">'+
             (multi?'\u26a0 This looks like more than one operation \u2014 split the '+(j.srt?parseFloat(j.srt).toFixed(1)+'h':'time')+' so each job has its own SRT.'
               :(j.srt?'One line of '+parseFloat(j.srt).toFixed(1)+'h book'+(j.srtCharged?' / '+parseFloat(j.srtCharged).toFixed(1)+'h charged':'')+' \u2014 split it if this covers more than one job.'
