@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v10.8 \u00b7 16 Nov';
+const BUILD='v10.9 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -1535,7 +1535,7 @@ async function loadFromSupabase(){
     setSbStatus('err');
   }
   renderAll();
-  try{autoCloseOldFormPulls();}catch(x){console.warn(x);}try{autoImportIntake();}catch(x){console.warn(x);}
+  try{autoCloseOldFormPulls();}catch(x){console.warn(x);}try{autoCloseDoneElsewhere();}catch(x){console.warn(x);}try{autoImportIntake();}catch(x){console.warn(x);}
 }
 
 function subscribeRealtime(){
@@ -1753,7 +1753,7 @@ async function refreshSheets(){
   try{_intakeSig=_intakeSigOf(intakeData);_intakeRedrawDue=false;}catch(x){}
   updateInboxBadge();
   renderAll();
-  try{autoCloseOldFormPulls();}catch(x){console.warn(x);}try{autoImportIntake();}catch(x){console.warn(x);}
+  try{autoCloseOldFormPulls();}catch(x){console.warn(x);}try{autoCloseDoneElsewhere();}catch(x){console.warn(x);}try{autoImportIntake();}catch(x){console.warn(x);}
   // Never re-render detail panel from sheet refresh — would wipe parts/labour form data
 }
 
@@ -1791,7 +1791,7 @@ async function autoRefreshIntake(){
     if(sig!==_intakeSig||_intakeRedrawDue){
       intakeData=normIntake(rows);_intakeSig=sig;
       updateInboxBadge();
-  try{autoCloseOldFormPulls();}catch(x){console.warn(x);}try{autoImportIntake();}catch(x){console.warn(x);}
+  try{autoCloseOldFormPulls();}catch(x){console.warn(x);}try{autoCloseDoneElsewhere();}catch(x){console.warn(x);}try{autoImportIntake();}catch(x){console.warn(x);}
       if(_userIsTyping()){_intakeRedrawDue=true;}
       else{_intakeRedrawDue=false;try{renderInbox();}catch(e){console.warn('renderInbox:',e);}}
     }
@@ -4631,6 +4631,37 @@ function closeJobFinished(j,note){
   j.stage='followup';
   if(!j.stageAt||Date.now()-j.stageAt<22*864e5)j.stageAt=Date.now()-22*864e5;   // off the board straight away
   j.log=j.log||[];j.log.push({t:ts(),s:'✓ Closed as finished — old job ('+(note||'clean-up')+')'+(currentUser?' ['+currentUser.name+']':'')});
+}
+// ── FORM JOBS ALREADY DONE ANOTHER WAY (16 Nov 2026) ─────────────────
+// A job made from the intake form, still sitting untouched on Intake / Price
+// Range, when the same car already has a job that went further along — the
+// team had put it through another way (intake app, by hand). Close it as a
+// duplicate of that job.
+function formJobDoneElsewhere(j){
+  if(!j||j.mergedInto||!['intake','range'].includes(j.stage))return null;
+  if(!(j.fromForm||String(j.id||'').startsWith('JF')))return null;
+  if(j.additionalWork||j.splitFrom||j.splitInto||j.rangeSentAt||j.rangeYesAt||j.tmJob||parseFloat(j.quote)>0||parseFloat(j.srt)>0||parseFloat(j.labourCost)>0)return null;
+  const rk=regKey(j.reg);if(!rk||rk.length<4)return null;
+  let formT=0;try{formT=tsDate(j.srcTs).getTime();}catch(e){}
+  if(!formT||isNaN(formT))formT=jobCameIn(j);
+  const cands=jobs.filter(x=>x&&x.id!==j.id&&!x.mergedInto&&regKey(x.reg)===rk&&
+    !['intake','range','lost'].includes(x.stage)&&!x.additionalWork&&
+    Math.abs(jobCameIn(x)-formT)<21*864e5);
+  if(!cands.length)return null;
+  const ix=id=>STAGES.findIndex(s=>s.id===id);
+  return cands.sort((a,b)=>ix(b.stage)-ix(a.stage))[0];
+}
+function autoCloseDoneElsewhere(){
+  if(typeof sbReady==='undefined'||!sbReady||!currentUser)return 0;
+  const pairs=[];
+  jobs.forEach(j=>{const k=formJobDoneElsewhere(j);if(k)pairs.push([j,k]);});
+  if(!pairs.length)return 0;
+  window._batchSave=true;
+  try{pairs.forEach(([j,k])=>{closeJobDupe(j,k);j.log.push({t:ts(),s:'ℹ Closed automatically — this car was already put through as '+(k.tmJob||k.id)+' ('+stg(k.stage).label+')'});save(j);});}
+  finally{window._batchSave=false;try{cacheJobs();}catch(e){}}
+  try{renderAll();}catch(e){}
+  if(typeof toast==='function')toast('🧹 '+pairs.length+' form job'+(pairs.length===1?'':'s')+' already done another way — closed as duplicates');
+  return pairs.length;
 }
 function closeJobDupe(j,keep){
   try{if(keep&&typeof moveDupeContents==='function'){const mv=moveDupeContents(j,keep);if(mv&&mv.length){j.log=j.log||[];j.log.push({t:ts(),s:'Moved to '+(keep.tmJob||keep.id)+': '+mv.join(', ')});}}}catch(e){}
@@ -11602,6 +11633,7 @@ function toggleAutoHold(id){
 var AUTO_LOG=[];                // what the engine has moved this session
 function autoPilot(){
   if(!AUTO_ON)return 0;
+  try{autoCloseDoneElsewhere();}catch(e){console.warn('done-elsewhere',e);}
   try{fixLabelOnlyWork();}catch(e){console.warn('labelfix',e);}
   // Descriptions auto-written in v9.5 showed book time — rewrite with charged hours only
   try{jobs.forEach(j=>{if(j&&/h book/.test(String(j.labourDesc||''))&&/\nTotal: .*h book/.test(String(j.labourDesc||''))&&srtLines(j).length){j.labourDesc=labourDescFromLines(j);save(j);}});}catch(e){}
