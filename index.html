@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v15.8 \u00b7 16 Nov';
+const BUILD='v15.9 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6658,6 +6658,14 @@ function estDocData(j,opt){
       const tot=l.labour!=null?parseFloat(l.labour):q*blended;
       labour.push({code:estLabourCode(q?tot/q:blended),desc:l.op||'Labour',qty:q,unit:q?tot/q:tot,total:r2(tot)});
     });
+    // 16 Nov 2026: the job's Labour Total is the price. If it was changed by
+    // hand after the breakdown was made, the estimate follows the total
+    // (one line takes it all; several are scaled to it) so the two always match.
+    const want=r2(j.labourCost), have=r2(labour.reduce((a,x)=>a+x.total,0));
+    if(want>0&&Math.abs(want-have)>0.01){
+      if(labour.length===1){const x=labour[0];x.total=want;x.unit=x.qty?want/x.qty:want;}
+      else if(have>0){let left=want;labour.forEach((x,ix)=>{const t=ix===labour.length-1?r2(left):r2(x.total*want/have);left=r2(left-t);x.total=t;x.unit=x.qty?t/x.qty:t;});}
+    }
   }else if(parseFloat(j.labourCost)>0){
     const q=parseFloat(j.srtCharged)||parseFloat(j.srt)||1, tot=parseFloat(j.labourCost);
     // 16 Nov 2026: one row per operation written in the labour description
@@ -14607,7 +14615,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1750';
+const CRM_BUILD='2026-11-16-1800';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
