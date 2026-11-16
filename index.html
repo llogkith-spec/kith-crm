@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v14.4 \u00b7 16 Nov';
+const BUILD='v14.5 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -14249,7 +14249,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-1400';
+const CRM_BUILD='2026-11-16-1405';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -18351,7 +18351,9 @@ function paScanned(code){
   paThink(code,items,open);
 }
 function paPick(code,items,open,why){
-  paMsg('Code <strong>'+escHtml(code)+'</strong> — which part is it? '+open.map(x=>'<button class="btn btn-ghost btn-xs" style="margin:3px 4px 0 0" onclick="paLearn(\''+escHtml(code).replace(/'/g,'')+'\','+items.indexOf(x)+')">'+escHtml(x.it.name)+'</button>').join(''),'var(--fg)');
+  const found=PA.lastTitle?'<div style="font-size:11px;color:var(--dim);margin:2px 0">Online it\u2019s listed as: <strong>'+escHtml(PA.lastTitle.slice(0,90))+'</strong></div>':'';PA.lastTitle='';
+  const g=' <a href="https://www.google.com/search?q='+encodeURIComponent(code)+'" target="_blank" class="btn btn-ghost btn-xs" style="margin:3px 4px 0 0">\ud83d\udd0e Search Google</a>';
+  paMsg(found+'Code <strong>'+escHtml(code)+'</strong> — which part is it? '+g+open.map(x=>'<button class="btn btn-ghost btn-xs" style="margin:3px 4px 0 0" onclick="paLearn(\''+escHtml(code).replace(/'/g,'')+'\','+items.indexOf(x)+')">'+escHtml(x.it.name)+'</button>').join(''),'var(--fg)');
 }
 // ── WORKING OUT WHICH PART A BARCODE IS ─────────────────────────────
 // No part numbers are given when the PO is raised, so a scan is matched by:
@@ -18386,6 +18388,17 @@ async function paThink(code,items,open){
   await paLoadBarcodes();
   const known=BARCODES&&BARCODES[_paNorm(code)];
   if(known){const b=_paBest(known.name,open);if(b)return paLearn(code,idx(b),'barcode seen before ('+known.name+')');}
+  // look the barcode up online — EAN/UPC codes on parts boxes are listed
+  // with the product name (Febi, Mann, Bosch, Brembo…)
+  if(/^\d{8,14}$/.test(String(code).trim())){
+    paMsg('\ud83d\udd0e Looking up '+escHtml(code)+' online\u2026','var(--amber)');
+    const title=await paLookupOnline(code);
+    if(title){
+      const b=_paBest(title,open);
+      if(b)return paLearn(code,idx(b),'online: \u201c'+title.slice(0,50)+'\u201d');
+      PA.lastTitle=title;
+    }
+  }
   if(open.length===1)return paLearn(code,idx(open[0]),'the only part still to arrive');
   // read the label on the box
   const v=document.getElementById('pa-video');
@@ -18401,6 +18414,16 @@ async function paThink(code,items,open){
     }catch(e){}
   }
   paPick(code,items,open);
+}
+async function paLookupOnline(code){
+  const ctl=typeof AbortController!=='undefined'?new AbortController():null;
+  const to=setTimeout(()=>{try{ctl&&ctl.abort();}catch(e){}},6000);
+  try{
+    const r=await fetch('https://api.upcitemdb.com/prod/trial/lookup?upc='+encodeURIComponent(code),{signal:ctl?ctl.signal:undefined});
+    if(r.ok){const d=await r.json();const it=d&&d.items&&d.items[0];
+      if(it&&it.title)return [it.brand,it.title,it.description].filter(Boolean).join(' ');}
+  }catch(e){}finally{clearTimeout(to);}
+  return '';
 }
 function paUndo(k){
   const j=jobs.find(x=>x.id===PA.jobId);if(!j)return;
