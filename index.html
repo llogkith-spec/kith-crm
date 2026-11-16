@@ -879,7 +879,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v10.0 \u00b7 16 Nov';
+const BUILD='v10.1 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -5050,6 +5050,31 @@ function enableTwoPrice(id){
   j.log.push({t:ts(),s:'\u2696 Two prices switched on \u2014 main dealer vs non-main-dealer parts'+(currentUser?' ['+currentUser.name+']':'')});
   save(j);renderDetail();renderAll();
 }
+// 16 Nov 2026: the service adviser (or Logan) asks the parts team to price
+// every part both ways. Switches two prices on, pings parts, and offers to
+// send the job back to Parts Estimate if it is already past it.
+function askTwoPrices(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const past=['financial','signoff','disapproved','contact','contacted','waiting','waiting2'].includes(j.stage);
+  if(!j.twoPrice)enableTwoPrice(id);
+  j.twoPriceAsked={by:currentUser?currentUser.name:'',at:ts(),ms:Date.now()};
+  j.log=j.log||[];
+  j.log.push({t:ts(),s:'⚖ Parts asked to price every part two ways (main dealer + non-main-dealer)'+(currentUser?' ['+currentUser.name+']':'')});
+  const msg='⚖ Two prices needed — '+(j.reg||'')+' '+vehDesc(j,false)+': price every part main dealer AND non-main-dealer'+(currentUser?' (asked by '+currentUser.name+')':'');
+  try{pushNotif('parts','⚖ Two prices needed — '+(j.reg||''),msg,{jobId:j.id,key:'twoprice|'+j.id+'|'+Date.now()});}catch(e){}
+  save(j);
+  if(past&&confirm('Send '+(j.reg||'this job')+' back to Parts Estimate so the parts team can price it both ways?\n\nPress Cancel to leave it where it is and just tell them.')){
+    curId=j.id;
+    try{mv('parts','⚖ Back to Parts for two prices (main dealer + non-dealer)');}catch(e){quickStage(j.id,'parts');}
+  }else{
+    try{renderDetail();renderAll();}catch(e){}
+  }
+  // WhatsApp the parts team too, when they have a number
+  const t=STAFF.filter(x=>hasRole(x,'parts')&&x.wa&&x.filter!=='all');
+  if(t.length&&confirm('Also WhatsApp '+t.map(x=>x.name).join(' / ')+' about it?'))
+    window.open('https://wa.me/'+t[0].wa+'?text='+encodeURIComponent(msg),'_blank');
+  if(typeof toast==='function')toast('⚖ Parts asked for two prices on '+(j.reg||'the job'));
+}
 function disableTwoPrice(id){
   const j=jobs.find(x=>x.id===id);if(!j)return;
   if(!confirm('Go back to a single price on '+(j.reg||'this job')+'?\n\nThe main dealer / non-dealer figures stay saved on the parts in case you switch it back on.'))return;
@@ -5122,7 +5147,7 @@ function twoPriceH(j){
     const hint=TWO_HINT.test(String(j.work||'')+' '+String(j.notes||'')+' '+String(j.finalNotes||''));
     return '<div class="fi" style="grid-column:1/-1">'+
       (hint?'<div style="font-size:11px;color:var(--amber);margin-bottom:5px">\u2696 The work notes mention main dealer parts or two estimates.</div>':'')+
-      '<button class="btn btn-ghost btn-xs" onclick="enableTwoPrice(\''+j.id+'\')">\u2696 Customer wants two prices \u2014 main dealer &amp; non-dealer</button></div>';
+      '<button class="btn btn-gold btn-xs" onclick="askTwoPrices(\''+j.id+'\')">\u2696 Ask parts for two prices \u2014 main dealer &amp; non-dealer</button></div>';
   }
   const t=twoPriceTotals(j);
   const ch=j.twoPriceChoice;
@@ -6456,6 +6481,10 @@ function estimateSummaryH(j){
 function actH(j){
   const f=j.name?firstName(j):'Customer';
   let h='<div class="stitle">Actions — '+(stg(j.stage).owner||'All')+'</div>'+dupeJobBanner(j)+custTypeBanner(j);
+  if(['contact','contacted','waiting','waiting2','signoff','financial'].includes(j.stage)&&!j.twoPrice)
+    h+='<button class="btn btn-ghost btn-sm btn-full" style="margin-bottom:8px;border-color:var(--gold);color:var(--gold)" onclick="askTwoPrices(\''+j.id+'\')">\u2696 Customer wants two prices \u2014 ask parts (main dealer + non-dealer)</button>';
+  if(j.twoPrice&&j.twoPriceAsked&&!j.twoPriceChoice)
+    h+='<div style="font-size:11px;color:var(--gold);margin-bottom:8px">\u2696 Two prices asked for by '+escHtml(j.twoPriceAsked.by||'')+' \u00b7 '+escHtml(j.twoPriceAsked.at||'')+'</div>';
   // 16 Nov 2026: the KITH estimate stays on the job from Final Estimate until
   // it becomes a job card (Techman job card made). Open at sign-off.
   if(['financial','signoff','disapproved','contact','contacted','waiting','waiting2','ready'].includes(j.stage)&&!j.tmJob)
