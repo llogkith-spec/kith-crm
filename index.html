@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v18.9 \u00b7 16 Nov';
+const BUILD='v19.0 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -4725,7 +4725,7 @@ async function loadCompanies(){
 async function saveCompanies(){
   safeSet('kith_companies',JSON.stringify(COMPANIES));
   try{await casWrite('__companies__',()=>({companies:COMPANIES}));}
-  catch(e){alert('Saved on this device, but it could not be shared: '+(e.message||e));}
+  catch(e){if(typeof toast==='function')toast('\u26a0 Company contacts saved on this device only \u2014 '+(e.message||e));}
 }
 function _coKey(s){return String(s||'').toLowerCase().replace(/\b(ltd|limited|plc|the|cars?|motors?|travels?|travel|group|co)\b/g,'').replace(/[^a-z0-9]/g,'');}
 function companyFor(j){
@@ -4835,6 +4835,10 @@ function cfKeep(){
   if(j&&window._cfDraft){if(window._cfDraft.name!==null)j._cfName=window._cfDraft.name;}
 }
 async function saveCustomerForm(){
+  try{return await _saveCustomerForm();}
+  catch(e){console.error('saveCustomerForm',e);alert('Could not save: '+(e&&e.message||e)+'\n\nSend Logan a screenshot of this.');}
+}
+async function _saveCustomerForm(){
   cfKeep();
   const j=jobs.find(x=>x.id===window._cfJob);if(!j)return;
   const d=window._cfDraft||{};delete j._cfName;
@@ -4858,11 +4862,13 @@ async function saveCustomerForm(){
     j.companyId=c.id;j.company=c.name;
     if(c.sendBy)j.sendEstimateBy=c.sendBy==='email'?'email':'whatsapp';
     j.log.push({t:ts(),s:'🏢 '+c.name+' contacts saved: '+c.contacts.length+' manager'+(c.contacts.length===1?'':'s')+(c.groupName?', group '+c.groupName:'')+', estimates by '+c.sendBy+who});
-    await saveCompanies();
+    safeSet('kith_companies',JSON.stringify(COMPANIES));
   }
+  // the job is saved and the form closes straight away; the company book is shared in the background
   save(j);
   document.getElementById('cust-form')?.remove();
-  renderDetail();renderAll();
+  try{renderDetail();}catch(e){}try{renderAll();}catch(e){}
+  if(c)saveCompanies().catch(e=>{console.warn('companies',e);});
   if(typeof toast==='function')toast('✓ Details saved'+(c?' for every '+c.name+' job':''));
 }
 // Send box: the company's group and managers
@@ -15514,7 +15520,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1035b';
+const CRM_BUILD='2026-11-18-1040';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
