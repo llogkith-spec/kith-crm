@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v19.8 \u00b7 16 Nov';
+const BUILD='v19.9 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6492,7 +6492,7 @@ async function saveChannels(){
   const k=String((document.getElementById('ch-secret')||{}).value||'').trim();
   if(u&&!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)&&
      !confirm('That does not look like an Apps Script /exec address.\n\nSave it anyway?'))return;
-  CHANNELS={relay:u,secret:k,at:ts(),by:currentUser?currentUser.name:'',live:!!(CHANNELS&&CHANNELS.live),liveAt:CHANNELS&&CHANNELS.liveAt,liveBy:CHANNELS&&CHANNELS.liveBy};
+  CHANNELS={bank:CHANNELS&&CHANNELS.bank,relay:u,secret:k,at:ts(),by:currentUser?currentUser.name:'',live:!!(CHANNELS&&CHANNELS.live),liveAt:CHANNELS&&CHANNELS.liveAt,liveBy:CHANNELS&&CHANNELS.liveBy};
   safeSet('kith_channels',JSON.stringify(CHANNELS));
   try{ await casWrite('__channels__',()=>({channels:CHANNELS})); }
   catch(e){ alert('Saved on this device, but it could not be shared: '+(e.message||e)); }
@@ -7278,6 +7278,238 @@ function estDocHTML(j,opt){
       KITH_CO.name+', '+KITH_CO.addr+'<br>Tel: '+KITH_CO.tel+' &nbsp;|&nbsp; Email: '+KITH_CO.email+' &nbsp;|&nbsp; Website: '+KITH_CO.web+'<br>VAT No: '+KITH_CO.vat+' | Company No: '+KITH_CO.co+'</div>'+
   '</div>';
 }
+// ── KITH INVOICE PDF (18 Nov 2026, Logan) ───────────────────────────
+// Accounts raise the invoice from the CRM: the same KITH document as the
+// estimate, headed Invoice, with the invoice number, date, due date, what's
+// been paid, the balance and how to pay (bank transfer to the Metro Bank
+// account). The total is always the job's final price.
+var INV_FILES={};
+function invBank(){const b=(CHANNELS&&CHANNELS.bank)||{};return {name:b.name||'Kith Cars Ltd',bank:b.bank||'Metro Bank',sort:b.sort||'',acc:b.acc||''};}
+function invNo(j){return j.invoiceNo||('KI'+String(j.id||'').replace(/^J/,''));}
+function invDueDays(j){const m=String(j.payTerms||'').match(/(\d+)\s*days?/i);return m?parseInt(m[1]):0;}
+function invDocData(j){
+  const d=estDocData(j);
+  const r2=n=>Math.round((parseFloat(n)||0)*100)/100;
+  const want=r2(j.quote);
+  if(want>0&&Math.abs(want-d.total)>0.01){
+    const diff=want-d.total, ex=r2(j.vatExempt?diff:diff/1.2);
+    d.labour.push({code:diff<0?'DISC':'ADJ',desc:diff<0?'Discount':'Agreed price adjustment',qty:1,unit:ex,total:ex});
+    d.lt=r2(d.lt+ex);d.sub=r2(d.sub+ex);d.vat=r2(want-d.sub);d.total=want;
+  }
+  const pays=(j.payments||[]).filter(p=>!p.writeOff&&(parseFloat(p.amount)||0)!==0);
+  d.paid=r2(pays.reduce((a,p)=>a+(parseFloat(p.amount)||0),0));
+  d.pays=pays;d.due=r2(d.total-d.paid);
+  return d;
+}
+function invDocHTML(j){
+  const d=invDocData(j), f=n=>(n<0?'-':'')+'£'+Math.abs(parseFloat(n)||0).toFixed(2), q=n=>(+n).toFixed(2);
+  const at=j.invDocAt?new Date(j.invDocAt):new Date();
+  const days=invDueDays(j), due=new Date(at.getTime()+days*864e5);
+  const dt=x=>x.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+  const v=j.dvla||{}, jd=j.judgement||{}, company=jd.company_name||'';
+  const eng=v.engineCapacity?(Math.round(v.engineCapacity/100)/10)+'L ('+v.engineCapacity+'cc)':(j.engineSize?j.engineSize+'L':'');
+  const row=(a,b)=>b?'<tr><td style="padding:1px 14px 1px 0;color:#222">'+a+'</td><td>'+escHtml(String(b))+'</td></tr>':'';
+  const TH='background:#e3e3e3;padding:6px 10px;font-weight:700;';
+  const th=t=>'<th style="'+TH+'text-align:left">'+t+'</th>', thr=t=>'<th style="'+TH+'text-align:right">'+t+'</th>';
+  const td=t=>'<td style="padding:7px 10px;border-bottom:1px solid #ddd;vertical-align:top">'+t+'</td>';
+  const tdr=t=>'<td style="padding:7px 10px;border-bottom:1px solid #ddd;text-align:right;vertical-align:top">'+t+'</td>';
+  const b=invBank(), paidUp=d.due<=0.005;
+  return '<div class="kest" style="background:#fff;color:#111;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:1.35;padding:34px 38px;max-width:820px;margin:0 auto">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
+      '<div><div style="font-size:24px;font-weight:800">Invoice</div><div style="letter-spacing:.5px">Invoice No: '+escHtml(invNo(j))+'</div>'+
+        (paidUp?'<div style="display:inline-block;margin-top:8px;padding:4px 12px;border:2px solid #1b7a32;color:#1b7a32;border-radius:4px;font-weight:900;font-size:14px;letter-spacing:2px">PAID</div>':'')+'</div>'+
+      '<div style="text-align:right"><div style="font-size:30px;font-weight:900;letter-spacing:6px;line-height:1">KITH CARS</div><div style="font-size:10px;font-weight:700;letter-spacing:3px;margin-top:4px">GARAGE &amp; BODYSHOP</div>'+
+        '<div style="margin-top:10px"><a href="https://'+KITH_CO.web+'" style="color:#1a4fd8">'+KITH_CO.web+'</a></div></div>'+
+    '</div>'+
+    '<table style="margin-top:14px;border-collapse:collapse;font-size:12px">'+row('Invoice Date:',dt(at))+
+      row('Payment Due:',days?dt(due)+' ('+days+' days)':'On collection')+row('Job Ref:',j.tmJob||'')+'</table>'+
+    '<div style="display:flex;gap:30px;margin-top:18px">'+
+      '<div style="flex:1"><div style="font-size:16px;margin-bottom:6px">Invoice To</div>'+
+        (company?'<div style="font-weight:700">'+escHtml(company)+'</div>':'')+'<div>'+escHtml(j.name||'')+'</div>'+
+        (j.address?'<div style="white-space:pre-wrap">'+escHtml(j.address)+'</div>':'')+
+        '<table style="margin-top:14px;border-collapse:collapse;font-size:12px">'+row('Mobile:',j.phone)+row('Email:',j.email)+'</table></div>'+
+      '<div style="flex:1"><div style="font-size:16px;margin-bottom:6px">Vehicle Information</div>'+
+        '<div style="display:inline-flex;align-items:stretch;border:2px solid #111;border-radius:5px;overflow:hidden;margin-bottom:8px">'+
+          '<span style="background:#1d4fbf;color:#fff;font-size:8px;padding:12px 4px 2px">GB</span>'+
+          '<span style="background:#f7c600;font-family:Arial Black,Arial,sans-serif;font-weight:900;font-size:18px;padding:4px 26px;letter-spacing:1px">'+escHtml(String(j.reg||'').toUpperCase())+'</span></div>'+
+        '<table style="border-collapse:collapse;font-size:12px">'+row('Make/Model:',[v.make||j.make,v.model||j.model].filter(Boolean).join(' ').toUpperCase())+
+          row('Engine Size:',eng)+row('Fuel Type:',String(v.fuelType||j.fuel||'').toUpperCase())+row('Manufacture:',v.yearOfManufacture||j.year)+row('Mileage:',j.mileageOut||j.mileage)+'</table></div>'+
+    '</div>'+
+    '<div style="border-top:1px solid #ccc;margin:16px 0 10px"></div>'+
+    (d.labour.length?'<div style="font-size:16px;margin-bottom:6px">Labour</div>'+
+      '<table style="width:100%;border-collapse:collapse;font-size:12px"><tr>'+th('Labour Code')+th('Description')+thr('Quantity')+thr('Unit Price')+thr('Total (ex. VAT)')+'</tr>'+
+      d.labour.map(x=>'<tr>'+td(escHtml(x.code))+td((/^(ADJ|DISC)$/.test(x.code)?'':'Standard Labour')+'<div style="font-style:italic;text-transform:uppercase">'+escHtml(x.desc)+'</div>')+tdr(q(x.qty))+tdr(f(x.unit))+tdr(f(x.total))+'</tr>').join('')+
+      '<tr><td colspan="5" style="text-align:right;padding:6px 10px;font-weight:700">Labour Total Ex Vat: &nbsp;'+f(d.lt)+'</td></tr></table>':'')+
+    (d.products.length?'<div style="font-size:16px;margin:12px 0 6px">Products</div>'+
+      '<table style="width:100%;border-collapse:collapse;font-size:12px"><tr>'+th('Product No.')+th('Description')+thr('Quantity')+thr('Unit Price')+thr('Total (ex. VAT)')+'</tr>'+
+      d.products.map(x=>'<tr>'+td(escHtml(x.no))+td(escHtml(String(x.desc).toUpperCase())+(x.noVat?' <span style="font-size:10px">(no VAT)</span>':'')+(x.brand?'<div style="font-size:10.5px;color:#444;margin-top:2px">Brand: '+escHtml(x.brand)+'</div>':''))+tdr(String(x.qty))+tdr(f(x.unit))+tdr(f(x.total))+'</tr>').join('')+
+      '<tr><td colspan="5" style="text-align:right;padding:6px 10px;font-weight:700">Products Total Ex Vat: &nbsp;'+f(d.pt)+'</td></tr></table>':'')+
+    '<table style="margin:12px 0 0 auto;border-collapse:collapse;font-size:12px;font-weight:700">'+
+      '<tr><td style="padding:2px 30px 2px 0">Sub Total:</td><td style="text-align:right">'+f(d.sub)+'</td></tr>'+
+      '<tr><td style="padding:2px 30px 2px 0">VAT (20%):</td><td style="text-align:right">'+f(d.vat)+'</td></tr>'+
+      '<tr><td style="padding:4px 30px 2px 0">Total (inc. VAT):</td><td style="text-align:right;font-size:15px">'+f(d.total)+'</td></tr>'+
+      d.pays.map(p=>'<tr><td style="padding:2px 30px 2px 0;font-weight:400">Paid'+(p.ref==='DEPOSIT'?' (deposit)':'')+(p.at?' '+escHtml(String(p.at).split(',')[0]):'')+':</td><td style="text-align:right;font-weight:400">-'+f(p.amount)+'</td></tr>').join('')+
+      '<tr><td style="padding:6px 30px 2px 0;border-top:2px solid #111">Balance Due:</td><td style="text-align:right;font-size:18px;border-top:2px solid #111;padding-top:6px">'+f(Math.max(0,d.due))+'</td></tr></table>'+
+    (paidUp?'':'<div style="margin-top:18px;border:2px solid #1d3f8f;border-radius:5px;padding:10px 12px;font-size:12px">'+
+      '<div style="font-weight:800;margin-bottom:4px">How to pay — bank transfer</div>'+
+      '<table style="border-collapse:collapse;font-size:12px">'+row('Account name:',b.name)+row('Bank:',b.bank)+row('Sort code:',b.sort)+row('Account no:',b.acc)+
+      '<tr><td style="padding:1px 14px 1px 0">Reference:</td><td style="font-weight:800">'+escHtml(invNo(j)+' '+String(j.reg||'').toUpperCase())+'</td></tr></table>'+
+      (b.sort&&b.acc?'':'<div style="margin-top:4px">Call '+KITH_CO.tel+' for our bank details.</div>')+'</div>')+
+    (j.invNote?'<div style="margin-top:14px;border:1px solid #bbb;border-radius:4px;padding:8px 10px;font-size:11.5px;white-space:pre-wrap"><strong>Notes</strong><br>'+escHtml(j.invNote)+'</div>':'')+
+    '<div style="margin-top:40px;font-size:11px">Thank you for choosing KITH Cars. Our workmanship is guaranteed for 3 months on mechanical work and 12 months on bodywork; parts carry the manufacturer’s or supplier’s warranty.</div>'+
+    '<div style="border-top:3px solid #1d3f8f;margin-top:8px;padding-top:8px;text-align:center;font-size:9.5px;color:#666;line-height:1.6">'+
+      KITH_CO.name+', '+KITH_CO.addr+'<br>Tel: '+KITH_CO.tel+' &nbsp;|&nbsp; Email: '+KITH_CO.email+' &nbsp;|&nbsp; Website: '+KITH_CO.web+'<br>VAT No: '+KITH_CO.vat+' | Company No: '+KITH_CO.co+'</div>'+
+  '</div>';
+}
+function invFileName(j){return 'KITH Cars invoice '+invNo(j)+(j.reg?' '+String(j.reg).replace(/\s+/g,'').toUpperCase():'')+'.pdf';}
+function invSig(j){const d=invDocData(j);return d.total.toFixed(2)+'/'+d.paid.toFixed(2)+'/'+invNo(j)+'/'+(j.invNote||'').length;}
+function invLast(j){const a=j.invoiceDocs||[];return a[a.length-1]||null;}
+function printInvDoc(id){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
+  if(!j.invDocAt){j.invDocAt=Date.now();if(!j.invoiceNo)j.invoiceNo=invNo(j);save(j);}
+  const w=window.open('','_blank');
+  if(!w){alert('Allow pop-ups for the CRM to see the invoice.');return;}
+  w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Invoice '+escHtml(invNo(j))+' — '+escHtml(j.reg||'')+'</title>'+
+    '<style>@page{size:A4;margin:10mm}body{margin:0;background:#fff}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}</style></head><body>'+
+    invDocHTML(j)+'<script>setTimeout(function(){window.print();},300);<\/script></body></html>');
+  w.document.close();
+}
+async function makeInvPdf(id,btn){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
+  if(!(parseFloat(j.quote)>0)&&!confirm('This job has no final price (£0). Make the invoice anyway?'))return;
+  if(btn){btn.disabled=true;btn.textContent='Making the invoice…';}
+  try{
+    if(!j.invoiceNo)j.invoiceNo=invNo(j);
+    if(!j.invDocAt)j.invDocAt=Date.now();
+    const h2p=await loadHtml2Pdf();
+    const box=document.createElement('div');
+    box.style.cssText='position:fixed;left:-10000px;top:0;width:794px;background:#fff';
+    box.innerHTML=invDocHTML(j);document.body.appendChild(box);
+    let blob;
+    try{
+      blob=await h2p().set({margin:0,filename:'invoice.pdf',image:{type:'jpeg',quality:0.95},
+        html2canvas:{scale:2,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}})
+        .from(box.firstChild).outputPdf('blob');
+    }finally{box.remove();}
+    const reg=String(j.reg||j.id).replace(/[^A-Z0-9]/gi,'').toUpperCase();
+    const path='invoices/'+reg+'-'+String(j.invoiceNo).replace(/[^A-Z0-9-]/gi,'')+'-'+Date.now()+'.pdf';
+    const res=await fetch(SB_URL+'/storage/v1/object/'+SHEET_BUCKET+'/'+path,{method:'POST',headers:{...SB_HDR,'Content-Type':'application/pdf','x-upsert':'true'},body:blob});
+    if(!res.ok)throw new Error('upload failed ('+res.status+')');
+    const url=SB_URL+'/storage/v1/object/public/'+SHEET_BUCKET+'/'+path;
+    const d=invDocData(j);
+    j.invoiceDocs=j.invoiceDocs||[];
+    j.invoiceDocs.push({url,no:j.invoiceNo,total:d.total,due:d.due,at:ts(),by:currentUser?currentUser.name:'',sig:invSig(j)});
+    try{INV_FILES[url]=new File([blob],invFileName(j),{type:'application/pdf'});}catch(e){}
+    j.log=j.log||[];
+    j.log.push({t:ts(),s:'🧾 Invoice '+j.invoiceNo+' made as a PDF (£'+d.total.toFixed(2)+' inc VAT, £'+Math.max(0,d.due).toFixed(2)+' due)'+(currentUser?' ['+currentUser.name+']':'')});
+    save(j);
+    if(typeof toast==='function')toast('✓ Invoice '+j.invoiceNo+' ready — press Send');
+  }catch(e){alert('Could not make the invoice PDF: '+e.message);}
+  finally{try{forceRenderDetail();}catch(e){renderDetail();}}
+}
+function invPrefetch(j){
+  const d=invLast(j);if(!d||INV_FILES[d.url])return;
+  INV_FILES[d.url]='loading';
+  fetch(d.url).then(r=>r.ok?r.blob():null).then(b=>{if(b)INV_FILES[d.url]=new File([b],invFileName(j),{type:'application/pdf'});else delete INV_FILES[d.url];}).catch(()=>{delete INV_FILES[d.url];});
+}
+function invMsg(j){
+  const d=invDocData(j);
+  return 'Hi '+firstName(j)+', please find attached invoice '+invNo(j)+' for your '+vehDesc(j)+' — £'+d.total.toFixed(2)+' inc VAT'+
+    (d.due>0.005?(d.paid>0?', £'+d.due.toFixed(2)+' left to pay':'')+'. Payment by bank transfer, details on the invoice (reference '+invNo(j)+').':'. Paid in full — thank you.')+
+    ' Thank you for choosing KITH Cars.';
+}
+// Share sheet (iPhone/Android: WhatsApp, Mail…) with the PDF attached. Runs
+// straight from the tap, so the file must already be on the page.
+function invShare(id){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
+  const d=invLast(j);if(!d){alert('Make the invoice first.');return;}
+  const f=INV_FILES[d.url];
+  if(f instanceof File&&navigator.canShare&&navigator.canShare({files:[f]})){
+    navigator.share({files:[f],text:invMsg(j)}).then(()=>invSent(j,'shared')).catch(()=>{});
+    return;
+  }
+  if(f==='loading'){alert('Still loading the PDF — try again in a second.');return;}
+  // Desktop: download the PDF, then open WhatsApp with the message to attach it to.
+  const a=document.createElement('a');a.href=f instanceof File?URL.createObjectURL(f):d.url;a.download=invFileName(j);a.target='_blank';document.body.appendChild(a);a.click();a.remove();
+  const num=(typeof estPhone==='function'?estPhone(j):String(j.phone||'').replace(/^0/,'44').replace(/\D/g,''));
+  if(num&&confirm('The invoice PDF has downloaded.\n\nOpen WhatsApp to '+(j.name||num)+' now? (Attach the PDF there.)')){
+    try{openWa(waLink(num,invMsg(j)),'kith-whatsapp');}catch(e){window.open(waLink(num,invMsg(j)),'_blank');}
+    invSent(j,'WhatsApp');
+  }
+}
+async function invEmail(id,btn){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
+  const d=invLast(j);if(!d){alert('Make the invoice first.');return;}
+  const to=(typeof estEmailTo==='function'?estEmailTo(j):'')||j.email;
+  if(!to){alert('No email address on this job.');return;}
+  if(!relayConnected()){
+    location.href='mailto:'+encodeURIComponent(to)+'?subject='+encodeURIComponent('KITH Cars invoice '+invNo(j))+'&body='+encodeURIComponent(invMsg(j)+'\n\nInvoice: '+d.url);
+    invSent(j,'email (by hand)');return;
+  }
+  if(btn){btn.disabled=true;btn.textContent='Emailing…';}
+  try{
+    const res=await fetch(relayUrl(),{method:'POST',headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'email',secret:relaySecret(),to,subject:'KITH Cars invoice '+invNo(j)+(j.reg?' — '+String(j.reg).toUpperCase():''),
+        text:invMsg(j),fromName:'KITH Cars',replyTo:KITH_CO.email,pdfUrl:d.url,pdfName:invFileName(j)})});
+    const r=await res.json();
+    if(r&&r.ok){invSent(j,'email to '+to);toast('✓ Invoice emailed to '+to);}
+    else alert('The email did not go: '+((r&&r.error)||'no reply from the relay'));
+  }catch(e){alert('The email did not go: '+e.message);}
+  finally{try{forceRenderDetail();}catch(e){renderDetail();}}
+}
+function invSent(j,how){
+  j.invoiceSentAt=ts();if(!j.invoicedAt)j.invoicedAt=ts();
+  j.log=j.log||[];j.log.push({t:ts(),s:'📤 Invoice '+invNo(j)+' sent ('+how+')'+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);
+}
+function setInvField(id,k,v){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  j[k]=String(v||'').trim();save(j);try{forceRenderDetail();}catch(e){renderDetail();}
+}
+async function saveInvBank(){
+  const g=k=>String((document.getElementById('ib-'+k)||{}).value||'').trim();
+  const bank={name:g('name')||'Kith Cars Ltd',bank:g('bank')||'Metro Bank',sort:g('sort'),acc:g('acc')};
+  CHANNELS=Object.assign({},CHANNELS,{bank});
+  safeSet('kith_channels',JSON.stringify(CHANNELS));
+  try{await casWrite('__channels__',()=>({channels:CHANNELS}));toast('✓ Bank details saved for every invoice');}
+  catch(e){alert('Saved on this device, but it could not be shared: '+(e.message||e));}
+  try{forceRenderDetail();}catch(e){renderDetail();}
+}
+function invBankH(){
+  const b=invBank(), set=b.sort&&b.acc;
+  const inp=(k,ph,v)=>'<input id="ib-'+k+'" class="fi2" style="flex:1;min-width:110px;font-size:12px;padding:5px 8px" placeholder="'+ph+'" value="'+escHtml(v||'')+'">';
+  return '<details style="margin-top:8px"'+(set?'':' open')+'><summary style="font-size:11px;color:'+(set?'var(--dim)':'var(--amber)')+';cursor:pointer">🏦 Bank details on the invoice'+(set?' — '+escHtml(b.bank)+' '+escHtml(b.sort)+' / '+escHtml(b.acc):' — not set yet')+'</summary>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">'+inp('name','Account name',b.name)+inp('bank','Bank',b.bank)+inp('sort','Sort code',b.sort)+inp('acc','Account number',b.acc)+'</div>'+
+    '<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="saveInvBank()">Save bank details</button></details>';
+}
+function invoicePanelH(j){
+  const d=invDocData(j), last=invLast(j), fresh=last&&last.sig===invSig(j);
+  if(last)invPrefetch(j);
+  const box='background:var(--surface2);border:2px solid '+(fresh?'var(--green)':'var(--gold)')+';border-radius:var(--r);padding:11px;margin-bottom:10px';
+  return '<div style="'+box+'">'+
+    '<div style="font-size:12px;font-weight:800">🧾 Invoice '+escHtml(invNo(j))+'</div>'+
+    '<div style="font-size:12px;margin-top:4px">Total <strong>£'+d.total.toFixed(2)+'</strong> inc VAT'+(d.paid>0?' · paid £'+d.paid.toFixed(2):'')+' · due <strong>£'+Math.max(0,d.due).toFixed(2)+'</strong></div>'+
+    (Math.abs((parseFloat(j.quote)||0)-estDocData(j).total)>0.01&&parseFloat(j.quote)>0?'<div style="font-size:11px;color:var(--amber);margin-top:3px">⚠ The lines add up to £'+estDocData(j).total.toFixed(2)+' but the final price is £'+(parseFloat(j.quote)).toFixed(2)+' — the invoice shows the difference as a line.</div>':'')+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center">'+
+      '<input class="fi2" style="width:120px;font-size:12px;padding:4px 8px" placeholder="Invoice no." value="'+escHtml(j.invoiceNo||invNo(j))+'" onchange="setInvField(\''+j.id+'\',\'invoiceNo\',this.value)">'+
+      '<select class="fi2" style="font-size:12px;padding:4px 6px" onchange="setInvField(\''+j.id+'\',\'payTerms\',this.value)">'+
+        PAY_TERMS.map(t=>'<option'+((j.payTerms||'On collection')===t?' selected':'')+'>'+t+'</option>').join('')+'</select>'+
+    '</div>'+
+    '<textarea class="fi2" style="width:100%;margin-top:6px;font-size:12px;min-height:34px" placeholder="Note on the invoice (optional)" onchange="setInvField(\''+j.id+'\',\'invNote\',this.value)">'+escHtml(j.invNote||'')+'</textarea>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+
+      '<button class="btn btn-ghost btn-sm" onclick="printInvDoc(\''+j.id+'\')">👁 View / print</button>'+
+      '<button class="btn '+(fresh?'btn-ghost':'btn-gold')+' btn-sm" onclick="makeInvPdf(\''+j.id+'\',this)">📄 '+(last?(fresh?'Remake PDF':'Update the PDF'):'Make invoice PDF')+'</button>'+
+    '</div>'+
+    (last?'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+
+      (fresh?'':'<div style="width:100%;font-size:11px;color:var(--amber)">⚠ The job changed since the last PDF — press Update the PDF before sending.</div>')+
+      '<button class="btn btn-gold btn-sm" style="flex:1" onclick="invShare(\''+j.id+'\')">💬 Send PDF (WhatsApp / share)</button>'+
+      (((typeof estEmailTo==='function'&&estEmailTo(j))||j.email)?'<button class="btn btn-ghost btn-sm" style="flex:1" onclick="invEmail(\''+j.id+'\',this)">✉️ Email it</button>':'')+
+      '<a class="btn btn-ghost btn-sm" href="'+last.url+'" target="_blank">📎 Open PDF</a>'+
+    '</div>'+
+    '<div style="font-size:10.5px;color:var(--dim);margin-top:4px">Made '+escHtml(last.at||'')+(last.by?' by '+escHtml(last.by):'')+(j.invoiceSentAt?' · sent '+escHtml(j.invoiceSentAt):' · not sent yet')+'</div>':'')+
+    invBankH()+
+  '</div>';
+}
 // ── TWO ESTIMATES: MAIN DEALER + NON-MAIN-DEALER (16 Nov 2026) ──
 // While the customer still has both prices, the estimate is two documents
 // (Option A main dealer parts, Option B non-dealer parts, same labour),
@@ -7755,11 +7987,13 @@ function actH(j){
       break;
     case 'accounts':
       h+='<div class="notice" style="margin-bottom:10px">Accounts: check the job sheet, raise the invoice, chase payment.</div>'+
+        invoicePanelH(j)+
         jobSheetH(j)+
         '<button class="btn btn-gold btn-full" style="margin-top:10px" onclick="markInvoiced()">Invoiced \u2192 Accounts Receivable</button>';
       break;
     case 'receivable':
       h+=arH(j)+
+        invoicePanelH(j)+
         accountTypeH(j)+
         paymentsH(j)+
         '<button class="btn btn-gold btn-full" style="margin-top:10px" onclick="mv(\'review\',\'Paid \\u2014 on to review\')">Paid \u2192 Review / Referral</button>';
@@ -15607,7 +15841,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1310';
+const CRM_BUILD='2026-11-18-1400';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
