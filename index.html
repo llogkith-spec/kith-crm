@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v19.2 \u00b7 16 Nov';
+const BUILD='v19.3 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6842,6 +6842,7 @@ function openSendNowBox(id,docI,notJustApproved){
   // 16 Nov 2026: on the Mac, WhatsApp is not in the share box unless it is switched on there,
   // so the chat + PDF download comes first (like before, without the link); phones share first.
   const phone=estIsPhone();
+  const ios=phone&&/iPhone|iPad|iPod/i.test(navigator.userAgent||'')||(/Macintosh/.test(navigator.userAgent||'')&&navigator.maxTouchPoints>1);
   const shareBtn=share?'<button id="sb-share" class="btn btn-full" disabled style="margin-bottom:6px;font-weight:800;background:var(--surface2);color:var(--dim)" onclick="sendBoxShare(\''+j.id+'\')">⏳ Getting the PDF ready…</button>'+
       '<div style="font-size:11px;color:var(--faint);margin-bottom:10px">'+(phone?'Opens the share box — pick <strong>WhatsApp</strong>, then the customer, then send.':'Share box — only works if WhatsApp is listed in it. Not there? In the share box press <strong>Edit Extensions…</strong> and tick <strong>WhatsApp</strong>.')+'</div>':'';
   const chatBtn=num?'<button class="btn btn-full" style="margin-bottom:6px;'+(phone&&share?'background:var(--surface2);border:1px solid var(--green);color:var(--green)':'background:var(--green);color:#111;font-weight:800')+'" onclick="sendBoxChat(\''+j.id+'\')">💬 Open WhatsApp + download the PDF to drop in</button>'+
@@ -6850,7 +6851,14 @@ function openSendNowBox(id,docI,notJustApproved){
   w.innerHTML='<div style="background:var(--surface);border:2px solid var(--green);border-radius:var(--r);padding:20px;max-width:460px;width:100%">'+
     '<div style="font-weight:800;font-size:16px;margin-bottom:4px">'+(notJustApproved?'💬 Send the estimate PDF to ':'✓ Approved — now send the PDF to ')+escHtml(firstName(j))+'</div>'+
     '<div style="font-size:12px;color:var(--dim);margin-bottom:14px">'+(notJustApproved?'':'Nothing has gone to the customer yet. ')+(num?'WhatsApp: <strong>+'+escHtml(num)+'</strong> · '+money2(parseFloat(j.quote)||0):'<span style="color:var(--red)">No valid mobile on this job — fix it with Edit first.</span>')+'</div>'+
-    (phone?shareBtn+chatBtn:chatBtn+shareBtn)+
+    (ios&&share&&num?
+      // 18 Nov 2026: WhatsApp Business only takes the PDF from the share box once it is
+      // awake — and only lists customers you already have a chat with. Step 1 does both.
+      '<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:4px">STEP 1</div>'+
+      '<button class="btn btn-full" style="margin-bottom:4px;background:var(--surface2);border:1px solid var(--green);color:var(--green);font-weight:800" onclick="sendBoxWake(\''+j.id+'\')">\ud83d\udcac Open '+escHtml(firstName(j))+'\u2019s chat in WhatsApp Business</button>'+
+      '<div style="font-size:11px;color:var(--faint);margin-bottom:10px">Send the message there, then come back here.</div>'+
+      '<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:4px">STEP 2</div>'+shareBtn
+     :(phone?shareBtn+chatBtn:chatBtn+shareBtn))+
     (function(){try{return companySendH(j);}catch(e){return '';}})()+
     (estIsPhone()?'<div style="font-size:11px;color:var(--faint);margin:2px 0 6px">Opens: <strong>'+(waAppPref()==='business'?'WhatsApp Business':'WhatsApp')+'</strong> \u00b7 <a href="#" style="color:var(--gold)" onclick="setWaAppPref(waAppPref()===\'business\'?\'personal\':\'business\');openSendNowBox(\''+j.id+'\',window._sbDoc,true);return false">switch to '+(waAppPref()==='business'?'normal WhatsApp':'WhatsApp Business')+'</a></div>':'')+
     '<div id="sb-msg" style="font-size:12px;margin:6px 0 10px;line-height:1.5"></div>'+
@@ -6881,6 +6889,16 @@ function undoApproval(id){
   try{stageMoved(j,from,'signoff');}catch(e){}
   save(j);sendBoxClose();try{renderDetail();renderAll();}catch(e){}
   if(typeof toast==='function')toast('\u21a9 Back to Sign-Off \u2014 change it and approve again');
+}
+// iPhone step 1: open the customer's chat in WhatsApp Business with the message —
+// this wakes the app (so the share box works) and puts the customer in "Send to"
+function sendBoxWake(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const num=estPhone(j);if(!num)return;
+  const d=estDocFor(j,window._sbDoc);
+  window._sbWoke=Date.now();
+  sendBoxMsg('Step 1 done? Send the message in WhatsApp Business, come back here, then press <strong>Step 2</strong> and pick <strong>'+escHtml(firstName(j))+'</strong> in \u201cSend to\u201d.');
+  openWa(waLink(num,estimateWAMsg(j)));
 }
 function sendBoxClose(){try{clearInterval(window._sbTimer);}catch(e){}document.getElementById('sendnow-box')?.remove();}
 function sendBoxMsg(h,col){const m=document.getElementById('sb-msg');if(m){m.innerHTML=h;m.style.color=col||'var(--dim)';}}
@@ -15540,7 +15558,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1055';
+const CRM_BUILD='2026-11-18-1100';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
