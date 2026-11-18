@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v20.0 \u00b7 16 Nov';
+const BUILD='v20.1 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -5516,7 +5516,7 @@ function renderPipeline(){
   if(q&&!total)h+='<div style="padding:20px;text-align:center;color:var(--faint)">No jobs match “'+escHtml(q)+'”</div>';
   vp.innerHTML=h;
 }
-function openJob(id){try{const _j=jobs.find(x=>x.id===id);if(_j){let c=mergeSidesForJob(_j);if(syncQuoteToEstimate(_j))c=true;if(serviceTidyParts(_j))c=true;if(oilPartsTidy(_j))c=true;if(brainFixService(_j))c=true;if(c)save(_j);}}catch(e){}curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
+function openJob(id){try{const _j=jobs.find(x=>x.id===id);if(_j){let c=mergeSidesForJob(_j);if(discountFromIntake(_j))c=true;if(syncQuoteToEstimate(_j))c=true;if(serviceTidyParts(_j))c=true;if(oilPartsTidy(_j))c=true;if(brainFixService(_j))c=true;if(c)save(_j);}}catch(e){}curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
 
 // Redraw even if something still has focus. Only ever called straight
 // after a stage change, when there is nothing half-typed to protect.
@@ -7222,6 +7222,8 @@ function estDocData(j,opt){
     const qq=parseFloat(j.quote)||parseFloat(j.finalEst)||0;
     if(qq>0){const ex=j.vatExempt?qq:qq/1.2;labour.push({code:'LAB',desc:String(j.work||'Work as quoted').slice(0,120),qty:1,unit:ex,total:r2(ex)});}
   }
+  try{const off=discountExVat(j,labour,products);
+    if(off>0)labour.push({code:'DISC',desc:discountLabel(j),qty:1,unit:-off,total:-off});}catch(e){}
   const lt=labour.reduce((a,x)=>a+x.total,0), pt=products.reduce((a,x)=>a+x.total,0);
   const vatable=j.vatExempt?0:labour.filter(x=>!x.noVat).reduce((a,x)=>a+x.total,0)+products.filter(x=>!x.noVat).reduce((a,x)=>a+x.total,0);
   const vat=r2(vatable*0.2), sub=r2(lt+pt), total=r2(sub+vat);
@@ -7229,7 +7231,7 @@ function estDocData(j,opt){
 }
 function estDocNo(j,opt){return (j.tmJob||('KE'+String(j.id||'').replace(/^J/,'')))+(opt==='md'?'-A':opt==='af'?'-B':'');}
 function estDocHTML(j,opt){
-  const d=estDocData(j,opt), f=n=>'£'+(parseFloat(n)||0).toFixed(2), q=n=>(Number.isInteger(+n)?(+n).toFixed(2):(+n).toFixed(2));
+  const d=estDocData(j,opt), f=n=>((parseFloat(n)||0)<0?'-':'')+'£'+Math.abs(parseFloat(n)||0).toFixed(2), q=n=>(Number.isInteger(+n)?(+n).toFixed(2):(+n).toFixed(2));
   const from=j.estDocAt?new Date(j.estDocAt):new Date();
   const exp=new Date(from.getTime()+30*864e5);exp.setHours(18,0,0,0);
   const dt=x=>x.toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
@@ -7263,7 +7265,7 @@ function estDocHTML(j,opt){
     '<div style="border-top:1px solid #ccc;margin:16px 0 10px"></div>'+
     (d.labour.length?'<div style="font-size:16px;margin-bottom:6px">Labour</div>'+
       '<table style="width:100%;border-collapse:collapse;font-size:12px"><tr>'+th('Labour Code')+th('Description')+thr('Quantity')+thr('Unit Price')+thr('Total (ex. VAT)')+'</tr>'+
-      d.labour.map(x=>'<tr>'+td(escHtml(x.code))+td('Standard Labour<div style="font-style:italic;text-transform:uppercase">'+escHtml(x.desc)+'</div>')+tdr(q(x.qty))+tdr(f(x.unit))+tdr(f(x.total))+'</tr>').join('')+
+      d.labour.map(x=>'<tr>'+td(escHtml(x.code))+td((x.code==='DISC'?'':'Standard Labour')+'<div style="font-style:italic;text-transform:uppercase">'+escHtml(x.desc)+'</div>')+tdr(q(x.qty))+tdr(f(x.unit))+tdr(f(x.total))+'</tr>').join('')+
       '<tr><td colspan="5" style="text-align:right;padding:6px 10px;font-weight:700">Labour Total Ex Vat: &nbsp;'+f(d.lt)+'</td></tr></table>':'')+
     (d.products.length?'<div style="font-size:16px;margin:12px 0 6px">Products</div>'+
       '<table style="width:100%;border-collapse:collapse;font-size:12px"><tr>'+th('Product No.')+th('Description')+thr('Quantity')+thr('Unit Price')+thr('Total (ex. VAT)')+'</tr>'+
@@ -7509,6 +7511,81 @@ function invoicePanelH(j){
     '</div>'+
     '<div style="font-size:10.5px;color:var(--dim);margin-top:4px">Made '+escHtml(last.at||'')+(last.by?' by '+escHtml(last.by):'')+(j.invoiceSentAt?' · sent '+escHtml(j.invoiceSentAt):' · not sent yet')+'</div>':'')+
     invBankH()+
+  '</div>';
+}
+// ── DISCOUNT / REFERRAL CODES (18 Nov 2026, Logan) ──────────────────
+// A code the customer gives (at intake, or later to Joel / Logan) goes on the
+// job and comes off the estimate, the final quote and the invoice as its own
+// minus line. Known codes fill themselves in; anything else, type the amount.
+//   STUDENT            5% off (university students)
+//   ONLINE / WEB…      online booking: £50 off, £20 off servicing (inc VAT)
+//   a referral code    another customer's code (e.g. JOH1234) — type the £ off
+function discountKnown(j,code){
+  const c=String(code||'').trim().toUpperCase().replace(/\s+/g,'');
+  if(!c)return null;
+  if(/^(STUDENT|STUDENTS|UNI|UNISTUDENT|STU5)$/.test(c))return {type:'pct',value:5,label:'Student discount (5%)'};
+  if(/^(ONLINE|WEB|WEBSITE|BOOKONLINE|ONLINEBOOKING|KITHONLINE)\d*$/.test(c)){
+    const svc=/\bservic/i.test(String(j.work||'')+' '+String(j.serviceType||'')+' '+String(j.labourDesc||''));
+    return {type:'amount',value:svc?20:50,label:'Online booking discount'};
+  }
+  try{const r=jobs.find(x=>x&&x.id!==j.id&&String(x.referralCode||'').toUpperCase()===c);
+    if(r)return {type:'amount',value:null,label:'Referral from '+(r.name||'a customer'),referrer:r.id};}catch(e){}
+  return null;
+}
+// ex-VAT amount the discount takes off, given the lines before it
+function discountExVat(j,labour,products){
+  const D=j.discount;if(!D||!(parseFloat(D.value)>0))return 0;
+  const r2=n=>Math.round(n*100)/100;
+  if(D.type==='pct'){
+    const base=labour.filter(x=>!x.noVat).reduce((a,x)=>a+x.total,0)+products.filter(x=>!x.noVat).reduce((a,x)=>a+x.total,0);
+    return r2(base*(parseFloat(D.value)/100));
+  }
+  return r2(j.vatExempt?parseFloat(D.value):parseFloat(D.value)/1.2);   // £ off is inc VAT, as the customer sees it
+}
+function discountLabel(j){const D=j.discount||{};return (D.label||'Discount')+(D.code?' — code '+D.code:'')+(D.type==='pct'?' ('+D.value+'%)':'');}
+function discountFromIntake(j){
+  if(!j||j.discount||j.discountChecked)return false;
+  const code=String(j.discountCode||(j.judgement&&j.judgement.discount_code)||'').trim();
+  if(!code)return false;
+  j.discountChecked=true;
+  const k=discountKnown(j,code);
+  j.discount={code:code.toUpperCase(),type:k?k.type:'amount',value:k?k.value:null,label:k?k.label:'Discount',referrer:k&&k.referrer||'',by:'intake',at:ts()};
+  return true;
+}
+function discountAfterChange(j,what){
+  j.log=j.log||[];j.log.push({t:ts(),s:'🏷 '+what+(currentUser?' ['+currentUser.name+']':'')});
+  // the final quote is always what the estimate adds up to — discount included
+  try{ if(!syncQuoteToEstimate(j)&&!estTwo(j)){const t=estDocData(j).total;if(t>0&&Math.abs(t-(parseFloat(j.quote)||0))>0.009&&!['receivable','review','done','lost'].includes(j.stage)){j.quote=t;j.finalEst=t;}} }catch(e){}
+  save(j);try{forceRenderDetail();}catch(e){renderDetail();}
+}
+function discCodeSet(id,v){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const code=String(v||'').trim().toUpperCase();
+  if(!code){delete j.discount;discountAfterChange(j,'Discount removed');return;}
+  const k=discountKnown(j,code);
+  j.discount={code,type:k?k.type:((j.discount&&j.discount.type)||'amount'),value:k?k.value:(j.discount&&j.discount.value),label:k?k.label:'Discount',referrer:k&&k.referrer||'',by:currentUser?currentUser.name:'',at:ts()};
+  discountAfterChange(j,'Discount code '+code+(k?' — '+k.label:'')+' added');
+}
+function discValSet(id,type,v){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  j.discount=Object.assign({code:'',label:'Discount'},j.discount||{},{type,value:parseFloat(v)>0?parseFloat(v):null,by:currentUser?currentUser.name:'',at:ts()});
+  discountAfterChange(j,'Discount set to '+(type==='pct'?v+'%':'£'+(parseFloat(v)||0).toFixed(2)+' inc VAT'));
+}
+function discountPanelH(j){
+  const D=j.discount||{}, has=parseFloat(D.value)>0;
+  let off=0;try{if(has){const d0=Object.assign({},j);delete d0.discount;off=estDocData(d0).total-estDocData(j).total;}}catch(e){}
+  const inp='background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:13px;color:var(--fg)';
+  return '<div style="background:var(--surface2);border:1px solid '+(has?'var(--green)':(D.code?'var(--amber)':'var(--border)'))+';border-radius:var(--r);padding:10px 12px;margin-bottom:10px">'+
+    '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin-bottom:6px">🏷 Discount / referral code</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+
+      '<input style="'+inp+';width:130px;text-transform:uppercase" placeholder="Code" value="'+escHtml(D.code||'')+'" onchange="discCodeSet(\''+j.id+'\',this.value)">'+
+      '<span style="font-size:12px;color:var(--dim)">£ off</span><input type="number" step="any" inputmode="decimal" min="0" style="'+inp+';width:80px" placeholder="inc VAT" value="'+(D.type!=='pct'&&D.value?D.value:'')+'" onchange="discValSet(\''+j.id+'\',\'amount\',this.value)">'+
+      '<span style="font-size:12px;color:var(--dim)">or %</span><input type="number" step="any" inputmode="decimal" min="0" max="100" style="'+inp+';width:60px" value="'+(D.type==='pct'&&D.value?D.value:'')+'" onchange="discValSet(\''+j.id+'\',\'pct\',this.value)">'+
+      (D.code||has?'<button class="btn btn-ghost btn-sm" onclick="discCodeSet(\''+j.id+'\',\'\')">Remove</button>':'')+
+    '</div>'+
+    (has?'<div style="font-size:12px;color:var(--green);margin-top:6px">✓ '+escHtml(discountLabel(j))+' — £'+off.toFixed(2)+' off, on the estimate and invoice</div>':
+     D.code?'<div style="font-size:12px;color:var(--amber);margin-top:6px">⚠ Code '+escHtml(D.code)+(D.label&&D.label!=='Discount'?' ('+escHtml(D.label)+')':'')+' — put in how much it’s worth (£ or %)</div>':
+     '<div style="font-size:11px;color:var(--dim);margin-top:4px">STUDENT = 5% · ONLINE = £50 (£20 servicing) · a customer’s referral code — or type any amount.</div>')+
   '</div>';
 }
 // ── TWO ESTIMATES: MAIN DEALER + NON-MAIN-DEALER (16 Nov 2026) ──
@@ -7894,7 +7971,7 @@ function actH(j){
       // 16 Nov 2026: Final Estimate and Logan Sign-Off are one step — the
       // quote is checked and changed here, and Approve sends it to the customer.
       if(j.declined&&!j.declined.closed){h+=declinedH(j);break;}
-      h+=signOffH(j)+(LF_OPEN[j.id]?labourFixH(j,'signoff'):'')+finEditH(j,true);
+      h+=discountPanelH(j)+signOffH(j)+(LF_OPEN[j.id]?labourFixH(j,'signoff'):'')+finEditH(j,true);
       break;
     case 'contact':
       if(j.declined&&!j.declined.closed){h+=declinedH(j)+phoneRowH(j);break;}
@@ -13957,6 +14034,8 @@ function autoPilot(){
   try{jobs.forEach(j=>{if(j&&!j.mergedInto&&['labour','parts','signoff'].includes(j.stage)&&dedupeParts(j))save(j);});}catch(e){}
   // v18.0: brake labour on one line, not left + right (jobs not yet sent to the customer)
   try{jobs.forEach(j=>{try{if(mergeSidesForJob(j))save(j);}catch(e){}});}catch(e){}
+  // v20.1: discount / referral code from the intake goes on the job
+  try{jobs.forEach(j=>{try{if(discountFromIntake(j))save(j);}catch(e){}});}catch(e){}
   // v19.4: the final quote is what the estimate adds up to
   try{jobs.forEach(j=>{try{if(syncQuoteToEstimate(j))save(j);}catch(e){}});}catch(e){}
   // v18.3: service parts that do not belong (fuel filter on a petrol, wipers, duplicates…)
@@ -15939,7 +16018,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1430';
+const CRM_BUILD='2026-11-18-1500';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
