@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v20.1 \u00b7 16 Nov';
+const BUILD='v20.2 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -1128,6 +1128,7 @@ const STAGES=[
   {id:'receivable',label:'19 · Accounts Receivable',cls:'s-done',     badge:'b-done',      owner:'Accounts'},
   {id:'review',    label:'20 · Review / Referral', cls:'s-done',      badge:'b-done',      owner:'Service Adviser'},
   {id:'followup',  label:'21 · Follow-up Call',    cls:'s-done',      badge:'b-done',      owner:'Service Adviser'},
+  {id:'later',     label:'⏰ Still interested · Contact in 1 month', cls:'s-waiting', badge:'b-waiting', owner:'Service Adviser'},
   {id:'lost',      label:'✕ Lost',                 cls:'s-lost',      badge:'b-lost',      owner:''},
 ];
 
@@ -7524,6 +7525,8 @@ function discountKnown(j,code){
   const c=String(code||'').trim().toUpperCase().replace(/\s+/g,'');
   if(!c)return null;
   if(/^(STUDENT|STUDENTS|UNI|UNISTUDENT|STU5)$/.test(c))return {type:'pct',value:5,label:'Student discount (5%)'};
+  // 18 Nov 2026 (Logan): Black Friday campaign \u2014 30% off bodywork
+  if(/^(BLACKFRIDAY|BLACKFRIDAY30|BF30|BF|BFBODY|BLACKFRIDAYBODY|BLACKFRIDAY2026)$/.test(c))return {type:'pct',value:30,label:'Black Friday \u2014 30% off bodywork',scope:'body'};
   if(/^(ONLINE|WEB|WEBSITE|BOOKONLINE|ONLINEBOOKING|KITHONLINE)\d*$/.test(c)){
     const svc=/\bservic/i.test(String(j.work||'')+' '+String(j.serviceType||'')+' '+String(j.labourDesc||''));
     return {type:'amount',value:svc?20:50,label:'Online booking discount'};
@@ -7536,20 +7539,28 @@ function discountKnown(j,code){
 function discountExVat(j,labour,products){
   const D=j.discount;if(!D||!(parseFloat(D.value)>0))return 0;
   const r2=n=>Math.round(n*100)/100;
+  if(D.type==='pct'&&D.scope==='body'){
+    // bodywork lines only (panels, dents, blends). A bodywork-only job: the whole job.
+    const bl=labour.filter(x=>x.code==='BODY'&&!x.noVat);
+    let base=bl.reduce((a,x)=>a+x.total,0);
+    if(!bl.length&&typeof isBodyJob==='function'&&isBodyJob(j)&&!(typeof isClearlyBodywork==='function'&&!isClearlyBodywork(j)))
+      base=labour.filter(x=>!x.noVat).reduce((a,x)=>a+x.total,0)+products.filter(x=>!x.noVat).reduce((a,x)=>a+x.total,0);
+    return r2(base*(parseFloat(D.value)/100));
+  }
   if(D.type==='pct'){
     const base=labour.filter(x=>!x.noVat).reduce((a,x)=>a+x.total,0)+products.filter(x=>!x.noVat).reduce((a,x)=>a+x.total,0);
     return r2(base*(parseFloat(D.value)/100));
   }
   return r2(j.vatExempt?parseFloat(D.value):parseFloat(D.value)/1.2);   // £ off is inc VAT, as the customer sees it
 }
-function discountLabel(j){const D=j.discount||{};return (D.label||'Discount')+(D.code?' — code '+D.code:'')+(D.type==='pct'?' ('+D.value+'%)':'');}
+function discountLabel(j){const D=j.discount||{};return (D.label||'Discount')+(D.code?' — code '+D.code:'')+(D.type==='pct'&&!/%/.test(D.label||'')?' ('+D.value+'%)':'');}
 function discountFromIntake(j){
   if(!j||j.discount||j.discountChecked)return false;
   const code=String(j.discountCode||(j.judgement&&j.judgement.discount_code)||'').trim();
   if(!code)return false;
   j.discountChecked=true;
   const k=discountKnown(j,code);
-  j.discount={code:code.toUpperCase(),type:k?k.type:'amount',value:k?k.value:null,label:k?k.label:'Discount',referrer:k&&k.referrer||'',by:'intake',at:ts()};
+  j.discount={code:code.toUpperCase(),type:k?k.type:'amount',value:k?k.value:null,label:k?k.label:'Discount',scope:k&&k.scope||'',referrer:k&&k.referrer||'',by:'intake',at:ts()};
   return true;
 }
 function discountAfterChange(j,what){
@@ -7563,7 +7574,7 @@ function discCodeSet(id,v){
   const code=String(v||'').trim().toUpperCase();
   if(!code){delete j.discount;discountAfterChange(j,'Discount removed');return;}
   const k=discountKnown(j,code);
-  j.discount={code,type:k?k.type:((j.discount&&j.discount.type)||'amount'),value:k?k.value:(j.discount&&j.discount.value),label:k?k.label:'Discount',referrer:k&&k.referrer||'',by:currentUser?currentUser.name:'',at:ts()};
+  j.discount={code,type:k?k.type:((j.discount&&j.discount.type)||'amount'),value:k?k.value:(j.discount&&j.discount.value),label:k?k.label:'Discount',scope:k&&k.scope||'',referrer:k&&k.referrer||'',by:currentUser?currentUser.name:'',at:ts()};
   discountAfterChange(j,'Discount code '+code+(k?' — '+k.label:'')+' added');
 }
 function discValSet(id,type,v){
@@ -7583,9 +7594,10 @@ function discountPanelH(j){
       '<span style="font-size:12px;color:var(--dim)">or %</span><input type="number" step="any" inputmode="decimal" min="0" max="100" style="'+inp+';width:60px" value="'+(D.type==='pct'&&D.value?D.value:'')+'" onchange="discValSet(\''+j.id+'\',\'pct\',this.value)">'+
       (D.code||has?'<button class="btn btn-ghost btn-sm" onclick="discCodeSet(\''+j.id+'\',\'\')">Remove</button>':'')+
     '</div>'+
-    (has?'<div style="font-size:12px;color:var(--green);margin-top:6px">✓ '+escHtml(discountLabel(j))+' — £'+off.toFixed(2)+' off, on the estimate and invoice</div>':
+    (has&&D.scope==='body'&&off<0.005?'<div style="font-size:12px;color:var(--amber);margin-top:6px">\u26a0 '+escHtml(D.label)+' \u2014 there is no bodywork on this job, so nothing comes off.</div>':
+     has?'<div style="font-size:12px;color:var(--green);margin-top:6px">✓ '+escHtml(discountLabel(j))+' — £'+off.toFixed(2)+' off, on the estimate and invoice</div>':
      D.code?'<div style="font-size:12px;color:var(--amber);margin-top:6px">⚠ Code '+escHtml(D.code)+(D.label&&D.label!=='Discount'?' ('+escHtml(D.label)+')':'')+' — put in how much it’s worth (£ or %)</div>':
-     '<div style="font-size:11px;color:var(--dim);margin-top:4px">STUDENT = 5% · ONLINE = £50 (£20 servicing) · a customer’s referral code — or type any amount.</div>')+
+     '<div style="font-size:11px;color:var(--dim);margin-top:4px">BLACKFRIDAY = 30% off bodywork · STUDENT = 5% · ONLINE = £50 (£20 servicing) · a customer’s referral code — or type any amount.</div>')+
   '</div>';
 }
 // ── TWO ESTIMATES: MAIN DEALER + NON-MAIN-DEALER (16 Nov 2026) ──
@@ -8151,6 +8163,20 @@ function actH(j){
       extraWorkH(j)+
       jobDocsH(j);
       break;
+    case 'later':{
+      const due=j.contactLaterMs?new Date(j.contactLaterMs):null;
+      const iso=due?due.toISOString().slice(0,10):'';
+      h+='<div class="notice n-purple" style="margin-bottom:10px">\u23f0 <strong>Still interested</strong> \u2014 wants to go ahead later.'+
+          (due?'<div style="margin-top:4px">Back for a call on <strong>'+due.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})+'</strong> \u2014 it moves to Contacted by itself that morning.</div>':'')+
+          (j.contactLaterNote?'<div style="font-size:11px;margin-top:3px;opacity:.85">'+escHtml(j.contactLaterNote)+'</div>':'')+'</div>'+
+        '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;font-size:12px">Change the date <input type="date" class="fi2" style="font-size:12px;padding:4px 6px" value="'+iso+'" onchange="contactLaterDate(\''+j.id+'\',this.value)"></div>'+
+        sendEstBtnH(j)+phoneRowH(j)+
+        '<div style="display:flex;flex-direction:column;gap:8px">'+
+          '<button class="btn btn-gold btn-full" onclick="contactLaterNow(\''+j.id+'\')">\ud83d\udcde Contact them now \u2192 Contacted</button>'+
+          '<button class="btn btn-green btn-full" onclick="bookIntoCalendar(\''+j.id+'\')">Customer YES \u2192 Book In</button>'+
+          saidNoBtnsH(j)+
+        '</div>';
+      break;}
     case 'lost':
       h+=saidNoH(j)+'<div class="notice n-red" style="margin-bottom:10px">\u2715 Job marked as lost.'+
         (j.lostReason?'<div style="font-weight:800;margin-top:4px">'+escHtml(j.lostReason)+'</div>':'')+
@@ -13951,7 +13977,49 @@ function toggleAutoHold(id){
 }
 
 var AUTO_LOG=[];                // what the engine has moved this session
+// ── STILL INTERESTED · CONTACT IN A MONTH (18 Nov 2026, Logan) ──────
+// "I want to go ahead, but probably in a month." The job leaves the chase
+// (no calls or texts) and sits in its own column; a month later it moves back
+// to Contacted by itself, with the call + text chase starting again.
+function contactLater(id){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
+  const note=prompt('Still interested \u2014 contact them again in a month.\n\nAnything to note? (e.g. "waiting for payday", "after Christmas") \u2014 optional','');
+  if(note===null)return;
+  j.contactLaterFrom=j.stage;
+  j.contactLaterMs=Date.now()+30*864e5;
+  j.contactLaterNote=String(note||'').trim();
+  j.stage='later';j.stageAt=Date.now();
+  try{stampStage(j,'later');}catch(e){}
+  j.log=j.log||[];
+  j.log.push({t:ts(),s:'\u23f0 Still interested \u2014 contact again on '+new Date(j.contactLaterMs).toLocaleDateString('en-GB')+(j.contactLaterNote?' ('+j.contactLaterNote+')':'')+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);try{forceRenderDetail();}catch(e){renderDetail();}renderAll();
+  if(typeof toast==='function')toast('\u23f0 '+(j.reg||'Job')+' \u2014 back for a call in a month');
+}
+function contactLaterDate(id,v){
+  const j=jobs.find(x=>x.id===id);if(!j||!v)return;
+  const d=new Date(v+'T08:00:00');if(isNaN(d))return;
+  j.contactLaterMs=d.getTime();
+  j.log=j.log||[];j.log.push({t:ts(),s:'\u23f0 Contact date changed to '+d.toLocaleDateString('en-GB')+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);try{forceRenderDetail();}catch(e){renderDetail();}
+}
+function contactLaterBack(j,why){
+  j.stage='contacted';j.stageAt=Date.now();j.chasesSent=[];
+  try{stampStage(j,'contacted');}catch(e){}
+  j.log=j.log||[];j.log.push({t:ts(),s:'\u23f0 '+why+' \u2014 back to Contacted, call then text'+(j.contactLaterNote?' (note: '+j.contactLaterNote+')':'')});
+  save(j);
+}
+function contactLaterNow(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  contactLaterBack(j,'Contacting now'+(currentUser?' ['+currentUser.name+']':''));
+  try{forceRenderDetail();}catch(e){renderDetail();}renderAll();
+}
+function contactLaterDue(){
+  let n=0;
+  jobs.forEach(j=>{if(j&&j.stage==='later'&&j.contactLaterMs&&Date.now()>=j.contactLaterMs){contactLaterBack(j,'A month is up');n++;}});
+  return n;
+}
 function autoPilot(){
+  try{if(contactLaterDue())renderAll();}catch(e){console.warn('later',e);}
   if(!AUTO_ON)return 0;
   try{autoCloseDoneElsewhere();}catch(e){console.warn('done-elsewhere',e);}
   try{fixLabelOnlyWork();}catch(e){console.warn('labelfix',e);}
@@ -14933,7 +15001,8 @@ function saidNoH(j){
   '</div>';
 }
 function saidNoBtnsH(j){
-  return '<button class="btn btn-red btn-full" onclick="customerSaidNo(\''+j.id+'\')">👎 Customer said NO → send the why-survey &amp; close</button>'+
+  return (j.stage==='later'?'':'<button class="btn btn-ghost btn-full" style="margin-bottom:6px;color:var(--purple,#a78bfa);border-color:var(--purple,#a78bfa)" onclick="contactLater(\''+j.id+'\')">\u23f0 Still interested \u2014 contact them in a month</button>')+
+    '<button class="btn btn-red btn-full" onclick="customerSaidNo(\''+j.id+'\')">👎 Customer said NO → send the why-survey &amp; close</button>'+
     '<button class="btn btn-ghost btn-xs btn-full" style="margin-top:4px" onclick="markLost()">✕ Close as lost without messaging them</button>';
 }
 
@@ -16018,7 +16087,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1500';
+const CRM_BUILD='2026-11-18-1515';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
