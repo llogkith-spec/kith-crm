@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v19.1 \u00b7 16 Nov';
+const BUILD='v19.2 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -9064,6 +9064,7 @@ function applyMarkup(costPrice,part){
   const c=parseFloat(costPrice)||0;
   if(c<=0) return 0;
   if(part&&typeof part==='object'&&part.noMarkup) return c; // switched off by hand
+  if(part&&typeof part==='object'&&_isOilPart(part.name)) return c; // 18 Nov 2026: engine oil is entered already marked up
   if(isNoMarkup(part)&&!isFluid(part)) return c;            // tyres, MOT
   if(isBarrelFluid(part)) return c;                          // barrel oil: list price
   return ladderSell(c);                                      // parts and bought-in fluids
@@ -9071,6 +9072,7 @@ function applyMarkup(costPrice,part){
 function markupLabel(p,cost,sell){
   if(!(cost>0))return{t:'\u2014',col:'var(--faint)',tip:''};
   if(p&&p.noMarkup)return{t:'No mkup',col:'var(--faint)',tip:'Markup switched off by hand on this line'};
+  if(p&&_isOilPart(p.name))return{t:'Oil \u00b7 as entered',col:'var(--faint)',tip:'Engine oil is entered already marked up \u2014 the figure in Cost is the selling price per litre'};
   if(isNoMarkup(p)&&!isFluid(p))return{t:'No mkup',col:'var(--faint)',tip:'Tyre or MOT \u2014 never marked up'};
   if(isBarrelFluid(p))return{t:'Barrel \u00b7 list',col:'var(--faint)',tip:'From the barrel \u2014 the figure in Cost is the list selling price'};
   const pct='+'+Math.round((sell/cost-1)*100)+'%';
@@ -15538,7 +15540,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1050';
+const CRM_BUILD='2026-11-18-1055';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -16441,7 +16443,7 @@ function renderPartsPriceList(j){
           '<span>This is a kit / package</span></label>'+
         '<button class="btn btn-ghost btn-xs" style="margin-top:6px;color:var(--red);border-color:var(--red)" onclick="partCantGet('+i+')">\ud83d\udeab Can\u2019t get this part</button>'+
         (_isOilPart(p.name)?'<div style="margin-top:8px;padding:8px;border:1px solid var(--gold);border-radius:6px">'+
-          '<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:5px">\ud83d\udee2 OIL \u2014 grade and brand go on the customer\u2019s estimate. Price each supplier PER LITRE.</div>'+
+          '<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:5px">\ud83d\udee2 OIL \u2014 grade and brand go on the customer\u2019s estimate. Enter the SELLING price PER LITRE — oil is not marked up again.</div>'+
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'+
             '<input class="fi2" id="pp-grade-'+i+'" value="'+escHtml(p.oilGrade||'')+'" placeholder="Grade * e.g. 5W-30 LL"/>'+
             '<input class="fi2" id="pp-obrand-'+i+'" value="'+escHtml(p.brand||'')+'" placeholder="Brand * e.g. Castrol"/></div>'+
