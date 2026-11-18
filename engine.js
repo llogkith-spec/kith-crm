@@ -151,7 +151,7 @@ const REPAINT = {
   'Medium (7-seater)':  { Budget: 2250, Standard: 2750, Premium: 3300 },
   'Large (9-seater +)': { Budget: 3100, Standard: 3750, Premium: 4500 }
 };
-let MULTI_PANEL_DISCOUNT = 0.20;     // dearest full, every other panel 20% off
+let MULTI_PANEL_DISCOUNT = 0;        // 16 Nov 2026 (Logan): every panel at its full SOP price — no multi-panel discount
 
 const VAT_RATE = 0.20;
 
@@ -465,7 +465,8 @@ function applySop(cfg) {
     if (PANEL_BASE['Sliding door'] != null) {
       Object.keys(PANEL_UPLIFT).forEach(k => { SLIDING_DOOR[k] = PANEL_BASE['Sliding door'] + PANEL_UPLIFT[k]; });
     }
-    if (num(bw.multiPanelDiscount)) { MULTI_PANEL_DISCOUNT = bw.multiPanelDiscount; api.MULTI_PANEL_DISCOUNT = bw.multiPanelDiscount; }
+    // 16 Nov 2026 (Logan): no multi-panel discount, whatever an old SOP config says
+    MULTI_PANEL_DISCOUNT = 0; api.MULTI_PANEL_DISCOUNT = 0;
     done.push('bodywork');
   }
   api.SOP_VERSION = cfg.version || api.SOP_VERSION;

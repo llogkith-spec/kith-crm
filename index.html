@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v19.9 \u00b7 16 Nov';
+const BUILD='v20.0 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -1064,6 +1064,7 @@ function login(name){
     try{syncNotifs();}catch(e){}
     try{loadLeads().then(()=>updateLeadBadge());}catch(e){}
     try{loadChannels();}catch(e){}
+    try{loadBrainLessons();}catch(e){}
     try{loadCompanies();}catch(e){}
     try{refreshPushOwner();}catch(e){}
     try{loadSchedCap();}catch(e){}
@@ -11298,6 +11299,13 @@ function panelOf(t){
   if(/rear bumper|back bumper/.test(t))return 'Rear bumper';
   if(/\bbumper\b/.test(t))return 'Front bumper';
   if(/trim|moulding|molding/.test(t))return 'Trim / moulding';
+  // 18 Nov 2026: "Rear body panel", "back panel", "rear valance", sills, skirts —
+  // still ONE panel at the SOP price, never hours
+  if(/instrument|dash|control|switch|fuse|heater|door card|interior/.test(t))return null;
+  if(/\b(rear|back|tail)\b.*\bpanel\b|\bvalance\b/.test(t))return 'Rear panel';
+  if(/\bsill\b|side skirt/.test(t))return 'Sill / side skirt';
+  if(/instrument|dash|control|switch|fuse|heater|solar|door card|interior/.test(t))return null;
+  if(/\b(body|outer)\s*panel\b|\bpanel\b.*\b(paint|respray|dent|scratch|scuff|lacquer)|\b(paint|respray|dent|scratch|scuff)\w*\b.*\bpanel\b|\bbodywork\b/.test(t))return 'Panel (other)';
   return null;
 }
 function vehAgeYears(j){
@@ -11308,14 +11316,16 @@ function vehAgeYears(j){
 function bodyExVat(inc){return Math.round(inc/1.2*100)/100;}
 function brainFixBody(j){
   const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
-  if(!(typeof isBodyJob==='function'&&isBodyJob(j)))return false;
+  const BODY_LINE=/paint|respray|refinish|scratch|scuff|dent|panel|bodywork|blend|lacquer/i;
+  const anyBody=ai.jobs.some(b=>b.tier==='BODY'&&!b.fixedBody||(!b.fixedBody&&BODY_LINE.test(String(b.job_label||''))&&panelOf(b.job_label)));
+  if(!(typeof isBodyJob==='function'&&isBodyJob(j))&&!anyBody)return false;
   const E=bodyEng(), cat=BODY_CAT[j.bodySize]||'5-seater', up=E.uplift[cat]||0, old=vehAgeYears(j)>10;
   let ch=false;const painted=[];
   ai.jobs.forEach(bj=>{
     const lab=String(bj.job_label||bj.job_normalised||'');
     const panel=panelOf(lab);
-    if(bj.fromDamage||!panel||bj.fixedTyre||bj.fixedDiag||bj.fixedMot)return;
-    const paint=/paint|respray|refinish|scratch|scuff|dent|chip|crack|repair/i.test(lab);
+    if(bj.fromDamage||bj.bodyManual||bj.lessonApplied||!panel||bj.fixedTyre||bj.fixedDiag||bj.fixedMot)return;
+    const paint=/paint|respray|refinish|scratch|scuff|dent|chip|crack|repair|blend|lacquer/i.test(lab)||bj.tier==='BODY';
     // trim / moulding just taken off and put back = part of the panel job
     if(panel==='Trim / moulding'&&!/paint|respray|refinish/i.test(lab)){
       bj.fixedBody=true;bj.srt_hours=0;bj.labour_ex_vat=0;bj.tier='BODY';bj.bodyNote='included';
@@ -11337,14 +11347,99 @@ function brainFixBody(j){
     painted.push(bj);
     ch=true;
   });
-  // dearest panel full, every other panel 20% off (painting only — dent and blend extras stay full)
+  // 16 Nov 2026 (Logan): every panel at its full SOP price — no multi-panel discount
   painted.sort((a,b)=>b.panelPrice-a.panelPrice).forEach((bj,ix)=>{
     const p=bj.panelPrice;
     const inc=Math.round((p+bj.dentPrice+bj.blendPrice)*100)/100;bj.labour_ex_vat=bodyExVat(inc);
-    bj.srt_source=bj.bodyPanel+' ('+cat+') £'+p.toFixed(2)+(old?' · 25% off, over 10 years old':'')+
+    bj.srt_source=bj.bodyPanel+' ('+cat+') £'+p.toFixed(2)+(E.base[bj.bodyPanel]==null?' (not on the SOP panel list — check the price)':'')+(old?' · 25% off, over 10 years old':'')+
       (bj.dentPrice?' + dent straightening £'+bj.dentPrice:'')+(bj.blendPrice?' + blend £'+bj.blendPrice:'')+' = £'+inc.toFixed(2)+' inc VAT → £'+bj.labour_ex_vat.toFixed(2)+' ex VAT — SOP panel price, not hours';
   });
   return ch;
+}
+// ── THE BRAIN LEARNS FROM HAND CORRECTIONS (18 Nov 2026, Logan) ─────
+// When an estimator changes the Brain's hours (e.g. Joel cutting an
+// overpriced AI estimate) or a panel price, that correction is a lesson:
+//  • it goes to the SRT cache for that make/model, so the Brain's next answer
+//    for the same car and job comes back FIRM at the corrected hours;
+//  • it's kept in the shared lessons list, so the CRM applies it straight away
+//    to the same job on the same make/model, and shows what was learnt on
+//    other cars as a hint ("Joel cut this from 3.5h to 2h on an Audi A1").
+var BRAIN_LESSONS={};
+function _lessonKey(bj){return String(bj.job_normalised&&bj.job_normalised!=='manual'?bj.job_normalised:(bj.job_label||'')).toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
+function _lessonVeh(j){const v=(j.brainAI&&j.brainAI.vehicle)||{},d=j.dvla||{};
+  return {make:String(v.make||d.make||j.make||'').toUpperCase().trim(),model:String(v.model||d.model||j.model||'').toUpperCase().trim()};}
+async function loadBrainLessons(){
+  try{const r=await fetch(SB_URL+'/rest/v1/jobs?id=eq.__brain_lessons__&select=data',{headers:SB_HDR});
+    if(!r.ok)return;const rows=await r.json();const l=rows[0]&&rows[0].data&&rows[0].data.lessons;
+    if(l&&typeof l==='object')BRAIN_LESSONS=l;}catch(e){}
+}
+async function brainLearn(j,bj){
+  if(!j||!bj)return;
+  const key=_lessonKey(bj);if(!key)return;
+  const V=_lessonVeh(j), who=brainWho();
+  const rec={key,label:bj.job_label||key,make:V.make,model:V.model,reg:j.reg||'',by:who,at:ts(),ms:Date.now()};
+  if(bj.fixedBody){rec.kind='panel';rec.price=Math.round((parseFloat(bj.labour_ex_vat)||0)*1.2*100)/100;rec.was=bj.aiPrice;rec.panel=bj.bodyPanel||'';}
+  else{rec.kind='hours';rec.hours=parseFloat(bj.srt_hours)||0;rec.was=bj.aiHours;if(!(rec.hours>0))return;}
+  const list=(BRAIN_LESSONS[key]||[]).filter(x=>!(x.make===rec.make&&x.model===rec.model&&x.kind===rec.kind));
+  list.push(rec);BRAIN_LESSONS[key]=list.slice(-30);
+  j.log=j.log||[];
+  j.log.push({t:ts(),s:'🧠 Brain learnt: '+rec.label+' — '+(rec.kind==='hours'?(rec.was!=null?rec.was+'h → ':'')+rec.hours+'h':'panel £'+rec.price+' inc VAT')+' on '+[V.make,V.model].filter(Boolean).join(' ')+' ['+who+']'});
+  try{await casWrite('__brain_lessons__',d=>{const cur=(d&&d.lessons)||{};cur[key]=BRAIN_LESSONS[key];BRAIN_LESSONS=Object.assign({},cur,BRAIN_LESSONS);return {lessons:cur};});}catch(e){}
+  // hours go into the SRT cache too, so brain.ts answers FIRM next time for this car
+  if(rec.kind==='hours'&&V.make&&V.model&&bj.job_normalised&&bj.job_normalised!=='manual'){
+    try{
+      const v=j.brainAI&&j.brainAI.vehicle||{};
+      await fetch(SB_URL+'/rest/v1/kith_srt_cache',{method:'POST',headers:{...SB_HDR,'Prefer':'return=minimal'},
+        body:JSON.stringify({make:v.make||j.make||V.make,model:v.model||j.model||V.model,engine_variant:v.engine_variant||j.engine||null,
+          year_from:v.year||j.year||null,year_to:v.year||j.year||null,job_normalised:bj.job_normalised,job_label:bj.job_label,
+          srt_hours:rec.hours,source:'estimator_corrected',source_job_id:j.id,confidence:'high'})});
+      j.brainVerified=j.brainVerified||{};
+      j.brainVerified[bj.job_normalised]={at:ts(),by:who,hours:rec.hours,corrected:true};
+    }catch(e){}
+  }
+  try{save(j);}catch(e){}
+}
+// Apply what's been learnt to a fresh Brain answer.
+function brainApplyLessons(j){
+  const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
+  const V=_lessonVeh(j);let ch=false;
+  ai.jobs.forEach(bj=>{
+    if(bj.excluded||bj.hoursManual||bj.bodyManual||bj.lessonApplied||bj.fixedTyre||bj.fixedDiag||bj.fixedMot||bj.fixedAlloy)return;
+    const list=BRAIN_LESSONS[_lessonKey(bj)];if(!list||!list.length)return;
+    if(bj.fixedBody){
+      if(bj.bodyNote==='included')return;
+      const same=list.filter(x=>x.kind==='panel'&&x.make===V.make&&x.model===V.model).slice(-1)[0]||list.filter(x=>x.kind==='panel').slice(-1)[0];
+      if(!same)return;
+      if(bj.aiPrice==null)bj.aiPrice=Math.round((parseFloat(bj.labour_ex_vat)||0)*1.2*100)/100;
+      bj.labour_ex_vat=bodyExVat(same.price);bj.lessonApplied=true;
+      bj.srt_source='Learnt: '+same.by+' priced this panel at £'+same.price+' inc VAT on '+(same.reg||[same.make,same.model].join(' '))+' (SOP said £'+bj.aiPrice+')';
+      ch=true;return;
+    }
+    if(bj.is_firm)return;
+    const same=list.filter(x=>x.kind==='hours'&&x.make===V.make&&x.model===V.model).slice(-1)[0];
+    if(same){
+      if(bj.aiHours==null)bj.aiHours=parseFloat(bj.srt_hours)||0;
+      bj.srt_hours=same.hours;bj.lessonApplied=true;
+      bj.srt_source='Learnt: '+same.by+' set this to '+same.hours+'h on '+(same.reg||'this model')+(bj.aiHours?' (AI said '+bj.aiHours+'h)':'');
+      try{brainRecalc(j,bj);}catch(e){}
+      ch=true;return;
+    }
+    const other=list.filter(x=>x.kind==='hours'&&x.was>0).slice(-1)[0];
+    if(other&&!/Last time/.test(bj.srt_source||'')){
+      bj.srt_source=(bj.srt_source?bj.srt_source+' — ':'')+'Last time '+other.by+' changed this from '+other.was+'h to '+other.hours+'h on a '+[other.make,other.model].filter(Boolean).join(' ')+' — check it';
+      ch=true;
+    }
+  });
+  return ch;
+}
+function brainSetBodyPrice(id,i,v){
+  const j=jobs.find(x=>x.id===id);const b=j&&j.brainAI&&j.brainAI.jobs[i];if(!b)return;
+  const inc=parseFloat(v);if(!(inc>=0))return;
+  if(b.aiPrice==null)b.aiPrice=Math.round((parseFloat(b.labour_ex_vat)||0)*1.2*100)/100;
+  b.labour_ex_vat=bodyExVat(inc);b.bodyManual=true;
+  b.srt_source=(b.bodyPanel||'Panel')+' £'+inc.toFixed(2)+' inc VAT → £'+b.labour_ex_vat.toFixed(2)+' ex VAT — set by '+brainWho()+' (SOP said £'+b.aiPrice+')';
+  save(j);renderDetail();
+  try{brainLearn(j,b);}catch(e){}
 }
 // ── ALLOY WHEEL REFURB (16 Nov 2026) ─────────────────────────────────
 // Priced per alloy: £80 – £120 + VAT each depending on how bad the rim is.
@@ -11537,7 +11632,7 @@ function brainPrefillH(j){
   }
   const ai = j.brainAI;
   if(!ai||!ai.jobs||!ai.jobs.length)return '';
-  if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)|brainMergeSides(j)|brainFixService(j)|brainTurboOil(j)|brainPairRule(j)|brainRecalcAll(j)|brainFixAlloy(j)|brainFixBody(j)){try{save(j);}catch(e){}}
+  if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)|brainMergeSides(j)|brainFixService(j)|brainTurboOil(j)|brainPairRule(j)|brainRecalcAll(j)|brainFixAlloy(j)|brainFixBody(j)|brainApplyLessons(j)){try{save(j);}catch(e){}}
   const applied = !!j.brainAppliedAt;
   const firmN = ai.jobs.filter(b=>b.is_firm).length;
   const totN = ai.jobs.length;
@@ -11576,7 +11671,8 @@ function brainPrefillH(j){
       bj.fixedTyre?'<div style="text-align:right;font-size:11px;color:var(--dim)">fixed \u00d7'+(bj.tyreQty||1)+'</div>':
       (bj.fixedAlloy&&!bj.excluded)?'<div style="text-align:right;font-size:11px;color:var(--dim)">\u00a3<input type="number" min="'+alloyEach().min+'" max="'+alloyEach().max+'" step="5" value="'+(bj.alloyEach||100)+'" '+(applied?'disabled':'')+' onchange="brainSetAlloyEach(\''+j.id+'\','+i+',this.value)" style="width:52px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:3px;font-size:12px;color:var(--fg);text-align:right"> each</div>':
       bj.fixedMot?'<div style="text-align:right;font-size:11px;color:var(--dim)">fixed \u00b7 no VAT</div>':
-      bj.fixedBody?'<div style="text-align:right;font-size:11px;color:var(--dim)">'+(bj.bodyNote==='included'?'included':'per panel')+'</div>':
+      bj.fixedBody?(bj.bodyNote==='included'?'<div style="text-align:right;font-size:11px;color:var(--dim)">included</div>':
+        '<div style="text-align:right;font-size:11px;color:var(--dim)">\u00a3<input type="number" step="any" inputmode="decimal" min="0" value="'+(Math.round((parseFloat(bj.labour_ex_vat)||0)*1.2*100)/100)+'" '+(applied?'disabled':'')+' onchange="brainSetBodyPrice(\''+j.id+'\','+i+',this.value)" style="width:70px;background:var(--surface);border:1px solid '+(bj.bodyManual?'var(--gold)':'var(--border)')+';border-radius:3px;padding:3px 5px;font-size:12px;color:var(--fg);text-align:right"><div style="font-size:10px">per panel inc VAT</div></div>'):
       '<div style="text-align:right">'+
         '<input type="number" step="0.1" min="0" value="'+srtH.toFixed(1)+'" '+(applied?'disabled':'')+' '+
           'style="width:70px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px 6px;font-family:inherit;font-size:13px;color:var(--fg);text-align:right" '+
@@ -11620,6 +11716,7 @@ window.brainEditSrt = function(jobId, idx, val){
   const j = _brainJob(jobId); if(!j||!j.brainAI||!j.brainAI.jobs[idx])return;
   const h = parseFloat(val)||0;
   if(h<=0)return;
+  { const b0=j.brainAI.jobs[idx]; if(b0.aiHours==null)b0.aiHours=parseFloat(b0.srt_hours)||0; b0.hoursManual=true; }
   j.brainAI.jobs[idx].srt_hours = h;
   // Recompute the labour for this line using the current SOP and customer type
   try{
@@ -11636,6 +11733,7 @@ window.brainEditSrt = function(jobId, idx, val){
     try{brainRecalc(j,bj);brainPairRule(j);}catch(e){}
   }catch(e){}
   save(j); renderDetail();
+  try{brainLearn(j,j.brainAI.jobs[idx]);}catch(e){}
 };
 
 // Verify an SRT — writes back to kith_srt_cache (the learning loop)
@@ -11826,7 +11924,7 @@ window.brainAutoPartsNow=function(id){
 // Roll up the pre-fill to the job's single labour fields
 window.brainApplyToJob = function(jobId){
   const j = _brainJob(jobId); if(!j||!j.brainAI)return;
-  try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainMergeSides(j);brainFixService(j);brainTurboOil(j);brainPairRule(j);brainRecalcAll(j);brainFixAlloy(j);brainFixBody(j);}catch(e){}
+  try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainMergeSides(j);brainFixService(j);brainTurboOil(j);brainPairRule(j);brainRecalcAll(j);brainFixAlloy(j);brainFixBody(j);brainApplyLessons(j);}catch(e){}
   const inc = j.brainAI.jobs.filter(b=>!b.excluded);
   const totSrt = inc.reduce((s,b)=>s+(parseFloat(b.srt_hours)||0),0);
   const totLabour = inc.reduce((s,b)=>s+(parseFloat(b.labour_ex_vat)||0),0);
@@ -15841,7 +15939,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1400';
+const CRM_BUILD='2026-11-18-1430';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
