@@ -463,7 +463,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
 var SB_URL=KithCore.URL;
 var SB_KEY=KithCore.KEY;
 var SOP_VERSION='8.0';
-var INTAKE_BUILD='3.3';
+var INTAKE_BUILD='3.4';
 // The CRM keeps one row per job in `jobs` ({id, data, updated_at}).
 // Earlier builds wrote to `kith_jobs`, which nothing reads — jobs vanished.
 var JOBS_TABLE='jobs';
@@ -1314,7 +1314,11 @@ function diagRepairSplit(){
   if(hasCat('diagnostic')&&!INTAKE_DIAG_RX.test(txt))txt='Diagnostic, '+txt;
   var segs=String(txt).split(/\s*(?:,|;|\+|&|\n|\band then\b|\bthen\b|\band\b|\bplus\b|\balso\b)\s*/i)
     .map(function(x){return x.replace(/^[\s\-\u2013\u2014.]+|[\s\-\u2013\u2014.]+$/g,'');}).filter(function(x){return x&&x.length>=3;});
-  var diag=segs.filter(function(x){return INTAKE_DIAG_RX.test(x);});
+  // 18 Nov 2026 (Logan): only split when the job actually says DIAGNOSTIC
+  // (written, or the Diagnostic box ticked). Inspect / investigate / check
+  // on their own never split the job.
+  if(!/\bdiag\w*/i.test(txt))return null;
+  var diag=segs.filter(function(x){return /\bdiag\w*/i.test(x);});
   // a symptom ("engine light on", "knocking noise") is what the diagnostic looks at, not a repair
   var SYMPTOM_RX=/\b(light|lights|warning|noise|noises|knock\w*|rattl\w*|squeak\w*|grind\w*|smoke|smok\w*|leak\w*|won'?t|wont|doesn'?t|not (start|working)|judder\w*|vibrat\w*|pull\w* to|overheat\w*|stall\w*|misfir\w*|limp mode|fault|issue|problem|symptom\w*)\b/i;
   var rep=segs.filter(function(x){return !INTAKE_DIAG_RX.test(x)&&!(SYMPTOM_RX.test(x)&&!/\b(replace\w*|fit\w*|change|renew|new|repair)\b/i.test(x))&&/[a-z]{3,}/i.test(x.replace(/\b(bank|banks|side|sides|front|rear|left|right|both|nearside|offside|ns|os|one|two|three|four|the|a|an|of|on|in|it|car|please|can|you|my|is|and)\b/gi,''));});
