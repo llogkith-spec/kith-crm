@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v19.6 \u00b7 16 Nov';
+const BUILD='v19.7 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -10742,6 +10742,23 @@ function brainStale(j){
   return want!==String(j.work||'').trim();      // cached before the words were sent
 }
 function sopRates(){try{return (KITH_SOP&&KITH_SOP.rates)||{LOW:50,MED:60,TOP:70,BODY:90};}catch(e){return {LOW:50,MED:60,TOP:70,BODY:90};}}
+// the working behind a line: book hours (after the minimum) × multiplier × rate
+function brainCalc(j,bj){
+  const h=parseFloat(bj.srt_hours)||0;
+  let lower=2,upper=1.5,threshold=2;
+  try{const M=KITH_SOP&&KITH_SOP.multiplier&&KITH_SOP.multiplier.normal;if(M){lower=M.lower||2;upper=M.upper||1.5;}
+    const c=_brainCustType(j);if(c==='trade')threshold=1.5;const t=KITH_SOP&&KITH_SOP.customers&&KITH_SOP.customers[c]&&KITH_SOP.customers[c].threshold;if(t)threshold=t;}catch(e){}
+  const rate=sopRates()[bj.tier]||sopRates().TOP||70;
+  let minH=0.5;try{const m=KITH_SOP&&KITH_SOP.minimums&&parseFloat(KITH_SOP.minimums.labourHours);if(m)minH=m;}catch(e){}
+  const hh=bj.paired?h:Math.max(h,minH),mult=bj.paired?1:(hh<threshold?lower:upper);
+  return {h,hh,mult,rate,charged:Math.round(hh*mult*100)/100,tier:bj.tier||'TOP'};
+}
+function brainSetTier(id,i,tier){
+  const j=jobs.find(x=>x.id===id);const b=j&&j.brainAI&&j.brainAI.jobs[i];if(!b)return;
+  b.tier=tier;b.tierManual=true;brainRecalc(j,b);
+  j.log=j.log||[];j.log.push({t:ts(),s:'\u270f Rate for '+(b.job_label||'line')+' set to '+tier+' (\u00a3'+(sopRates()[tier]||'')+'/h) \u2014 labour \u00a3'+(+b.labour_ex_vat||0).toFixed(2)+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);renderDetail();
+}
 function brainRecalc(j,bj){
   const h=parseFloat(bj.srt_hours)||0;if(h<=0)return;
   let lower=2,upper=1.5,threshold=2;
@@ -11012,7 +11029,8 @@ function brainFixSop(j){
     // everything else TOP for retail, MED for trade / B2B.
     const ct=_brainCustType(j);
     if(ct!=='retail'&&ct!=='trade')return;            // AA / warranty: their own cards
-    const svc=/service|brake|pads?|discs?|caliper|oil (and|&) filter|oil change/i.test(lab);
+    if(bj.tierManual)return;                          // the estimator chose the rate — keep it
+    const svc=/service|brake|pads?|discs?|caliper|oil (and|&) filter|oil change|spark ?plugs?|air filter|pollen|cabin filter|fuel filter|coolant|antifreeze/i.test(lab);
     // trade keeps the Brain's MED or TOP; only a wrong LOW is lifted to MED
     const want=svc?'LOW':(ct==='trade'?(bj.tier==='TOP'?'TOP':'MED'):'TOP');
     if(bj.tier!==want){
@@ -11304,7 +11322,15 @@ function brainPrefillH(j){
         : '<span style="background:var(--amber);color:#000;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px">AI EST.</span>');
     const srtH = parseFloat(bj.srt_hours)||0;
     const off=!!bj.excluded;
-    return '<div style="display:grid;grid-template-columns:1fr 100px 100px 120px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)'+(off?';opacity:.4':'')+'">'+
+    const fixedLine=!!(bj.fixedTyre||bj.fixedDiag||bj.fixedMot||bj.fixedBody||bj.fixedAlloy);
+    const C=fixedLine?null:brainCalc(j,bj),R=sopRates();
+    const rateCell=fixedLine?'<div style="text-align:right;font-size:11px;color:var(--faint)">\u2014</div>':
+      '<div style="text-align:right">'+
+        '<select '+(applied?'disabled':'')+' onchange="brainSetTier(\''+j.id+'\','+i+',this.value)" style="width:100%;background:var(--surface);border:1px solid '+(bj.tierManual?'var(--gold)':'var(--border)')+';border-radius:3px;padding:3px;font-size:12px;color:var(--fg)">'+
+          ['LOW','MED','TOP'].filter(t=>R[t]).map(t=>'<option value="'+t+'"'+(t===(bj.tier||'TOP')?' selected':'')+'>'+t+' \u00a3'+R[t]+'/h</option>').join('')+'</select>'+
+        (C&&C.h>0?'<div style="font-size:10px;color:var(--faint);margin-top:2px">'+C.hh+'h \u00d7'+C.mult+' = '+C.charged+'h'+(bj.paired?' (pair)':'')+'</div>':'')+
+      '</div>';
+    return '<div style="display:grid;grid-template-columns:1fr 80px 120px 100px 90px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)'+(off?';opacity:.4':'')+'">'+
       '<div style="display:flex;gap:9px;align-items:flex-start">'+
         '<input type="checkbox" '+(off?'':'checked')+' '+(applied?'disabled':'')+' title="Untick to leave this line out" style="width:17px;height:17px;margin-top:2px;flex-shrink:0;cursor:pointer" onchange="brainToggleLine(\''+j.id+'\','+i+',this.checked)">'+
       '<div>'+
@@ -11323,7 +11349,8 @@ function brainPrefillH(j){
           'id="brh-'+j.id+'-'+i+'" onchange="brainEditSrt(\''+j.id+'\','+i+',this.value)">'+
         '<span style="font-size:10px;color:var(--faint);margin-left:3px">h</span>'+
       '</div>')+
-      '<div style="text-align:right;font-family:ui-monospace,monospace;font-size:13px;font-weight:600;color:var(--gold)">£'+Math.round(bj.labour_ex_vat||0)+'</div>'+
+      rateCell+
+      '<div style="text-align:right;font-family:ui-monospace,monospace;font-size:13px;font-weight:600;color:var(--gold)">£'+(+bj.labour_ex_vat||0).toFixed(2)+'</div>'+
       '<div style="display:flex;gap:4px;justify-content:flex-end;align-items:center">'+
         chip +
         (!bj.fixedTyre&&!bj.fixedDiag&&!bj.fixedMot&&!bj.fixedBody&&!bj.fixedAlloy&&!firm&&!verified&&!applied?' <button onclick="brainVerifySrt(\''+j.id+'\','+i+')" style="background:var(--gold);color:#000;border:none;padding:3px 8px;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer">✓</button>':'')+
@@ -11340,12 +11367,12 @@ function brainPrefillH(j){
       '<div style="font-size:12px;font-weight:800;color:'+totCard+';text-transform:uppercase;letter-spacing:.5px">🧠 Brain pre-fill — audit and apply</div>'+
       '<div style="font-size:11px;color:var(--dim)">'+(ai.fromDamage?'Worked out from the damage picker · SOP panel prices, no AI':ai.allFirm?'All '+totN+' lines firm from TechMan cache':(firmN+'/'+totN+' firm · rest AI-estimated'))+'</div>'+
     '</div>'+
-    '<div style="display:grid;grid-template-columns:1fr 100px 100px 120px;gap:10px;font-size:10px;text-transform:uppercase;color:var(--faint);letter-spacing:.5px;padding-bottom:4px;border-bottom:1px solid var(--border)">'+
-      '<div>Job</div><div style="text-align:right">SRT</div><div style="text-align:right">Labour £</div><div style="text-align:right">Status</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 80px 120px 100px 90px;gap:8px;font-size:10px;text-transform:uppercase;color:var(--faint);letter-spacing:.5px;padding-bottom:4px;border-bottom:1px solid var(--border)">'+
+      '<div>Job</div><div style="text-align:right">SRT</div><div style="text-align:right">Rate</div><div style="text-align:right">Labour £</div><div style="text-align:right">Status</div>'+
     '</div>'+
     rows +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:2px solid var(--border)">'+
-      '<div style="font-size:11px;color:var(--dim)">'+(totSrt>0?'Total SRT '+totSrt.toFixed(1)+'h':'')+'</div>'+
+      '<div style="font-size:11px;color:var(--dim)">'+(totSrt>0?'Book time '+totSrt.toFixed(1)+'h \u00b7 charged '+ai.jobs.reduce((a,b)=>{if(b.excluded||b.fixedTyre||b.fixedDiag||b.fixedMot||b.fixedBody||b.fixedAlloy)return a;const c=brainCalc(j,b);return a+(c.h>0?c.charged:0);},0).toFixed(1)+'h':'')+'</div>'+
       '<div style="text-align:right"><div style="font-family:ui-monospace,monospace;font-size:16px;font-weight:800;color:var(--gold)">£'+totLabour.toFixed(2)+' <span style="font-size:11px;font-weight:600;color:var(--dim)">ex VAT</span></div>'+
         '<div style="font-size:11px;color:var(--dim)">+ VAT £'+(totLabour*0.2).toFixed(2)+' = <strong style="color:var(--text)">£'+(totLabour*1.2).toFixed(2)+' inc VAT</strong> to the customer</div></div>'+
     '</div>'+
@@ -11612,7 +11639,9 @@ window.brainDismissPrefill = function(jobId){
 
 function fmtWhen(iso){
   if(!iso)return '';
-  const d=new Date(iso); return d.toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+  const d=new Date(iso);
+  if(isNaN(d))return String(iso);   // already a readable time ("18 Nov 2026 at 10:17")
+  return d.toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
 }
 function brainWho(){ try{ return (currentUser&&currentUser.name)||sessionStorage.getItem('kith_who')||'?'; }catch(e){return '?';} }
 
@@ -15578,7 +15607,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1120';
+const CRM_BUILD='2026-11-18-1230';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
