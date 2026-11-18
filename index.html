@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v19.7 \u00b7 16 Nov';
+const BUILD='v19.8 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -11328,7 +11328,7 @@ function brainPrefillH(j){
       '<div style="text-align:right">'+
         '<select '+(applied?'disabled':'')+' onchange="brainSetTier(\''+j.id+'\','+i+',this.value)" style="width:100%;background:var(--surface);border:1px solid '+(bj.tierManual?'var(--gold)':'var(--border)')+';border-radius:3px;padding:3px;font-size:12px;color:var(--fg)">'+
           ['LOW','MED','TOP'].filter(t=>R[t]).map(t=>'<option value="'+t+'"'+(t===(bj.tier||'TOP')?' selected':'')+'>'+t+' \u00a3'+R[t]+'/h</option>').join('')+'</select>'+
-        (C&&C.h>0?'<div style="font-size:10px;color:var(--faint);margin-top:2px">'+C.hh+'h \u00d7'+C.mult+' = '+C.charged+'h'+(bj.paired?' (pair)':'')+'</div>':'')+
+        (C&&C.h>0?'<div style="font-size:10px;color:var(--dim);margin-top:2px;line-height:1.35">'+C.hh+'h \u00d7'+C.mult+(bj.paired?' (pair)':'')+' = <strong>'+C.charged+'h</strong><br>'+C.charged+'h \u00d7 \u00a3'+C.rate+' = <strong style="color:var(--gold)">\u00a3'+(C.charged*C.rate).toFixed(2)+'</strong></div>':'')+
       '</div>';
     return '<div style="display:grid;grid-template-columns:1fr 80px 120px 100px 90px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)'+(off?';opacity:.4':'')+'">'+
       '<div style="display:flex;gap:9px;align-items:flex-start">'+
@@ -15607,7 +15607,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1230';
+const CRM_BUILD='2026-11-18-1310';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
