@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v19.3 \u00b7 16 Nov';
+const BUILD='v19.4 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -5515,7 +5515,7 @@ function renderPipeline(){
   if(q&&!total)h+='<div style="padding:20px;text-align:center;color:var(--faint)">No jobs match “'+escHtml(q)+'”</div>';
   vp.innerHTML=h;
 }
-function openJob(id){try{const _j=jobs.find(x=>x.id===id);if(_j){let c=mergeSidesForJob(_j);if(serviceTidyParts(_j))c=true;if(oilPartsTidy(_j))c=true;if(brainFixService(_j))c=true;if(c)save(_j);}}catch(e){}curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
+function openJob(id){try{const _j=jobs.find(x=>x.id===id);if(_j){let c=mergeSidesForJob(_j);if(syncQuoteToEstimate(_j))c=true;if(serviceTidyParts(_j))c=true;if(oilPartsTidy(_j))c=true;if(brainFixService(_j))c=true;if(c)save(_j);}}catch(e){}curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
 
 // Redraw even if something still has focus. Only ever called straight
 // after a stage change, when there is nothing half-typed to protect.
@@ -7283,6 +7283,22 @@ function estDocHTML(j,opt){
 // While the customer still has both prices, the estimate is two documents
 // (Option A main dealer parts, Option B non-dealer parts, same labour),
 // printed and sent as ONE PDF with a page each.
+// 18 Nov 2026 (Logan): the final quote is ALWAYS what the estimate adds up to.
+// Until the estimate has gone to the customer, the job's quote follows the lines.
+function syncQuoteToEstimate(j){
+  if(!j||j.mergedInto||j.estimateSentMs||j.comebackNoCharge)return false;
+  if(!['intake','range','labour','parts','signoff','contacted'].includes(j.stage))return false;
+  if(j.stage==='contacted'&&(j.estimateOpenedMs||j.estimateSentMs))return false;
+  try{if(estTwo(j))return false;}catch(e){}
+  let d;try{d=estDocData(j);}catch(e){return false;}
+  if(!d||!(d.labour.length||d.products.length))return false;
+  const t=Math.round(d.total*100)/100,q=Math.round((parseFloat(j.quote)||0)*100)/100;
+  if(!(t>0)||Math.abs(t-q)<0.01)return false;
+  j.quote=t;j.finalEst=t;if(j.signedOff)j.signedOffAmount=t;
+  if(j.estApproved&&parseFloat(j.estApproved.amount)>0)j.estApproved.amount=t;
+  j.log=j.log||[];j.log.push({t:ts(),s:'\ud83e\uddfe Final quote set to the estimate: \u00a3'+t.toFixed(2)+(q?' (was \u00a3'+q.toFixed(2)+')':'')});
+  return true;
+}
 function estTwo(j){return typeof twoPriceOpen==='function'&&twoPriceOpen(j)&&(j.parts||[]).length>0;}
 function estDocFullHTML(j){
   if(!estTwo(j))return estDocHTML(j);
@@ -13578,6 +13594,8 @@ function autoPilot(){
   try{jobs.forEach(j=>{if(j&&!j.mergedInto&&['labour','parts','signoff'].includes(j.stage)&&dedupeParts(j))save(j);});}catch(e){}
   // v18.0: brake labour on one line, not left + right (jobs not yet sent to the customer)
   try{jobs.forEach(j=>{try{if(mergeSidesForJob(j))save(j);}catch(e){}});}catch(e){}
+  // v19.4: the final quote is what the estimate adds up to
+  try{jobs.forEach(j=>{try{if(syncQuoteToEstimate(j))save(j);}catch(e){}});}catch(e){}
   // v18.3: service parts that do not belong (fuel filter on a petrol, wipers, duplicates…)
   try{jobs.forEach(j=>{try{let c=serviceTidyParts(j);if(oilPartsTidy(j))c=true;if(brainFixService(j)){c=true;try{brainRecalcAll(j);}catch(e){}}if(c)save(j);}catch(e){}});}catch(e){}
   // v18.0: check every live job's reg (a few a minute) so the make and model come from DVLA
@@ -13807,7 +13825,7 @@ function finEditH(j,merged){
         '<div><div style="font-size:10px;color:var(--gold);text-transform:uppercase;font-weight:700">Total inc-VAT</div><div id="inc-vat-display" style="font-size:22px;font-weight:900;color:var(--gold)">£'+incVAT.toFixed(2)+'</div></div>'+
       '</div>'+
     '</div>'+
-    '<div class="fg" style="margin-bottom:4px"><label class="fl2">Final Quote to Customer (£) <span class="req">*</span></label><input class="fi2" id="a-final-quote" type="number" value="'+((j.estimate&&parseFloat(j.quote))?parseFloat(j.quote):incVAT).toFixed(2)+'" placeholder="0.00"/></div>'+
+    '<div class="fg" style="margin-bottom:4px"><label class="fl2">Final Quote to Customer (£) <span class="req">*</span></label><input class="fi2" id="a-final-quote" type="number" value="'+(function(){try{if(!estTwo(j)){const d=estDocData(j);if(d&&d.total>0)return d.total;}}catch(e){}return (j.estimate&&parseFloat(j.quote))?parseFloat(j.quote):incVAT;})().toFixed(2)+'" placeholder="0.00"/></div>'+
     '<div style="font-size:11px;color:var(--faint);margin-bottom:12px">Adjust if needed. This is the price quoted to the customer.</div>'+
     (j.parts&&j.parts.length?
       '<div class="stitle" style="margin-bottom:6px">Parts Breakdown (cost → markup → sell price)</div>'+
@@ -15558,7 +15576,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1100';
+const CRM_BUILD='2026-11-18-1105';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -15887,7 +15905,8 @@ function addPartAtFinal(id){
   },250);
 }
 // Recalculate the quote so the customer figure never lags the parts list
-function reprice(j){
+function reprice(j){const _r=_reprice(j);try{syncQuoteToEstimate(j);}catch(e){}return _r;}
+function _reprice(j){
   let raw=0,sell=0;
   (j.parts||[]).forEach(p=>{
     const q=partQty(p);
