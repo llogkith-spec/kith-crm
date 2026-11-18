@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v18.6 \u00b7 16 Nov';
+const BUILD='v18.7 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -5508,7 +5508,7 @@ function renderPipeline(){
   if(q&&!total)h+='<div style="padding:20px;text-align:center;color:var(--faint)">No jobs match “'+escHtml(q)+'”</div>';
   vp.innerHTML=h;
 }
-function openJob(id){try{const _j=jobs.find(x=>x.id===id);if(_j){let c=mergeSidesForJob(_j);if(serviceTidyParts(_j))c=true;if(brainFixService(_j))c=true;if(c)save(_j);}}catch(e){}curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
+function openJob(id){try{const _j=jobs.find(x=>x.id===id);if(_j){let c=mergeSidesForJob(_j);if(serviceTidyParts(_j))c=true;if(oilPartsTidy(_j))c=true;if(brainFixService(_j))c=true;if(c)save(_j);}}catch(e){}curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
 
 // Redraw even if something still has focus. Only ever called straight
 // after a stage change, when there is nothing half-typed to protect.
@@ -11358,7 +11358,7 @@ window.brainVerifySrt = async function(jobId, idx){
 const PART_RULES=[
   [/rocker|cam ?cover|valve cover/i,['Rocker cover gasket',{n:'Spark plug tube seals',q:4,petrol:1},'Rocker cover bolt seals / grommets']],
   [/turbo (inlet|intake)|intake pipe|inlet pipe|boost (hose|pipe)|intercooler (hose|pipe)/i,['Pipe O-ring / seal','Hose clips ×2']],
-  [/turbo(?! (inlet|intake))(charger)?\b.*(replace|renew|new|fit)|(replace|renew|new|fit).*\bturbo\b(?! (inlet|intake))/i,['Turbo gasket kit','Turbo oil feed and return seals','Engine oil','Oil filter','Sump plug washer']],
+  [/turbo(?! (inlet|intake))(charger)?\b.*(replace|renew|new|fit)|(replace|renew|new|fit).*\bturbo\b(?! (inlet|intake))/i,['Turbo gasket kit','Turbo oil feed and return seals']],
   [/exhaust|centre box|center box|back ?box|rear box|tail ?pipe|front pipe|catalytic|\bcat\b|\bdpf\b|flexi/i,['Exhaust gaskets','Exhaust clamps','Exhaust nuts and bolts kit','Exhaust mounting rubbers']],
   [/manifold/i,['Manifold gasket','Manifold studs and nuts']],
   [/sump(?! plug)/i,['Sump gasket / sealant','Sump plug washer','Engine oil','Oil filter']],
@@ -11406,10 +11406,61 @@ function partsForOp(label,j){
   });
   return out;
 }
+// ── OIL: HOW MUCH THIS ENGINE TAKES (18 Nov 2026, Logan) ─────────────
+// Engine oil goes on the parts list in litres for this vehicle, under the
+// oil change / service — never twice, never on the turbo line.
+function oilLitres(j){
+  const v=(j&&j.dvla)||{};
+  const cc=parseFloat(v.engineCapacity)||(parseFloat(j&&j.engine)>0&&parseFloat(j.engine)<10?parseFloat(j.engine)*1000:0);
+  const d=/diesel/.test(partsFuel(j));
+  if(!cc)return {l:5,sure:false};
+  const l=cc<=1000?3.5:cc<=1400?4:cc<=1600?(d?4.5:4.3):cc<=2000?(d?5.5:4.8):cc<=2500?5.8:cc<=3000?(d?7:6.5):8;
+  return {l,sure:true,cc};
+}
+function _isOilPart(n){const t=String(n||'').toLowerCase();if(/change|service|filter|feed|return|pipe|seal|cooler|pressure|pump|sensor/.test(t)&&!/engine oil/.test(t))return false;return /engine oil|^oil\b/.test(t);}
+function _isOilJob(l){return /oil (and|&) filter|oil change|oil service|(interim|full|major) service/i.test(String(l||''));}
+// tidy the parts list: one engine oil line (in litres), oil parts under the oil job,
+// no part named after a job ("Oil and filter change"), turbo gasket listed once
+function oilPartsTidy(j){
+  if(!j||!Array.isArray(j.parts)||!j.parts.length)return false;
+  if(!['intake','range','labour','parts','signoff'].includes(j.stage)||j.signedOff)return false;
+  const priced=p=>['price1','price2','price3','supplier1','supplier2','supplier3','po','poId','partNo','num'].some(k=>p[k]!=null&&String(p[k]).trim()!==''&&String(p[k])!=='0');
+  const ai=j.brainAI&&Array.isArray(j.brainAI.jobs)?j.brainAI.jobs.filter(b=>!b.excluded):[];
+  const oilJob=ai.find(b=>_isOilJob(b.job_label));
+  const oilWhy=oilJob?oilJob.job_label:'';
+  const gone=[];let ch=false;
+  let parts=j.parts.filter(p=>{
+    if(priced(p))return true;
+    const n=String(p.name||'');
+    if(_isOilJob(n)){gone.push(n+' (that is the job, not a part)');return false;}
+    return true;
+  });
+  // one engine oil, in litres
+  const oils=parts.filter(p=>_isOilPart(p.name)&&!priced(p));
+  if(oils.length){
+    const o=oils[0],L=oilLitres(j);
+    oils.slice(1).forEach(x=>{gone.push(x.name+' (duplicate)');});
+    parts=parts.filter(p=>!oils.slice(1).includes(p));
+    const want='Engine oil — '+L.l+' L'+(L.sure?'':' (check the capacity)');
+    if(o.name!==want||parseFloat(o.qty)!==L.l||o.unit!=='L'){
+      // an AI guide price was for the whole fill — make it a price per litre
+      if(o.unit!=='L'&&parseFloat(o.price)>0&&(parseFloat(o.qty)||1)===1)o.price=Math.round(parseFloat(o.price)/L.l*100)/100;
+      o.name=want;o.qty=L.l;o.unit='L';ch=true;}
+  }
+  // oil, oil filter and washer sit under the oil job
+  if(oilWhy)parts.forEach(p=>{if(priced(p))return;if((_isOilPart(p.name)||/oil filter|sump|drain plug washer/i.test(p.name))&&p.brainWhy!==oilWhy){p.brainWhy=oilWhy;ch=true;}});
+  // turbo gasket once
+  const tg=parts.filter(p=>!priced(p)&&/turbo/i.test(p.name)&&/gasket/i.test(p.name));
+  if(tg.length>1){const keep=tg.find(p=>/kit/i.test(p.name))||tg[0];tg.filter(p=>p!==keep).forEach(p=>gone.push(p.name+' (duplicate)'));parts=parts.filter(p=>!tg.includes(p)||p===keep);}
+  if(!gone.length&&!ch)return false;
+  j.parts=parts;
+  if(gone.length){j.log=j.log||[];j.log.push({t:ts(),s:'🧹 Parts tidied: removed '+gone.join(', ')});}
+  return true;
+}
 function mainPartOf(label){
   const t=String(label||'');
   if(!/replace|renew|\bnew\b|supply and fit|fit new/i.test(t))return '';
-  if(/service|fitting|tyre|diagnos|inspection|check|bodywork|paint|panel/i.test(t))return '';
+  if(/service|fitting|tyre|diagnos|inspection|check|bodywork|paint|panel|oil (and|&) filter|oil change/i.test(t))return '';
   return t.replace(/\b(replacement|replace|renew(al)?|supply and fit|fit new|new|and refit|remove)\b/ig,' ').replace(/\s+/g,' ').replace(/^[\s\-—]+|[\s\-—]+$/g,'').trim();
 }
 function brainAutoParts(j){
@@ -11423,14 +11474,18 @@ function brainAutoParts(j){
     j.parts.push(Object.assign({name:name,num:'',qty:qty||1,price1:'',price2:'',price3:'',supplier1:'',supplier2:'',supplier3:'',eta1:'',eta2:'',eta3:'',status:'pending',fromBrain:true,brainWhy:why},extra||{}));
     n++;added.push(name+(qty>1?' ×'+qty:''));
   };
+  const _hasOilJob=ai.jobs.some(b=>!b.excluded&&_isOilJob(b.job_label));
   ai.jobs.filter(b=>!b.excluded&&!b.fixedBody&&!b.fixedAlloy&&!b.fixedDiag&&!b.fixedMot&&!b.fixedTyre).forEach(bj=>{
     const lab=String(bj.job_label||bj.job_normalised||'');
-    const pl=(bj.parts_lines||[]).filter(p=>p&&(p.part_label||p.part_normalised));
+    const oilHere=_isOilJob(lab);
+    const pl=(bj.parts_lines||[]).filter(p=>p&&(p.part_label||p.part_normalised))
+      .filter(p=>oilHere||!_hasOilJob||!(_isOilPart(p.part_label||p.part_normalised)||/oil filter|sump plug|drain plug washer/i.test(String(p.part_label||p.part_normalised))));
     pl.forEach(p=>add(String(p.part_label||p.part_normalised).replace(/_/g,' '),parseInt(p.qty)||1,lab,{brand:p.brand||'',aiNet:parseFloat(p.net)||0}));
     if(!pl.length){const mp=mainPartOf(lab);if(mp)add(mp.charAt(0).toUpperCase()+mp.slice(1),1,lab);}
     partsForOp(lab,j).forEach(x=>add(x.name,x.qty,lab+' \u2014 goes with this job',{rule:true}));
   });
   j.brainPartsAutoAt=ts();
+  try{oilPartsTidy(j);}catch(e){}
   if(n){
     j.brainPartsAppliedAt=j.brainPartsAppliedAt||ts();  // parts stage won't add them twice
     j.log=j.log||[];
@@ -11642,6 +11697,7 @@ window.brainApplyPartsToJob = function(jobId){
   });
   try{dedupeParts(j);}catch(e){}
   try{serviceTidyParts(j);}catch(e){}
+  try{oilPartsTidy(j);}catch(e){}
   j.brainPartsAppliedAt = ts();
   j.brainPartsAppliedBy = brainWho();
   save(j); renderDetail();
@@ -13478,7 +13534,7 @@ function autoPilot(){
   // v18.0: brake labour on one line, not left + right (jobs not yet sent to the customer)
   try{jobs.forEach(j=>{try{if(mergeSidesForJob(j))save(j);}catch(e){}});}catch(e){}
   // v18.3: service parts that do not belong (fuel filter on a petrol, wipers, duplicates…)
-  try{jobs.forEach(j=>{try{let c=serviceTidyParts(j);if(brainFixService(j)){c=true;try{brainRecalcAll(j);}catch(e){}}if(c)save(j);}catch(e){}});}catch(e){}
+  try{jobs.forEach(j=>{try{let c=serviceTidyParts(j);if(oilPartsTidy(j))c=true;if(brainFixService(j)){c=true;try{brainRecalcAll(j);}catch(e){}}if(c)save(j);}catch(e){}});}catch(e){}
   // v18.0: check every live job's reg (a few a minute) so the make and model come from DVLA
   try{let n=0;for(const j of jobs){if(n>=4)break;
     if(!j||j.mergedInto||!j.reg||['done','lost','accounts','receivable','review','followup'].includes(j.stage))continue;
@@ -15457,7 +15513,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1025';
+const CRM_BUILD='2026-11-18-1035';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
