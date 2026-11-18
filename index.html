@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v19.0 \u00b7 16 Nov';
+const BUILD='v19.1 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -5668,7 +5668,8 @@ function waB(j){
     contact2:encodeURIComponent('Hi '+f+', great news — we\'ve confirmed all parts and availability. The final confirmed price is £'+(j.finalEst||j.est||'___')+'. Would you like to go ahead and get booked in?'),
     booked:encodeURIComponent('Hi '+f+', you\'re all booked in at KITH Cars! See you soon.'),
   };
-  return'<a href="https://wa.me/'+num+(m[j.stage]?'?text='+m[j.stage]:'')+'" target="_blank" class="btn btn-wa btn-sm">💬 WhatsApp '+f+'</a>';
+  const _u=waLink(num,m[j.stage]?decodeURIComponent(m[j.stage]):'');
+  return'<a href="'+escHtml(_u)+'"'+(/^https:/.test(_u)?' target="_blank"':'')+' class="btn btn-wa btn-sm">💬 WhatsApp '+f+'</a>';
 }
 
 // ── TWO PRICES ON ONE JOB (v6.8, 21 Sep 2026) ───────────────────────
@@ -6563,7 +6564,7 @@ async function waSend(number,text,opts){
   const to=String(number||'').replace(/\D/g,'');
   if(!to)return{ok:false,error:'No number'};
   if(!waAuto()){
-    window.open(waLink(to,text),'_blank');
+    openWa(waLink(to,text),'_blank');
     return{ok:true,manual:true};
   }
   try{
@@ -6605,7 +6606,7 @@ async function waSendForJob(id,text,opts){
     j.log.push({t:ts(),s:'\u26a0 WhatsApp failed: '+(r.error||'')+(currentUser?' ['+currentUser.name+']':'')});
     save(j);
     if(confirm('\u26a0 Could not send automatically.\n\n'+(r.error||'')+'\n\nOpen WhatsApp and send it by hand?')){
-      window.open(waLink(num,text),'_blank');
+      openWa(waLink(num,text),'_blank');
     }
   }
   renderDetail();
@@ -6630,8 +6631,19 @@ function waStatusH(){
   '</div>';
 }
 
+// 18 Nov 2026: on a phone with both apps, wa.me opens the PERSONAL WhatsApp.
+// KITH sends from WhatsApp Business, so phones open that app directly.
+// (Switchable per phone in the Send box if a phone only has normal WhatsApp.)
+function openWa(url,target){if(/^(whatsapp|whatsapp-business|intent):/.test(url)){window.location.href=url;return null;}return window.open(url,target||'_blank');}
+function waAppPref(){try{return localStorage.getItem('kith_wa_app')||'business';}catch(e){return 'business';}}
+function setWaAppPref(v){try{localStorage.setItem('kith_wa_app',v);}catch(e){}}
 function waLink(phone,msg){
-  return'https://wa.me/'+phone+'?text='+encodeURIComponent(msg);
+  const n=String(phone||'').replace(/\D/g,'');
+  if(estIsPhone()&&!/Android/i.test(navigator.userAgent||'')&&waAppPref()==='business')
+    return 'whatsapp-business://send?phone='+n+'&text='+encodeURIComponent(msg||'');
+  if(/Android/i.test(navigator.userAgent||'')&&waAppPref()==='business')
+    return 'intent://send?phone='+n+'&text='+encodeURIComponent(msg||'')+'#Intent;scheme=whatsapp;package=com.whatsapp.w4b;S.browser_fallback_url='+encodeURIComponent('https://wa.me/'+n+'?text='+encodeURIComponent(msg||''))+';end';
+  return'https://wa.me/'+n+'?text='+encodeURIComponent(msg||'');
 }
 
 // ── WHATSAPP THE ESTIMATE PDF (21 Sep 2026) ─────────────────────────
@@ -6840,6 +6852,7 @@ function openSendNowBox(id,docI,notJustApproved){
     '<div style="font-size:12px;color:var(--dim);margin-bottom:14px">'+(notJustApproved?'':'Nothing has gone to the customer yet. ')+(num?'WhatsApp: <strong>+'+escHtml(num)+'</strong> · '+money2(parseFloat(j.quote)||0):'<span style="color:var(--red)">No valid mobile on this job — fix it with Edit first.</span>')+'</div>'+
     (phone?shareBtn+chatBtn:chatBtn+shareBtn)+
     (function(){try{return companySendH(j);}catch(e){return '';}})()+
+    (estIsPhone()?'<div style="font-size:11px;color:var(--faint);margin:2px 0 6px">Opens: <strong>'+(waAppPref()==='business'?'WhatsApp Business':'WhatsApp')+'</strong> \u00b7 <a href="#" style="color:var(--gold)" onclick="setWaAppPref(waAppPref()===\'business\'?\'personal\':\'business\');openSendNowBox(\''+j.id+'\',window._sbDoc,true);return false">switch to '+(waAppPref()==='business'?'normal WhatsApp':'WhatsApp Business')+'</a></div>':'')+
     '<div id="sb-msg" style="font-size:12px;margin:6px 0 10px;line-height:1.5"></div>'+
     '<button class="btn btn-ghost btn-full btn-sm" onclick="sendBoxClose()">Later — the green Send button stays on the job</button>'+
     (j.signedOff&&!j.estimateSentMs?'<button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px;color:var(--amber);border-color:var(--amber)" onclick="undoApproval(\''+j.id+'\')">↩ Go back — undo the approval (back to Sign-Off)</button>':'')+
@@ -6941,7 +6954,7 @@ function estManualSend(j,d,num,text,viaShare,waited){
   }else{
     // 16 Nov 2026: WhatsApp on the computer is WhatsApp Web in the browser — open the chat
     // there (same tab every time) rather than wa.me, which asks to open an app
-    if(estIsPhone())window.open(waLink(num,textL),'_blank');
+    if(estIsPhone())openWa(waLink(num,textL),'_blank');
     else window.open('https://web.whatsapp.com/send?phone='+num+'&text='+encodeURIComponent(textL),'kith-whatsapp');
   }
   if(d){
@@ -7177,11 +7190,13 @@ function estDocData(j,opt){
     const oc=opt?_twoMoney(opt==='md'?p.mdCost:p.afCost):null;
     const cost=opt?(oc||0):(parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0);
     if(!(cost>0))return;
-    const q=parseInt(p.qty)||1, unit=applyMarkup(cost,p);
+    const q=partQty(p), unit=applyMarkup(partCostEach(p,cost),p);
     const mot=/\bmot\b/i.test(String(p.name||''));
     // brand the customer is getting (manufacturer), never the shop we buy from
     const brand=String(p.brand||p.make||p.manufacturer||'').trim();
-    products.push({no:p.partNo||p.number||p.num||'',desc:p.name||'Part',brand:brand,qty:q,unit:unit,total:r2(unit*q),noVat:mot});
+    let desc=String(p.name||'Part').replace(/\s*\(check the capacity\)/i,'');
+    if(_isOilPart(p.name))desc='Engine oil'+(p.oilGrade?' '+p.oilGrade:'')+' \u2014 '+q+' L';
+    products.push({no:p.partNo||p.number||p.num||'',desc:desc,brand:brand,qty:q,unit:unit,total:r2(unit*q),noVat:mot});
   });
   if(parseFloat(j.addPartsCost)>0){const u=applyMarkup(parseFloat(j.addPartsCost));products.push({no:'',desc:'Additional parts',qty:1,unit:u,total:r2(u)});}
   // Older jobs priced before the labour/parts lines existed: one line for the quoted work
@@ -11416,6 +11431,9 @@ function partsForOp(label,j){
 // ── OIL: HOW MUCH THIS ENGINE TAKES (18 Nov 2026, Logan) ─────────────
 // Engine oil goes on the parts list in litres for this vehicle, under the
 // oil change / service — never twice, never on the turbo line.
+// Oil is priced PER LITRE. A price over £25 a litre is really the whole fill — split it.
+function partQty(p){return (p&&(p.unit==='L'||_isOilPart(p.name)))?(parseFloat(p.qty)||1):(parseInt(p.qty)||1);}
+function partCostEach(p,c){c=parseFloat(c)||0;if(c>25&&p&&(p.unit==='L'||_isOilPart(p.name))){const q=partQty(p);if(q>1)return Math.round(c/q*100)/100;}return c;}
 function oilLitres(j){
   const v=(j&&j.dvla)||{};
   const cc=parseFloat(v.engineCapacity)||(parseFloat(j&&j.engine)>0&&parseFloat(j.engine)<10?parseFloat(j.engine)*1000:0);
@@ -11448,7 +11466,7 @@ function oilPartsTidy(j){
     const o=oils[0],L=oilLitres(j);
     oils.slice(1).forEach(x=>{gone.push(x.name+' (duplicate)');});
     parts=parts.filter(p=>!oils.slice(1).includes(p));
-    const want='Engine oil — '+L.l+' L'+(L.sure?'':' (check the capacity)');
+    const want='Engine oil — '+L.l+' L';o.oilCapGuess=!L.sure;
     if(o.name!==want||parseFloat(o.qty)!==L.l||o.unit!=='L'){
       // an AI guide price was for the whole fill — make it a price per litre
       if(o.unit!=='L'&&parseFloat(o.price)>0&&(parseFloat(o.qty)||1)===1)o.price=Math.round(parseFloat(o.price)/L.l*100)/100;
@@ -12776,7 +12794,7 @@ function sendLeadReply(id,how){
   if(how==='whatsapp'){
     const num=String((l.from||{}).phone||'').replace(/^0/,'44').replace(/\D/g,'');
     if(typeof waSend==='function'&&live)waSend(num,text);
-    else window.open(waLink(num,text),'_blank');
+    else openWa(waLink(num,text),'_blank');
   }else if(how==='email'){
     window.open('mailto:'+encodeURIComponent((l.from||{}).email||'')+'?subject='+encodeURIComponent('Re: '+(l.subject||'your enquiry — KITH Cars'))+'&body='+encodeURIComponent(text),'_blank');
   }else{
@@ -14897,7 +14915,7 @@ function addCustomerUpdate(id){
   save(j);renderDetail();
   const num=(j.phone||'').replace(/^0/,'44').replace(/\D/g,'');
   if(num&&confirm('Send this to the customer on WhatsApp?')){
-    window.open(waLink(num,'Hi, update on your '+(j.make||'vehicle')+(j.reg?' ('+j.reg+')':'')+':\n\n'+msg.trim()+'\n\nKITH Cars'),'_blank');
+    openWa(waLink(num,'Hi, update on your '+(j.make||'vehicle')+(j.reg?' ('+j.reg+')':'')+':\n\n'+msg.trim()+'\n\nKITH Cars'),'_blank');
   }
 }
 
@@ -14923,7 +14941,7 @@ function reportExtraWork(id){
   j.log.push({t:ts(),s:'\u26a0 Extra work found: '+what.trim().slice(0,70)+(price?' \u2014 \u00a3'+Number(price).toFixed(2):'')+(currentUser?' ['+currentUser.name+']':'')});
   save(j);renderDetail();renderAll();
   const num=(j.phone||'').replace(/^0/,'44').replace(/\D/g,'');
-  if(num)window.open(waLink(num,extraWorkMsg(j,what.trim(),price)),'_blank');
+  if(num)openWa(waLink(num,extraWorkMsg(j,what.trim(),price)),'_blank');
   else alert('No phone number on this job \u2014 the note is saved, but you will have to ring them.');
 }
 function setExtraWorkStatus(id,i,v){
@@ -15045,7 +15063,7 @@ function shareJobDocs(id){
   const msg='Hi '+firstName(j)+', here are the documents for your '+vehDesc(j)+':\n\n'+
     docs.map(d=>'\u2022 '+((DOC_TYPES.find(t=>t.k===d.kind)||{}).label||'Document')+'\n'+(d.driveUrl||d.url)).join('\n\n')+
     '\n\n\u2014 KITH Cars';
-  if(num)window.open(waLink(num,msg),'_blank');
+  if(num)openWa(waLink(num,msg),'_blank');
   else{try{navigator.clipboard.writeText(msg);toast('\ud83d\udd17 Copied \u2014 no phone number on this job');}catch(e){prompt('Copy:',msg);}}
 }
 function jobDocsH(j){
@@ -15520,7 +15538,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1040';
+const CRM_BUILD='2026-11-18-1050';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -15852,8 +15870,8 @@ function addPartAtFinal(id){
 function reprice(j){
   let raw=0,sell=0;
   (j.parts||[]).forEach(p=>{
-    const q=parseInt(p.qty)||1;
-    const c=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
+    const q=partQty(p);
+    const c=partCostEach(p,parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0);
     raw+=c*q; sell+=applyMarkup(c,p)*q;
   });
   const lab=parseFloat(j.labourCost)||0;
@@ -16415,13 +16433,19 @@ function renderPartsPriceList(j){
         '<div style="display:grid;grid-template-columns:2fr 1fr 60px 28px;gap:6px;align-items:center">'+
           '<input class="fi2" id="pp-name-'+i+'" value="'+escHtml(p.name||'')+'" placeholder="Part name *" style="font-weight:700;font-size:13px"/>'+
           '<input class="fi2" id="pp-num-'+i+'" value="'+escHtml(p.num||'')+'" placeholder="Part number"/>'+
-          '<input class="fi2" type="number" id="pp-qty-'+i+'" value="'+(p.qty||1)+'" placeholder="Qty" min="1"/>'+
+          '<input class="fi2" type="number" step="'+(_isOilPart(p.name)?'0.1':'1')+'" id="pp-qty-'+i+'" value="'+(p.qty||1)+'" placeholder="'+(_isOilPart(p.name)?'Litres':'Qty')+'" min="'+(_isOilPart(p.name)?'0.1':'1')+'"/>'+
           '<button class="btn btn-red btn-xs" onclick="removePartByParts('+i+')">✕</button>'+
         '</div>'+
         '<label style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11px;cursor:pointer">'+
           '<input type="checkbox" id="pp-iskit-'+i+'" '+(p.isKit?'checked':'')+' style="width:15px;height:15px" onchange="toggleKitBox('+i+')"/>'+
           '<span>This is a kit / package</span></label>'+
         '<button class="btn btn-ghost btn-xs" style="margin-top:6px;color:var(--red);border-color:var(--red)" onclick="partCantGet('+i+')">\ud83d\udeab Can\u2019t get this part</button>'+
+        (_isOilPart(p.name)?'<div style="margin-top:8px;padding:8px;border:1px solid var(--gold);border-radius:6px">'+
+          '<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:5px">\ud83d\udee2 OIL \u2014 grade and brand go on the customer\u2019s estimate. Price each supplier PER LITRE.</div>'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'+
+            '<input class="fi2" id="pp-grade-'+i+'" value="'+escHtml(p.oilGrade||'')+'" placeholder="Grade * e.g. 5W-30 LL"/>'+
+            '<input class="fi2" id="pp-obrand-'+i+'" value="'+escHtml(p.brand||'')+'" placeholder="Brand * e.g. Castrol"/></div>'+
+          '<div style="font-size:10px;color:var(--faint);margin-top:4px">Quantity is litres (decimals are fine, e.g. 5.3).</div></div>':'')+
         '<div id="pp-kitwrap-'+i+'" style="display:'+(p.isKit?'block':'none')+';margin-top:6px">'+
           '<textarea class="fta" id="pp-kit-'+i+'" placeholder="What is in it? One per line" style="width:100%;min-height:66px;font-size:12px">'+escHtml(p.kitContents||'')+'</textarea>'+
           '<div style="font-size:10px;color:var(--faint);margin-top:2px">Goes on the PO and the job sheet, so goods-in can check it off.</div>'+
@@ -16475,6 +16499,7 @@ function autoSaveParts(){
       p.qty=document.getElementById('pp-qty-'+i)?.value||p.qty||1;
     p.isKit=!!document.getElementById('pp-iskit-'+i)?.checked;
     p.kitContents=p.isKit?(document.getElementById('pp-kit-'+i)?.value||'').trim():'';
+    {const g=document.getElementById('pp-grade-'+i),b=document.getElementById('pp-obrand-'+i);if(g)p.oilGrade=g.value.trim();if(b&&b.value.trim())p.brand=b.value.trim();}
       [1,2,3].forEach(n=>{
         p['supplier'+n]=document.getElementById('pp-sup'+n+'-'+i)?.value||p['supplier'+n]||'';
         p['price'+n]=document.getElementById('pp-price'+n+'-'+i)?.value||p['price'+n]||'';
@@ -16605,6 +16630,15 @@ function savePartPricesInner(){
     return;
   }
   let allDone=true;
+  const oilMiss=[];
+  j.parts.forEach((p,i)=>{
+    const g=document.getElementById('pp-grade-'+i),b=document.getElementById('pp-obrand-'+i);
+    if(g)p.oilGrade=g.value.trim();if(b&&b.value.trim())p.brand=b.value.trim();
+    if(_isOilPart(p.name)){p.unit='L';
+      const anyPrice=[1,2,3].some(n=>(document.getElementById('pp-price'+n+'-'+i)||{}).value||p['price'+n]);
+      if(anyPrice&&(!p.oilGrade||!p.brand))oilMiss.push(p.name);}
+  });
+  if(oilMiss.length){alert('Put the oil GRADE and BRAND in before saving (e.g. 5W-30 LL, Castrol).\n\nThey go on the customer\u2019s estimate.');return;}
   j.parts.forEach((p,i)=>{
     p.name=document.getElementById('pp-name-'+i)?.value||p.name||'';
     p.num=document.getElementById('pp-num-'+i)?.value||p.num||'';
@@ -17013,7 +17047,7 @@ function openB2BDetail(id){
     '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">'+
       B2B_STAGES.map(s=>'<button class="btn btn-sm '+(l.status===s.id?'btn-gold':'btn-ghost')+'" onclick="updateB2BStatus(\''+l.id+'\',\''+s.id+'\');this.closest(\'div[style*=fixed]\').remove();renderB2BBoard()">'+s.icon+' '+s.label+'</button>').join('')+
     '</div>'+
-    (l.phone?'<a href="https://wa.me/'+l.phone.replace(/^0/,'44').replace(/\s/g,'')+'" target="_blank" class="btn btn-green btn-full btn-sm" style="margin-bottom:8px">WhatsApp</a>':'')+
+    (l.phone?'<a href="'+escHtml(waLink(l.phone.replace(/^0/,'44').replace(/\s/g,''),''))+'" target="_blank" class="btn btn-green btn-full btn-sm" style="margin-bottom:8px">WhatsApp</a>':'')+
     '<button onclick="if(confirm(\'Delete this lead?\'))deleteBLead(\''+l.id+'\');this.closest(\'div[style*=fixed]\').remove();renderB2BBoard()" class="btn btn-red btn-sm btn-full">Delete Lead</button>'+
   '</div>';
   document.body.appendChild(cur);
