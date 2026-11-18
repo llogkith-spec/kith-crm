@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v18.1 \u00b7 16 Nov';
+const BUILD='v18.2 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -5508,7 +5508,7 @@ function renderPipeline(){
   if(q&&!total)h+='<div style="padding:20px;text-align:center;color:var(--faint)">No jobs match “'+escHtml(q)+'”</div>';
   vp.innerHTML=h;
 }
-function openJob(id){curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
+function openJob(id){try{const _j=jobs.find(x=>x.id===id);if(_j&&mergeSidesForJob(_j))save(_j);}catch(e){}curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
 
 // Redraw even if something still has focus. Only ever called straight
 // after a stage change, when there is nothing half-typed to protect.
@@ -10760,6 +10760,30 @@ function brainMergeSides(j){
   });
   return ch;
 }
+function mergeSidesForJob(j){
+  if(!j||j.mergedInto||j.estimateSentMs||!['intake','range','labour','parts','signoff'].includes(j.stage))return false;
+  const before=parseFloat(j.labourCost)||0;
+  let c=false;
+  // labour written only as a description ("Renew the rear left brake pads - 1.2hr …"):
+  // turn it into lines first so left and right can be put together
+  try{if(!srtLines(j).length&&!j.labourFixed&&before>0){
+    const ops=parseOpsFromDesc(j.labourDesc);
+    const pair=ops.some(o=>_isBrake(o.op)&&_sideOf(o.op)&&ops.some(x=>x!==o&&_sideKey(x.op)===_sideKey(o.op)&&_sideOf(x.op)&&_sideOf(x.op)!==_sideOf(o.op)));
+    if(pair){const H=ops.reduce((a,o)=>a+o.book,0)||1;
+      j.srtLines=ops.map(o=>({op:o.op,book:o.book,charged:o.book,labour:Math.round(before*o.book/H*100)/100,by:'auto',at:ts()}));
+      syncSrtTotals(j);}}}catch(e){}
+  try{c=mergeSideLines(j);}catch(e){}
+  try{if(brainMergeSides(j))c=true;}catch(e){}
+  if(!c)return false;
+  // the labour came down — take the same off the quote (with VAT unless it is VAT-free)
+  const after=parseFloat(j.labourCost)||0,cut=Math.round((before-after)*100)/100;
+  if(cut>0.009){
+    const inc=j.vatExempt?cut:Math.round(cut*1.2*100)/100;
+    ['quote','finalEst','signedOffAmount'].forEach(k=>{if(parseFloat(j[k])>0)j[k]=Math.round((parseFloat(j[k])-inc)*100)/100;});
+    j.labourDesc=srtLines(j).map(l=>l.op+' - '+(parseFloat(l.charged)||0)+'hr').join('\n');
+  }
+  return true;
+}
 function brainPairRule(j){
   const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
   const live=ai.jobs.filter(b=>!b.excluded&&!b.fixedTyre&&!b.fixedDiag&&!b.fixedBody&&!b.fixedAlloy&&!b.fixedMot);
@@ -13330,10 +13354,8 @@ function autoPilot(){
       try{stageMoved(j,from,'accounts');}catch(e){}save(j);}});}catch(e){}
   // v16.7: one line per part — merge copies the Brain added twice
   try{jobs.forEach(j=>{if(j&&!j.mergedInto&&['labour','parts','signoff'].includes(j.stage)&&dedupeParts(j))save(j);});}catch(e){}
-  // v18.0: brake labour on one line, not left + right (jobs not yet signed off)
-  try{jobs.forEach(j=>{if(!j||j.mergedInto||j.signedOff||!['intake','range','labour','parts','signoff'].includes(j.stage))return;
-    let c=false;try{c=mergeSideLines(j);}catch(e){}try{if(brainMergeSides(j)){c=true;}}catch(e){}
-    if(c){try{refreshEstimateDocs&&0;}catch(e){}save(j);}});}catch(e){}
+  // v18.0: brake labour on one line, not left + right (jobs not yet sent to the customer)
+  try{jobs.forEach(j=>{try{if(mergeSidesForJob(j))save(j);}catch(e){}});}catch(e){}
   // v18.0: check every live job's reg (a few a minute) so the make and model come from DVLA
   try{let n=0;for(const j of jobs){if(n>=4)break;
     if(!j||j.mergedInto||!j.reg||['done','lost','accounts','receivable','review','followup'].includes(j.stage))continue;
@@ -15312,7 +15334,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-0940';
+const CRM_BUILD='2026-11-18-0950';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
