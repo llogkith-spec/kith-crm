@@ -357,17 +357,17 @@ function orderCard(x) {
   if (ask.length) {
     h += '<div class="grp"><div class="gh"><span class="tag stop">Shelf or buy?</span> Consumables — check the shelf first</div>' +
       ask.map(o => { const s = stockMatch(o.p.name);
-        return '<div class="pl"><div class="nm">' + esc(o.p.name) + ' ×' + (parseInt(o.p.qty) || 1) +
+        return '<div class="pl"><div class="nm">' + esc(o.p.name) + ' ×' + ((parseFloat(o.p.qty)||0) || 1) +
           (s ? '<small>' + esc(s.qty) + ' ' + esc(s.unit) + ' on the shelf</small>' : '') + '</div>' +
           '<span class="acts"><button class="btn sm go" data-shelf="' + esc(j.id) + '|' + o.i + '">On the shelf</button>' +
           '<button class="btn sm" data-buy="' + esc(j.id) + '|' + o.i + '">Need to buy</button></span></div>'; }).join('') + '</div>';
   }
   Object.keys(groups).forEach(sup => {
     const g = groups[sup];
-    const tot = g.reduce((a, o) => a + o.cost * (parseInt(o.p.qty) || 1), 0);
+    const tot = g.reduce((a, o) => a + o.cost * ((parseFloat(o.p.qty)||0) || 1), 0);
     const st = acctOf(sup);
     h += '<div class="grp"><div class="gh"><b>' + esc(sup) + '</b>' + (st === 'stop' ? ' <span class="tag stop">On stop</span>' : st === 'cash' ? ' <span class="tag warn">Cash only</span>' : '') + '</div>' +
-      g.map(o => '<div class="pl"><div class="nm">' + esc(o.p.name) + ' ×' + (parseInt(o.p.qty) || 1) +
+      g.map(o => '<div class="pl"><div class="nm">' + esc(o.p.name) + ' ×' + ((parseFloat(o.p.qty)||0) || 1) +
         (o.p.num ? '<small>' + esc(o.p.num) + '</small>' : '<small style="color:var(--warn)">no part number</small>') + '</div><span class="amt">' + (o.cost ? gbp(o.cost) : '—') + '</span></div>').join('') +
       '<div class="btns"><button class="btn primary sm" data-raise="' + esc(j.id) + '" data-sup="' + esc(sup) + '">Raise PO' + (sup !== '(no supplier)' ? ' — ' + esc(sup) : '') +
       ' (' + g.length + (tot ? ' · ' + gbp(tot) : '') + ')</button></div></div>';
@@ -380,7 +380,7 @@ function wireOrder() {
     const j = jobOf(b.dataset.raise); const sup = b.dataset.sup;
     const g = P.toOrderBySupplier(j)[sup] || [];
     openRaise({ jobId: j.id, supplier: sup === '(no supplier)' ? '' : sup,
-      lines: g.map(o => ({ i: o.i, name: o.p.name, num: o.p.num || '', price: o.cost || '', qty: parseInt(o.p.qty) || 1 })) });
+      lines: g.map(o => ({ i: o.i, name: o.p.name, num: o.p.num || '', price: o.cost || '', qty: (parseFloat(o.p.qty)||0) || 1 })) });
   });
   document.querySelectorAll('[data-shelf],[data-buy]').forEach(b => b.onclick = () => {
     const shelf = !!b.dataset.shelf; const [jid, i] = (b.dataset.shelf || b.dataset.buy).split('|');
@@ -398,8 +398,8 @@ async function setShelf(jobId, i, shelf) {
       return d;
     });
     const s = shelf ? stockMatch(part.name) : null;
-    if (s && confirm('Take ' + (parseInt(part.qty) || 1) + ' ' + s.unit + ' of ' + s.name + ' off the stock count?\n\nOn the shelf now: ' + s.qty)) {
-      STOCK = STOCK.map(x => x.id === s.id ? P.adjustStock(x, -(parseInt(part.qty) || 1), 'used on ' + (j.reg || jobId), ME) : x);
+    if (s && confirm('Take ' + ((parseFloat(part.qty)||0) || 1) + ' ' + s.unit + ' of ' + s.name + ' off the stock count?\n\nOn the shelf now: ' + s.qty)) {
+      STOCK = STOCK.map(x => x.id === s.id ? P.adjustStock(x, -((parseFloat(part.qty)||0) || 1), 'used on ' + (j.reg || jobId), ME) : x);
       await saveStock();
     }
     toast(shelf ? '✓ From the shelf — no PO needed' : '✓ Added to the order list');
@@ -438,12 +438,12 @@ function openRaise(o) {
     $('rLines').innerHTML = RAISE.lines.map((l, k) => '<div class="line"><input class="nm-in" type="text" data-k="' + k + '" data-f="name" placeholder="Part" value="' + esc(l.name) + '">' +
       '<input type="text" data-k="' + k + '" data-f="num" placeholder="Part no." value="' + esc(l.num) + '">' +
       '<input type="number" step="0.01" min="0" data-k="' + k + '" data-f="price" placeholder="£ net" value="' + esc(l.price) + '">' +
-      '<input type="number" step="1" min="1" data-k="' + k + '" data-f="qty" value="' + esc(l.qty) + '">' +
+      '<input type="number" step="any" inputmode="decimal" min="0" data-k="' + k + '" data-f="qty" value="' + esc(l.qty) + '">' +
       '<button class="btn sm stop" data-rm="' + k + '" aria-label="Remove">✕</button></div>').join('');
     $('rLines').querySelectorAll('[data-f]').forEach(inp => inp.oninput = () => { RAISE.lines[+inp.dataset.k][inp.dataset.f] = inp.value; total(); });
     $('rLines').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { RAISE.lines.splice(+b.dataset.rm, 1); drawLines(); total(); });
   };
-  const total = () => { const t = RAISE.lines.reduce((a, l) => a + (parseFloat(l.price) || 0) * (parseInt(l.qty) || 1), 0); $('rTotal').textContent = t ? 'Total ' + gbp(t) + ' ex VAT' : ''; };
+  const total = () => { const t = RAISE.lines.reduce((a, l) => a + (parseFloat(l.price) || 0) * ((parseFloat(l.qty)||0) || 1), 0); $('rTotal').textContent = t ? 'Total ' + gbp(t) + ' ex VAT' : ''; };
   const acct = () => { const s = $('rSup').value; const st = acctOf(s);
     $('rAcct').innerHTML = st === 'stop' ? '<div class="note stop"><b>On stop</b>' + esc(acctNote(s) || 'Accounts have restricted this supplier.') + '</div>'
       : st === 'cash' ? '<div class="note warn"><b>Cash only</b>' + esc(acctNote(s) || 'Pay on collection — no account credit.') + '</div>' : ''; };
@@ -549,9 +549,9 @@ function poCard(p, cls) {
     '<div class="t"><b>' + esc(p.supplier) + '</b><span>' + (j ? esc(j.reg || '') + ' · ' + jobSub(j) : p.jobId === 'consumables' ? 'Consumables / stock' : p.jobId ? 'Job ' + esc(p.jobId) : 'No job') +
     ' · raised ' + esc(p.createdAt || '') + ' by ' + esc(p.createdBy || '') + '</span></div>' +
     (st !== 'Ordered' ? '<span class="tag ' + (st === 'Not in stock' ? 'stop' : st === 'Part Received' ? 'warn' : 'blue') + '">' + esc(st) + '</span>' : '') + pay + '</div><div class="bd">' +
-    (p.items || []).map(i => '<div class="pl"><div class="nm">' + esc(i.name) + ' ×' + (parseInt(i.qty) || 1) + (i.num ? '<small>' + esc(i.num) + '</small>' : '') + '</div>' +
-      (i.received != null ? '<span class="tag ' + (i.received >= (parseInt(i.qty) || 1) ? 'go' : 'warn') + '">' + i.received + ' in</span>' : '') +
-      '<span class="amt">' + (parseFloat(i.price) ? gbp(parseFloat(i.price) * (parseInt(i.qty) || 1)) : '') + '</span></div>').join('') +
+    (p.items || []).map(i => '<div class="pl"><div class="nm">' + esc(i.name) + ' ×' + ((parseFloat(i.qty)||0) || 1) + (i.num ? '<small>' + esc(i.num) + '</small>' : '') + '</div>' +
+      (i.received != null ? '<span class="tag ' + (i.received >= ((parseFloat(i.qty)||0) || 1) ? 'go' : 'warn') + '">' + i.received + ' in</span>' : '') +
+      '<span class="amt">' + (parseFloat(i.price) ? gbp(parseFloat(i.price) * ((parseFloat(i.qty)||0) || 1)) : '') + '</span></div>').join('') +
     (p.outOfStockNote ? '<div class="note stop"><b>Not in stock</b>' + esc(p.outOfStockNote) + '</div>' : '') +
     '<div class="btns"><span class="hint when">' + (p.eta ? 'Due ' + esc(fmtDate(p.eta)) : 'No ETA') + ' · ' + gbp(P.poTotal(p)) + '</span>' +
     '<button class="btn sm" data-eta="' + esc(p.id) + '">Change ETA</button>' +
@@ -562,7 +562,7 @@ function openGoodsIn(poId) {
   const p = POS.find(x => x.id === poId); if (!p) return;
   sheet('<button class="btn sm x" data-close>Close</button><h2>Book in ' + esc(p.num) + '</h2><p class="hint">' + esc(p.supplier) + ' — how many of each actually arrived?</p>' +
     (p.items || []).map((i, k) => '<div class="pl"><div class="nm">' + esc(i.name) + (i.num ? '<small>' + esc(i.num) + '</small>' : '') + '</div>' +
-      '<span class="hint" style="margin:0">of ' + (parseInt(i.qty) || 1) + '</span><input type="number" min="0" max="' + (parseInt(i.qty) || 1) + '" id="gi' + k + '" value="' + (parseInt(i.qty) || 1) + '" style="width:5rem"></div>').join('') +
+      '<span class="hint" style="margin:0">of ' + ((parseFloat(i.qty)||0) || 1) + '</span><input type="number" min="0" max="' + ((parseFloat(i.qty)||0) || 1) + '" id="gi' + k + '" value="' + ((parseFloat(i.qty)||0) || 1) + '" style="width:5rem"></div>').join('') +
     '<div class="row" style="margin-top:.6rem"><div><label class="f" for="giNote">Delivery note / anything wrong</label><input type="text" id="giNote" placeholder="e.g. box damaged, 1 short"></div></div>' +
     '<button class="btn primary full" id="giGo">Book it in</button>');
   $('giGo').onclick = async () => {
@@ -644,7 +644,7 @@ function retCard(p, open) {
     '<span class="tag ' + (open ? 'warn' : '') + '">' + esc(p.status) + '</span></div><div class="bd">' +
     '<div class="note stop" style="margin-top:0"><b>Why</b>' + esc(p.returnReason || '') + '</div>' +
     (p.items || []).filter(i => p.status !== 'Part Returned' || i.returned).map(i => '<div class="pl"><div class="nm">' + esc(i.name) + (i.num ? '<small>' + esc(i.num) + '</small>' : '') + '</div>' +
-      '<span class="amt">×' + (i.returnedQty || parseInt(i.qty) || 1) + ' · ' + gbp((parseFloat(i.price) || 0) * (i.returnedQty || parseInt(i.qty) || 1)) + '</span></div>').join('') +
+      '<span class="amt">×' + (i.returnedQty || (parseFloat(i.qty)||0) || 1) + ' · ' + gbp((parseFloat(i.price) || 0) * (i.returnedQty || (parseFloat(i.qty)||0) || 1)) + '</span></div>').join('') +
     '<div class="btns"><span class="hint" style="margin:0;flex:1">Credit due ' + gbp(P.returnValue(p)) + '</span>' +
     (open ? '<button class="btn primary sm" data-retd="' + esc(p.id) + '">✓ Gone back to the supplier</button>' : '') + '</div></div></div>';
 }
@@ -667,7 +667,7 @@ function openReturn(poId) {
   let reason = '';
   sheet('<button class="btn sm x" data-close>Close</button><h2>Return from ' + esc(p.num) + '</h2><p class="hint">' + esc(p.supplier) + '</p>' +
     (p.items || []).map((i, k) => '<div class="pl"><label class="ck nm"><input type="checkbox" id="rt' + k + '"' + ((p.items || []).length === 1 ? ' checked' : '') + '> ' + esc(i.name) + '</label>' +
-      '<input type="number" min="1" max="' + (parseInt(i.qty) || 1) + '" id="rq' + k + '" value="' + (parseInt(i.qty) || 1) + '" style="width:5rem"></div>').join('') +
+      '<input type="number" min="1" max="' + ((parseFloat(i.qty)||0) || 1) + '" id="rq' + k + '" value="' + ((parseFloat(i.qty)||0) || 1) + '" style="width:5rem"></div>').join('') +
     '<label class="f" style="margin-top:.7rem">Why is it going back?</label><div class="chips" id="rtR">' + RETURN_REASONS.map((r, i) => '<button data-rr="' + i + '">' + esc(r) + '</button>').join('') + '</div>' +
     '<input type="text" id="rtOther" placeholder="Or type the reason…">' +
     '<div class="row" style="margin-top:.6rem"><div><label class="f" for="rtRef">Supplier return / RMA number</label><input type="text" id="rtRef"></div></div>' +
@@ -711,7 +711,7 @@ function renderStock() {
   document.querySelectorAll('[data-sedit]').forEach(b => b.onclick = () => openStockItem(b.dataset.sedit));
 }
 function stockRow(s) {
-  const onOrder = POS.filter(p => P.OPEN.includes(p.status || 'Ordered')).reduce((a, p) => a + (p.items || []).filter(i => i.stockId === s.id).reduce((b, i) => b + (parseInt(i.qty) || 1) - (i.received || 0), 0), 0);
+  const onOrder = POS.filter(p => P.OPEN.includes(p.status || 'Ordered')).reduce((a, p) => a + (p.items || []).filter(i => i.stockId === s.id).reduce((b, i) => b + ((parseFloat(i.qty)||0) || 1) - (i.received || 0), 0), 0);
   return '<div class="stockrow"><div><b>' + esc(s.name) + '</b>' + (s.kind === 'paint' ? ' <span class="tag gold">Paint</span>' : '') + '<div class="hint" style="margin:0">' +
     [s.num, s.supplier, s.min ? 'reorder at ' + s.min : 'no reorder level', onOrder ? onOrder + ' on order' : ''].filter(Boolean).map(esc).join(' · ') + '</div></div>' +
     '<div style="display:flex;align-items:center;gap:.35rem"><span class="qty' + (P.isLow(s) ? ' low' : '') + '">' + esc(s.qty) + '</span><span class="hint" style="margin:0">' + esc(s.unit) + '</span>' +
@@ -727,7 +727,7 @@ async function adjust(id, d, why) {
 function useStock(id) {
   const s = STOCK.find(x => x.id === id); if (!s) return;
   sheet('<button class="btn sm x" data-close>Close</button><h2>Use ' + esc(s.name) + '</h2><p class="hint">' + esc(s.qty) + ' ' + esc(s.unit) + ' on the shelf</p>' +
-    '<div class="row r2"><div><label class="f" for="uQ">How many ' + esc(s.unit) + '</label><input type="number" step="0.5" min="0" id="uQ" value="1"></div>' +
+    '<div class="row r2"><div><label class="f" for="uQ">How many ' + esc(s.unit) + '</label><input type="number" step="any" inputmode="decimal" min="0" id="uQ" value="1"></div>' +
     '<div><label class="f" for="uR">On which car? (reg)</label><input type="text" id="uR" placeholder="optional"></div></div>' +
     '<button class="btn primary full" id="uGo">Take it off the count</button>');
   $('uGo').onclick = async () => { const q = parseFloat($('uQ').value) || 0; if (!q) return; const r = ($('uR').value || '').trim().toUpperCase();
@@ -738,9 +738,9 @@ function openStockItem(id) {
   const sups = suppliers().map(x => x.name);
   sheet('<button class="btn sm x" data-close>Close</button><h2>' + (id ? 'Edit ' + esc(s.name) : 'Add a stock item') + '</h2>' +
     '<div class="row"><div><label class="f" for="sN">Name</label><input type="text" id="sN" value="' + esc(s.name || '') + '" placeholder="e.g. 5W-30 engine oil"></div></div>' +
-    '<div class="row r3"><div><label class="f" for="sQ">On the shelf</label><input type="number" step="0.5" min="0" id="sQ" value="' + esc(s.qty != null ? s.qty : '') + '"></div>' +
+    '<div class="row r3"><div><label class="f" for="sQ">On the shelf</label><input type="number" step="any" inputmode="decimal" min="0" id="sQ" value="' + esc(s.qty != null ? s.qty : '') + '"></div>' +
     '<div><label class="f" for="sU">Counted in</label><input type="text" id="sU" value="' + esc(s.unit || 'each') + '" placeholder="each, litre, box"></div>' +
-    '<div><label class="f" for="sM">Reorder when down to</label><input type="number" step="0.5" min="0" id="sM" value="' + esc(s.min != null ? s.min : '') + '"></div></div>' +
+    '<div><label class="f" for="sM">Reorder when down to</label><input type="number" step="any" inputmode="decimal" min="0" id="sM" value="' + esc(s.min != null ? s.min : '') + '"></div></div>' +
     '<div class="row r3"><div><label class="f" for="sS">Usual supplier</label><select id="sS"><option value=""></option>' + sups.map(n => '<option' + (n === s.supplier ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + '</select></div>' +
     '<div><label class="f" for="sP">Part no.</label><input type="text" id="sP" value="' + esc(s.num || '') + '"></div>' +
     '<div><label class="f" for="sC">Net cost each</label><input type="number" step="0.01" min="0" id="sC" value="' + esc(s.price || '') + '"></div></div>' +

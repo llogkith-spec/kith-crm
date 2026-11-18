@@ -738,7 +738,7 @@ function partRow(p,i){
         <div><label class="f">Item</label><select data-f="label">
           ${Object.keys(KITH.FLUIDS).map(k=>`<option ${p.label===k?'selected':''}>${esc(k)}</option>`).join('')}
         </select></div>
-        <div><label class="f">Quantity</label><input type="number" step="0.5" min="0" value="${p.qty}" data-f="qty"></div>
+        <div><label class="f">Quantity</label><input type="number" step="any" inputmode="decimal" min="0" value="${p.qty}" data-f="qty"></div>
       </div></div>`;}
   if(p.type==='tyre'){
     return `<div class="ln" data-i="${i}"><div class="hd">
@@ -747,7 +747,7 @@ function partRow(p,i){
       <button class="btn sm danger" data-del="1">Remove</button></div>
       <div class="row r2" style="margin-bottom:0">
         <div><label class="f">Net cost each</label><input type="number" step="0.01" min="0" value="${p.netEach}" data-f="netEach"></div>
-        <div><label class="f">Quantity</label><input type="number" step="1" min="1" value="${p.qty}" data-f="qty"></div>
+        <div><label class="f">Quantity</label><input type="number" step="any" inputmode="decimal" min="0" value="${p.qty}" data-f="qty"></div>
       </div>
       <div class="note" style="margin:.5rem 0 0">No markup on the tyre, ever. Fitting is a flat £20 + VAT each.</div></div>`;}
   return `<div class="ln" data-i="${i}"><div class="hd">
@@ -763,7 +763,7 @@ function partRow(p,i){
     </div>
     <div class="row r2" style="margin-bottom:0">
       <div><label class="f">Net cost per part</label><input type="number" step="0.01" min="0" value="${p.unitNet}" data-f="unitNet"></div>
-      <div><label class="f">Quantity</label><input type="number" step="1" min="1" value="${p.qty}" data-f="qty"></div>
+      <div><label class="f">Quantity</label><input type="number" step="any" inputmode="decimal" min="0" value="${p.qty}" data-f="qty"></div>
     </div>
     <div class="lres" data-pres="${i}"></div></div>`;
 }
@@ -1009,7 +1009,7 @@ function addFromAI(i,out){
       pairSecondarySrt:0,extraSrt:0,inspection:'',where:o.where||'',typical:o.typical_hours||''});nL++;});
   (j.parts||[]).forEach((p,k)=>{
     const cb=out.querySelector(`[data-pt="${i}|${k}"]`);if(!cb||!cb.checked)return;
-    const q=Math.max(1,parseInt(p.qty)||1);
+    const q=Math.max(1,(parseFloat(p.qty)||0)||1);
     // fluids the SOP sells at a fixed price go on as fluids; everything else is a part to phone for
     const fl=p.kind==='fluid'&&Object.keys(KITH.FLUIDS).find(f=>f.toLowerCase().split(/\W+/).some(w=>w.length>3&&p.name.toLowerCase().includes(w)));
     if(fl)S.parts.push({type:'fluid',label:fl,qty:q});
@@ -1428,7 +1428,7 @@ function restoreWork(){
     S.labour.push({label:JOB.labourDesc||'Labour',srt:parseFloat(JOB.srt)||0,tier:'TOP',category:'mechanical'});
   (JOB.parts||[]).forEach(p=>{
     const c=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
-    S.parts.push({type:'part',label:p.name||'',unitNet:c,qty:parseInt(p.qty)||1,num:p.num||'',
+    S.parts.push({type:'part',label:p.name||'',unitNet:c,qty:(parseFloat(p.qty)||0)||1,num:p.num||'',
       supplier:(p.supplier||p.supplier1||p.supplier2||p.supplier3||'')});
   });
 }
@@ -1454,7 +1454,7 @@ function writeCrmFigures(){
     JOB.srtSource='Estimator app \u00b7 SOP v'+KITH.VERSION;
   }
   JOB.parts=parts.map(l=>{
-    const qty=parseInt(l.qty)||1;
+    const qty=(parseFloat(l.qty)||0)||1;
     const unit=(l.unitNet!=null&&!isNaN(l.unitNet))?Number(l.unitNet):KITH.money((l.total||0)/qty);
     const out={name:l.label||l.kind,qty:qty,price:unit,sop_sell:l.total,
       noMarkup:l.kind!=='part'};     // fluids and tyres are sold at the SOP price already

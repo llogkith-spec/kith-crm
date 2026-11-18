@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v19.5 \u00b7 16 Nov';
+const BUILD='v19.6 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -3558,7 +3558,7 @@ function checkOrderNeeded(j){
     }
     return changed;
   }
-  const names=list.map(p=>(p.name||'part')+((parseInt(p.qty)||1)>1?' \u00d7'+p.qty:'')).join(', ');
+  const names=list.map(p=>(p.name||'part')+(((parseFloat(p.qty)||0)||1)>1?' \u00d7'+p.qty:'')).join(', ');
   const title='\ud83d\udce6 Order now \u2014 '+(j.reg||'job');
   const body='Booked '+fmtBookDate(j.bookedFor)+(j.bookedTime?' '+fmt12(j.bookedTime):'')+'. '+list.length+' to order: '+names.slice(0,120);
   if(j.assignedEstimator)pushNotif('estimator',title,body,{jobId:j.id,to:j.assignedEstimator,key:'order-est|'+j.id+'|'+j.bookedFor});
@@ -4513,7 +4513,7 @@ function advMaybeAuto(j){
 function _advSell(j,p,which){
   const c=which?_twoMoney(which==='md'?p.mdCost:p.afCost):(parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0);
   if(!(c>0))return 0;
-  return applyMarkup(c,p)*(parseInt(p.qty)||1)*(j.vatExempt?1:1.2);
+  return applyMarkup(c,p)*((parseFloat(p.qty)||0)||1)*(j.vatExempt?1:1.2);
 }
 function advNoteTxt(j){return [_advNoteTxt(j),unavailableNoteTxt(j)].filter(Boolean).join('\n\n');}
 function _advNoteTxt(j){
@@ -4943,7 +4943,7 @@ function vehCheckH(j){
       (j.vehicleTyped?' <span style="color:var(--amber)">(was entered as '+escHtml(j.vehicleTyped)+')</span>':'')+'</div>';
   }
   const again=' <button class="btn btn-ghost btn-xs" onclick="vehCheckNow(\''+j.id+'\')">\u21bb Check again</button>';
-  if(j.dvlaTriedAt&&Date.now()-j.dvlaTriedAt<864e5)return '<div style="font-size:11px;color:var(--red);margin-top:3px">\u26a0 '+escHtml(j.reg)+' could not be looked up \u2014 check the reg is right, or set the car with \u270f Edit.'+again+'</div>';
+  if(j.dvlaTriedAt&&Date.now()-j.dvlaTriedAt<864e5)return '<div style="font-size:11px;color:'+(j.dvlaErr==='not_found'?'var(--red)':'var(--amber)')+';margin-top:3px">\u26a0 '+escHtml(j.reg)+(j.dvlaErr==='not_found'?' was not found on the DVLA \u2014 check the reg is right, or set the car with \u270f Edit.':' could not be checked just now ('+escHtml(j.dvlaErr||'busy')+') \u2014 it tries again in a few minutes.')+again+'</div>';
   // the job that is open is checked straight away, not in the queue
   setTimeout(()=>{try{vehLookupJob(j);}catch(e){}},50);
   return '<div style="font-size:11px;color:var(--faint);margin-top:3px">Checking '+escHtml(j.reg)+' with DVLA\u2026</div>';
@@ -5687,7 +5687,7 @@ function twoPriceTotals(j){
   const out={md:0,af:0,mdMissing:0,afMissing:0,ready:false};
   let mdParts=0,afParts=0;
   (j.parts||[]).forEach(p=>{
-    const q=parseInt(p.qty)||1;
+    const q=(parseFloat(p.qty)||0)||1;
     const m=_twoMoney(p.mdCost),a=_twoMoney(p.afCost);
     if(m===null)out.mdMissing++;else mdParts+=applyMarkup(m,p)*q;
     if(a===null)out.afMissing++;else afParts+=applyMarkup(a,p)*q;
@@ -5845,7 +5845,7 @@ function twoPriceH(j){
   const inp=(i,f,v,ph,w)=>'<input value="'+escHtml(v==null?'':String(v))+'" placeholder="'+ph+'" '+(locked?'disabled ':'')+
     'onchange="setTwoField(\''+j.id+'\','+i+',\''+f+'\',this.value)" style="width:'+w+';padding:4px 6px;font-size:12px;background:var(--surface2);color:inherit;border:1px solid var(--border,#333);border-radius:4px">';
   const rows=parts.length?parts.map((p,i)=>
-    '<tr><td style="padding:4px 6px 4px 0;font-size:12px">'+escHtml(p.name||'\u2014')+(parseInt(p.qty)>1?' <span style="color:var(--dim)">\u00d7'+parseInt(p.qty)+'</span>':'')+
+    '<tr><td style="padding:4px 6px 4px 0;font-size:12px">'+escHtml(p.name||'\u2014')+((parseFloat(p.qty)||0)>1?' <span style="color:var(--dim)">\u00d7'+(parseFloat(p.qty)||0)+'</span>':'')+
       (isNoMarkup(p)?'<div style="font-size:9px;color:var(--faint)">no markup</div>':'')+'</td>'+
     '<td style="padding:4px 4px;'+(ch==='af'?'opacity:.45':'')+'">'+inp(i,'mdCost',p.mdCost,'\u00a3 cost','120px')+'<br>'+inp(i,'mdSup',p.mdSup,'supplier','120px')+'</td>'+
     '<td style="padding:4px 4px;'+(ch==='md'?'opacity:.45':'')+'">'+inp(i,'afCost',p.afCost,'\u00a3 cost','120px')+'<br>'+inp(i,'afSup',p.afSup,'supplier','120px')+'</td></tr>').join('')
@@ -5945,7 +5945,7 @@ function techmanHandoffH(j){
   const parts = j.parts || [];
   const bestPrice = p => parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
   const bestSupplier = p => p.supplier||p.supplier1||p.supplier2||p.supplier3||'';
-  const partsCostTotal = parts.reduce((s,p) => s + bestPrice(p) * (parseInt(p.qty)||1), 0);
+  const partsCostTotal = parts.reduce((s,p) => s + bestPrice(p) * ((parseFloat(p.qty)||0)||1), 0);
   const quote = parseFloat(j.finalEst || j.est || 0);
   const customerYes = j.customerYesAt ? fmtWhen(j.customerYesAt) : '';
   const copyBtn = (text, label) => '<button onclick="copyToClip(this,'+JSON.stringify(text).replace(/</g,'&lt;').replace(/"/g,'&quot;')+')" style="background:var(--surface);border:1px solid var(--border);color:var(--dim);padding:2px 8px;border-radius:3px;font-size:10px;cursor:pointer" title="Copy">'+label+'</button>';
@@ -5956,7 +5956,7 @@ function techmanHandoffH(j){
       (copy&&val?copyBtn(val,'Copy'):'<span></span>')+
     '</div>';
   const partRows = parts.map(p => {
-    const cost = bestPrice(p), qty = parseInt(p.qty)||1, sup = bestSupplier(p);
+    const cost = bestPrice(p), qty = (parseFloat(p.qty)||0)||1, sup = bestSupplier(p);
     return '<tr>'+
       '<td style="padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border)">'+escHtml(p.name||'—')+(p.num?' <span style="color:var(--faint);font-size:10px">('+escHtml(p.num)+')</span>':'')+'</td>'+
       '<td style="padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border);color:var(--dim)">'+escHtml(sup||'—')+'</td>'+
@@ -8018,9 +8018,12 @@ async function vehLookupJob(j){
   try{
     const ctl=window.AbortController?new AbortController():null,t=setTimeout(()=>{if(ctl)ctl.abort();},8000);
     const r=await fetch(VEH_API,{method:'POST',headers:{'content-type':'text/plain'},body:JSON.stringify({reg}),signal:ctl&&ctl.signal});
-    clearTimeout(t);const d=await r.json();
-    if(d&&d.vehicle){j.dvla=d.vehicle;delete j.dvlaTriedAt;try{dvlaApply(j);}catch(e){}}else j.dvlaTriedAt=Date.now();
-  }catch(e){j.dvlaTriedAt=Date.now();}
+    clearTimeout(t);let d={};try{d=await r.json();}catch(e){}
+    if(d&&d.vehicle){j.dvla=d.vehicle;delete j.dvlaTriedAt;delete j.dvlaErr;try{dvlaApply(j);}catch(e){}}
+    else if(r.status===404||(d&&d.error==='not_found')){j.dvlaTriedAt=Date.now();j.dvlaErr='not_found';}
+    // busy (429) or the lookup service down: try again in a few minutes, not tomorrow
+    else{j.dvlaTriedAt=Date.now()-864e5+5*60e3;j.dvlaErr=(d&&d.error)||('HTTP '+r.status);}
+  }catch(e){j.dvlaTriedAt=Date.now()-864e5+5*60e3;j.dvlaErr='no answer';}
   finally{delete _vehBusy[reg];}
   try{autoBodySize(j);save(j);if(curId===j.id)renderDetail();}catch(e){}
 }
@@ -8236,7 +8239,7 @@ function poNeedH(j){
           '<div style="min-width:0;flex:1">'+
             '<div style="font-size:12px;font-weight:600">'+escHtml(p.name||'\u2014')+
               (isConsumable(p)?' <span style="font-size:9px;font-weight:800;color:var(--faint)">CONSUMABLE</span>':'')+'</div>'+
-            '<div style="font-size:10px;color:var(--faint)">'+(p.num?escHtml(p.num)+' \u00b7 ':'')+'\u00d7'+(parseInt(p.qty)||1)+
+            '<div style="font-size:10px;color:var(--faint)">'+(p.num?escHtml(p.num)+' \u00b7 ':'')+'\u00d7'+((parseFloat(p.qty)||0)||1)+
               (best(p)?' \u00b7 \u00a3'+best(p).toFixed(2):'')+
               (p.supplier?' \u00b7 '+escHtml(p.supplier):'')+'</div>'+
             '<div style="font-size:10px;font-weight:700;color:'+s2.col+';margin-top:1px">'+s2.icon+' '+escHtml(s2.label)+'</div>'+
@@ -8633,7 +8636,7 @@ function jobMarginH(j){
   const best=p=>parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
   const parts=j.parts||[];
   let pCost=0,pSell=0;
-  parts.forEach(p=>{const q=parseInt(p.qty)||1;const c=best(p);pCost+=c*q;pSell+=applyMarkup(c,p)*q;});
+  parts.forEach(p=>{const q=(parseFloat(p.qty)||0)||1;const c=best(p);pCost+=c*q;pSell+=applyMarkup(c,p)*q;});
   const lab=parseFloat(j.labourCost)||0;
   if(!pCost&&!lab)return'';
   const sell=pSell+lab, cost=pCost, gp=sell-cost;
@@ -8780,7 +8783,7 @@ function quoteDrift(j){
   if(!j||!j.parts||!j.parts.length||!j.quote)return 0;
   if(j.estimate&&j.estimate.sop_version)return 0;   // priced by the estimator app on SOP rules
   let sell=0;
-  j.parts.forEach(p=>{const q=parseInt(p.qty)||1;
+  j.parts.forEach(p=>{const q=(parseFloat(p.qty)||0)||1;
     const c=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
     sell+=applyMarkup(c,p)*q;});
   const ex=sell+(parseFloat(j.labourCost)||0);
@@ -8816,7 +8819,7 @@ function psH(j){
     j.parts.map(p=>{
       const cost=bestPrice(p);
       const sell=applyMarkup(cost,p);
-      const qty=parseInt(p.qty)||1;
+      const qty=(parseFloat(p.qty)||0)||1;
       const sellIncVAT=vatExempt?sell:sell*1.20;
       const mk=markupLabel(p,cost,sell);
       return'<div style="display:grid;grid-template-columns:2fr 60px 70px 70px 70px 80px;gap:4px;padding:5px 0;border-bottom:1px solid var(--border);align-items:center">'+
@@ -8838,8 +8841,8 @@ function psH(j){
     // Totals row
     (pricedCount>0?
       (()=>{
-        const totalCost=j.parts.reduce((s,p)=>s+bestPrice(p)*(parseInt(p.qty)||1),0);
-        const totalSell=j.parts.reduce((s,p)=>s+applyMarkup(bestPrice(p),p)*(parseInt(p.qty)||1),0);
+        const totalCost=j.parts.reduce((s,p)=>s+bestPrice(p)*((parseFloat(p.qty)||0)||1),0);
+        const totalSell=j.parts.reduce((s,p)=>s+applyMarkup(bestPrice(p),p)*((parseFloat(p.qty)||0)||1),0);
         const totalInc=vatExempt?totalSell:totalSell*1.20;
         return'<div style="display:grid;grid-template-columns:2fr 60px 70px 70px 70px 80px;gap:4px;padding:6px 0;font-weight:700;border-top:2px solid var(--border)">'+
           '<div style="font-size:12px;color:var(--dim)">Total parts</div><div></div>'+
@@ -8856,7 +8859,7 @@ function ptH(j){
   const rows=(j.parts||[]).map((p,i)=>
     '<tr><td class="ic"><input value="'+escHtml(p.name||'')+'" onchange="upP('+i+',\'name\',this.value)" placeholder="Part name"/></td>'+
     '<td class="ic"><input value="'+p.num+'" onchange="upP('+i+',\'num\',this.value)" placeholder="Part number"/></td>'+
-    '<td class="ic" style="width:65px"><input type="number" value="'+p.qty+'" onchange="upP('+i+',\'qty\',this.value)" min="1"/></td>'+
+    '<td class="ic" style="width:65px"><input type="number" step="any" inputmode="decimal" value="'+p.qty+'" onchange="upP('+i+',\'qty\',this.value)" min="0"/></td>'+
     '<td><button class="btn btn-ghost btn-xs" onclick="delP('+i+')">✕</button></td></tr>'
   ).join('');
   return'<table class="pt"><thead><tr><th>Part Name</th><th>Part No.</th><th>Qty</th><th></th></tr></thead><tbody id="ptb">'+rows+'</tbody></table>';
@@ -11467,7 +11470,7 @@ function partsForOp(label,j){
 // Engine oil goes on the parts list in litres for this vehicle, under the
 // oil change / service — never twice, never on the turbo line.
 // Oil is priced PER LITRE. A price over £25 a litre is really the whole fill — split it.
-function partQty(p){return (p&&(p.unit==='L'||_isOilPart(p.name)))?(parseFloat(p.qty)||1):(parseInt(p.qty)||1);}
+function partQty(p){return (p&&parseFloat(p.qty)>0)?parseFloat(p.qty):1;}
 function partCostEach(p,c){c=parseFloat(c)||0;if(c>25&&p&&(p.unit==='L'||_isOilPart(p.name))){const q=partQty(p);if(q>1)return Math.round(c/q*100)/100;}return c;}
 function oilLitres(j){
   const v=(j&&j.dvla)||{};
@@ -11540,7 +11543,7 @@ function brainAutoParts(j){
     const oilHere=_isOilJob(lab);
     const pl=(bj.parts_lines||[]).filter(p=>p&&(p.part_label||p.part_normalised))
       .filter(p=>oilHere||!_hasOilJob||!(_isOilPart(p.part_label||p.part_normalised)||/oil filter|sump plug|drain plug washer/i.test(String(p.part_label||p.part_normalised))));
-    pl.forEach(p=>add(String(p.part_label||p.part_normalised).replace(/_/g,' '),parseInt(p.qty)||1,lab,{brand:p.brand||'',aiNet:parseFloat(p.net)||0}));
+    pl.forEach(p=>add(String(p.part_label||p.part_normalised).replace(/_/g,' '),(parseFloat(p.qty)||0)||1,lab,{brand:p.brand||'',aiNet:parseFloat(p.net)||0}));
     if(!pl.length){const mp=mainPartOf(lab);if(mp)add(mp.charAt(0).toUpperCase()+mp.slice(1),1,lab);}
     partsForOp(lab,j).forEach(x=>add(x.name,x.qty,lab+' \u2014 goes with this job',{rule:true}));
   });
@@ -11650,7 +11653,7 @@ function brainPartsPrefillH(j){
   // Working copy stored on j so edits persist
   if(!j.brainPartsDraft) j.brainPartsDraft = all.map(p => ({...p}));
   const draft = j.brainPartsDraft;
-  const totalCost = draft.reduce((s,p) => s + (parseFloat(p.net)||0) * (parseInt(p.qty)||1), 0);
+  const totalCost = draft.reduce((s,p) => s + (parseFloat(p.net)||0) * ((parseFloat(p.qty)||0)||1), 0);
   const firmN = draft.filter(p => p.from_cache || (j.brainPartsVerified && j.brainPartsVerified[p.part_normalised])).length;
   const totN = draft.length;
   const totCard = (firmN===totN)?'var(--green)':(firmN>0?'var(--amber)':'var(--gold)');
@@ -11670,9 +11673,9 @@ function brainPartsPrefillH(j){
           ' · '+escHtml(p.source||'')+
         '</div>'+
       '</div>'+
-      '<div><input type="number" min="1" value="'+p.qty+'" onchange="brainEditPart(\''+j.id+'\','+i+',\'qty\',parseInt(this.value)||1)" style="width:40px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px 6px;font-family:inherit;font-size:12px;color:var(--fg);text-align:center"></div>'+
+      '<div><input type="number" step="any" inputmode="decimal" min="0" value="'+p.qty+'" onchange="brainEditPart(\''+j.id+'\','+i+',\'qty\',parseFloat(this.value)||1)" style="width:40px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px 6px;font-family:inherit;font-size:12px;color:var(--fg);text-align:center"></div>'+
       '<div style="display:flex;align-items:center;gap:4px"><span style="font-size:11px;color:var(--faint)">£</span><input type="number" step="0.01" min="0" value="'+(parseFloat(p.net)||0).toFixed(2)+'" onchange="brainEditPart(\''+j.id+'\','+i+',\'net\',parseFloat(this.value)||0)" style="width:80px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px 6px;font-family:inherit;font-size:12px;color:var(--fg);text-align:right"></div>'+
-      '<div style="font-family:ui-monospace,monospace;font-size:12px;color:var(--gold);text-align:right">£'+((parseFloat(p.net)||0)*(parseInt(p.qty)||1)).toFixed(2)+'</div>'+
+      '<div style="font-family:ui-monospace,monospace;font-size:12px;color:var(--gold);text-align:right">£'+((parseFloat(p.net)||0)*((parseFloat(p.qty)||0)||1)).toFixed(2)+'</div>'+
       '<div style="display:flex;justify-content:flex-end;align-items:center;gap:4px">'+chip+
         (!firm&&!verified ? ' <button onclick="brainVerifyPart(\''+j.id+'\','+i+')" style="background:var(--gold);color:#000;border:none;padding:3px 7px;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer">✓</button>' : '')+
       '</div>'+
@@ -13598,7 +13601,7 @@ function autoPilot(){
   // v18.3: service parts that do not belong (fuel filter on a petrol, wipers, duplicates…)
   try{jobs.forEach(j=>{try{let c=serviceTidyParts(j);if(oilPartsTidy(j))c=true;if(brainFixService(j)){c=true;try{brainRecalcAll(j);}catch(e){}}if(c)save(j);}catch(e){}});}catch(e){}
   // v18.0: check every live job's reg (a few a minute) so the make and model come from DVLA
-  try{let n=0;for(const j of jobs){if(n>=4)break;
+  try{let n=0;for(const j of jobs){if(n>=1)break;
     if(!j||j.mergedInto||!j.reg||['done','lost','accounts','receivable','review','followup'].includes(j.stage))continue;
     if(j.dvla){if(dvlaApply(j))save(j);continue;}
     if(j.dvlaTriedAt&&Date.now()-j.dvlaTriedAt<864e5)continue;
@@ -13766,7 +13769,7 @@ function toggleVATExempt(exempt){
   const labourCost=parseFloat(j.labourCost)||0;
   const partsCost=(j.parts||[]).reduce((s,p)=>{
     const best=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
-    return s+applyMarkup(best,p)*(parseInt(p.qty)||1);
+    return s+applyMarkup(best,p)*((parseFloat(p.qty)||0)||1);
   },0);
   const addLabour=parseFloat(j.addLabourCost)||0;
   const addParts=parseFloat(j.addPartsCost)||0;
@@ -13787,12 +13790,12 @@ function finEditH(j,merged){
       const labourCost=parseFloat(j.labourCost)||0;
   const partsCostRaw=(j.parts||[]).reduce((s,p)=>{
     const best=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
-    return s+best*(parseInt(p.qty)||1);
+    return s+best*((parseFloat(p.qty)||0)||1);
   },0);
   // Parts team enters RAW cost - system applies markup to get sell price
   const partsCost=(j.parts||[]).reduce((s,p)=>{
     const best=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
-    return s+applyMarkup(best,p)*(parseInt(p.qty)||1);
+    return s+applyMarkup(best,p)*((parseFloat(p.qty)||0)||1);
   },0);
   const addLabour=parseFloat(j.addLabourCost)||0;
   const addParts=parseFloat(j.addPartsCost)||0;
@@ -13835,7 +13838,7 @@ function finEditH(j,merged){
         j.parts.map((p,pi)=>{
           const cost=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
           const sell=applyMarkup(cost,p);
-          const qty=parseInt(p.qty)||1;
+          const qty=(parseFloat(p.qty)||0)||1;
           const markupPct=cost>0?Math.round((sell/cost-1)*100):0;
           const bestSup=p.supplier||p.supplier1||p.supplier2||p.supplier3||'';
           return'<div style="display:grid;grid-template-columns:2fr 60px 70px 60px 80px;gap:4px;padding:5px 0;border-bottom:1px solid var(--border);align-items:center;font-size:12px">'+
@@ -15575,7 +15578,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1110';
+const CRM_BUILD='2026-11-18-1120';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -15859,7 +15862,7 @@ function setPartQty(id,idx,v){
   const j=jobs.find(x=>x.id===id);if(!j||!j.parts||!j.parts[idx])return;
   const q=Math.max(0,parseInt(v)||0);
   const p=j.parts[idx];
-  const was=parseInt(p.qty)||1;
+  const was=(parseFloat(p.qty)||0)||1;
   if(q===was)return;
   if(q===0){
     if(!confirm('Remove "'+(p.name||'this part')+'" from the estimate?')){renderDetail();return;}
@@ -16388,7 +16391,7 @@ function renderPartsEditList(j){
   return btn+j.parts.map((p,i)=>'<div class="part-row" id="pr-'+i+'" style="display:grid;grid-template-columns:2fr 1fr 80px 32px;gap:6px;margin-bottom:'+(p.brainWhy?'1px':'6px')+';align-items:center">'+
     '<input class="fi2" value="'+escHtml(p.name||'')+'" placeholder="Part name" oninput="updatePartField('+i+',\'name\',this.value)"/>'+
     '<input class="fi2" value="'+escHtml(p.num||'')+'" placeholder="Part #" oninput="updatePartField('+i+',\'num\',this.value)"/>'+
-    '<input class="fi2" type="number" value="'+(p.qty||1)+'" placeholder="Qty" oninput="updatePartField('+i+',\'qty\',this.value)"/>'+
+    '<input class="fi2" type="number" step="any" inputmode="decimal" value="'+(p.qty||1)+'" placeholder="Qty" oninput="updatePartField('+i+',\'qty\',this.value)"/>'+
     '<button class="btn btn-red btn-xs" onclick="removePart('+i+')">✕</button>'+
   '</div>'+(p.brainWhy?'<div style="font-size:10px;color:var(--faint);margin:0 0 7px 2px">\ud83e\udde0 added by the Brain \u2014 for '+escHtml(p.brainWhy)+(p.aiNet?' \u00b7 AI guide \u00a3'+(+p.aiNet).toFixed(2):'')+'</div>':'')).join('');
 }
@@ -16471,7 +16474,7 @@ function renderPartsPriceList(j){
         '<div style="display:grid;grid-template-columns:2fr 1fr 60px 28px;gap:6px;align-items:center">'+
           '<input class="fi2" id="pp-name-'+i+'" value="'+escHtml(p.name||'')+'" placeholder="Part name *" style="font-weight:700;font-size:13px"/>'+
           '<input class="fi2" id="pp-num-'+i+'" value="'+escHtml(p.num||'')+'" placeholder="Part number"/>'+
-          '<input class="fi2" type="number" step="'+(_isOilPart(p.name)?'0.1':'1')+'" id="pp-qty-'+i+'" value="'+(p.qty||1)+'" placeholder="'+(_isOilPart(p.name)?'Litres':'Qty')+'" min="'+(_isOilPart(p.name)?'0.1':'1')+'"/>'+
+          '<input class="fi2" type="number" step="any" inputmode="decimal" id="pp-qty-'+i+'" value="'+(p.qty||1)+'" placeholder="'+(_isOilPart(p.name)?'Litres':'Qty')+'" min="0"/>'+
           '<button class="btn btn-red btn-xs" onclick="removePartByParts('+i+')">✕</button>'+
         '</div>'+
         '<label style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11px;cursor:pointer">'+
@@ -16497,7 +16500,7 @@ function renderPartsPriceList(j){
               '<option value="">— Select —</option>'+
               SUPPLIERS.map(s=>'<option'+(p['supplier'+n]===s?' selected':'')+'>'+s+'</option>').join('')+
             '</select>'+
-            '<input class="fi2" type="number" id="pp-price'+n+'-'+i+'" value="'+(p['price'+n]||'')+'" placeholder="\u00a3 cost (ex-VAT)" style="margin-bottom:3px"/>'+
+            '<input class="fi2" type="number" step="any" inputmode="decimal" id="pp-price'+n+'-'+i+'" value="'+(p['price'+n]||'')+'" placeholder="\u00a3 cost (ex-VAT)" style="margin-bottom:3px"/>'+
             (p['price'+n]?(isBarrelFluid(p)||(isNoMarkup(p)&&!isFluid(p))?'<div style="font-size:11px;padding:3px 6px;background:var(--surface3);border-radius:4px;color:var(--dim);margin-bottom:5px">'+(isFluid(p)?'From the barrel \u2014 list price, no markup':'No markup (tyre / MOT)')+'</div>':'<div style="font-size:11px;padding:3px 6px;background:var(--green-bg);border-radius:4px;color:var(--green);margin-bottom:5px">With markup: £'+applyMarkup(parseFloat(p['price'+n]),p).toFixed(2)+'</div>'):'<div style="font-size:10px;color:var(--faint);margin-bottom:5px">Enter price to see markup</div>')+
             '<input class="fi2" id="pp-eta'+n+'-'+i+'" value="'+escHtml(p['eta'+n]||'')+'" placeholder="ETA / in stock"/>'+
           '</div>'
@@ -19058,7 +19061,7 @@ function poItemRow(i,name,num,qty,price){
     '<input class="fi2" placeholder="Part name / description" id="poi-name-'+i+'" value="'+escHtml(name||'')+'"/>'+
     '<input class="fi2" placeholder="Part #" id="poi-num-'+i+'" value="'+escHtml(num||'')+'"/>'+
     '<input class="fi2" type="number" placeholder="Price £" id="poi-price-'+i+'" value="'+(price||'')+'"/>'+
-    '<input class="fi2" type="number" placeholder="Qty" id="poi-qty-'+i+'" value="'+(qty||1)+'"/>'+
+    '<input class="fi2" type="number" step="any" inputmode="decimal" placeholder="Qty" id="poi-qty-'+i+'" value="'+(qty||1)+'"/>'+
     '<button class="btn btn-red btn-xs" onclick="this.parentElement.remove()">✕</button>'+
   '</div>';
 }
