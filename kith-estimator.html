@@ -573,7 +573,7 @@ function applyPanelDiscount(lines){
  const panels=lines.filter(l=>l.kind==='panel'&&!l.escalate);
  if(!panels.length)return lines;
  const sorted=[...panels].sort((a,b)=>b.listPrice-a.listPrice);
- sorted.forEach((p,i)=>{p.discounted=i>0;p.total=money(i===0?p.listPrice:p.listPrice*0.8);});
+ sorted.forEach(p=>{p.discounted=false;p.total=money(p.listPrice);}); // 16 Nov 2026: full SOP price on every panel
  return lines;}
 function quote(lines,{customer='retail'}={}){
  applyPanelDiscount(lines);
