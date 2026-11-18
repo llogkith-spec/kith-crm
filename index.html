@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v18.7 \u00b7 16 Nov';
+const BUILD='v18.8 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -4515,7 +4515,8 @@ function _advSell(j,p,which){
   if(!(c>0))return 0;
   return applyMarkup(c,p)*(parseInt(p.qty)||1)*(j.vatExempt?1:1.2);
 }
-function advNoteTxt(j){
+function advNoteTxt(j){return [_advNoteTxt(j),unavailableNoteTxt(j)].filter(Boolean).join('\n\n');}
+function _advNoteTxt(j){
   const maybe=(j.parts||[]).filter(p=>p.maybe);
   let out='';
   if(maybe.length){
@@ -15513,7 +15514,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1035';
+const CRM_BUILD='2026-11-18-1045';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -16330,9 +16331,77 @@ function renderPartsEditList(j){
   '</div>'+(p.brainWhy?'<div style="font-size:10px;color:var(--faint);margin:0 0 7px 2px">\ud83e\udde0 added by the Brain \u2014 for '+escHtml(p.brainWhy)+(p.aiNet?' \u00b7 AI guide \u00a3'+(+p.aiNet).toFixed(2):'')+'</div>':'')).join('');
 }
 
+// ── PART CAN'T BE GOT (18 Nov 2026, Logan) ──────────────────────────
+// Parts team marks it, says why. The part comes off the parts list, the
+// labour for it comes off too, and the reason goes to the customer at the
+// bottom of the estimate. Undo puts both back.
+function _words(t){return String(t||'').toLowerCase().replace(/\(.*?\)/g,' ').split(/[^a-z]+/).filter(w=>w.length>=4&&!/^(replace|replacement|renew|front|rear|left|right|with|this|that|from|kith|part|parts|fitting|fit|new|supply|change|always|refurb)$/.test(w));}
+function _labourLineFor(j,p){
+  const L=srtLines(j);if(!L.length)return -1;
+  if(p.brainWhy){const i=L.findIndex(l=>String(l.op||'').toLowerCase().includes(String(p.brainWhy).toLowerCase().slice(0,30))||String(p.brainWhy).toLowerCase().includes(String(l.op||'').toLowerCase().slice(0,30)));if(i>=0)return i;}
+  const pw=_words(p.name);let best=-1,sc=0;
+  L.forEach((l,i)=>{const s=_words(l.op).filter(w=>pw.includes(w)).length;if(s>sc){sc=s;best=i;}});
+  return sc?best:-1;
+}
+function partCantGet(i){
+  const j=gj();if(!j||!j.parts||!j.parts[i])return;
+  try{j.parts.forEach((p,idx)=>{const n=document.getElementById('pp-name-'+idx),q=document.getElementById('pp-qty-'+idx),u=document.getElementById('pp-num-'+idx);if(n)p.name=n.value||p.name;if(q)p.qty=q.value||p.qty;if(u)p.num=u.value||p.num;});}catch(e){}
+  const p=j.parts[i];
+  const why=prompt('Why can’t we get the '+(p.name||'part')+'?\n\nThis goes to the customer at the bottom of the estimate (e.g. "discontinued by the manufacturer", "not available in the UK — 6 week wait").','');
+  if(why===null)return;
+  if(!String(why).trim()){alert('Say why — the customer sees it.');return;}
+  const rec=Object.assign({},p,{unavailable:true,unavailableWhy:String(why).trim(),unavailableAt:ts(),unavailableBy:currentUser?currentUser.name:''});
+  // the labour for it comes off too
+  let li=_labourLineFor(j,p);
+  if(li>=0){const l=srtLines(j)[li];
+    if(!confirm('Take the labour off too?\n\n'+l.op+(l.labour!=null?' — £'+(+l.labour).toFixed(2):'')+'\n\nOK = remove that labour line. Cancel = keep the labour.'))li=-1;}
+  if(li>=0){
+    const l=srtLines(j)[li];
+    const share=l.labour!=null?parseFloat(l.labour)||0:((parseFloat(j.labourCost)||0)*((parseFloat(l.charged)||parseFloat(l.book)||0)/(parseFloat(j.srtCharged)||parseFloat(j.srt)||1)));
+    rec.labourRemoved=Object.assign({},l,{_cost:Math.round(share*100)/100});
+    j.srtLines.splice(li,1);syncSrtTotals(j);
+    j.labourCost=Math.max(0,Math.round(((parseFloat(j.labourCost)||0)-share)*100)/100);
+  }else{
+    // the Brain's line, if the job has not been applied yet
+    try{const b=(j.brainAI&&j.brainAI.jobs||[]).find(x=>!x.excluded&&p.brainWhy&&x.job_label===p.brainWhy);
+      if(b&&!j.brainAppliedAt){b.excluded=true;b.excludedWhy='part not available: '+rec.unavailableWhy;rec.brainExcluded=b.job_label;}}catch(e){}
+  }
+  j.partsUnavailable=(j.partsUnavailable||[]).concat([rec]);
+  j.parts.splice(i,1);
+  try{reprice(j);}catch(e){}
+  j.log=j.log||[];j.log.push({t:ts(),s:'🚫 Part not available: '+(p.name||'part')+' — '+rec.unavailableWhy+(rec.labourRemoved?'. Labour taken off: '+rec.labourRemoved.op+' (£'+rec.labourRemoved._cost.toFixed(2)+')':'')+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);
+  const el=document.getElementById('parts-price-list');if(el)el.innerHTML=renderPartsPriceList(j);
+  try{renderDetail();}catch(e){}
+  if(typeof toast==='function')toast('🚫 '+(p.name||'Part')+' marked not available'+(rec.labourRemoved?' — labour taken off':''));
+}
+function partCantGetUndo(k){
+  const j=gj();if(!j||!j.partsUnavailable||!j.partsUnavailable[k])return;
+  const rec=j.partsUnavailable[k];
+  const p=Object.assign({},rec);['unavailable','unavailableWhy','unavailableAt','unavailableBy','labourRemoved','brainExcluded'].forEach(x=>delete p[x]);
+  j.parts=(j.parts||[]).concat([p]);
+  if(rec.labourRemoved){const l=Object.assign({},rec.labourRemoved);const c=l._cost||0;delete l._cost;j.srtLines=srtLines(j).concat([l]);syncSrtTotals(j);j.labourCost=Math.round(((parseFloat(j.labourCost)||0)+c)*100)/100;}
+  if(rec.brainExcluded){const b=(j.brainAI&&j.brainAI.jobs||[]).find(x=>x.job_label===rec.brainExcluded);if(b){b.excluded=false;delete b.excludedWhy;}}
+  j.partsUnavailable.splice(k,1);
+  try{reprice(j);}catch(e){}
+  j.log=j.log||[];j.log.push({t:ts(),s:'↩ '+(p.name||'Part')+' back on the estimate'+(rec.labourRemoved?' with its labour':'')+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);const el=document.getElementById('parts-price-list');if(el)el.innerHTML=renderPartsPriceList(j);try{renderDetail();}catch(e){}
+}
+function partsUnavailableH(j){
+  const u=j.partsUnavailable||[];if(!u.length)return '';
+  return '<div style="background:rgba(200,60,60,.1);border:1px solid var(--red);border-radius:var(--rs);padding:9px 11px;margin-bottom:12px">'+
+    '<div style="font-size:11px;font-weight:800;color:var(--red);margin-bottom:4px">🚫 NOT AVAILABLE — off the estimate, the customer is told why</div>'+
+    u.map((p,k)=>'<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:12px;padding:4px 0;border-top:1px solid var(--border)">'+
+      '<span><strong>'+escHtml(p.name||'Part')+'</strong> — '+escHtml(p.unavailableWhy||'')+(p.labourRemoved?' <span style="color:var(--faint)">(labour off: '+escHtml(p.labourRemoved.op||'')+')</span>':'')+'</span>'+
+      '<button class="btn btn-ghost btn-xs" onclick="partCantGetUndo('+k+')">Undo</button></div>').join('')+'</div>';
+}
+function unavailableNoteTxt(j){
+  const u=(j&&j.partsUnavailable)||[];if(!u.length)return '';
+  return u.map(p=>'Not included: '+String(p.name||'a part').replace(/\s*[—-]\s*\d.*$/,'')+' — we cannot get this part ('+p.unavailableWhy+'), so it and the labour to fit it are not in this estimate.').join('\n');
+}
 function renderPartsPriceList(j){
-  if(!j.parts||!j.parts.length) return'<div class="notice n-blue" style="margin-bottom:8px">No parts listed by estimator — tap + Add Part below to add parts to price.</div>';
-  return j.parts.map((p,i)=>
+  if(!j.parts||!j.parts.length) return partsUnavailableH(j)+'<div class="notice n-blue" style="margin-bottom:8px">No parts listed by estimator — tap + Add Part below to add parts to price.</div>';
+  return partsUnavailableH(j)+j.parts.map((p,i)=>
     '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:10px 12px;margin-bottom:12px">'+
       // Part name + number + qty — editable by Parts team
       '<div style="background:var(--surface3);border-radius:var(--rs);padding:8px 10px;margin-bottom:10px">'+
@@ -16346,6 +16415,7 @@ function renderPartsPriceList(j){
         '<label style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11px;cursor:pointer">'+
           '<input type="checkbox" id="pp-iskit-'+i+'" '+(p.isKit?'checked':'')+' style="width:15px;height:15px" onchange="toggleKitBox('+i+')"/>'+
           '<span>This is a kit / package</span></label>'+
+        '<button class="btn btn-ghost btn-xs" style="margin-top:6px;color:var(--red);border-color:var(--red)" onclick="partCantGet('+i+')">\ud83d\udeab Can\u2019t get this part</button>'+
         '<div id="pp-kitwrap-'+i+'" style="display:'+(p.isKit?'block':'none')+';margin-top:6px">'+
           '<textarea class="fta" id="pp-kit-'+i+'" placeholder="What is in it? One per line" style="width:100%;min-height:66px;font-size:12px">'+escHtml(p.kitContents||'')+'</textarea>'+
           '<div style="font-size:10px;color:var(--faint);margin-top:2px">Goes on the PO and the job sheet, so goods-in can check it off.</div>'+
