@@ -431,6 +431,8 @@ input:checked+.tsl:before{transform:translateX(20px)}
       <div id="custparts-warn"></div>
     </div>
 
+    <div class="fg"><label class="fl">Discount / referral code</label><input class="fi" id="f-discount" style="text-transform:uppercase" placeholder="e.g. STUDENT, ONLINE, or a friend's referral code" autocomplete="off">
+      <div class="hint">If they mention a code or who referred them, put it here — it comes off the estimate.</div></div>
     <div class="fg"><label class="fl">Additional Notes</label><textarea class="fi" id="f-notes" rows="2" placeholder="Anything else the team should know..."></textarea></div>
     <div id="summary-card"></div>
     <button class="btn btn-ghost" id="check-btn" onclick="runIntakeCheck()" style="margin-bottom:10px">&#129504; Check this before I submit</button>
@@ -463,7 +465,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
 var SB_URL=KithCore.URL;
 var SB_KEY=KithCore.KEY;
 var SOP_VERSION='8.0';
-var INTAKE_BUILD='3.4';
+var INTAKE_BUILD='3.5';
 // The CRM keeps one row per job in `jobs` ({id, data, updated_at}).
 // Earlier builds wrote to `kith_jobs`, which nothing reads — jobs vanished.
 var JOBS_TABLE='jobs';
@@ -1366,6 +1368,7 @@ async function submitJob(){
   ['axle','brakework','tyre-brand','susp-loc','susp-work','exhaust-type','elec-work','eng-work','clutch-work','body-type','body-extra'].forEach(function(g){
     var v=_getChipsRaw(g);if(v)intakeAnswers.push({q:(CHIP_LABELS[g]||g),a:v});});
   if(fval('f-notes'))intakeAnswers.push({q:'Notes',a:fval('f-notes')});
+  if(fval('f-discount'))intakeAnswers.push({q:'Discount / referral code',a:fval('f-discount').toUpperCase()});
   var needsDiag=safetyHits.length>0&&!diagOverride;
 
   var escalations=[];
@@ -1407,6 +1410,7 @@ async function submitJob(){
     diagnostic_override:diagOverride,
     escalations:escalations,
     customer_words:fval('f-words')||null,
+    discount_code:(fval('f-discount')||'').toUpperCase()||null,
     channel:channel||null,
     safety_list_read:fchk('f-safety-asked'),
     photos_in_hand:(area==='bodywork'||alsoBody)?fchk('f-photos'):null,
@@ -1459,6 +1463,7 @@ async function submitJob(){
     isComeback:jobType==='comeback',
     customerSuppliedParts:fchk('f-custparts'),
     source:fval('f-source'),notes:fval('f-notes'),by:staffName,
+    discountCode:(fval('f-discount')||'').toUpperCase(),
     asap:fchk('f-asap')||custType==='business',priority:fchk('f-asap')||custType==='business',
     stage:'intake',stageAt:Date.now(),
     damage:(area==='bodywork'||alsoBody)?damageList():[],
@@ -1642,7 +1647,7 @@ function resetForm(){
   window._bodyCat=null;window._motClass=null;
   DMG={};DMG_ORDER=[];DMG_MARK={};DMG_WHEELS={};
   document.querySelectorAll('.big-btn,.svc-btn').forEach(function(b){b.classList.remove('sel');});
-  ['f-reg','f-make','f-model','f-year','f-mileage','f-engine','f-name','f-phone','f-notes','f-words']
+  ['f-reg','f-make','f-model','f-year','f-mileage','f-engine','f-name','f-phone','f-notes','f-words','f-discount']
     .forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   ['f-shape','f-seats','f-roof','f-gvw','f-fuel'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   ['f-asap','f-custparts','f-safety-asked'].forEach(function(id){var e=document.getElementById(id);if(e)e.checked=false;});
