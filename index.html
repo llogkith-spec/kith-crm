@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v18.3 \u00b7 16 Nov';
+const BUILD='v18.4 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -10799,17 +10799,17 @@ function mergeSidesForJob(j){
   }
   return true;
 }
-// ── WHAT EACH SERVICE IS (18 Nov 2026, Logan) ───────────────────────
+// ── WHAT EACH SERVICE IS (18 Nov 2026, Logan — as the SOP) ──────────
 // Interim: oil, oil filter, sump plug washer.
-// Full:    interim + air filter + pollen/cabin filter (+ fuel filter on a DIESEL only).
-// Major:   full + spark plugs (PETROL only) + brake fluid (+ fuel filter on a diesel).
-// A petrol never gets a fuel filter; a diesel never gets spark plugs; an
-// electric car gets none of the engine parts. Wipers, bulbs etc. are not in
-// a service — only if the customer asked for them.
+// Full:    oil, oil filter, sump plug washer, air filter.
+// Major:   oil, oil filter, sump plug washer, air filter, cabin (pollen) filter.
+// Spark plugs, fuel filter and brake fluid are NEVER part of a service —
+// they are additional work, only when asked for. A petrol never has a fuel
+// filter, a diesel never has spark plugs, an electric car has no engine parts.
 const SERVICE_SPEC={
   interim:['engine oil','oil filter','sump plug washer'],
-  full:['engine oil','oil filter','sump plug washer','air filter','cabin filter','fuel filter'],
-  major:['engine oil','oil filter','sump plug washer','air filter','cabin filter','fuel filter','spark plugs','brake fluid']
+  full:['engine oil','oil filter','sump plug washer','air filter'],
+  major:['engine oil','oil filter','sump plug washer','air filter','cabin filter']
 };
 function serviceLevel(j){
   const t=String(brainComplaint(j)||'')+' '+String(j.labourDesc||'');
@@ -10850,7 +10850,8 @@ function _svcWrong(j,key,lvl){
   if(!lvl||_asked(j,key))return '';
   const spec=SERVICE_SPEC[lvl]||[];
   if(['wipers','coolant','screenwash','bulbs'].includes(key))return 'not part of a '+lvl+' service';
-  if(['spark plugs','brake fluid','air filter','cabin filter'].includes(key)&&!spec.includes(key))return 'not part of a '+lvl+' service (that is in a major)';
+  if(['spark plugs','brake fluid','fuel filter'].includes(key))return 'not part of a service \u2014 additional work, only if asked';
+  if(['air filter','cabin filter'].includes(key)&&!spec.includes(key))return 'not part of a '+lvl+' service'+(key==='cabin filter'?' (cabin filter is in a major)':'');
   return '';
 }
 // parts nobody has priced yet that a service should not have
@@ -11364,8 +11365,8 @@ const PART_RULES=[
   [/wishbone|control arm|track control/i,['Wishbone mounting bolts']],
   [/wheel bearing|hub bearing/i,['Hub nut']],
   [/drive ?shaft|cv joint|cv boot/i,['Hub nut','CV boot clips']],
-  [/full service/i,['Engine oil','Oil filter','Sump plug washer','Air filter','Pollen / cabin filter',{n:'Fuel filter',diesel:1}]],
-  [/major service/i,['Engine oil','Oil filter','Sump plug washer','Air filter','Pollen / cabin filter',{n:'Fuel filter',diesel:1},{n:'Spark plugs',q:4,petrol:1},'Brake fluid (DOT 4)']],
+  [/full service/i,['Engine oil','Oil filter','Sump plug washer','Air filter']],
+  [/major service/i,['Engine oil','Oil filter','Sump plug washer','Air filter','Pollen / cabin filter']],
   [/interim service|oil (and filter|change)|basic service/i,['Engine oil','Oil filter','Sump plug washer']],
   [/spark plug/i,[{n:'Spark plugs',q:4}]],
   [/gearbox oil|transmission oil|gearbox fluid/i,['Gearbox oil','Drain plug washer']],
@@ -15440,7 +15441,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1000';
+const CRM_BUILD='2026-11-18-1015';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
