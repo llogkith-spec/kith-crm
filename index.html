@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v19.4 \u00b7 16 Nov';
+const BUILD='v19.5 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -6639,8 +6639,6 @@ function waAppPref(){try{return localStorage.getItem('kith_wa_app')||'business';
 function setWaAppPref(v){try{localStorage.setItem('kith_wa_app',v);}catch(e){}}
 function waLink(phone,msg){
   const n=String(phone||'').replace(/\D/g,'');
-  if(estIsPhone()&&!/Android/i.test(navigator.userAgent||'')&&waAppPref()==='business')
-    return 'whatsapp-business://send?phone='+n+'&text='+encodeURIComponent(msg||'');
   if(/Android/i.test(navigator.userAgent||'')&&waAppPref()==='business')
     return 'intent://send?phone='+n+'&text='+encodeURIComponent(msg||'')+'#Intent;scheme=whatsapp;package=com.whatsapp.w4b;S.browser_fallback_url='+encodeURIComponent('https://wa.me/'+n+'?text='+encodeURIComponent(msg||''))+';end';
   return'https://wa.me/'+n+'?text='+encodeURIComponent(msg||'');
@@ -6855,12 +6853,12 @@ function openSendNowBox(id,docI,notJustApproved){
       // 18 Nov 2026: WhatsApp Business only takes the PDF from the share box once it is
       // awake — and only lists customers you already have a chat with. Step 1 does both.
       '<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:4px">STEP 1</div>'+
-      '<button class="btn btn-full" style="margin-bottom:4px;background:var(--surface2);border:1px solid var(--green);color:var(--green);font-weight:800" onclick="sendBoxWake(\''+j.id+'\')">\ud83d\udcac Open '+escHtml(firstName(j))+'\u2019s chat in WhatsApp Business</button>'+
-      '<div style="font-size:11px;color:var(--faint);margin-bottom:10px">Send the message there, then come back here.</div>'+
+      '<button class="btn btn-full" style="margin-bottom:4px;background:var(--surface2);border:1px solid var(--green);color:var(--green);font-weight:800" onclick="sendBoxWake(\''+j.id+'\')">\ud83d\udccb Copy '+escHtml(firstName(j))+'\u2019s number</button>'+
+      '<div style="font-size:11px;color:var(--faint);margin-bottom:10px">Then open <strong>WhatsApp Business from your home screen</strong> (this wakes it up). If you have no chat with '+escHtml(firstName(j))+' yet: tap \u270f new chat, paste the number, say hello. Then come back here.</div>'+
       '<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:4px">STEP 2</div>'+shareBtn
      :(phone?shareBtn+chatBtn:chatBtn+shareBtn))+
     (function(){try{return companySendH(j);}catch(e){return '';}})()+
-    (estIsPhone()?'<div style="font-size:11px;color:var(--faint);margin:2px 0 6px">Opens: <strong>'+(waAppPref()==='business'?'WhatsApp Business':'WhatsApp')+'</strong> \u00b7 <a href="#" style="color:var(--gold)" onclick="setWaAppPref(waAppPref()===\'business\'?\'personal\':\'business\');openSendNowBox(\''+j.id+'\',window._sbDoc,true);return false">switch to '+(waAppPref()==='business'?'normal WhatsApp':'WhatsApp Business')+'</a></div>':'')+
+    (estIsPhone()&&/Android/i.test(navigator.userAgent||'')?'<div style="font-size:11px;color:var(--faint);margin:2px 0 6px">Opens: <strong>'+(waAppPref()==='business'?'WhatsApp Business':'WhatsApp')+'</strong> \u00b7 <a href="#" style="color:var(--gold)" onclick="setWaAppPref(waAppPref()===\'business\'?\'personal\':\'business\');openSendNowBox(\''+j.id+'\',window._sbDoc,true);return false">switch to '+(waAppPref()==='business'?'normal WhatsApp':'WhatsApp Business')+'</a></div>':'')+
     '<div id="sb-msg" style="font-size:12px;margin:6px 0 10px;line-height:1.5"></div>'+
     '<button class="btn btn-ghost btn-full btn-sm" onclick="sendBoxClose()">Later — the green Send button stays on the job</button>'+
     (j.signedOff&&!j.estimateSentMs?'<button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px;color:var(--amber);border-color:var(--amber)" onclick="undoApproval(\''+j.id+'\')">↩ Go back — undo the approval (back to Sign-Off)</button>':'')+
@@ -6897,8 +6895,9 @@ function sendBoxWake(id){
   const num=estPhone(j);if(!num)return;
   const d=estDocFor(j,window._sbDoc);
   window._sbWoke=Date.now();
-  sendBoxMsg('Step 1 done? Send the message in WhatsApp Business, come back here, then press <strong>Step 2</strong> and pick <strong>'+escHtml(firstName(j))+'</strong> in \u201cSend to\u201d.');
-  openWa(waLink(num,estimateWAMsg(j)));
+  const pretty='+'+num;
+  try{navigator.clipboard.writeText(pretty).then(()=>{},()=>{});}catch(e){}
+  sendBoxMsg('\u2713 Copied <strong>'+escHtml(pretty)+'</strong>. Open WhatsApp Business from the home screen, then come back and press <strong>Step 2</strong> \u2014 pick <strong>'+escHtml(firstName(j))+'</strong> in \u201cSend to\u201d.');
 }
 function sendBoxClose(){try{clearInterval(window._sbTimer);}catch(e){}document.getElementById('sendnow-box')?.remove();}
 function sendBoxMsg(h,col){const m=document.getElementById('sb-msg');if(m){m.innerHTML=h;m.style.color=col||'var(--dim)';}}
@@ -15576,7 +15575,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1105';
+const CRM_BUILD='2026-11-18-1110';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
