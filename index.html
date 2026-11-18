@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v18.4 \u00b7 16 Nov';
+const BUILD='v18.6 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -10887,6 +10887,22 @@ function brainFixService(j){
   });
   return ch;
 }
+// ── A NEW TURBO ALWAYS GETS AN OIL SERVICE (18 Nov 2026, Logan) ──────
+// Old oil kills a new turbo, so any turbo replacement carries an oil and
+// filter change. Added as its own line (LOW rate) if it is not there.
+function brainTurboOil(j){
+  const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
+  const live=ai.jobs.filter(b=>!b.excluded);
+  const turbo=live.some(b=>/turbo/i.test(String(b.job_label||''))&&!/hose|pipe|actuator|sensor|boost|intercooler|clean/i.test(String(b.job_label||'')));
+  if(!turbo)return false;
+  if(live.some(b=>/oil (and|&) filter|oil service|oil change|(interim|full|major) service/i.test(String(b.job_label||''))))return false;
+  if(ai.jobs.some(b=>b.turboOil))return false;      // removed by hand — leave it out
+  const b={job_normalised:'oil_filter_change_turbo',job_label:'Oil and filter change (always with a new turbo)',srt_hours:0.5,tier:'LOW',
+    srt_source:'KITH rule: a new turbo always gets an oil and filter change',turboOil:true,auto:true};
+  ai.jobs.push(b);
+  try{brainRecalc(j,b);}catch(e){}
+  return true;
+}
 function brainPairRule(j){
   const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
   const live=ai.jobs.filter(b=>!b.excluded&&!b.fixedTyre&&!b.fixedDiag&&!b.fixedBody&&!b.fixedAlloy&&!b.fixedMot);
@@ -11154,7 +11170,7 @@ async function brainAskLine(j,desc){
     j.brainAI.jobs=j.brainAI.jobs||[];
     const added=d.jobs.map(x=>Object.assign({},x,{manual:true,askedFor:desc}));
     j.brainAI.jobs.push(...added);
-    try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainMergeSides(j);brainFixService(j);brainPairRule(j);brainRecalcAll(j);}catch(e){}
+    try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainMergeSides(j);brainFixService(j);brainTurboOil(j);brainPairRule(j);brainRecalcAll(j);}catch(e){}
     delete j.brainPrefillDismissedAt;
     j.log=j.log||[];j.log.push({t:ts(),s:'\ud83e\udde0 Brain priced \u201c'+desc+'\u201d: '+added.map(x=>(x.job_label||x.job_normalised)+' \u00a3'+(parseFloat(x.labour_ex_vat)||0).toFixed(2)).join(', ')+(currentUser?' ['+currentUser.name+']':'')});
     BRAIN_ADD_OPEN[j.id]=true;
@@ -11209,7 +11225,7 @@ function brainPrefillH(j){
   }
   const ai = j.brainAI;
   if(!ai||!ai.jobs||!ai.jobs.length)return '';
-  if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)|brainMergeSides(j)|brainFixService(j)|brainPairRule(j)|brainRecalcAll(j)|brainFixAlloy(j)|brainFixBody(j)){try{save(j);}catch(e){}}
+  if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)|brainMergeSides(j)|brainFixService(j)|brainTurboOil(j)|brainPairRule(j)|brainRecalcAll(j)|brainFixAlloy(j)|brainFixBody(j)){try{save(j);}catch(e){}}
   const applied = !!j.brainAppliedAt;
   const firmN = ai.jobs.filter(b=>b.is_firm).length;
   const totN = ai.jobs.length;
@@ -11431,7 +11447,7 @@ window.brainAutoPartsNow=function(id){
 // Roll up the pre-fill to the job's single labour fields
 window.brainApplyToJob = function(jobId){
   const j = _brainJob(jobId); if(!j||!j.brainAI)return;
-  try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainMergeSides(j);brainFixService(j);brainPairRule(j);brainRecalcAll(j);brainFixAlloy(j);brainFixBody(j);}catch(e){}
+  try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainMergeSides(j);brainFixService(j);brainTurboOil(j);brainPairRule(j);brainRecalcAll(j);brainFixAlloy(j);brainFixBody(j);}catch(e){}
   const inc = j.brainAI.jobs.filter(b=>!b.excluded);
   const totSrt = inc.reduce((s,b)=>s+(parseFloat(b.srt_hours)||0),0);
   const totLabour = inc.reduce((s,b)=>s+(parseFloat(b.labour_ex_vat)||0),0);
@@ -15441,7 +15457,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1015';
+const CRM_BUILD='2026-11-18-1025';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
