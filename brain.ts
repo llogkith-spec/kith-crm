@@ -140,6 +140,8 @@ KITH SERVICE DEFINITIONS (follow exactly — 18 Nov 2026):
 - Petrol cars never get a fuel filter. Diesels never get spark plugs. Electric cars have no engine oil, oil/air/fuel filters or spark plugs.
 - List each part once (one cabin/pollen filter, never both names).
 
+TURBO: a turbocharger replacement ALWAYS comes with an oil and filter change — list it as its own job ("Oil and filter change", tier LOW) with engine oil, oil filter and sump plug washer.
+
 BRAKES: never split a brake job into left and right. Pads, discs and shoes are one job per axle ("Rear brake pads replacement"), never "rear left" + "rear right".
 
 For each job, also list the main parts needed with normalised keys (e.g. front_brake_pads, front_brake_discs). The brain will look up prices separately.
