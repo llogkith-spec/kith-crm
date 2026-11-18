@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v18.8 \u00b7 16 Nov';
+const BUILD='v18.9 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -5498,7 +5498,7 @@ function renderPipeline(){
         const veh=j.vehicle||((j.make||'')+' '+(j.model||'')).trim();
         return '<div onclick="openJob(\''+j.id+'\')" style="padding:10px 12px;border-top:1px solid var(--border);cursor:pointer">'+
           '<div style="display:flex;justify-content:space-between;gap:8px"><span style="font-family:monospace;font-weight:800;color:var(--gold)">'+escHtml(j.reg||'—')+'</span>'+
-          '<span style="font-size:11px;color:'+(age>=3?'var(--red)':'var(--faint)')+'">'+(age?age+'d in stage':'today')+'</span></div>'+
+          '<span style="font-size:11px;color:'+(age>=3?'var(--red)':'var(--faint)')+'">'+(age?age+'d in stage':'today')+(j.assignedEstimator?' \u00b7 '+escHtml(j.assignedEstimator):'')+'</span></div>'+
           '<div style="font-size:13px">'+escHtml(j.name||'')+(veh?' <span style="color:var(--dim)">· '+escHtml(veh)+'</span>':'')+'</div>'+
           '<div style="font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(String(j.work||'').slice(0,90))+'</div>'+
           (parseFloat(j.quote)>0?'<div style="font-size:11px;color:var(--green)">£'+(parseFloat(j.quote)).toFixed(2)+'</div>':'')+
@@ -15514,7 +15514,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1045';
+const CRM_BUILD='2026-11-18-1035b';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -16230,7 +16230,7 @@ function setFilter(f,btn){
 function cx(id){
   const el=document.getElementById(id);
   if(el){el.classList.remove('open');}
-  if(id==='ov-detail'){curId=null;}
+  if(id==='ov-detail'){curId=null;try{if(window._pipeOn){window._pipeT=1;renderPipeline();}}catch(e){}}
 }
 
 // ── MOBILE NAV HELPERS ──
