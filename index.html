@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v17.9 \u00b7 16 Nov';
+const BUILD='v18.0 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -1064,6 +1064,7 @@ function login(name){
     try{syncNotifs();}catch(e){}
     try{loadLeads().then(()=>updateLeadBadge());}catch(e){}
     try{loadChannels();}catch(e){}
+    try{loadCompanies();}catch(e){}
     try{refreshPushOwner();}catch(e){}
     try{loadSchedCap();}catch(e){}
     setTimeout(()=>{try{loadSopRules();}catch(e){}},3000);
@@ -3638,6 +3639,7 @@ async function signOff(id){
 }
 const SEND_BY_COMPANY=[[/wallington/i,'email'],[/\bstj\b|st\.? ?joseph/i,'whatsapp']];
 function sendPref(j){
+  try{const c=companyFor(j);if(c&&c.sendBy)return c.sendBy==='email'?'email':'whatsapp';}catch(e){}
   const who=[j.name,j.judgement&&j.judgement.company_name,j.company].filter(Boolean).join(' ');
   for(const [rx,via] of SEND_BY_COMPANY)if(rx.test(who))return via;
   const v=String(j.sendEstimateBy||'').toLowerCase();
@@ -4594,7 +4596,8 @@ function signOffH(j){
         (canAdjustLabour(j)?'<button class="btn btn-gold btn-sm btn-full" style="margin-top:5px" onclick="toggleLabourFix(\''+j.id+'\')">\u270f\ufe0f '+(LF_OPEN[j.id]?'Close labour adjust':'Adjust labour')+'</button>':'')+
         '<button class="btn btn-ghost btn-sm btn-full" style="margin-top:5px;color:var(--red);border-color:var(--red)" onclick="disapproveJob(\''+j.id+'\')">\u2717 Disapproved \u2014 needs a reason</button>'+
         '<button class="btn btn-sm btn-full" style="margin-top:5px;background:var(--red);color:#fff;font-weight:700" onclick="declineJob(\''+j.id+'\')">\ud83d\udeab We can\u2019t do this job \u2014 tell the customer</button>'+
-        '<button class="btn btn-ghost btn-xs btn-full" style="margin-top:5px" onclick="logPhoneSignOff(\''+j.id+'\')">\u260e\ufe0f Record a phone sign-off</button>'
+        '<button class="btn btn-ghost btn-xs btn-full" style="margin-top:5px" onclick="logPhoneSignOff(\''+j.id+'\')">\u260e\ufe0f Record a phone sign-off</button>'+
+        '<button class="btn btn-ghost btn-sm btn-full" style="margin-top:6px;border-color:var(--faint)" onclick="markLost()">\u2715 Job lost \u2014 customer no longer wants it / gone elsewhere</button>'
       : '<div style="font-size:11px;color:var(--faint)">Only Logan or Joel can approve this.</div>')+
   '</div>'+advNoteH(j);
 }
@@ -4686,7 +4689,8 @@ function custKind(j){
   if(t)return{label:t,col:'var(--dim)',icon:'\ud83d\udc64',note:'Retail customer \u2014 standard pricing.'};
   return null;
 }
-function custTypeBanner(j){
+function custTypeBanner(j){return _custTypeBanner(j)+companyPanelH(j);}
+function _custTypeBanner(j){
   const k=custKind(j);
   if(!k){
     return '<div style="background:rgba(160,120,20,.15);border:2px solid var(--amber);border-radius:var(--r);padding:9px 11px;margin-bottom:10px">'+
@@ -4702,6 +4706,234 @@ function custTypeBanner(j){
     '<button class="btn btn-ghost btn-xs" style="margin-top:6px" onclick="openCustType(\''+j.id+'\')">Change</button></div>';
 }
 
+// ── B2B COMPANY CONTACTS (18 Nov 2026) ─────────────────────────────
+// One shared book of trade customers: their managers (name, role, mobile,
+// email), an optional WhatsApp group, and how estimates go to them.
+// Kept in Supabase as __companies__ so every device sees the same book.
+var COMPANIES=[];
+try{const c=JSON.parse(localStorage.getItem('kith_companies')||'null');if(Array.isArray(c))COMPANIES=c;}catch(e){}
+async function loadCompanies(){
+  try{
+    const r=await fetch(SB_URL+'/rest/v1/jobs?id=eq.__companies__&select=data',{headers:SB_HDR});
+    if(!r.ok)return;
+    const rows=await r.json();
+    const c=rows[0]&&rows[0].data&&rows[0].data.companies;
+    if(Array.isArray(c)){COMPANIES=c;safeSet('kith_companies',JSON.stringify(c));}
+  }catch(e){}
+}
+async function saveCompanies(){
+  safeSet('kith_companies',JSON.stringify(COMPANIES));
+  try{await casWrite('__companies__',()=>({companies:COMPANIES}));}
+  catch(e){alert('Saved on this device, but it could not be shared: '+(e.message||e));}
+}
+function _coKey(s){return String(s||'').toLowerCase().replace(/\b(ltd|limited|plc|the|cars?|motors?|travels?|travel|group|co)\b/g,'').replace(/[^a-z0-9]/g,'');}
+function companyFor(j){
+  if(!j)return null;
+  if(j.companyId){const c=COMPANIES.find(x=>x.id===j.companyId);if(c)return c;}
+  const names=[j.company,j.judgement&&j.judgement.company_name,j.name].filter(Boolean);
+  for(const n of names){
+    const k=_coKey(n);if(!k)continue;
+    const c=COMPANIES.find(x=>[x.name].concat(x.aliases||[]).some(a=>{const ak=_coKey(a);return ak&&(ak===k||(ak.length>=4&&k.includes(ak))||(k.length>=4&&ak.includes(k)));}));
+    if(c)return c;
+  }
+  return null;
+}
+function _junkPhone(p){const d=String(p||'').replace(/\D/g,'');return d.length<10;}
+// The number to WhatsApp for this job: the job's own, else the company's first manager with a mobile
+function jobPhone(j){
+  if(!_junkPhone(j.phone))return j.phone;
+  const c=companyFor(j);const m=c&&(c.contacts||[]).find(x=>!_junkPhone(x.phone));
+  return m?m.phone:'';
+}
+// Everyone an estimate email goes to (job email + every manager with an email)
+function estEmailTo(j){
+  const c=companyFor(j);
+  const list=[j.email].concat(c?(c.contacts||[]).filter(x=>x.getsEstimates!==false).map(x=>x.email):[])
+    .map(x=>String(x||'').trim()).filter(x=>/@/.test(x));
+  return Array.from(new Set(list.map(x=>x.toLowerCase()))).join(', ');
+}
+function companyPanelH(j){
+  if(!isTradeCustomer(j))return '';
+  const c=companyFor(j);
+  if(!c)return '<div style="background:var(--surface2);border:1px dashed var(--blue);border-radius:var(--r);padding:9px 11px;margin-bottom:10px">'+
+    '<div style="font-size:12px;font-weight:800;color:var(--blue)">🏢 No contacts saved for '+escHtml(j.name||'this company')+'</div>'+
+    '<div style="font-size:11px;color:var(--dim);margin:2px 0 6px">Add the managers (mobile + email) and their WhatsApp group once — every job for them uses it.</div>'+
+    '<button class="btn btn-sm" style="background:var(--blue);color:#fff;font-weight:700" onclick="openCustomerForm(\''+j.id+'\')">+ Add company contacts</button></div>';
+  const via={email:'✉ Email to every manager',group:'👥 WhatsApp group',whatsapp:'💬 WhatsApp'}[c.sendBy]||'—';
+  return '<div style="background:var(--surface2);border:1px solid var(--blue);border-radius:var(--r);padding:9px 11px;margin-bottom:10px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:12px;font-weight:800;color:var(--blue)">🏢 '+escHtml(c.name)+'</div>'+
+    '<button class="btn btn-ghost btn-xs" onclick="openCustomerForm(\''+j.id+'\')">✏ Edit contacts</button></div>'+
+    '<div style="font-size:11px;color:var(--dim);margin:3px 0 6px">Estimates go by: <strong>'+via+'</strong></div>'+
+    (c.contacts||[]).map(m=>'<div style="font-size:12px;padding:5px 0;border-top:1px solid var(--border)"><strong>'+escHtml(m.name||'—')+'</strong>'+(m.role?' <span style="color:var(--faint)">· '+escHtml(m.role)+'</span>':'')+
+      '<div style="color:var(--dim)">'+[m.phone?'📞 '+escHtml(m.phone):'',m.email?'✉ '+escHtml(m.email):''].filter(Boolean).join(' · ')+(m.getsEstimates===false?' <span style="color:var(--faint)">(no estimates)</span>':'')+'</div></div>').join('')+
+    (c.groupName||c.groupLink?'<div style="font-size:12px;padding:5px 0;border-top:1px solid var(--border)">👥 Group: <strong>'+escHtml(c.groupName||'WhatsApp group')+'</strong>'+(c.groupLink?' · <a href="'+escHtml(c.groupLink)+'" target="_blank" style="color:var(--green)">open</a>':'')+'</div>':'')+
+  '</div>';
+}
+// ── ONE FORM FOR THE CUSTOMER'S DETAILS (replaces the pop-up questions) ──
+function openCustomerForm(id){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
+  const trade=isTradeCustomer(j);
+  const c=companyFor(j);
+  window._cfJob=j.id;window._cfDraft=null;window._cfCo=c?JSON.parse(JSON.stringify(c)):(trade?{id:'co'+Date.now().toString(36),name:j.company||j.name||'',aliases:[],contacts:[],sendBy:sendPref(j)||'whatsapp'}:null);
+  document.getElementById('cust-form')?.remove();
+  const w=document.createElement('div');w.id='cust-form';
+  w.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1400;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow:auto';
+  w.innerHTML='<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:18px;max-width:560px;width:100%;margin:auto 0">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-weight:800;font-size:16px">✏ Customer details — '+escHtml(j.reg||'')+'</div>'+
+    '<button class="xbtn" onclick="document.getElementById(\'cust-form\').remove()">✕</button></div>'+
+    '<div id="cf-body"></div>'+
+    '<div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-gold" style="flex:1;font-weight:800" onclick="saveCustomerForm()">Save</button>'+
+    '<button class="btn btn-ghost" onclick="document.getElementById(\'cust-form\').remove()">Cancel</button></div></div>';
+  document.body.appendChild(w);
+  cfRender();
+}
+function _cfIn(id,label,val,ph,type){return '<div class="fg" style="margin-bottom:8px"><label class="fl2">'+label+'</label><input class="fi2" id="'+id+'" type="'+(type||'text')+'" value="'+escHtml(val||'')+'" placeholder="'+escHtml(ph||'')+'" style="min-height:40px"/></div>';}
+function cfRender(){
+  const j=jobs.find(x=>x.id===window._cfJob);if(!j)return;
+  const c=window._cfCo;
+  const D=window._cfDraft||{},dv=(k,v)=>D[k]!=null?D[k]:v;
+  let h=_cfIn('cf-name',c?'Customer / company name on this job':'Customer name',dv('name',j.name),'')+
+    _cfIn('cf-phone',c?'Main mobile on this job (if different from the managers)':'Mobile (WhatsApp)',dv('phone',_junkPhone(j.phone)?'':j.phone),'07…','tel')+
+    _cfIn('cf-email',c?'Main email on this job':'Email',dv('email',j.email),'name@company.com','email');
+  if(!c){
+    h+='<button class="btn btn-ghost btn-sm" onclick="window._cfCo={id:\'co\'+Date.now().toString(36),name:document.getElementById(\'cf-name\').value,aliases:[],contacts:[],sendBy:\'whatsapp\'};cfKeep();cfRender()">🏢 This is a business — add managers / group</button>';
+  }else{
+    h+='<div style="margin:14px 0 6px;font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--blue)">🏢 COMPANY — SAVED FOR EVERY JOB OF THEIRS</div>'+
+      _cfIn('cf-co-name','Company name',c.name,'e.g. Wallington Cars')+
+      _cfIn('cf-co-alias','Other names it comes in as (comma separated)',(c.aliases||[]).join(', '),'e.g. Wallington, WC')+
+      '<div class="fg" style="margin-bottom:8px"><label class="fl2">Send estimates by</label><select class="fi2" id="cf-co-send" style="min-height:40px">'+
+        [['email','✉ Email — to every manager ticked below'],['group','👥 WhatsApp group'],['whatsapp','💬 WhatsApp — the main contact']].map(o=>'<option value="'+o[0]+'"'+(c.sendBy===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></div>'+
+      _cfIn('cf-co-gname','WhatsApp group name',c.groupName,'e.g. STJ Fleet Managers')+
+      _cfIn('cf-co-glink','WhatsApp group invite link (optional)',c.groupLink,'https://chat.whatsapp.com/…','url')+
+      '<div style="margin:12px 0 6px;font-size:11px;font-weight:800;color:var(--dim)">MANAGERS / CONTACTS</div>'+
+      (c.contacts||[]).map((m,i)=>'<div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px">'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'+
+          '<input class="fi2" id="cf-m-n-'+i+'" placeholder="Name" value="'+escHtml(m.name||'')+'"/>'+
+          '<input class="fi2" id="cf-m-r-'+i+'" placeholder="Role (e.g. Fleet manager)" value="'+escHtml(m.role||'')+'"/>'+
+          '<input class="fi2" id="cf-m-p-'+i+'" type="tel" placeholder="Mobile" value="'+escHtml(m.phone||'')+'"/>'+
+          '<input class="fi2" id="cf-m-e-'+i+'" type="email" placeholder="Email" value="'+escHtml(m.email||'')+'"/>'+
+        '</div><div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">'+
+          '<label style="font-size:12px"><input type="checkbox" id="cf-m-g-'+i+'"'+(m.getsEstimates===false?'':' checked')+'> Gets estimates</label>'+
+          '<button class="btn btn-ghost btn-xs" style="color:var(--red)" onclick="cfKeep();window._cfCo.contacts.splice('+i+',1);cfRender()">Remove</button></div></div>').join('')+
+      '<button class="btn btn-ghost btn-sm" onclick="cfKeep();window._cfCo.contacts.push({name:\'\',role:\'\',phone:\'\',email:\'\'});cfRender()">+ Add a manager</button>';
+  }
+  document.getElementById('cf-body').innerHTML=h;
+}
+// keep what has been typed before the form redraws
+function cfKeep(){
+  const v=id=>{const e=document.getElementById(id);return e?e.value:null;};
+  const j=jobs.find(x=>x.id===window._cfJob);
+  window._cfDraft={name:v('cf-name'),phone:v('cf-phone'),email:v('cf-email')};
+  const c=window._cfCo;if(!c)return;
+  if(v('cf-co-name')!==null){c.name=v('cf-co-name');c.aliases=String(v('cf-co-alias')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    c.sendBy=v('cf-co-send')||c.sendBy;c.groupName=v('cf-co-gname');c.groupLink=v('cf-co-glink');}
+  (c.contacts||[]).forEach((m,i)=>{if(v('cf-m-n-'+i)===null)return;
+    m.name=v('cf-m-n-'+i);m.role=v('cf-m-r-'+i);m.phone=v('cf-m-p-'+i);m.email=v('cf-m-e-'+i);
+    const g=document.getElementById('cf-m-g-'+i);m.getsEstimates=g?g.checked:true;});
+  if(j&&window._cfDraft){if(window._cfDraft.name!==null)j._cfName=window._cfDraft.name;}
+}
+async function saveCustomerForm(){
+  cfKeep();
+  const j=jobs.find(x=>x.id===window._cfJob);if(!j)return;
+  const d=window._cfDraft||{};delete j._cfName;
+  const who=currentUser?' ['+currentUser.name+']':'';
+  j.log=j.log||[];
+  const set=(k,label,val)=>{val=String(val==null?'':val).trim();const was=String(j[k]||'');
+    if(val===was||(!val&&k!=='email'))return;
+    if(k==='phone'&&/^7\d{9}$/.test(val.replace(/\D/g,'')))val='0'+val.replace(/\D/g,'');
+    j[k]=val;j.log.push({t:ts(),s:label+' '+(was?'changed '+was+' → '+(val||'(none)'):'set: '+val)+who});};
+  set('name','👤 Name',d.name);set('phone','📞 Phone',d.phone);set('email','✉ Email',d.email);
+  const c=window._cfCo;
+  if(c){
+    c.name=String(c.name||'').trim()||j.name||'Company';
+    c.contacts=(c.contacts||[]).filter(m=>(m.name||m.phone||m.email));
+    c.contacts.forEach(m=>{const p=String(m.phone||'').replace(/\D/g,'');if(/^7\d{9}$/.test(p))m.phone='0'+p;});
+    c.updatedAt=ts();c.updatedBy=currentUser?currentUser.name:'';
+    const i=COMPANIES.findIndex(x=>x.id===c.id);
+    if(i>=0)COMPANIES[i]=c;else COMPANIES.push(c);
+    j.companyId=c.id;j.company=c.name;
+    if(c.sendBy)j.sendEstimateBy=c.sendBy==='email'?'email':'whatsapp';
+    j.log.push({t:ts(),s:'🏢 '+c.name+' contacts saved: '+c.contacts.length+' manager'+(c.contacts.length===1?'':'s')+(c.groupName?', group '+c.groupName:'')+', estimates by '+c.sendBy+who});
+    await saveCompanies();
+  }
+  save(j);
+  document.getElementById('cust-form')?.remove();
+  renderDetail();renderAll();
+  if(typeof toast==='function')toast('✓ Details saved'+(c?' for every '+c.name+' job':''));
+}
+// Send box: the company's group and managers
+function companySendH(j){
+  const c=companyFor(j);if(!c)return '';
+  let h='';
+  if(c.groupName||c.groupLink){
+    h+='<div style="background:var(--surface2);border:1px solid var(--green);border-radius:8px;padding:9px 10px;margin-bottom:8px;font-size:12px">'+
+      '👥 <strong>'+escHtml(c.groupName||'Their WhatsApp group')+'</strong>'+
+      '<div style="color:var(--dim);margin:3px 0 6px">On the iPhone: press the green Send above and pick <strong>'+escHtml(c.groupName||'the group')+'</strong> in WhatsApp. On the computer:</div>'+
+      '<button class="btn btn-sm" style="background:var(--green);color:#111;font-weight:700" onclick="sendBoxGroup(\''+j.id+'\')">Open the group + copy the message + download the PDF</button></div>';
+  }
+  const ms=(c.contacts||[]).filter(m=>!_junkPhone(m.phone)&&m.getsEstimates!==false);
+  if(ms.length>1)h+='<div style="font-size:11px;color:var(--faint);margin:2px 0 4px">Or send to one manager:</div>'+
+    ms.map(m=>'<button class="btn btn-ghost btn-sm" style="margin:0 6px 6px 0" onclick="sendBoxChatTo(\''+j.id+'\',\''+escHtml(String(m.phone).replace(/\D/g,''))+'\')">💬 '+escHtml(m.name||m.phone)+(m.role?' ('+escHtml(m.role)+')':'')+'</button>').join('');
+  return h;
+}
+function sendBoxGroup(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;const c=companyFor(j);
+  const d=estDocFor(j,window._sbDoc);const text=estimateWAMsg(j);
+  try{navigator.clipboard&&navigator.clipboard.writeText(text).catch(()=>{});}catch(e){}
+  try{if(d)estSaveFile(j,d);}catch(e){}
+  if(c&&c.groupLink)window.open(c.groupLink,'kith-whatsapp');
+  else window.open('https://web.whatsapp.com/','kith-whatsapp');
+  sendBoxMsg('👥 '+(c&&c.groupLink?'The group is opening.':'Open the group <strong>'+escHtml(c&&c.groupName||'')+'</strong> in WhatsApp.')+' The message is copied — <strong>paste it</strong>, then drag the PDF from Downloads in, and send.'+
+    '<div style="margin-top:8px"><button class="btn btn-green btn-sm" onclick="confirmEstimateSent(\''+j.id+'\');sendBoxClose()">✓ Yes, it’s sent</button></div>');
+}
+function sendBoxChatTo(id,num){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const d=estDocFor(j,window._sbDoc);
+  window._estNoLink=true;
+  try{estManualSend(j,d,num,estimateWAMsg(j),false,false);}finally{window._estNoLink=false;}
+  sendBoxMsg('💬 Chat opened. <strong>Drag the PDF from Downloads in</strong>, press send, then:'+
+    '<div style="margin-top:8px"><button class="btn btn-green btn-sm" onclick="confirmEstimateSent(\''+j.id+'\');sendBoxClose()">✓ Yes, it’s sent</button></div>');
+}
+
+// ── THE REG DECIDES THE CAR (18 Nov 2026) ───────────────────────────
+// Make and model typed in (or guessed from a message) are often wrong.
+// Every live job is checked against DVLA / MOT history; the reg wins.
+function _vt(t){return String(t||'').toLowerCase().replace(/\b[a-z]/g,c=>c.toUpperCase());}
+function _mk(t){return String(t||'').toLowerCase().replace(/mercedes[- ]?benz/,'mercedes').replace(/[^a-z]/g,'');}
+function dvlaApply(j){
+  const v=j&&j.dvla;if(!v||!v.make)return false;
+  if(j.dvlaApplied===v.make+'|'+(v.model||''))return false;
+  const dm=_vt(v.make),dmo=String(v.model||'').trim()?_vt(v.model):'';
+  const tm=_mk(j.make),dk=_mk(v.make);
+  const was=[j.make,j.model].filter(Boolean).join(' ');
+  const makeOk=tm&&(tm.includes(dk)||dk.includes(tm));
+  let changed=false;
+  if(!makeOk){
+    if(was)j.vehicleTyped=was;
+    j.make=dm;j.model=dmo||'';changed=true;
+  }else if(dmo&&!_mk(j.model)){j.model=dmo;changed=true;}
+  else if(dmo&&_mk(j.model)&&!_mk(dmo).includes(_mk(j.model).slice(0,3))&&!_mk(j.model).includes(_mk(dmo).slice(0,3))){
+    j.vehicleTyped=was;j.model=dmo;changed=true;
+  }
+  if(!j.year&&v.yearOfManufacture)j.year=String(v.yearOfManufacture);
+  if(!j.fuel&&v.fuelType)j.fuel=_vt(v.fuelType);
+  j.dvlaApplied=v.make+'|'+(v.model||'');
+  if(changed){
+    j.log=j.log||[];
+    j.log.push({t:ts(),s:'🚗 Vehicle from the reg '+(j.reg||'')+': '+[j.make,j.model].filter(Boolean).join(' ')+(was?' (was entered as '+was+')':'')});
+  }
+  return true;
+}
+function vehCheckH(j){
+  if(!j||!j.reg)return '';
+  if(j.dvla&&j.dvla.make){
+    const v=j.dvla;
+    return '<div style="font-size:11px;color:var(--green);margin-top:3px">✓ Reg checked: '+escHtml([_vt(v.make),v.model?_vt(v.model):'',v.yearOfManufacture,v.fuelType?_vt(v.fuelType):'',v.colour?_vt(v.colour):''].filter(Boolean).join(' · '))+
+      (j.vehicleTyped?' <span style="color:var(--amber)">(was entered as '+escHtml(j.vehicleTyped)+')</span>':'')+'</div>';
+  }
+  if(j.dvlaTriedAt)return '<div style="font-size:11px;color:var(--red);margin-top:3px">⚠ '+escHtml(j.reg)+' was not found — check the reg is right (Correct Reg / VIN).</div>';
+  return '<div style="font-size:11px;color:var(--faint);margin-top:3px">Checking '+escHtml(j.reg)+'…</div>';
+}
 function vehDesc(j,withReg){
   const junk=v=>{const t=String(v||'').trim();return !t||/^[.\u2026\-_/]+$/.test(t)||t.toLowerCase()==='n/a'||t.toLowerCase()==='na';};
   const mk=junk(j.make)?'':String(j.make).trim();
@@ -5289,13 +5521,14 @@ function renderDetail(){
   document.getElementById('dp').innerHTML=
     '<div class="ph"><div>'+
       '<div class="preg">'+j.reg+'</div>'+
-      '<div class="psub">'+escHtml(j.name||'—')+' · '+escHtml(vehDesc(j,false))+' · '+escHtml(j.phone||'no number')+
+      '<div class="psub">'+escHtml(j.name||'—')+' · '+escHtml(vehDesc(j,false))+' · '+escHtml(jobPhone(j)||'no number')+
         ' <button class="btn btn-ghost btn-xs" style="margin-left:6px;vertical-align:middle" onclick="editCustomer(\''+j.id+'\')">✏ Edit</button>'+
         (function(){const k=custKind(j);
           return ' <button class="btn btn-ghost btn-xs" style="margin-left:4px;vertical-align:middle;'+(k?'color:'+k.col+';border-color:'+k.col:'color:var(--amber);border-color:var(--amber)')+'" onclick="openCustType(\''+j.id+'\')">'+
             (k?k.icon+' '+escHtml(k.label):'\u26a0 Set customer type')+'</button>';})()+
         (j.wa?' · <span style="color:#25d366;font-weight:700">WhatsApp ✓</span>':'')+
         (j.ramp?' · <span style="color:var(--amber)">On Ramp</span>':'')+
+        vehCheckH(j)+
       '</div>'+
     '</div><button class="xbtn" onclick="cx(\'ov-detail\')">✕</button></div>'+
     '<div class="pb">'+
@@ -6474,7 +6707,7 @@ function estimateWAMsg(j){
   return body;
 }
 function estPhone(j){
-  let n=String(j.phone||'').replace(/\D/g,'');
+  let n=String((typeof jobPhone==='function'?jobPhone(j):j.phone)||'').replace(/\D/g,'');
   if(/^7\d{9}$/.test(n))n='0'+n;                 // "7456 436666" — UK mobile typed without the 0
   if(n.charAt(0)==='0')n='44'+n.slice(1);
   return n.length>=10?n:'';
@@ -6592,6 +6825,7 @@ function openSendNowBox(id,docI,notJustApproved){
     '<div style="font-weight:800;font-size:16px;margin-bottom:4px">'+(notJustApproved?'💬 Send the estimate PDF to ':'✓ Approved — now send the PDF to ')+escHtml(firstName(j))+'</div>'+
     '<div style="font-size:12px;color:var(--dim);margin-bottom:14px">'+(notJustApproved?'':'Nothing has gone to the customer yet. ')+(num?'WhatsApp: <strong>+'+escHtml(num)+'</strong> · '+money2(parseFloat(j.quote)||0):'<span style="color:var(--red)">No valid mobile on this job — fix it with Edit first.</span>')+'</div>'+
     (phone?shareBtn+chatBtn:chatBtn+shareBtn)+
+    (function(){try{return companySendH(j);}catch(e){return '';}})()+
     '<div id="sb-msg" style="font-size:12px;margin:6px 0 10px;line-height:1.5"></div>'+
     '<button class="btn btn-ghost btn-full btn-sm" onclick="sendBoxClose()">Later — the green Send button stays on the job</button>'+
   '</div>';
@@ -7012,25 +7246,26 @@ async function relayEmail(to,subject,text,d,j){
 }
 async function emailEstimate(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
-  if(!/@/.test(String(j.email||''))){alert('No email on this job \u2014 add it with Edit at the top.');return;}
+  const toAll=estEmailTo(j);
+  if(!toAll){alert('No email on this job \u2014 add it with Edit at the top (for a business, add the managers).');return;}
   if(!kithPdfFresh(j)){estSetStatus(j,'\ud83d\udcc4 Making the estimate PDF\u2026','var(--amber)');try{await ensureKithEstPdf(j);}catch(e){}}
   const d0=estDocFor(j);
   const text0=estimateWAMsg(j).replace(/\*/g,'')+'\n\n'+KITH_CO.name+' \u00b7 '+KITH_CO.tel+' \u00b7 '+KITH_CO.web;
   estSetStatus(j,'\u2709 Sending\u2026','var(--amber)');
-  const rr=await relayEmail(j.email,'Your estimate \u2014 '+(j.reg||'')+' \u2014 KITH Cars',text0,d0,j);
+  const rr=await relayEmail(toAll,'Your estimate \u2014 '+(j.reg||'')+' \u2014 KITH Cars',text0,d0,j);
   if(rr&&rr.ok){
     j.estimateSentAt=ts();j.estimateSentMs=Date.now();j.estimateSentBy=currentUser?currentUser.name:'';
-    j.log=j.log||[];j.log.push({t:ts(),s:'\u2709 Estimate emailed to '+j.email+' with the PDF attached (sent by the CRM'+(rr.from?' from '+rr.from:'')+')'+(currentUser?' ['+currentUser.name+']':'')});
+    j.log=j.log||[];j.log.push({t:ts(),s:'\u2709 Estimate emailed to '+toAll+' with the PDF attached (sent by the CRM'+(rr.from?' from '+rr.from:'')+')'+(currentUser?' ['+currentUser.name+']':'')});
     try{estMoveToContacted(j,'the quote went to the customer by email');}catch(e){}
-    save(j);estSetStatus(j,'\u2713 Emailed to '+escHtml(j.email)+' with the PDF','var(--green)');
-    if(typeof toast==='function')toast('\u2713 Estimate emailed to '+j.email);
+    save(j);estSetStatus(j,'\u2713 Emailed to '+escHtml(toAll)+' with the PDF','var(--green)');
+    if(typeof toast==='function')toast('\u2713 Estimate emailed to '+toAll);
     try{renderDetail();}catch(e){}
     return;
   }
   const d=d0;
   const body=estimateWAMsg(j).replace(/\*/g,'')+(d?'\n\nYour estimate (PDF): '+d.url:'')+'\n\n'+KITH_CO.name+' \u00b7 '+KITH_CO.tel+' \u00b7 '+KITH_CO.web;
   try{if(d)estSaveFile(j,d);}catch(e){}
-  const href='mailto:'+encodeURIComponent(j.email)+'?subject='+encodeURIComponent('Your estimate \u2014 '+(j.reg||'')+' \u2014 KITH Cars')+'&body='+encodeURIComponent(body);
+  const href='mailto:'+toAll.split(', ').map(encodeURIComponent).join(',')+'?subject='+encodeURIComponent('Your estimate \u2014 '+(j.reg||'')+' \u2014 KITH Cars')+'&body='+encodeURIComponent(body);
   estSetStatus(j,'<a class="btn btn-sm" style="background:var(--blue);color:#fff;font-weight:700" href="'+escHtml(href)+'" target="_blank" onclick="emailEstimateDone(\''+j.id+'\')">\u2709 Open the email to '+escHtml(j.email)+'</a>','var(--blue)');
 }
 function emailEstimateDone(id){
@@ -7702,13 +7937,13 @@ function bodySizeGuess(j){
 const _vehBusy={};
 async function vehLookupJob(j){
   const reg=String(j&&j.reg||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
-  if(!reg||reg.length<4||_vehBusy[reg]||j.dvla||j.dvlaTriedAt)return;
+  if(!reg||reg.length<4||_vehBusy[reg]||j.dvla||(j.dvlaTriedAt&&Date.now()-j.dvlaTriedAt<864e5))return;
   _vehBusy[reg]=true;
   try{
     const ctl=window.AbortController?new AbortController():null,t=setTimeout(()=>{if(ctl)ctl.abort();},8000);
     const r=await fetch(VEH_API,{method:'POST',headers:{'content-type':'text/plain'},body:JSON.stringify({reg}),signal:ctl&&ctl.signal});
     clearTimeout(t);const d=await r.json();
-    if(d&&d.vehicle){j.dvla=d.vehicle;}else j.dvlaTriedAt=Date.now();
+    if(d&&d.vehicle){j.dvla=d.vehicle;delete j.dvlaTriedAt;try{dvlaApply(j);}catch(e){}}else j.dvlaTriedAt=Date.now();
   }catch(e){j.dvlaTriedAt=Date.now();}
   finally{delete _vehBusy[reg];}
   try{autoBodySize(j);save(j);if(curId===j.id)renderDetail();}catch(e){}
@@ -9903,7 +10138,7 @@ function addSrtLine(id){
   const chg=chgIn===null?book:(parseFloat(chgIn)||book);
   j.srtLines=srtLines(j);
   j.srtLines.push({op:op.trim(),book,charged:chg,by:currentUser?currentUser.name:'',at:ts()});
-  syncSrtTotals(j);
+  syncSrtTotals(j);try{mergeSideLines(j);}catch(e){}
   j.log=j.log||[];
   j.log.push({t:ts(),s:'\u23f1 SRT line added: '+op.trim()+' \u2014 '+book+'h book / '+chg+'h charged'+(currentUser?' ['+currentUser.name+']':'')});
   save(j);renderDetail();renderAll();
@@ -10463,6 +10698,61 @@ function brainRecalcAll(j){
   });
   return ch;
 }
+// ── BRAKES: ONE LINE, NEVER LEFT AND RIGHT (18 Nov 2026, Logan) ─────
+// "Renew the rear left brake pads" + "rear right" become one line
+// "Renew the rear brake pads". Pads, discs and shoes are an axle job, so
+// the time is one side's time, not doubled; calipers and hoses add up.
+const SIDE_RX=/\b(left|right|nearside|offside|n\/s|o\/s|l\/h|r\/h|lh|rh|ns|os|driver'?s?|passenger'?s?)\b(\s+side)?/ig;
+function _isBrake(t){return /brake|pads?\b|dis[ck]s?\b|shoes?\b|drums?\b|caliper|calliper/i.test(String(t||''));}
+function _sideOf(t){const m=String(t||'').match(/\b(left|nearside|n\/s|l\/h|lh|ns|passenger)\b/i)?'L':String(t||'').match(/\b(right|offside|o\/s|r\/h|rh|os|driver)\b/i)?'R':'';return m;}
+function _sideKey(t){return String(t||'').toLowerCase().replace(SIDE_RX,' ').replace(/\b(both|sides?|pair|x2)\b/g,' ').replace(/[^a-z]+/g,' ').trim();}
+function _sideLabel(t){return String(t||'').replace(SIDE_RX,'').replace(/\s{2,}/g,' ').replace(/\s+([,.)])/g,'$1').trim();}
+function _axleJob(t){return /pads?\b|dis[ck]s?\b|shoes?\b|drums?\b/i.test(String(t||''))&&!/caliper|calliper|hose|cylinder/i.test(String(t||''));}
+function mergeSideLines(j){
+  const L=srtLines(j);if(L.length<2)return false;
+  let ch=false;const out=[];
+  L.forEach(l=>{
+    const op=l.op||'';
+    if(l.fixed||!_isBrake(op)||!_sideOf(op)){out.push(l);return;}
+    const k=_sideKey(op);
+    const twin=out.find(x=>!x.fixed&&_isBrake(x.op)&&_sideKey(x.op)===k&&(x.mergedSides||(_sideOf(x.op)&&_sideOf(x.op)!==_sideOf(op))));
+    if(!twin){out.push(l);return;}
+    const ax=_axleJob(op);
+    const b1=parseFloat(twin.book)||0,b2=parseFloat(l.book)||0,c1=parseFloat(twin.charged)||b1,c2=parseFloat(l.charged)||b2;
+    const lab1=twin.labour!=null?parseFloat(twin.labour)||0:null,lab2=l.labour!=null?parseFloat(l.labour)||0:null;
+    twin.book=ax?Math.max(b1,b2):Math.round((b1+b2)*100)/100;
+    twin.charged=ax?Math.max(c1,c2):Math.round((c1+c2)*100)/100;
+    if(lab1!=null||lab2!=null)twin.labour=ax?Math.max(lab1||0,lab2||0):Math.round(((lab1||0)+(lab2||0))*100)/100;
+    twin.op=_sideLabel(twin.op)+(ax?'':' (both sides)');
+    twin.mergedSides=true;ch=true;
+  });
+  if(!ch)return false;
+  j.srtLines=out;syncSrtTotals(j);
+  if(out.every(x=>x.labour!=null)){j.labourCost=Math.round(out.reduce((a,x)=>a+(parseFloat(x.labour)||0),0)*100)/100;}
+  j.log=j.log||[];j.log.push({t:ts(),s:'🛠 Brake labour put on one line (not left and right) — labour now £'+(parseFloat(j.labourCost)||0).toFixed(2)});
+  return true;
+}
+// Same for the Brain's pre-fill lines
+function brainMergeSides(j){
+  const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
+  let ch=false;
+  const live=ai.jobs.filter(b=>!b.excluded);
+  live.forEach(b=>{
+    const t=String(b.job_label||'');
+    if(b.excluded||!_isBrake(t)||!_sideOf(t))return;
+    const k=_sideKey(t);
+    const twin=live.find(x=>x!==b&&!x.excluded&&_isBrake(x.job_label)&&_sideKey(x.job_label)===k&&_sideOf(x.job_label)&&_sideOf(x.job_label)!==_sideOf(t));
+    if(!twin)return;
+    const ax=_axleJob(t);
+    const h1=parseFloat(b.srt_hours)||0,h2=parseFloat(twin.srt_hours)||0;
+    b.srt_hours=ax?Math.max(h1,h2):Math.round((h1+h2)*100)/100;
+    b.job_label=_sideLabel(t)+(ax?'':' (both sides)');
+    twin.excluded=true;twin.excludedWhy='merged into one brake line ('+b.job_label+')';
+    try{brainRecalc(j,b);}catch(e){}
+    ch=true;
+  });
+  return ch;
+}
 function brainPairRule(j){
   const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
   const live=ai.jobs.filter(b=>!b.excluded&&!b.fixedTyre&&!b.fixedDiag&&!b.fixedBody&&!b.fixedAlloy&&!b.fixedMot);
@@ -10730,7 +11020,7 @@ async function brainAskLine(j,desc){
     j.brainAI.jobs=j.brainAI.jobs||[];
     const added=d.jobs.map(x=>Object.assign({},x,{manual:true,askedFor:desc}));
     j.brainAI.jobs.push(...added);
-    try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainPairRule(j);brainRecalcAll(j);}catch(e){}
+    try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainMergeSides(j);brainPairRule(j);brainRecalcAll(j);}catch(e){}
     delete j.brainPrefillDismissedAt;
     j.log=j.log||[];j.log.push({t:ts(),s:'\ud83e\udde0 Brain priced \u201c'+desc+'\u201d: '+added.map(x=>(x.job_label||x.job_normalised)+' \u00a3'+(parseFloat(x.labour_ex_vat)||0).toFixed(2)).join(', ')+(currentUser?' ['+currentUser.name+']':'')});
     BRAIN_ADD_OPEN[j.id]=true;
@@ -10785,7 +11075,7 @@ function brainPrefillH(j){
   }
   const ai = j.brainAI;
   if(!ai||!ai.jobs||!ai.jobs.length)return '';
-  if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)|brainPairRule(j)|brainRecalcAll(j)|brainFixAlloy(j)|brainFixBody(j)){try{save(j);}catch(e){}}
+  if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)|brainMergeSides(j)|brainPairRule(j)|brainRecalcAll(j)|brainFixAlloy(j)|brainFixBody(j)){try{save(j);}catch(e){}}
   const applied = !!j.brainAppliedAt;
   const firmN = ai.jobs.filter(b=>b.is_firm).length;
   const totN = ai.jobs.length;
@@ -11006,7 +11296,7 @@ window.brainAutoPartsNow=function(id){
 // Roll up the pre-fill to the job's single labour fields
 window.brainApplyToJob = function(jobId){
   const j = _brainJob(jobId); if(!j||!j.brainAI)return;
-  try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainPairRule(j);brainRecalcAll(j);brainFixAlloy(j);brainFixBody(j);}catch(e){}
+  try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainMergeSides(j);brainPairRule(j);brainRecalcAll(j);brainFixAlloy(j);brainFixBody(j);}catch(e){}
   const inc = j.brainAI.jobs.filter(b=>!b.excluded);
   const totSrt = inc.reduce((s,b)=>s+(parseFloat(b.srt_hours)||0),0);
   const totLabour = inc.reduce((s,b)=>s+(parseFloat(b.labour_ex_vat)||0),0);
@@ -13033,6 +13323,16 @@ function autoPilot(){
       try{stageMoved(j,from,'accounts');}catch(e){}save(j);}});}catch(e){}
   // v16.7: one line per part — merge copies the Brain added twice
   try{jobs.forEach(j=>{if(j&&!j.mergedInto&&['labour','parts','signoff'].includes(j.stage)&&dedupeParts(j))save(j);});}catch(e){}
+  // v18.0: brake labour on one line, not left + right (jobs not yet signed off)
+  try{jobs.forEach(j=>{if(!j||j.mergedInto||j.signedOff||!['intake','range','labour','parts','signoff'].includes(j.stage))return;
+    let c=false;try{c=mergeSideLines(j);}catch(e){}try{if(brainMergeSides(j)){c=true;}}catch(e){}
+    if(c){try{refreshEstimateDocs&&0;}catch(e){}save(j);}});}catch(e){}
+  // v18.0: check every live job's reg (a few a minute) so the make and model come from DVLA
+  try{let n=0;for(const j of jobs){if(n>=4)break;
+    if(!j||j.mergedInto||!j.reg||['done','lost','accounts','receivable','review','followup'].includes(j.stage))continue;
+    if(j.dvla){if(dvlaApply(j))save(j);continue;}
+    if(j.dvlaTriedAt&&Date.now()-j.dvlaTriedAt<864e5)continue;
+    n++;vehLookupJob(j);}}catch(e){}
   // v17.9 (Logan, 16 Nov 2026): anything in Sign-Off or Contacted/Awaiting with nothing
   // happening for 14+ days goes to Lost — ready for a win-back campaign in Lost & follow-ups
   try{const DAYQ=14;jobs.forEach(j=>{
@@ -14856,7 +15156,8 @@ function openFollowUp(id){
 // ── FIX CUSTOMER DETAILS ───────────────────────────────────────────
 // Form entries arrive with typos. Anyone working the job can correct
 // the name or number where they are, rather than living with it.
-function editCustomer(id){
+function editCustomer(id){return openCustomerForm(id);}
+function _editCustomerOld(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
   const nm=prompt('Customer name for '+(j.reg||'this job')+':',j.name||'');
   if(nm===null)return;
@@ -15004,7 +15305,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-16-2230';
+const CRM_BUILD='2026-11-18-0930';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
