@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v18.2 \u00b7 16 Nov';
+const BUILD='v18.3 \u00b7 16 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -5508,7 +5508,7 @@ function renderPipeline(){
   if(q&&!total)h+='<div style="padding:20px;text-align:center;color:var(--faint)">No jobs match “'+escHtml(q)+'”</div>';
   vp.innerHTML=h;
 }
-function openJob(id){try{const _j=jobs.find(x=>x.id===id);if(_j&&mergeSidesForJob(_j))save(_j);}catch(e){}curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
+function openJob(id){try{const _j=jobs.find(x=>x.id===id);if(_j){let c=mergeSidesForJob(_j);if(serviceTidyParts(_j))c=true;if(brainFixService(_j))c=true;if(c)save(_j);}}catch(e){}curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
 
 // Redraw even if something still has focus. Only ever called straight
 // after a stage change, when there is nothing half-typed to protect.
@@ -6835,6 +6835,7 @@ function openSendNowBox(id,docI,notJustApproved){
     (function(){try{return companySendH(j);}catch(e){return '';}})()+
     '<div id="sb-msg" style="font-size:12px;margin:6px 0 10px;line-height:1.5"></div>'+
     '<button class="btn btn-ghost btn-full btn-sm" onclick="sendBoxClose()">Later — the green Send button stays on the job</button>'+
+    (j.signedOff&&!j.estimateSentMs?'<button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px;color:var(--amber);border-color:var(--amber)" onclick="undoApproval(\''+j.id+'\')">↩ Go back — undo the approval (back to Sign-Off)</button>':'')+
   '</div>';
   document.body.appendChild(w);
   if(share){
@@ -6847,6 +6848,19 @@ function openSendNowBox(id,docI,notJustApproved){
       if(++n>40||(EST_FAILS[d.url]||0)>=3){clearInterval(window._sbTimer);b.innerHTML='Could not load the PDF — use Open WhatsApp';}
     },500);
   }
+}
+// "Go back": approved by mistake, or something to change — nothing has been sent yet
+function undoApproval(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  if(j.estimateSentMs){alert('The estimate has already gone to the customer — it cannot be un-approved.');return;}
+  const from=j.stage;
+  j.signedOff=false;['signedOffAt','signedOffBy','signedOffAmount','quoteSentVia','estimateOpenedMs','estimateOpenedAt'].forEach(k=>delete j[k]);
+  j.msgOutbox=(j.msgOutbox||[]).filter(m=>!(m&&m.kind==='quote'&&m.status!=='sent'));
+  j.stage='signoff';j.stageAt=Date.now();try{stampStage(j,'signoff');}catch(e){}
+  j.log=j.log||[];j.log.push({t:ts(),s:'\u21a9 Approval undone \u2014 back to Final Estimate & Sign-Off (nothing had been sent)'+(currentUser?' ['+currentUser.name+']':'')});
+  try{stageMoved(j,from,'signoff');}catch(e){}
+  save(j);sendBoxClose();try{renderDetail();renderAll();}catch(e){}
+  if(typeof toast==='function')toast('\u21a9 Back to Sign-Off \u2014 change it and approve again');
 }
 function sendBoxClose(){try{clearInterval(window._sbTimer);}catch(e){}document.getElementById('sendnow-box')?.remove();}
 function sendBoxMsg(h,col){const m=document.getElementById('sb-msg');if(m){m.innerHTML=h;m.style.color=col||'var(--dim)';}}
@@ -6864,7 +6878,7 @@ function sendBoxShare(id){
     try{refreshEstimateDocs(j);renderDetail();renderAll();}catch(e){}
   }).catch(e=>{
     sendBoxMsg(e&&e.name==='AbortError'
-      ?'✕ <strong>Not sent.</strong> If WhatsApp wasn’t in that list, use <strong>Open WhatsApp</strong> — the PDF downloads so you can drag it in.'
+      ?'✕ <strong>Not sent.</strong> If WhatsApp said <em>“Open WhatsApp Business from the home screen”</em>: go to the home screen, open <strong>WhatsApp Business</strong> once, come back here and press Send again. If WhatsApp wasn’t in the list at all, use <strong>Open WhatsApp</strong>.'
       :'✕ <strong>Not sent</strong> — the share box would not open ('+escHtml(e&&e.message||'blocked')+'). Use <strong>Open WhatsApp</strong>.','var(--red)');
   });
 }
@@ -10561,7 +10575,8 @@ function brainFixTyres(j){
 function partDupKey(name){
   const t=String(name||'').toLowerCase();
   if(/\btyres?\b/.test(t)&&!/valve|tpms|sensor|fitting|repair|puncture|pressure/.test(t)){const z=t.match(/(\d{3})\s*\/\s*(\d{2})\s*z?r?\s*(\d{2})/);return 'tyre'+(z?z[1]+z[2]+z[3]:'');}
-  return _pkey(t).replace(/s\b/g,'');
+  if(/pollen|cabin/.test(t)&&/filter/.test(t))return 'cabinfilter';
+  return _pkey(t).replace(/s\b/g,'').split(' ').sort().join(' ');
 }
 function partHasWork(p){
   return ['price1','price2','price3','price','cost','supplier1','supplier2','supplier3','num','partNo','po','poId'].some(k=>p[k]!=null&&String(p[k]).trim()!==''&&String(p[k])!=='0');
@@ -10783,6 +10798,93 @@ function mergeSidesForJob(j){
     j.labourDesc=srtLines(j).map(l=>l.op+' - '+(parseFloat(l.charged)||0)+'hr').join('\n');
   }
   return true;
+}
+// ── WHAT EACH SERVICE IS (18 Nov 2026, Logan) ───────────────────────
+// Interim: oil, oil filter, sump plug washer.
+// Full:    interim + air filter + pollen/cabin filter (+ fuel filter on a DIESEL only).
+// Major:   full + spark plugs (PETROL only) + brake fluid (+ fuel filter on a diesel).
+// A petrol never gets a fuel filter; a diesel never gets spark plugs; an
+// electric car gets none of the engine parts. Wipers, bulbs etc. are not in
+// a service — only if the customer asked for them.
+const SERVICE_SPEC={
+  interim:['engine oil','oil filter','sump plug washer'],
+  full:['engine oil','oil filter','sump plug washer','air filter','cabin filter','fuel filter'],
+  major:['engine oil','oil filter','sump plug washer','air filter','cabin filter','fuel filter','spark plugs','brake fluid']
+};
+function serviceLevel(j){
+  const t=String(brainComplaint(j)||'')+' '+String(j.labourDesc||'');
+  if(/major service/i.test(t))return 'major';
+  if(/full service/i.test(t))return 'full';
+  if(/interim service|basic service|oil (and|&) filter/i.test(t))return 'interim';
+  return '';
+}
+function _svcPartKey(n){
+  const t=String(n||'').toLowerCase();
+  if(/pollen|cabin/.test(t))return 'cabin filter';
+  if(/fuel filter/.test(t))return 'fuel filter';
+  if(/spark ?plug/.test(t)&&!/seal|tube|lead|coil/.test(t))return 'spark plugs';
+  if(/brake fluid/.test(t))return 'brake fluid';
+  if(/air filter/.test(t))return 'air filter';
+  if(/oil filter/.test(t))return 'oil filter';
+  if(/sump|drain plug/.test(t))return 'sump plug washer';
+  if(/engine oil|^oil\b/.test(t))return 'engine oil';
+  if(/wiper/.test(t))return 'wipers';
+  if(/coolant|antifreeze/.test(t))return 'coolant';
+  if(/screen ?wash|washer fluid/.test(t))return 'screenwash';
+  if(/bulb/.test(t))return 'bulbs';
+  return '';
+}
+// is this part in the customer's own words / the work?
+function _asked(j,key){
+  const w=String(brainComplaint(j)||'').toLowerCase();
+  const m={'cabin filter':/pollen|cabin/,'fuel filter':/fuel filter/,'spark plugs':/spark ?plug/,'brake fluid':/brake fluid/,'air filter':/air filter/,
+    'wipers':/wiper/,'coolant':/coolant|antifreeze/,'screenwash':/screen ?wash/,'bulbs':/bulb/}[key];
+  return m?m.test(w):false;
+}
+function _svcWrong(j,key,lvl){
+  const fuel=partsFuel(j),diesel=/diesel/.test(fuel),petrol=/petrol|hybrid/.test(fuel),ev=/electric/.test(fuel)&&!/hybrid/.test(fuel);
+  if(!key)return '';
+  if(ev&&['engine oil','oil filter','sump plug washer','air filter','fuel filter','spark plugs'].includes(key))return 'electric car — no engine';
+  if(key==='fuel filter'&&fuel&&!diesel&&!_asked(j,key))return petrol?'petrol car — no fuel filter in a service':'fuel filter is for a diesel only';
+  if(key==='spark plugs'&&diesel)return 'diesel — no spark plugs';
+  if(!lvl||_asked(j,key))return '';
+  const spec=SERVICE_SPEC[lvl]||[];
+  if(['wipers','coolant','screenwash','bulbs'].includes(key))return 'not part of a '+lvl+' service';
+  if(['spark plugs','brake fluid','air filter','cabin filter'].includes(key)&&!spec.includes(key))return 'not part of a '+lvl+' service (that is in a major)';
+  return '';
+}
+// parts nobody has priced yet that a service should not have
+function serviceTidyParts(j){
+  if(!j||!Array.isArray(j.parts)||!j.parts.length)return false;
+  if(!['intake','range','labour','parts','signoff'].includes(j.stage)||j.signedOff)return false;
+  const lvl=serviceLevel(j);
+  const priced=p=>['price1','price2','price3','supplier1','supplier2','supplier3','po','poId','partNo','num'].some(k=>p[k]!=null&&String(p[k]).trim()!==''&&String(p[k])!=='0');
+  const gone=[],seen={};
+  const keep=j.parts.filter(p=>{
+    const key=_svcPartKey(p.name);
+    if(priced(p))return true;
+    const why=_svcWrong(j,key,lvl);
+    if(why){gone.push(p.name+' ('+why+')');return false;}
+    if(key&&key!=='wipers'){if(seen[key]){gone.push(p.name+' (duplicate)');return false;}seen[key]=1;}
+    return true;
+  });
+  if(!gone.length)return false;
+  j.parts=keep;
+  j.log=j.log||[];j.log.push({t:ts(),s:'🧹 Service parts tidied: removed '+gone.join(', ')});
+  return true;
+}
+// the Brain's labour lines: no plugs / brake fluid / fuel filter / wipers that the service does not include
+function brainFixService(j){
+  const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
+  const lvl=serviceLevel(j);let ch=false;
+  ai.jobs.forEach(b=>{
+    if(b.excluded||b.manual)return;
+    const t=String(b.job_label||'');if(/service/i.test(t))return;
+    const key=/spark ?plug/i.test(t)?'spark plugs':/brake fluid/i.test(t)?'brake fluid':/fuel filter/i.test(t)?'fuel filter':/wiper/i.test(t)?'wipers':/coolant/i.test(t)?'coolant':'';
+    const why=_svcWrong(j,key,lvl);
+    if(why){b.excluded=true;b.excludedWhy=why;ch=true;}
+  });
+  return ch;
 }
 function brainPairRule(j){
   const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
@@ -11051,7 +11153,7 @@ async function brainAskLine(j,desc){
     j.brainAI.jobs=j.brainAI.jobs||[];
     const added=d.jobs.map(x=>Object.assign({},x,{manual:true,askedFor:desc}));
     j.brainAI.jobs.push(...added);
-    try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainMergeSides(j);brainPairRule(j);brainRecalcAll(j);}catch(e){}
+    try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainMergeSides(j);brainFixService(j);brainPairRule(j);brainRecalcAll(j);}catch(e){}
     delete j.brainPrefillDismissedAt;
     j.log=j.log||[];j.log.push({t:ts(),s:'\ud83e\udde0 Brain priced \u201c'+desc+'\u201d: '+added.map(x=>(x.job_label||x.job_normalised)+' \u00a3'+(parseFloat(x.labour_ex_vat)||0).toFixed(2)).join(', ')+(currentUser?' ['+currentUser.name+']':'')});
     BRAIN_ADD_OPEN[j.id]=true;
@@ -11106,7 +11208,7 @@ function brainPrefillH(j){
   }
   const ai = j.brainAI;
   if(!ai||!ai.jobs||!ai.jobs.length)return '';
-  if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)|brainMergeSides(j)|brainPairRule(j)|brainRecalcAll(j)|brainFixAlloy(j)|brainFixBody(j)){try{save(j);}catch(e){}}
+  if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)|brainMergeSides(j)|brainFixService(j)|brainPairRule(j)|brainRecalcAll(j)|brainFixAlloy(j)|brainFixBody(j)){try{save(j);}catch(e){}}
   const applied = !!j.brainAppliedAt;
   const firmN = ai.jobs.filter(b=>b.is_firm).length;
   const totN = ai.jobs.length;
@@ -11262,7 +11364,8 @@ const PART_RULES=[
   [/wishbone|control arm|track control/i,['Wishbone mounting bolts']],
   [/wheel bearing|hub bearing/i,['Hub nut']],
   [/drive ?shaft|cv joint|cv boot/i,['Hub nut','CV boot clips']],
-  [/full service|major service/i,['Engine oil','Oil filter','Sump plug washer','Air filter','Pollen / cabin filter',{n:'Fuel filter',diesel:1}]],
+  [/full service/i,['Engine oil','Oil filter','Sump plug washer','Air filter','Pollen / cabin filter',{n:'Fuel filter',diesel:1}]],
+  [/major service/i,['Engine oil','Oil filter','Sump plug washer','Air filter','Pollen / cabin filter',{n:'Fuel filter',diesel:1},{n:'Spark plugs',q:4,petrol:1},'Brake fluid (DOT 4)']],
   [/interim service|oil (and filter|change)|basic service/i,['Engine oil','Oil filter','Sump plug washer']],
   [/spark plug/i,[{n:'Spark plugs',q:4}]],
   [/gearbox oil|transmission oil|gearbox fluid/i,['Gearbox oil','Drain plug washer']],
@@ -11327,7 +11430,7 @@ window.brainAutoPartsNow=function(id){
 // Roll up the pre-fill to the job's single labour fields
 window.brainApplyToJob = function(jobId){
   const j = _brainJob(jobId); if(!j||!j.brainAI)return;
-  try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainMergeSides(j);brainPairRule(j);brainRecalcAll(j);brainFixAlloy(j);brainFixBody(j);}catch(e){}
+  try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainMergeSides(j);brainFixService(j);brainPairRule(j);brainRecalcAll(j);brainFixAlloy(j);brainFixBody(j);}catch(e){}
   const inc = j.brainAI.jobs.filter(b=>!b.excluded);
   const totSrt = inc.reduce((s,b)=>s+(parseFloat(b.srt_hours)||0),0);
   const totLabour = inc.reduce((s,b)=>s+(parseFloat(b.labour_ex_vat)||0),0);
@@ -11521,6 +11624,7 @@ window.brainApplyPartsToJob = function(jobId){
     });
   });
   try{dedupeParts(j);}catch(e){}
+  try{serviceTidyParts(j);}catch(e){}
   j.brainPartsAppliedAt = ts();
   j.brainPartsAppliedBy = brainWho();
   save(j); renderDetail();
@@ -13356,6 +13460,8 @@ function autoPilot(){
   try{jobs.forEach(j=>{if(j&&!j.mergedInto&&['labour','parts','signoff'].includes(j.stage)&&dedupeParts(j))save(j);});}catch(e){}
   // v18.0: brake labour on one line, not left + right (jobs not yet sent to the customer)
   try{jobs.forEach(j=>{try{if(mergeSidesForJob(j))save(j);}catch(e){}});}catch(e){}
+  // v18.3: service parts that do not belong (fuel filter on a petrol, wipers, duplicates…)
+  try{jobs.forEach(j=>{try{let c=serviceTidyParts(j);if(brainFixService(j)){c=true;try{brainRecalcAll(j);}catch(e){}}if(c)save(j);}catch(e){}});}catch(e){}
   // v18.0: check every live job's reg (a few a minute) so the make and model come from DVLA
   try{let n=0;for(const j of jobs){if(n>=4)break;
     if(!j||j.mergedInto||!j.reg||['done','lost','accounts','receivable','review','followup'].includes(j.stage))continue;
@@ -15334,7 +15440,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-0950';
+const CRM_BUILD='2026-11-18-1000';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
