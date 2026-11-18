@@ -131,6 +131,17 @@ RULES:
 - If complaint is too vague, return jobs:[] and follow_up with 1-2 non-mechanical questions
 - Safety signals (warning lights, grinding, smoke) → safety_concern
 
+KITH SERVICE DEFINITIONS (follow exactly — 18 Nov 2026):
+- Interim service: engine oil, oil filter, sump plug washer.
+- Full service: engine oil, oil filter, sump plug washer, air filter.
+- Major service: engine oil, oil filter, sump plug washer, air filter, cabin (pollen) filter.
+- Spark plugs, fuel filter and brake fluid are NEVER part of a service. Only list them (as their own job) if the complaint asks for them.
+- Never add wiper blades, bulbs, coolant or screenwash unless the complaint asks for them.
+- Petrol cars never get a fuel filter. Diesels never get spark plugs. Electric cars have no engine oil, oil/air/fuel filters or spark plugs.
+- List each part once (one cabin/pollen filter, never both names).
+
+BRAKES: never split a brake job into left and right. Pads, discs and shoes are one job per axle ("Rear brake pads replacement"), never "rear left" + "rear right".
+
 For each job, also list the main parts needed with normalised keys (e.g. front_brake_pads, front_brake_discs). The brain will look up prices separately.
 
 Return ONLY JSON, no fences:
