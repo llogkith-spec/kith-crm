@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v20.3 \u00b7 19 Nov';
+const BUILD='v20.4 \u00b7 19 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -3647,6 +3647,82 @@ function checkPartsLate(j,po){
   if(typeof notify==='function')notify('\u26a0 '+escHtml(po.num)+' arrives after the booking \u2014 the adviser has been told to rebook','warn');
 }
 
+// ── PARTS LATE: TELL THE CUSTOMER + REBOOK (19 Nov 2026, Logan) ─────
+// The moment a PO's ETA lands after the booking, the customer gets a
+// message with the new date and the earliest slots once the parts are in.
+// With WhatsApp auto-sending live it goes by itself; until then it's one tap.
+// Picking a new date rebooks the job and sends the confirmation.
+function partsLateOpen(j){return !!(j&&j.partsLate&&!j.partsLate.clearedAt&&j.bookedFor&&!['lost','done','followup','review','accounts','receivable'].includes(j.stage));}
+function partsLateNames(j){
+  const p=(j.parts||[]).filter(x=>x&&(x.poId===j.partsLate.poId||x.poNum===j.partsLate.poNum)).map(x=>x.name).filter(Boolean);
+  return p.length?p.slice(0,3).join(', '):'a part';
+}
+function partsLateMsg(j){
+  let slots=[];try{slots=offerSlots(j).slots.slice(0,3);}catch(e){}
+  const eta=parseLooseDate(j.partsLate.eta);
+  return 'Hi '+firstName(j)+', KITH Cars here. Sorry — the supplier has let us down on the '+partsLateNames(j)+' for your '+vehDesc(j)+
+    '. It is now due '+(eta?fmtBookDate(dstr(eta)):'later than planned')+', so we need to move your booking on '+fmtBookDate(j.bookedFor)+'.'+
+    (slots.length?'\n\nThe earliest we can fit you in once it lands:\n'+slots.map((s,i)=>(i+1)+'. '+s.label).join('\n')+'\n\nReply 1, 2 or 3, or tell us a day that suits.':
+     '\n\nWe will call you to find a new day that suits.')+'\n\n— KITH Cars';
+}
+async function partsLateTell(id,auto){
+  const j=jobs.find(x=>x.id===id);if(!partsLateOpen(j))return;
+  const num=(typeof estPhone==='function'?estPhone(j):String(j.phone||'').replace(/\D/g,''));
+  if(!num){if(!auto)alert('No mobile number on this job — call them.');return;}
+  if(auto){j.partsLate.custToldAt=Date.now();save(j);}       // claim it first so two devices don't both send
+  const r=await waSend(num,partsLateMsg(j),{template:'kith_parts_delay',params:[firstName(j),vehDesc(j)]});
+  j.log=j.log||[];
+  if(r&&r.ok){
+    j.partsLate.custToldAt=Date.now();j.partsLate.custToldBy=auto?'auto':(currentUser?currentUser.name:'');
+    j.log.push({t:ts(),s:'💬 Customer told the parts are late'+(r.manual?' (WhatsApp opened)':'')+(auto?' — sent automatically':(currentUser?' ['+currentUser.name+']':''))});
+  } else {
+    if(auto)delete j.partsLate.custToldAt;
+    j.log.push({t:ts(),s:'⚠ Parts-late message did not send: '+((r&&r.error)||'unknown')});
+    if(!auto)alert('Did not send: '+((r&&r.error)||'unknown'));
+  }
+  save(j);try{renderDetail();}catch(e){}
+}
+async function partsLateRebook(id,ds){
+  const j=jobs.find(x=>x.id===id);if(!j||!ds)return;
+  const probs=(typeof slotProblems==='function')?slotProblems(j,ds):[];
+  if(probs.length&&!confirm('Book '+fmtBookDate(ds)+' anyway?\n\n'+probs.join('\n')))return;
+  const was=j.bookedFor;
+  setBookedFor(id,ds);                                   // clears the late flag once it's on/after the ETA
+  try{checkOrderNeeded(j);}catch(e){}
+  j.log=j.log||[];j.log.push({t:ts(),s:'📅 Rebooked for late parts: '+fmtBookDate(was)+' → '+fmtBookDate(ds)+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);
+  const num=(typeof estPhone==='function'?estPhone(j):'');
+  if(num&&confirm('Rebooked for '+fmtBookDate(ds)+'.\n\nSend '+(j.name||'the customer')+' the new date now?')){
+    const msg='Hi '+firstName(j)+', you are all booked in for '+fmtBookDate(ds)+(j.bookedTime?' at '+fmt12(j.bookedTime):'')+' for your '+vehDesc(j)+
+      '. Your parts will be here and waiting. See you then at Unit 1, Soho Mills, London Road, Hackbridge, SM6 7HN.\n\n— KITH Cars';
+    const r=await waSend(num,msg,{template:'kith_booking_confirm',params:[firstName(j),fmtBookDate(ds)]});
+    if(r&&r.ok){j.log.push({t:ts(),s:'💬 New booking date sent to the customer'+(r.manual?' (WhatsApp opened)':'')});save(j);}
+  }
+  try{forceRenderDetail();}catch(e){renderDetail();}renderAll();
+}
+function partsLatePanelH(j){
+  if(!partsLateOpen(j))return '';
+  let slots=[];try{slots=offerSlots(j).slots.slice(0,4);}catch(e){}
+  const told=j.partsLate.custToldAt;
+  const eta=parseLooseDate(j.partsLate.eta);
+  return '<div style="background:rgba(160,30,30,.14);border:2px solid var(--red);border-radius:var(--r);padding:11px;margin-bottom:10px">'+
+    '<div style="font-size:12px;font-weight:800;color:var(--red)">⚠ Parts late — '+escHtml(j.partsLate.poNum||'PO')+' now due '+(eta?fmtBookDate(dstr(eta)):escHtml(j.partsLate.eta||'?'))+', booked '+fmtBookDate(j.bookedFor)+'</div>'+
+    '<div style="font-size:11px;margin:4px 0 8px;color:'+(told?'var(--green)':'var(--amber)')+'">'+(told?'✓ Customer told '+new Date(told).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+(j.partsLate.custToldBy==='auto'?' (automatic)':''):'Customer NOT told yet — send this first:')+'</div>'+
+    '<div style="white-space:pre-wrap;font-size:11.5px;background:var(--surface2);border-radius:var(--rs);padding:8px 10px;margin-bottom:8px">'+escHtml(partsLateMsg(j))+'</div>'+
+    '<button class="btn '+(told?'btn-ghost':'btn-gold')+' btn-full btn-sm" style="margin-bottom:8px" onclick="partsLateTell(\''+j.id+'\')">💬 '+(told?'Send it again':'Send to '+escHtml(j.name||'customer'))+'</button>'+
+    (slots.length?'<div style="font-size:11px;color:var(--dim);margin-bottom:4px">They picked a day? Rebook:</div><div style="display:flex;gap:6px;flex-wrap:wrap">'+
+      slots.map(s=>'<button class="btn btn-ghost btn-sm" onclick="partsLateRebook(\''+j.id+'\',\''+s.date+'\')">📅 '+escHtml(s.label)+'</button>').join('')+'</div>':'')+
+    '<div style="display:flex;gap:6px;align-items:center;margin-top:6px;font-size:11px;color:var(--dim)">Other day <input type="date" class="fi2" style="font-size:12px;padding:3px 6px" onchange="partsLateRebook(\''+j.id+'\',this.value)"></div>'+
+  '</div>';
+}
+// With WhatsApp live, tell the customer by itself (advisers / parts / director devices only).
+function partsLateSweep(){
+  if(!waAuto()||!currentUser)return;
+  if(!(hasRole(currentUser,'adviser')||hasRole(currentUser,'parts')||currentUser.name==='Logkith'))return;
+  jobs.forEach(j=>{try{if(partsLateOpen(j)&&!j.partsLate.custToldAt&&Date.now()-(j.partsLate.at||0)>60000)partsLateTell(j.id,true);}catch(e){}});
+}
+setInterval(()=>{try{partsLateSweep();}catch(e){}},5*60*1000);
+setTimeout(()=>{try{partsLateSweep();}catch(e){}},30000);
 function bookInFromReady(id){ bookIntoCalendar(id); }
 
 
@@ -7938,6 +8014,7 @@ function actH(j){
     h+=unpricedH(j);
   if(['financial','signoff','disapproved','contact','contacted','waiting','waiting2','ready'].includes(j.stage))
     h+=estDocPanelH(j,j.stage==='signoff');
+  try{h+=partsLatePanelH(j);}catch(e){}
   switch(j.stage){
     case 'intake':
       h+=(j.assignedEstimator&&!j.notifiedAt
@@ -16144,7 +16221,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-19-1540';
+const CRM_BUILD='2026-11-19-1620';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
