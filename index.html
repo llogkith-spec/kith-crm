@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v20.4 \u00b7 19 Nov';
+const BUILD='v20.5 \u00b7 19 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -2444,6 +2444,11 @@ function renderBoard(){
   // keep each column where the person had scrolled it — the board redraws often
   const keep={};
   try{board.querySelectorAll('.col').forEach(c=>{const k=c.getAttribute('data-stage'),cc=c.querySelector('.col-cards');if(k&&cc&&cc.scrollTop)keep[k]=cc.scrollTop;});}catch(e){}
+  // 19 Nov 2026: and keep the board where it was scrolled SIDEWAYS (it was
+  // jumping back to stage 1 every time it redrew). Pin the width while it
+  // rebuilds so the scroll position isn't lost.
+  const _wrap=board.parentElement, _sl=_wrap?_wrap.scrollLeft:0, _sy=window.scrollY, _sx=window.scrollX;
+  if(_wrap&&board.scrollWidth)board.style.minWidth=board.scrollWidth+'px';
   board.innerHTML='';
   const onCheckinTab=(currentFilter==='checkin');
   try{
@@ -2479,11 +2484,15 @@ function renderBoard(){
     if(keep[s.id]){const cc=col.querySelector('.col-cards');if(cc)cc.scrollTop=keep[s.id];}
   });
   }finally{ if(_ownIdx)_dupeIdx=null; }
-  try{const ob=document.getElementById('speed-banner');if(ob)ob.remove();const sh=speedBannerH();if(sh&&!onCheckinTab){const w=document.querySelector('#v-board .board-wrap');if(w)w.insertAdjacentHTML('beforebegin',sh);}}catch(e){}
+  try{board.style.minWidth='';if(_wrap&&_sl)_wrap.scrollLeft=_sl;if(_sy||_sx)window.scrollTo(_sx,_sy);}catch(e){}
+  try{const ob=document.getElementById('speed-banner');const sh=onCheckinTab?'':speedBannerH();
+    if(ob&&sh){if(ob.outerHTML!==sh)ob.outerHTML=sh;}else if(ob)ob.remove();
+    else if(sh){const w=document.querySelector('#v-board .board-wrap');if(w)w.insertAdjacentHTML('beforebegin',sh);}
+    if(_wrap&&_sl&&_wrap.scrollLeft!==_sl)_wrap.scrollLeft=_sl;}catch(e){}
   try{const old=document.getElementById('old-done-banner');if(old)old.remove();const h=oldDoneBannerH();if(h){const w=document.querySelector('#v-board .board-wrap');if(w)w.insertAdjacentHTML('beforebegin',h);}}catch(e){}
   setBoardTop();
   // if the page was left scrolled past the end (old tall board), bring it back
-  try{if(window.scrollY>0&&window.scrollY+window.innerHeight>document.documentElement.scrollHeight+5)window.scrollTo(0,0);}catch(e){}
+  try{if(window.scrollY>0&&window.scrollY+window.innerHeight>document.documentElement.scrollHeight+5)window.scrollTo(window.scrollX,0);}catch(e){}
 }
 
 // ── SPEED TO LEAD (19 Nov 2026, Logan) ──────────────────────────────
@@ -16221,7 +16230,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-19-1620';
+const CRM_BUILD='2026-11-19-2110';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
