@@ -6279,7 +6279,7 @@ function testPhonePing(){
 let _pingWarned=false;
 function queuePhonePing(n){
   if(!n)return;
-  const toEst=n.role==='estimator'||['Joel','Harith','Paul','Elvis'].indexOf(n.to)>-1;
+  const toEst=n.role==='estimator'||['Joel','Harith','Paul'].indexOf(n.to)>-1;
   const url=(toEst&&n.jobId?'kith-estimator.html':'./')+(n.poId&&!n.jobId?'?po='+encodeURIComponent(n.poId):(n.jobId?'?job='+encodeURIComponent(n.jobId):''));
   fetch(SB_URL+'/rest/v1/kith_pings',{method:'POST',headers:SB_HDR,body:JSON.stringify([{
     id:n.id,to_name:n.to||null,role:n.role||null,title:String(n.title||'').slice(0,200),
@@ -16144,7 +16144,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-19-1100';
+const CRM_BUILD='2026-11-19-1540';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -17679,7 +17679,7 @@ const STAFF_TIMINGS=[
   {name:'Ali',            role:'Service Adviser + Parts',        days:'Mon–Fri', hours:'8am–5pm'},
   {name:'Joel',           role:'Estimator',                      days:'Mon–Fri', hours:'12pm–5pm'},
   {name:'Paul',           role:'Estimator (parts + labour)',     days:'Mon–Fri', hours:'8am–5pm'},
-  {name:'Elvis',          role:'Service Adviser + Estimator (parts + labour)',days:'Mon–Fri', hours:'8am–5pm'},
+  {name:'Elvis',          role:'Service Adviser + Parts',        days:'Mon–Fri', hours:'8am–5pm'},
   {name:'Sudha',          role:'Parts / Accounts',               days:'Mon–Fri', hours:'9am–5pm'},
   {name:'Giles',          role:'Workshop Manager',               days:'Mon–Sat', hours:'8am–6pm'},
   {name:'Logkith',        role:'Director',                       days:'Mon–Sun', hours:'—'},
