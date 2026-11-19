@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v20.2 \u00b7 16 Nov';
+const BUILD='v20.3 \u00b7 19 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -2472,18 +2472,72 @@ function renderBoard(){
     const recentOnly=(s.id==='done'||s.id==='lost');
     col.innerHTML='<div class="col-head"><span class="col-label">'+s.label+
         (recentOnly?'<span style="font-size:9px;color:var(--faint);font-weight:400;letter-spacing:0"> last 7 days</span>':'')+
-      '</span><span class="col-n">'+sj.length+'</span></div>'+
+      '</span><span class="col-n">'+(function(){const L=SPEED_TARGET_MIN[s.id]?sj.filter(x=>{const q=speedLate(x);return q&&q.late;}).length:0;
+        return (L?'<span style="color:var(--red);font-size:10px;font-weight:800;margin-right:5px">'+L+' late</span>':'')+sj.length;})()+'</span></div>'+
       '<div class="col-cards">'+(sj.length?sj.map(cardH).join(''):'<div class="empty">—</div>')+'</div>';
     board.appendChild(col);
     if(keep[s.id]){const cc=col.querySelector('.col-cards');if(cc)cc.scrollTop=keep[s.id];}
   });
   }finally{ if(_ownIdx)_dupeIdx=null; }
+  try{const ob=document.getElementById('speed-banner');if(ob)ob.remove();const sh=speedBannerH();if(sh&&!onCheckinTab){const w=document.querySelector('#v-board .board-wrap');if(w)w.insertAdjacentHTML('beforebegin',sh);}}catch(e){}
   try{const old=document.getElementById('old-done-banner');if(old)old.remove();const h=oldDoneBannerH();if(h){const w=document.querySelector('#v-board .board-wrap');if(w)w.insertAdjacentHTML('beforebegin',h);}}catch(e){}
   setBoardTop();
   // if the page was left scrolled past the end (old tall board), bring it back
   try{if(window.scrollY>0&&window.scrollY+window.innerHeight>document.documentElement.scrollHeight+5)window.scrollTo(0,0);}catch(e){}
 }
 
+// ── SPEED TO LEAD (19 Nov 2026, Logan) ──────────────────────────────
+// Sales 1 is measured in minutes, not days. Each stage has a target, counted
+// in opening hours only (Mon–Fri 8–8, Sat 8–5), so nothing goes red overnight.
+// A card over its target turns red with the minutes; the column header shows
+// how many are late; the board shows the speed-to-first-price for the week.
+const SPEED_TARGET_MIN={intake:10,range:15,labour:60,parts:60,signoff:30,contact:15};
+function _openWin(d){const w=d.getDay();if(w===0)return null;return [8,w===6?17:20];}
+function bizMins(from,to){
+  if(!from||!to||to<=from)return 0;
+  let t=0;const d=new Date(from);d.setHours(0,0,0,0);
+  for(let i=0;i<60&&d.getTime()<to;i++){
+    const win=_openWin(d);
+    if(win){const a=Math.max(from,d.getTime()+win[0]*36e5),b=Math.min(to,d.getTime()+win[1]*36e5);if(b>a)t+=b-a;}
+    d.setDate(d.getDate()+1);
+  }
+  return Math.floor(t/6e4);
+}
+function speedLate(j){
+  const tgt=SPEED_TARGET_MIN[j&&j.stage];if(!tgt||!j.stageAt)return null;
+  if(j.stage==='range'&&j.rangeSentAt)return null;           // range is out — the customer has it
+  if(j.autoHold||j.mergedInto)return null;
+  const m=bizMins(j.stageAt,Date.now());
+  return {mins:m,tgt,late:m>tgt};
+}
+function fmtMins(m){return m<60?m+'m':(m<600?(Math.floor(m/60)+'h '+(m%60?m%60+'m':'')).trim():Math.round(m/60)+'h');}
+function speedBadgeH(j){
+  const s=speedLate(j);if(!s)return '';
+  return '<div style="font-size:9px;font-weight:800;margin-bottom:4px;color:'+(s.late?'var(--red)':'var(--dim)')+'">⏱ '+fmtMins(s.mins)+
+    (s.late?' — over the '+s.tgt+'m target':' of '+s.tgt+'m')+'</div>';
+}
+function _madeMs(j){return j.createdAt?Date.parse(j.createdAt):(j.createdMs||0);}
+function _firstPriceMs(j){
+  const c=[j.rangeSentMs,j.estimateSentMs].filter(x=>x>0);return c.length?Math.min.apply(null,c):0;
+}
+function speedStats(){
+  const wk=Date.now()-7*864e5, done=[];
+  jobs.forEach(j=>{if(!j||j.mergedInto||j.isInternal||j.additionalWork||j.isComeback)return;
+    const m=_madeMs(j),f=_firstPriceMs(j);if(m>wk&&f>m)done.push(bizMins(m,f));});
+  done.sort((a,b)=>a-b);
+  const med=done.length?done[Math.floor(done.length/2)]:null;
+  const late=jobs.filter(j=>{const s=speedLate(j);return s&&s.late;}).length;
+  return {n:done.length,med,late,within1h:done.filter(x=>x<=60).length};
+}
+function speedBannerH(){
+  const s=speedStats();
+  if(!s.n&&!s.late)return '';
+  return '<div id="speed-banner" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;background:var(--surface2);border:1px solid '+(s.late?'var(--red)':'var(--border)')+';border-radius:var(--r);padding:7px 12px;margin:0 0 8px;font-size:12px">'+
+    '<strong>⏱ Speed to lead</strong>'+
+    (s.n?'<span>Enquiry → first price this week: <strong>'+fmtMins(s.med)+'</strong> (middle of '+s.n+' jobs, opening hours)</span><span>'+s.within1h+' of '+s.n+' priced within the hour</span>':'')+
+    (s.late?'<span style="color:var(--red);font-weight:800">'+s.late+' job'+(s.late===1?'':'s')+' over target now</span>':'<span style="color:var(--green)">Nothing over target</span>')+
+  '</div>';
+}
 function jobAge(j){
   const ref=j.stageAt||0;
   if(!ref)return null;
@@ -4966,7 +5020,9 @@ function cardH(j){
   const age=jobAge(j);
   const partsReady=j.parts&&j.parts.length&&j.parts.every(p=>p.price);
   const partsPending=j.parts&&j.parts.length&&j.parts.some(p=>!p.price);
-  return'<div class="card"'+(age&&age.over?' style="border-color:var(--red)"':'')+'>'+
+  const _sp=speedLate(j);
+  return'<div class="card"'+((age&&age.over)||(_sp&&_sp.late)?' style="border-color:var(--red)"':'')+'>'+
+    speedBadgeH(j)+
     // Wrong reg warning — red box at top, visible to everyone
     (j.wrongReg?'<div onclick="openJob(\''+j.id+'\')" style="background:var(--red-bg);border:1px solid var(--red);border-radius:var(--rs);padding:5px 8px;margin-bottom:6px;font-size:11px;font-weight:700;color:var(--red)">'+
       '\u26a0 Wrong Reg — '+escHtml(j.wrongReg)+'</div>':'')+
@@ -9276,11 +9332,11 @@ function tlH(j){
 
 // ── BROWSER NOTIFICATIONS ────────────────────────────────
 const ROLE_STAGES={
-  estimator:['intake','range','labour','financial'],
+  estimator:['intake','range','labour'],
   parts:['parts'],
-  adviser:['contact','contacted','waiting','waiting2','ready','booked','authwait'],
+  adviser:['contacted','waiting','waiting2','ready','booked','authwait'],
   onsite:['checkin'],
-  all:['intake','labour','parts','financial','contact','waiting','po','booked','lost'],
+  all:['intake','range','labour','parts','signoff','contacted','waiting','po','booked','lost'],
 };
 
 async function requestNotifPermission(){
@@ -9300,7 +9356,8 @@ function fireNotifForStage(job,newStage){
   if(!currentUser)return;
   const myStages=(currentUser.filter==='all')?(ROLE_STAGES.all||[])
     :userRoles(currentUser).reduce((a,r)=>a.concat(ROLE_STAGES[r]||[]),[]);
-  if(!myStages.includes(newStage))return;
+  const signer=newStage==='signoff'&&typeof canSignOff==='function'&&canSignOff(currentUser);
+  if(!myStages.includes(newStage)&&!signer)return;
   const label=stg(newStage).label;
   showNotif(
     '🔧 Action needed — KITH CRM',
@@ -16087,7 +16144,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-18-1515';
+const CRM_BUILD='2026-11-19-1100';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
