@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v20.6 \u00b7 20 Nov';
+const BUILD='v20.7 \u00b7 20 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -5112,6 +5112,7 @@ function cardH(j){
   const _sp=speedLate(j);
   return'<div class="card"'+((age&&age.over)||(_sp&&_sp.late)?' style="border-color:var(--red)"':'')+'>'+
     speedBadgeH(j)+
+    (teamNotes(j).length?'<div style="font-size:9px;font-weight:700;color:var(--blue,#6aa8ff);margin-bottom:4px">\ud83d\udcac '+teamNotes(j).length+' \u00b7 '+escHtml(teamNotes(j)[teamNotes(j).length-1].by||'')+': '+escHtml(String(teamNotes(j)[teamNotes(j).length-1].text||'').slice(0,40))+'</div>':'')+
     // Wrong reg warning — red box at top, visible to everyone
     (j.wrongReg?'<div onclick="openJob(\''+j.id+'\')" style="background:var(--red-bg);border:1px solid var(--red);border-radius:var(--rs);padding:5px 8px;margin-bottom:6px;font-size:11px;font-weight:700;color:var(--red)">'+
       '\u26a0 Wrong Reg — '+escHtml(j.wrongReg)+'</div>':'')+
@@ -8028,6 +8029,7 @@ function actH(j){
   if(['financial','signoff','disapproved','contact','contacted','waiting','waiting2','ready'].includes(j.stage))
     h+=estDocPanelH(j,j.stage==='signoff');
   try{h+=partsLatePanelH(j);}catch(e){}
+  try{h+=teamNotesH(j);}catch(e){}
   switch(j.stage){
     case 'intake':
       h+=(j.assignedEstimator&&!j.notifiedAt
@@ -10688,6 +10690,103 @@ function toggleFixedLabour(){
 }
 
 
+// ── ADD AN OPERATION WITH ITS LABOUR RATE (20 Nov 2026, Joel) ───────
+// One small form instead of a string of pop-ups: operation, book hours and
+// the rate (LOW / MED / TOP). Charged hours follow the SOP multiplier and
+// can be overridden; the line's £ goes straight into the job's labour.
+function _opRateDefault(op){return /service|brake|pads?|dis[ck]s?|caliper|plug|filter|coolant/i.test(op||'')?'LOW':'TOP';}
+function _opCalc(j,book,tier,chgOverride){
+  const c=brainCalc(j,{srt_hours:book,tier});
+  const charged=chgOverride>0?chgOverride:c.charged;
+  return {charged,rate:c.rate,mult:c.mult,hh:c.hh,labour:Math.round(charged*c.rate*100)/100};
+}
+function opFormOpen(id,i){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
+  const l=(i!=null)?srtLines(j)[i]:null;
+  const R=sopRates(), tierOf=l?(l.tier||Object.keys(R).find(k=>R[k]===parseFloat(l.rate))||_opRateDefault(l.op)):'';
+  const ov=document.createElement('div');ov.id='op-form';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px';
+  const inp='width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:9px 10px;font-size:15px;color:var(--fg);box-sizing:border-box';
+  ov.innerHTML='<div style="background:var(--surface2);border:1px solid var(--gold);border-radius:10px;padding:16px;width:100%;max-width:380px">'+
+    '<div style="font-weight:800;margin-bottom:10px">'+(l?'Edit operation':'Add an operation')+'</div>'+
+    '<label style="font-size:11px;color:var(--dim)">Operation</label><input id="opf-op" style="'+inp+'" placeholder="e.g. Full service / Front pads / MOT" value="'+escHtml(l?l.op||'':'')+'" oninput="opFormCalc(\''+j.id+'\')">'+
+    '<div style="display:flex;gap:8px;margin-top:8px"><div style="flex:1"><label style="font-size:11px;color:var(--dim)">Book hours (SRT)</label><input id="opf-book" type="number" step="any" inputmode="decimal" style="'+inp+'" value="'+(l?(l.book||''):'')+'" oninput="opFormCalc(\''+j.id+'\')"></div>'+
+      '<div style="flex:1"><label style="font-size:11px;color:var(--dim)">Labour rate</label><select id="opf-tier" style="'+inp+'" onchange="this.dataset.manual=1;opFormCalc(\''+j.id+'\')"'+(l?' data-manual="1"':'')+'>'+
+        ['LOW','MED','TOP'].map(t=>'<option value="'+t+'"'+(t===(tierOf||'TOP')?' selected':'')+'>'+t+' £'+R[t]+'/h</option>').join('')+'</select></div></div>'+
+    '<label style="font-size:11px;color:var(--dim);display:block;margin-top:8px">Hours charged (blank = SOP multiplier)</label><input id="opf-chg" type="number" step="any" inputmode="decimal" style="'+inp+'" value="'+(l&&l.chargedManual?l.charged:'')+'" oninput="opFormCalc(\''+j.id+'\')">'+
+    '<div id="opf-out" style="margin-top:10px;font-size:13px;background:var(--surface);border-radius:6px;padding:8px 10px"></div>'+
+    '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-ghost" style="flex:1" onclick="document.getElementById(\'op-form\').remove()">Cancel</button>'+
+      '<button class="btn btn-gold" style="flex:2" onclick="opFormSave(\''+j.id+'\','+(i!=null?i:'null')+')">'+(l?'Save':'Add operation')+'</button></div>'+
+    (/MED/.test(tierOf)||_brainCustType(j)==='trade'?'':'<div style="font-size:10px;color:var(--faint);margin-top:8px">Retail: LOW for servicing and brakes, TOP for everything else. MED is trade only.</div>')+
+  '</div>';
+  document.body.appendChild(ov);
+  if(!l){const t=document.getElementById('opf-tier');if(t&&_brainCustType(j)==='trade')t.value='MED';}
+  opFormCalc(j.id);
+  setTimeout(()=>{const o=document.getElementById('opf-op');if(o)o.focus();},50);
+}
+function opFormCalc(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const op=(document.getElementById('opf-op')||{}).value||'';
+  const t=document.getElementById('opf-tier');
+  if(t&&!t.dataset.manual&&_brainCustType(j)!=='trade')t.value=_opRateDefault(op);
+  const book=parseFloat((document.getElementById('opf-book')||{}).value)||0;
+  const chg=parseFloat((document.getElementById('opf-chg')||{}).value)||0;
+  const out=document.getElementById('opf-out');if(!out)return;
+  if(!(book>0)&&!(chg>0)){out.innerHTML='<span style="color:var(--dim)">Enter the book hours to see the price.</span>';return;}
+  const c=_opCalc(j,book,t?t.value:'TOP',chg);
+  out.innerHTML=(chg>0?'Charged '+chg+'h (set by hand)':(book+'h'+(c.hh!==book?' (min '+c.hh+'h)':'')+' ×'+c.mult+' = <strong>'+c.charged+'h</strong> charged'))+
+    '<br>'+c.charged+'h × £'+c.rate+' = <strong style="color:var(--gold)">£'+c.labour.toFixed(2)+'</strong> ex VAT';
+}
+function opFormSave(id,i){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const op=String((document.getElementById('opf-op')||{}).value||'').trim();
+  const book=parseFloat((document.getElementById('opf-book')||{}).value)||0;
+  const chg=parseFloat((document.getElementById('opf-chg')||{}).value)||0;
+  const tier=(document.getElementById('opf-tier')||{}).value||'TOP';
+  if(!op){alert('What is the operation?');return;}
+  if(!(book>0)&&!(chg>0)){alert('Enter the book hours.');return;}
+  // the rate the existing lines without a £ were priced at, before this change
+  const oldRate=(j.labourCost&&j.srtCharged)?(j.labourCost/j.srtCharged):(sopRates().TOP||70);
+  srtLines(j).forEach(x=>{if(x.labour==null&&!x.fixed){x.labour=Math.round((parseFloat(x.charged)||0)*oldRate*100)/100;}});
+  const c=_opCalc(j,book,tier,chg);
+  const line={op,book,charged:c.charged,rate:c.rate,tier,labour:c.labour,chargedManual:chg>0,by:currentUser?currentUser.name:'',at:ts()};
+  j.srtLines=srtLines(j);
+  if(i!=null&&j.srtLines[i])j.srtLines[i]=Object.assign({},j.srtLines[i],line);else j.srtLines.push(line);
+  syncSrtTotals(j);try{mergeSideLines(j);}catch(e){}
+  j.labourCost=Math.round(srtLines(j).reduce((a,x)=>a+(parseFloat(x.labour)||0),0)*100)/100;
+  if(labourDescReplaceable(j))j.labourDesc=labourDescFromLines(j);
+  try{if(typeof reprice==='function')reprice(j);}catch(e){}
+  j.log=j.log||[];
+  j.log.push({t:ts(),s:'⏱ '+(i!=null?'Operation edited':'Operation added')+': '+op+' — '+book+'h book → '+c.charged+'h × '+tier+' £'+c.rate+' = £'+c.labour.toFixed(2)+(currentUser?' ['+currentUser.name+']':'')});
+  const f=document.getElementById('op-form');if(f)f.remove();
+  save(j);renderDetail();renderAll();
+}
+
+// ── TEAM COMMENTS ON EVERY JOB (20 Nov 2026, Ali) ───────────────────
+// One running thread per job: what's been done, what's needed, who's on it.
+// Everyone sees it at every stage; the card shows how many there are.
+function teamNotes(j){return Array.isArray(j.teamNotes)?j.teamNotes:[];}
+function teamNotePost(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const box=document.getElementById('tn-box-'+id);const txt=String(box&&box.value||'').trim();if(!txt)return;
+  j.teamNotes=teamNotes(j).concat([{at:ts(),ms:Date.now(),by:currentUser?currentUser.name:'Someone',stage:j.stage,text:txt.slice(0,1000)}]);
+  j.log=j.log||[];j.log.push({t:ts(),s:'💬 '+(currentUser?currentUser.name:'')+': '+txt.slice(0,80)});
+  box.value='';
+  save(j);try{forceRenderDetail();}catch(e){renderDetail();}renderAll();
+  // tell anyone named in it ("@Joel")
+  try{(txt.match(/@(\w+)/g)||[]).forEach(m=>{let n=m.slice(1);n=/^logan$/i.test(n)?'Logkith':n.charAt(0).toUpperCase()+n.slice(1).toLowerCase();pushNotif('all','💬 '+(j.reg||'Job')+' — '+(currentUser?currentUser.name:''),txt.slice(0,120),{jobId:j.id,to:n,key:'tn|'+j.id+'|'+Date.now()+'|'+n});});}catch(e){}
+}
+function teamNotesH(j){
+  const n=teamNotes(j);
+  return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;margin-bottom:10px">'+
+    '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);margin-bottom:6px">💬 Team comments'+(n.length?' ('+n.length+')':'')+'</div>'+
+    (n.length?'<div style="max-height:220px;overflow-y:auto;margin-bottom:8px">'+n.slice().reverse().map(x=>
+      '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px"><div style="font-size:10px;color:var(--dim);margin-bottom:2px"><strong style="color:var(--gold)">'+escHtml(x.by||'')+'</strong> · '+escHtml(x.at||'')+(x.stage?' · '+escHtml(stg(x.stage).label):'')+'</div>'+
+        '<div style="white-space:pre-wrap">'+escHtml(x.text||'')+'</div></div>').join('')+'</div>':'')+
+    '<textarea id="tn-box-'+j.id+'" class="fi2" style="width:100%;min-height:44px;font-size:13px" placeholder="What’s been done, what’s needed… (@Joel to ping someone)"></textarea>'+
+    '<button class="btn btn-gold btn-sm" style="margin-top:6px" onclick="teamNotePost(\''+j.id+'\')">Post comment</button>'+
+  '</div>';
+}
 // ── SRT BREAKDOWN BY OPERATION ─────────────────────────────────────
 // "Full service, gearbox service, MOT" is three jobs in one line. Split
 // them so everyone can see where 9.7 hours actually went.
@@ -10696,6 +10795,7 @@ function srtLinesTotal(j,which){
   return srtLines(j).reduce((a,l)=>a+(parseFloat(l[which])||0),0);
 }
 function addSrtLine(id){
+  return opFormOpen(id,null);
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
   const op=prompt('What is the operation?\n\ne.g. "Full service" / "Gearbox service" / "MOT"','');
   if(!op||!op.trim())return;
@@ -10710,6 +10810,7 @@ function addSrtLine(id){
   save(j);renderDetail();renderAll();
 }
 function editSrtLine(id,i){
+  return opFormOpen(id,i);
   const j=jobs.find(x=>x.id===id);if(!j)return;
   const l=srtLines(j)[i];if(!l)return;
   const op=prompt('Operation:',l.op||'');
@@ -13647,6 +13748,7 @@ var JOB_LISTS={
   jobSheets:    x=>x.url||x.name,
   estimateDocs: x=>x.url||x.name,
   stageHistory: x=>(x.at||'')+'|'+(x.stage||''),
+  teamNotes:    x=>(x.ms||x.at||'')+'|'+(x.by||'')+'|'+(x.text||'').slice(0,40),
   chaseLog:     x=>(x.day||'')+'|'+(x.at||''),
   adviserOutbox:x=>(x.ts||'')+'|'+(x.kind||'')
 };
@@ -16254,7 +16356,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-20-1230';
+const CRM_BUILD='2026-11-20-1300';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
