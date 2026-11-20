@@ -293,12 +293,15 @@ input:checked+.tsl:before{transform:translateX(20px)}
         <div id="pics-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px"></div>
         <div id="pics-st" style="font-size:11px;color:#888;margin-top:4px"></div>
       </div>
+      <div class="fg" style="margin-top:12px"><label class="fl">Discount / referral code <span style="font-weight:400;color:#888">(if they mention one)</span></label><input class="fi" id="f-discount" style="text-transform:uppercase" placeholder="e.g. BF30, STUDENT, or a friend's code" autocomplete="off"></div>
+      <button class="btn btn-gold" id="express-btn" onclick="expressSubmit()" style="margin-top:6px;padding:15px;font-size:16px">✓ Send to CRM now</button>
+      <div style="font-size:12px;color:#888;margin-top:6px;line-height:1.45;text-align:center">That’s all we need. The CRM works out the car from the reg and the job from their words — the estimator picks up the rest.<br>Got more detail? Carry on below (optional).</div>
     </div>
 
     <div id="quick-panel"></div>
 
     <div class="card" id="jt-card">
-      <div class="sec">3 · What kind of job is this?</div>
+      <div class="sec">Optional · More detail — what kind of job is this?</div>
       <div id="jobtype-grid"></div>
       <div id="area-drill"></div>
       <div id="cat-drill"></div>
@@ -431,8 +434,6 @@ input:checked+.tsl:before{transform:translateX(20px)}
       <div id="custparts-warn"></div>
     </div>
 
-    <div class="fg"><label class="fl">Discount / referral code</label><input class="fi" id="f-discount" style="text-transform:uppercase" placeholder="e.g. STUDENT, ONLINE, or a friend's referral code" autocomplete="off">
-      <div class="hint">If they mention a code or who referred them, put it here — it comes off the estimate.</div></div>
     <div class="fg"><label class="fl">Additional Notes</label><textarea class="fi" id="f-notes" rows="2" placeholder="Anything else the team should know..."></textarea></div>
     <div id="summary-card"></div>
     <button class="btn btn-ghost" id="check-btn" onclick="runIntakeCheck()" style="margin-bottom:10px">&#129504; Check this before I submit</button>
@@ -465,7 +466,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
 var SB_URL=KithCore.URL;
 var SB_KEY=KithCore.KEY;
 var SOP_VERSION='8.0';
-var INTAKE_BUILD='3.5';
+var INTAKE_BUILD='4.0';
 // The CRM keeps one row per job in `jobs` ({id, data, updated_at}).
 // Earlier builds wrote to `kith_jobs`, which nothing reads — jobs vanished.
 var JOBS_TABLE='jobs';
@@ -1326,6 +1327,39 @@ function diagRepairSplit(){
   var rep=segs.filter(function(x){return !INTAKE_DIAG_RX.test(x)&&!(SYMPTOM_RX.test(x)&&!/\b(replace\w*|fit\w*|change|renew|new|repair)\b/i.test(x))&&/[a-z]{3,}/i.test(x.replace(/\b(bank|banks|side|sides|front|rear|left|right|both|nearside|offside|ns|os|one|two|three|four|the|a|an|of|on|in|it|car|please|can|you|my|is|and)\b/gi,''));});
   return diag.length&&rep.length?{diag:diag,rep:rep}:null;
 }
+
+// ── ONE-SCREEN INTAKE (20 Nov 2026, Logan) ──────────────────────────
+// Name, phone, reg and what they want — then Send. The job type comes from
+// the Brain reading their words (or a best guess), the customer is retail
+// unless a business account was picked, and nothing else is asked.
+async function expressSubmit(){
+  var miss=essentialsMissing();
+  if(!fval('f-words')&&!jobType)miss.push('what they want');
+  if(miss.length){alert('Still need: '+miss.join(', ')+'.');return;}
+  var b=document.getElementById('express-btn');
+  if(b){b.disabled=true;b.innerHTML='<span class="spin"></span> Sending…';}
+  try{
+    if(!jobType&&fval('f-words')){
+      try{
+        if(!triageResult)await Promise.race([runTriage(),new Promise(function(r){setTimeout(r,9000);})]);
+        if(triageResult)applyTriage();
+      }catch(e){}
+    }
+    if(!jobType){
+      var w=fval('f-words');
+      try{pickJobType('new');}catch(e){jobType='new';}
+      var bod=BODY_WORDS.test(w)&&!MECH_WORDS.test(w);
+      try{pickArea(bod?'bodywork':'mechanical');}catch(e){area=bod?'bodywork':'mechanical';}
+    }
+    if(!custType)custType=b2bAcct?'business':'retail';
+    try{buildStep4();}catch(e){}
+    window._express=true;
+    await submitJob();
+  }finally{
+    window._express=false;
+    if(b){b.disabled=false;b.textContent='✓ Send to CRM now';}
+  }
+}
 async function submitJob(){
   var btn=document.getElementById('sub-btn');
   // Wrong area picked? "Full exhaust pipe replacement" under Bodywork is mechanical.
@@ -1341,7 +1375,7 @@ async function submitJob(){
     if(co)co.value=g?g.company:(fval('f-b2b-search')||'');}
   var stillMissing=missingList();
   var mustMissing=stillMissing.filter(function(x){return x.lvl==='must';}).map(function(x){return x.l;});
-  if(mustMissing.length&&!confirm('Still missing:\n• '+mustMissing.join('\n• ')+
+  if(mustMissing.length&&!window._express&&!confirm('Still missing:\n• '+mustMissing.join('\n• ')+
      '\n\nSubmit anyway? These will show on the job as MISSING so the next person chases them.'))return;
   if(intakePics.some(function(p){return p.busy;})&&!confirm('Photos are still uploading. Submit now without them?'))return;
   // 16 Nov 2026: a diagnostic AND a repair in one request — ask here, not later in the CRM
