@@ -174,8 +174,63 @@
       });
   }
 
+  // ── PIPELINE + MY DASHBOARDS SWITCHER (20 Nov 2026, Logan) ─────────
+  // Everyone lands on the main pipeline. A strip across the top takes them
+  // between the pipeline and their own dashboards, on every one of the apps.
+  var DASHES = {
+    adviser:   { label: '📞 Service Adviser', href: 'kith-adviser.html' },
+    parts:     { label: '🔩 Parts',           href: 'kith-parts.html' },
+    estimator: { label: '⏱ Labour hours',    href: 'kith-estimator.html' }
+  };
+  var DASH_FOR = {               // who sees which — by name first, then by role
+    Elvis: ['adviser', 'parts'],
+    Ali:   ['adviser'],
+    Joel:  ['adviser', 'estimator']
+  };
+  function dashUser() {
+    var keys = ['kith_user', 'kith_adv_me', 'kith_parts_me', 'kith_est_me'];
+    for (var i = 0; i < keys.length; i++) {
+      try {
+        var raw = w.localStorage && w.localStorage.getItem(keys[i]);
+        if (!raw) continue;
+        var n = raw.charAt(0) === '{' ? (JSON.parse(raw).name || '') : raw;
+        if (n) return n;
+      } catch (e) {}
+    }
+    return '';
+  }
+  function dashesFor(name) {
+    if (!name) return [];
+    if (name === BOSS) return ['adviser', 'parts', 'estimator'];
+    if (DASH_FOR[name]) return DASH_FOR[name];
+    var p = find(name); if (!p) return [];
+    return ['adviser', 'parts', 'estimator'].filter(function (r) { return hasRole(p, r); });
+  }
+  function dashBar(here, name) {
+    try {
+      if (!w.document || !w.document.body) return;
+      name = name || dashUser();
+      var list = dashesFor(name);
+      var old = w.document.getElementById('kith-dashbar');
+      if (!list.length) { if (old) old.remove(); return; }
+      var btn = function (key, label, href) {
+        var on = key === here;
+        return '<a href="' + href + '" style="flex:1;text-align:center;padding:7px 8px;border-radius:7px;font:700 12.5px system-ui,-apple-system,sans-serif;text-decoration:none;white-space:nowrap;' +
+          (on ? 'background:#d4a537;color:#000' : 'background:#1d1d1d;color:#e8e8e8;border:1px solid #333') + '">' + label + '</a>';
+      };
+      var html = btn('pipeline', '🗂 Pipeline', './') +
+        list.map(function (k) { return btn(k, DASHES[k].label, DASHES[k].href); }).join('');
+      var bar = old || w.document.createElement('div');
+      bar.id = 'kith-dashbar';
+      bar.style.cssText = 'display:flex;gap:6px;padding:6px 8px;background:#0b0b0b;border-bottom:1px solid #2a2a2a;position:relative;z-index:50';
+      bar.innerHTML = html;
+      if (!old) w.document.body.insertBefore(bar, w.document.body.firstChild);
+    } catch (e) {}
+  }
+
   w.KithCore = {
     URL: URL, KEY: KEY, BOSS: BOSS,
+    dashBar: dashBar, dashesFor: dashesFor,
     hdr: hdr, rest: rest,
     base: function () { return merge([]); },        // the built-in list, fresh copies
     now: function () { return current.slice(); },   // whatever is loaded right now
