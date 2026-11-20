@@ -466,7 +466,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
 var SB_URL=KithCore.URL;
 var SB_KEY=KithCore.KEY;
 var SOP_VERSION='8.0';
-var INTAKE_BUILD='4.0';
+var INTAKE_BUILD='4.1';
 // The CRM keeps one row per job in `jobs` ({id, data, updated_at}).
 // Earlier builds wrote to `kith_jobs`, which nothing reads — jobs vanished.
 var JOBS_TABLE='jobs';
@@ -1135,6 +1135,7 @@ function custPartsWarn(){
 // STEPS
 // =============================================================================
 function go(n){
+  if(window._expressBusy)return;   // the one-screen Send is running — don't jump steps
   if(n>curStep){
     if(curStep===0){
       var miss0=essentialsMissing();
@@ -1338,6 +1339,7 @@ async function expressSubmit(){
   if(miss.length){alert('Still need: '+miss.join(', ')+'.');return;}
   var b=document.getElementById('express-btn');
   if(b){b.disabled=true;b.innerHTML='<span class="spin"></span> Sending…';}
+  window._expressBusy=true;
   try{
     if(!jobType&&fval('f-words')){
       try{
@@ -1357,6 +1359,7 @@ async function expressSubmit(){
     await submitJob();
   }finally{
     window._express=false;
+    setTimeout(function(){window._expressBusy=false;},1500);
     if(b){b.disabled=false;b.textContent='✓ Send to CRM now';}
   }
 }
