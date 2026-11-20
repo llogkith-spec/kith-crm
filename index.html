@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v20.8 \u00b7 20 Nov';
+const BUILD='v20.9 \u00b7 20 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -7703,7 +7703,14 @@ function discountExVat(j,labour,products){
 function discountLabel(j){const D=j.discount||{};return (D.label||'Discount')+(D.code?' — code '+D.code:'')+(D.type==='pct'&&!/%/.test(D.label||'')?' ('+D.value+'%)':'');}
 function discountFromIntake(j){
   if(!j||j.discount||j.discountChecked)return false;
-  const code=String(j.discountCode||(j.judgement&&j.judgement.discount_code)||'').trim();
+  let code=String(j.discountCode||(j.judgement&&j.judgement.discount_code)||'').trim();
+  // 20 Nov 2026: a customer who writes the code in their enquiry gets it too
+  if(!code){
+    const jd=j.judgement||{};
+    const said=[j.work,j.notes,j.customerWords,jd.customer_words,jd.notes,j.message].filter(Boolean).join(' ');
+    const m=said.match(/\b(BF30|BLACK\s*FRIDAY(?:\s*30)?|STUDENT)\b/i);
+    if(m)code=m[1].replace(/\s+/g,'').toUpperCase();
+  }
   if(!code)return false;
   j.discountChecked=true;
   const k=discountKnown(j,code);
@@ -16357,7 +16364,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-20-1310';
+const CRM_BUILD='2026-11-20-1325';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
