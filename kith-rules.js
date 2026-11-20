@@ -297,7 +297,9 @@ function applyToJob(job, res, { by, why, sig, asOf } = {}) {
   job.labourDesc = lab.map(l => (l.label || 'Labour') + ': ' + Number(l.charged_hours).toFixed(2) + 'h @ \u00a3' + l.rate + '/hr = \u00a3' + Number(l.total).toFixed(2))
     .concat(other.map(l => (l.label || l.kind) + ' = \u00a3' + Number(l.total).toFixed(2))).join('\n');
   job.srtCharged = money(lab.reduce((a, l) => a + (+l.charged_hours || 0), 0));
-  job.srtLines = lab.map(l => ({ op: l.label || 'Labour', book: l.srt, charged: l.charged_hours, by: by || 'SOP', at: logTime() }));
+  job.srtLines = lab.map(l => ({ op: l.label || 'Labour', book: l.srt, charged: l.charged_hours, by: by || 'SOP', at: logTime() }))
+    .concat(other.map(l => ({ op: l.label || l.kind, book: 0, charged: 0, fixed: true, qty: 1, labour: +l.total || 0,
+      noVat: l.kind === 'mot' || l.vatable === false, by: by || 'SOP', at: logTime() })));
   if (sig) job.sopRulesSig = sig;
   if (asOf) job.sopRulesAt = asOf;
   job.log = (job.log || []).concat([{ t: logTime(),

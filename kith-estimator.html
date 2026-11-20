@@ -1423,7 +1423,7 @@ function restoreWork(){
     if('rampExempt' in d)S.rampExempt=!!d.rampExempt;
     return;
   }
-  (JOB.srtLines||[]).forEach(l=>S.labour.push({label:l.op||'',srt:parseFloat(l.book)||0,tier:'TOP',category:'mechanical'}));
+  (JOB.srtLines||[]).filter(l=>!l.fixed).forEach(l=>S.labour.push({label:l.op||'',srt:parseFloat(l.book)||0,tier:'TOP',category:'mechanical'}));
   if(!S.labour.length&&parseFloat(JOB.srt)>0)
     S.labour.push({label:JOB.labourDesc||'Labour',srt:parseFloat(JOB.srt)||0,tier:'TOP',category:'mechanical'});
   (JOB.parts||[]).forEach(p=>{
@@ -1450,7 +1450,11 @@ function writeCrmFigures(){
     JOB.labourFixed=false;
     JOB.srt=KITH.money(lab.reduce((a,l)=>a+(parseFloat(l.srt)||0),0));
     JOB.srtCharged=KITH.money(lab.reduce((a,l)=>a+(parseFloat(l.chargedHours)||0),0));
-    JOB.srtLines=lab.map(l=>({op:l.label||'Labour',book:l.srt,charged:l.chargedHours,by:ME,at:new Date().toLocaleString('en-GB')}));
+    JOB.srtLines=lab.map(l=>({op:l.label||'Labour',book:l.srt,charged:l.chargedHours,by:ME,at:new Date().toLocaleString('en-GB')}))
+      // Fixed prices (MOT, diagnostics, panels) go across as their own fixed lines, so the
+      // CRM never scales them and never puts VAT on an MOT (outside the scope of VAT).
+      .concat(other.map(l=>({op:l.label||l.kind,book:0,charged:0,fixed:true,qty:1,labour:l.total,
+        noVat:l.kind==='mot'||l.vatable===false,by:ME,at:new Date().toLocaleString('en-GB')})));
     JOB.srtSource='Estimator app \u00b7 SOP v'+KITH.VERSION;
   }
   JOB.parts=parts.map(l=>{
