@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v20.5 \u00b7 19 Nov';
+const BUILD='v20.6 \u00b7 20 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -1218,6 +1218,7 @@ function sbRealtime(){
         if(msg.event==='postgres_changes'||msg.payload?.data?.type){
           // Reload jobs from REST on any change
           sbSelect().then(rows=>{
+            window._freshMs=Date.now();
             if(rows&&rows.length){
               const incoming=rows.map(r=>r.data).filter(Boolean);
               // Merge — don't overwrite jobs moved by current user in last 5s
@@ -1543,6 +1544,7 @@ async function loadFromSupabase(){
     }
     setSbStatus('ok');
     sbReady=true;
+    window._freshMs=Date.now();
   }catch(e){
     console.warn('Supabase load failed:',e.message);
     setSbStatus('err');
@@ -1560,6 +1562,7 @@ function subscribeRealtime(){
     try{
       const full=!_pollLast||(Date.now()-_pollFullAt>POLL_FULL_EVERY);
       const rows=full?await sbSelect():await sbSelectSince(_pollLast);
+      window._freshMs=Date.now();
       if(!rows||!rows.length){setSbStatus('ok');return;}
       const rawById={};
       rows.forEach(r=>{ if(r.data&&r.id&&!r.id.startsWith('__'))rawById[r.id]=JSON.stringify(r.data); });
@@ -3634,6 +3637,7 @@ function checkOrderNeeded(j){
   return true;
 }
 function orderSweep(){
+  if(typeof dataFresh==='function'&&!dataFresh())return 0;
   let n=0;
   jobs.forEach(j=>{try{if(j&&j.bookedFor&&checkOrderNeeded(j)){save(j);n++;}}catch(e){}});
   if(n){try{renderAll();}catch(e){}}
@@ -3726,7 +3730,7 @@ function partsLatePanelH(j){
 }
 // With WhatsApp live, tell the customer by itself (advisers / parts / director devices only).
 function partsLateSweep(){
-  if(!waAuto()||!currentUser)return;
+  if(!waAuto()||!currentUser||!dataFresh())return;
   if(!(hasRole(currentUser,'adviser')||hasRole(currentUser,'parts')||currentUser.name==='Logkith'))return;
   jobs.forEach(j=>{try{if(partsLateOpen(j)&&!j.partsLate.custToldAt&&Date.now()-(j.partsLate.at||0)>60000)partsLateTell(j.id,true);}catch(e){}});
 }
@@ -13751,8 +13755,21 @@ async function syncJobNow(j){
   const written=await casWrite(j.id,server=>{
     let out=clone(mine);
     if(server&&(baseStr===undefined||JSON.stringify(server)!==baseStr)){
-      out=mergeObj(baseStr?JSON.parse(baseStr):{},mine,server,JOB_LISTS);
+      const base=baseStr?JSON.parse(baseStr):{};
+      out=mergeObj(base,mine,server,JOB_LISTS);
       fromOthers=true;
+      // Both screens moved the stage: never let an out-of-date screen pull a
+      // job BACK down the pipeline. The stage further along wins.
+      try{
+        if(base.stage&&mine.stage!==base.stage&&server.stage!==base.stage&&mine.stage!==server.stage){
+          const ix=id=>STAGES.findIndex(x=>x.id===id);
+          const keepTheirs=['lost','later','done','review','followup'].includes(server.stage)||ix(server.stage)>ix(mine.stage);
+          if(keepTheirs){
+            out.stage=server.stage;out.stageAt=server.stageAt;
+            out.log=(out.log||[]).concat([{t:ts(),s:'\u21ba Another screen tried to move this back to '+stg(mine.stage).label+' \u2014 kept it at '+stg(server.stage).label}]);
+          }
+        }
+      }catch(e){}
     }
     out.updatedAt=new Date().toISOString();
     return out;
@@ -14161,7 +14178,14 @@ function contactLaterDue(){
   jobs.forEach(j=>{if(j&&j.stage==='later'&&j.contactLaterMs&&Date.now()>=j.contactLaterMs){contactLaterBack(j,'A month is up');n++;}});
   return n;
 }
+// 20 Nov 2026: a screen left open in the background stops pulling updates
+// but its timers kept running the automatic moves on an OLD copy of the
+// jobs — e.g. moving a job that was already approved and sent from Intake
+// to Price Range again. Automatic moves now only run on a screen that is
+// being looked at and has pulled fresh data in the last minute.
+function dataFresh(){return !document.hidden&&window._freshMs&&(Date.now()-window._freshMs)<60*1000;}
 function autoPilot(){
+  if(!dataFresh())return 0;
   try{if(contactLaterDue())renderAll();}catch(e){console.warn('later',e);}
   if(!AUTO_ON)return 0;
   try{autoCloseDoneElsewhere();}catch(e){console.warn('done-elsewhere',e);}
@@ -16230,7 +16254,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-19-2110';
+const CRM_BUILD='2026-11-20-1230';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
