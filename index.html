@@ -1582,7 +1582,9 @@ function subscribeRealtime(){
         if(outbox[remoteJob.id]||JOB_PENDING[remoteJob.id])return;   // our own save will merge it
         const localJob=jobs[idx];
         const was=localJob.stage;
-        const merged=mergeObj(BASE[remoteJob.id]?JSON.parse(BASE[remoteJob.id]):{},localJob,remoteJob,JOB_LISTS);
+        const _b=BASE[remoteJob.id]?JSON.parse(BASE[remoteJob.id]):{};
+        const merged=mergeObj(_b,localJob,remoteJob,JOB_LISTS);
+        keepApprovedPrice(_b,localJob,remoteJob,merged);
         applyInPlace(localJob,merged);
         BASE[remoteJob.id]=raw;
         changed=true;
@@ -7761,7 +7763,8 @@ function discountPanelH(j){
 // 18 Nov 2026 (Logan): the final quote is ALWAYS what the estimate adds up to.
 // Until the estimate has gone to the customer, the job's quote follows the lines.
 function syncQuoteToEstimate(j){
-  if(!j||j.mergedInto||j.estimateSentMs||j.comebackNoCharge)return false;
+  // once the customer has agreed a price it only changes by hand (and then needs their OK again)
+  if(!j||j.mergedInto||j.estimateSentMs||j.comebackNoCharge||j.estApproved)return false;
   if(!['intake','range','labour','parts','signoff','contacted'].includes(j.stage))return false;
   if(j.stage==='contacted'&&(j.estimateOpenedMs||j.estimateSentMs))return false;
   try{if(estTwo(j))return false;}catch(e){}
@@ -13858,6 +13861,34 @@ async function casTableWrite(table,id,build){
 }
 // One job, merged with whatever the server has now, then written.
 // Throws if it could not reach the server (the caller queues it).
+// A price worked out on a copy of the job from BEFORE it was approved must
+// never overwrite the approved price. Two screens changing the price at once
+// used to resolve to whichever saved last, so a phone still holding the
+// labour-only figure (parts not priced yet) could put a £175.20 job back to
+// £108 after the customer had agreed it, with nothing in the log.
+// A change made by someone who already saw the approval (a deliberate new
+// price) still goes through, and approvalStale() then asks for a new OK.
+const APPROVED_PRICE_KEYS=['quote','finalEst','signedOffAmount','estApprovedAmount'];
+function keepApprovedPrice(base,mine,server,out){
+  try{
+    if(!server||!out)return false;
+    const approvedThere=!!(server.estApproved||server.signedOff);
+    const approvedInBase=!!(base&&(base.estApproved||base.signedOff));
+    const approvedHere=!!(mine&&(mine.estApproved||mine.signedOff));
+    if(!approvedThere||approvedInBase)return false;
+    let kept=false;
+    APPROVED_PRICE_KEYS.forEach(k=>{
+      if(server[k]===undefined)return;
+      if(JSON.stringify(out[k])!==JSON.stringify(server[k])){
+        // our copy was approved too only if it carried the same approval
+        if(approvedHere&&mine[k]===server[k])return;
+        out[k]=server[k];kept=true;
+      }
+    });
+    if(kept){out.log=(out.log||[]).concat([{t:ts(),s:'\u21ba An out-of-date screen tried to change the approved price \u2014 kept \u00a3'+(parseFloat(server.quote)||0).toFixed(2)}]);}
+    return kept;
+  }catch(e){return false;}
+}
 async function syncJobNow(j){
   const mine=clone(j);
   const baseStr=BASE[j.id];
@@ -13867,6 +13898,7 @@ async function syncJobNow(j){
     if(server&&(baseStr===undefined||JSON.stringify(server)!==baseStr)){
       const base=baseStr?JSON.parse(baseStr):{};
       out=mergeObj(base,mine,server,JOB_LISTS);
+      keepApprovedPrice(base,mine,server,out);
       fromOthers=true;
       // Both screens moved the stage: never let an out-of-date screen pull a
       // job BACK down the pipeline. The stage further along wins.
