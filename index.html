@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v20.7 \u00b7 20 Nov';
+const BUILD='v20.8 \u00b7 20 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -1048,12 +1048,13 @@ function login(name){
     requestNotifPermission().then(granted=>{
       if(granted) showNotif('KITH CRM','Hi '+s.name+'!','login');
     }).catch(()=>{});
+    // 20 Nov 2026: everyone lands on the main pipeline; their own dashboards
+    // are one tap away on the strip across the top.
     try{
-      const filterMap={all:0,adviser:6,estimator:5,parts:4,action:2};
-      const allTabs=document.querySelectorAll('.tabs .tab');
-      const idx=filterMap[s.filter]??0;
-      if(allTabs[idx]){setFilter(s.filter,allTabs[idx]);}
+      const allTab=Array.from(document.querySelectorAll('.tabs .tab')).find(b=>/All Jobs/.test(b.textContent));
+      if(allTab)setFilter('all',allTab);
     }catch(e){}
+    try{KithCore.dashBar('pipeline',s.name);}catch(e){}
     renderAll();
     updateInboxBadge();
     renderInbox();
@@ -16356,7 +16357,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-20-1300';
+const CRM_BUILD='2026-11-20-1310';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
