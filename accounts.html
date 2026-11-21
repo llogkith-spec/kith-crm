@@ -254,6 +254,33 @@ async function fetchCRMJobsFull() {
   } catch(e) { console.warn('fetchCRMJobsFull:',e); return []; }
 }
 
+// ── VAT basis of a sale (21 Nov 2026) ──────────────────────────────
+// MOT test fees are outside the scope of VAT. Every sale used to be taken as
+// gross / 1.2, which declared £8.33 output VAT on a £50 MOT. The part of a
+// job that carries no VAT is worked out the same way the CRM's estimate does:
+// fixed lines marked noVat (MOT), or — for jobs priced before those existed —
+// the "MOT … = £50.00" lines in the labour description. A VAT-exempt job is
+// outside VAT in full.
+function jobOutsideVat(j) {
+  if (!j) return 0;
+  var quote = parseFloat(j.quote) || 0;
+  if (j.vatExempt) return quote;
+  var lines = Array.isArray(j.srtLines) ? j.srtLines : [];
+  var out = 0;
+  if (lines.some(function(l){ return l && l.fixed; })) {
+    lines.forEach(function(l){ if (l && l.fixed && l.noVat) out += parseFloat(l.labour) || 0; });
+  } else {
+    var re = /^\s*MOT\b[^\n=]*?=\s*\u00a3\s*([\d.]+)\s*$/gim, m, d = String(j.labourDesc || '');
+    var lc = parseFloat(j.labourCost) || 0, sum = 0;
+    while ((m = re.exec(d))) sum += parseFloat(m[1]) || 0;
+    if (sum <= lc + 0.005) out += sum;
+  }
+  return Math.min(+out.toFixed(2), quote);
+}
+function saleOutside(s) { return Math.min(parseFloat(s && s.outsideVat) || 0, parseFloat(s && s.amount) || 0); }
+function saleNet(s) { var g = parseFloat(s && s.amount) || 0, o = saleOutside(s); return o + (g - o) / 1.2; }
+function saleVat(s) { var g = parseFloat(s && s.amount) || 0, o = saleOutside(s); return (g - o) - (g - o) / 1.2; }
+
 // Convert a CRM job into the "sale" shape the accounts UI uses
 function crmJobToSale(j) {
   var date = '';
@@ -284,6 +311,7 @@ function crmJobToSale(j) {
     phone:     j.phone || '',
     desc:      j.work || ((j.make||'') + ' ' + (j.model||'')).trim() || '—',
     amount:    quote,
+    outsideVat: jobOutsideVat(j),
     received:  +received.toFixed(2),
     balance:   balance,
     cash:      byMethod.Cash || 0,
@@ -1288,7 +1316,7 @@ function openJobPanel(jobId) {
     s = {id:jobId, reg: anyPO ? (anyPO.jobReg || anyPO.reg || '') : '', customer: anyPO ? (anyPO.customer||'') : '', amount:0, balance:0, payments:[], stage:'not invoiced'};
   }
   var bank = (typeof bankTx !== 'undefined' ? bankTx : []).filter(function(t){ return t.jobId === jobId; });
-  var salesNet = (parseFloat(s.amount)||0) / 1.2;
+  var salesNet = saleNet(s);
   var profit = salesNet - C.partsNet + 0 - C.soNet;
   var sec = function(title, inner){ return '<div style="margin-top:14px"><div style="'+stitle()+'margin-bottom:6px">'+title+'</div>'+inner+'</div>'; };
   var row = function(a,b,c){ return '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #f3f3f3;font-size:13px"><div>'+a+'</div><div style="text-align:right;white-space:nowrap">'+b+(c?'<div style="font-size:10px;color:#888">'+c+'</div>':'')+'</div></div>'; };
@@ -2599,7 +2627,7 @@ function fcSave(k, v) {
   _renderPLForecast();
 }
 function _fcRevenue(ym) {
-  return sales.reduce(function(t,s){ var d = normDate(s.date || s.createdAt || s.paidAt); return d && d.slice(0,7) === ym ? t + (parseFloat(s.amount)||0)/1.2 : t; }, 0);
+  return sales.reduce(function(t,s){ var d = normDate(s.date || s.createdAt || s.paidAt); return d && d.slice(0,7) === ym ? t + saleNet(s) : t; }, 0);
 }
 async function _renderPLForecast() {
   var view = document.getElementById('report-view');
@@ -2764,7 +2792,7 @@ function _renderPnL() {
     return d && d >= range.start && d <= range.end;
   });
   // Ex-VAT: VAT isn't KITH's money (same 20% assumption as the VAT return)
-  var revenue = monthSales.reduce(function(t,s){return t+(parseFloat(s.amount)||0)/1.2;},0);
+  var revenue = monthSales.reduce(function(t,s){return t+saleNet(s);},0);
 
   // Costs ex-VAT by category. Bills that cover several months (insurance,
   // business rates…) count only this month's share.
@@ -3176,11 +3204,12 @@ function _bkData(R) {
   });
 
   var invoiced = mSales.reduce(function(t,s){return t+(parseFloat(s.amount)||0);},0);
+  var invoicedNet = mSales.reduce(function(t,s){return t+saleNet(s);},0);
   var billsTotal = mBills.reduce(function(t,b){return t+(parseFloat(b.net)||0)+(parseFloat(b.vat)||0);},0);
 
   return {R:R, mSales:mSales, mBills:mBills, mPOs:mPOs, methods:methods, moneyIn:moneyIn,
           writeOffs:writeOffs, paymentsCount:paymentsCount, bySvc:bySvc, byType:byType, byCo:byCo,
-          bySup:bySup, byCat:byCat, invoiced:invoiced, billsTotal:billsTotal};
+          bySup:bySup, byCat:byCat, invoiced:invoiced, invoicedNet:invoicedNet, billsTotal:billsTotal};
 }
 
 function _sortedKeys(obj, field) {
@@ -3297,7 +3326,7 @@ async function _renderBreakdown() {
 
   var pName = {day:'day', week:'week', month:'month'}[bkPeriod];
   var wagesCost = W ? W.cost : 0;
-  var salesNet = D.invoiced / 1.2;
+  var salesNet = (D.invoicedNet != null ? D.invoicedNet : D.invoiced / 1.2);
   var billsNet = D.mBills.reduce(function(t,b){return t+(parseFloat(b.net)||0);},0);
   var profit = salesNet - billsNet - wagesCost;
   var pBtn = function(p, lbl){
@@ -3493,7 +3522,7 @@ async function expBreakdownCSV() {
   rows.push(['SUMMARY']);
   rows.push(['Invoiced (inc VAT)', f(D.invoiced)], ['Jobs', D.mSales.length], ['Money in', f(D.moneyIn)], ['Supplier bills (inc VAT)', f(D.billsTotal)]);
   rows.push(['Wages (gross)', W ? f(W.cost) : 'not loaded'], ['Hours worked', W ? W.hours.toFixed(1) : '']);
-  rows.push(['Rough profit ex-VAT (sales/1.2 - bills net - wages)', f(D.invoiced/1.2 - billsNet - (W?W.cost:0))], []);
+  rows.push(['Rough profit ex-VAT (sales/1.2 - bills net - wages)', f((D.invoicedNet != null ? D.invoicedNet : D.invoiced/1.2) - billsNet - (W?W.cost:0))], []);
   if (W) {
     rows.push(['WAGES'], ['Staff','Role','Shifts','Hours','Rate','Wages']);
     W.list.filter(function(x){return x.hours>0;}).forEach(function(x){ rows.push([x.name, x.role, x.shifts, x.hours.toFixed(2), f(x.rate), f(x.cost)]); });
@@ -3553,12 +3582,13 @@ function _renderVAT() {
     var d = normDate(s.date || s.createdAt);
     return d && d >= range.start && d <= range.end;
   });
-  var outputNet = 0, outputVAT = 0;
+  // 20% is included in each sale except the part outside the scope of VAT (MOT fees)
+  var outputNet = 0, outputVAT = 0, outsideScope = 0;
   qSales.forEach(function(s){
-    var gross = parseFloat(s.amount)||0;
-    var net = gross / 1.2;   // assume 20% included
-    outputNet += net;
-    outputVAT += (gross - net);
+    var o = saleOutside(s), g = (parseFloat(s.amount)||0) - o;
+    outputNet += g / 1.2;
+    outputVAT += g - g / 1.2;
+    outsideScope += o;
   });
 
   // Input VAT — VAT paid on supplier bills
@@ -3591,6 +3621,7 @@ function _renderVAT() {
       '<div style="'+stitle()+'padding:14px 14px 8px 14px;margin:0">Box breakdown (rough match to HMRC boxes)</div>'+
       _vatRow('Box 1 · VAT due on sales (output VAT)', outputVAT, '#1565c0')+
       _vatRow('Box 6 · Total sales ex-VAT', outputNet, '#666')+
+      (outsideScope > 0.004 ? _vatRow('MOT test fees · outside the scope of VAT (not in Box 1 or 6)', outsideScope, '#999') : '')+
       _vatRow('Box 4 · VAT reclaimable on purchases (input VAT)', inputVAT, '#e65100')+
       _vatRow('Box 7 · Total purchases ex-VAT', inputNet, '#666')+
       '<div style="display:flex;justify-content:space-between;padding:14px;background:#fafafa;border-radius:0 0 12px 12px;font-weight:800;font-size:15px;color:'+(netVAT>=0?'#c62828':'#2e7d32')+'">'+
@@ -3655,7 +3686,7 @@ async function _renderJobProfit() {
 
   var rows = jobs.map(function(j){
     var quoteInc = parseFloat(j.quote) || 0;
-    var quoteEx  = quoteInc / 1.2;
+    var quoteEx  = jobOutsideVat(j) + (quoteInc - jobOutsideVat(j)) / 1.2;
     // Actual parts cost = sum of items on any PO linked to this job (raw supplier price × qty)
     var linkedPOs = poByJob[j.id] || [];
     var partsCost = linkedPOs.reduce(function(t, p){
