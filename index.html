@@ -1124,7 +1124,7 @@ const STAGES=[
   {id:'checkin',   label:'14 · Vehicle Check-In',  cls:'s-booked',    badge:'b-booked',    owner:'Workshop'},
   {id:'authwait',  label:'15 · Awaiting Authority',cls:'s-waiting',   badge:'b-waiting',   owner:'Service Adviser'},
   {id:'inprog',    label:'16 · In Progress',       cls:'s-booked',    badge:'b-booked',    owner:'Workshop'},
-  {id:'done',      label:'17 · Work Complete',     cls:'s-done',      badge:'b-done',      owner:''},
+  {id:'done',      label:'17 · Work Complete',     cls:'s-done',      badge:'b-done',      owner:'Workshop / Accounts'},
   {id:'accounts',  label:'18 · Accounts',          cls:'s-done',      badge:'b-done',      owner:'Accounts'},
   {id:'receivable',label:'19 · Accounts Receivable',cls:'s-done',     badge:'b-done',      owner:'Accounts'},
   {id:'review',    label:'20 · Review / Referral', cls:'s-done',      badge:'b-done',      owner:'Service Adviser'},
@@ -2398,6 +2398,7 @@ function fil(){
     // last stage ages off the board.
     if(j.stage==='followup'){
       if(q)return true;                 // searching finds old finished jobs too
+      if(j.closedAt)return false;       // closed: off the board
       const wk=Date.now()-21*24*60*60*1000;
       return (j.stageAt||0)>wk;
     }
@@ -5779,7 +5780,8 @@ const HIDDEN_STAGES=['financial','contact','disapproved'];   // merged into sign
 function nextStage(id){
   const i=STAGES.findIndex(x=>x.id===id);
   if(i<0)return null;
-  for(let k=i+1;k<STAGES.length;k++){if(STAGES[k].id!=='lost'&&!HIDDEN_STAGES.includes(STAGES[k].id))return STAGES[k];}
+  if(id==='followup')return null;    // the last stage; "Called — close job" finishes it
+  for(let k=i+1;k<STAGES.length;k++){if(STAGES[k].id!=='lost'&&STAGES[k].id!=='later'&&!HIDDEN_STAGES.includes(STAGES[k].id))return STAGES[k];}
   return null;
 }
 function moveFromPanel(id){
@@ -8321,7 +8323,10 @@ function actH(j){
           (f.ready?'\ud83d\udcde Follow-up call is due now':'\u23f3 Follow-up call in '+f.days+' day'+(f.days===1?'':'s'))+
           '<div style="font-size:11px;font-weight:400;margin-top:3px">A week after the work \u2014 check everything is still good.</div></div>';})()+
         ((j.phone)?'<a href="tel:'+escHtml(j.phone)+'" class="btn btn-green btn-full" style="margin-bottom:6px">\ud83d\udcde Call '+escHtml(j.name||'customer')+'</a>':'')+
-        '<button class="btn btn-gold btn-full" onclick="mv(\'done\',\'Follow-up call made \\u2014 job closed\')">\u2713 Called \u2014 close job</button>';
+        (j.closedAt
+          ?'<div class="notice n-green" style="margin-bottom:6px">\u2713 Closed '+escHtml(j.closedAt)+(j.closedBy?' by '+escHtml(j.closedBy):'')+'</div>'+
+           '<button class="btn btn-ghost btn-sm btn-full" onclick="reopenJob(\''+j.id+'\')">\u21a9 Reopen</button>'
+          :'<button class="btn btn-gold btn-full" onclick="closeJob(\''+j.id+'\')">\u2713 Called \u2014 close job</button>');
       break;
     case 'soraised':
     case 'raised':
@@ -9548,9 +9553,12 @@ function canMove(target,forJob){
   const byRole={
     estimator:['intake','range','labour','financial','signoff'],
     parts:['parts','po','so','raised','soraised'],
-    adviser:['contact','contacted','waiting','waiting2','ready','booked','authwait'],
-    accounts:['accounts','receivable','review','followup'],
-    workshop:['checkin','inprog','authwait']
+    // 21 Nov 2026: Review / Follow-up are the Service Adviser's on the board, so
+    // the adviser can move them too; 17 · Work Complete had no owner at all
+    // (only Logkith could move it on) — workshop finishes it, accounts picks it up.
+    adviser:['contact','contacted','waiting','waiting2','ready','booked','authwait','later','review','followup'],
+    accounts:['done','accounts','receivable','review','followup'],
+    workshop:['checkin','inprog','authwait','done']
   };
   let allowed=[];
   Object.keys(byRole).forEach(r=>{ if(hasRole(currentUser,r)) allowed=allowed.concat(byRole[r]); });
@@ -10586,6 +10594,27 @@ function renderMyNextJob(){
   }catch(e){console.warn('renderMyNextJob',e);}
 }
 
+// ── CLOSING A JOB (21 Nov 2026) ─────────────────────────────────────
+// Follow-up is the last stage. "Called — close job" used to move the job to
+// 17 · Work Complete, where the autopilot sent it on to Accounts again and
+// only Logkith could move it, so every closed job came back round. A closed
+// job now stays in Follow-up, marked closed, and leaves the board (search
+// still finds it).
+function closeJob(id){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
+  if(j.stage!=='followup'){alert('Only a job at the Follow-up stage can be closed.');return;}
+  j.closedAt=ts();j.closedMs=Date.now();j.closedBy=currentUser?currentUser.name:'';
+  j.log=j.log||[];j.log.push({t:ts(),s:'\u2713 Follow-up call made \u2014 job closed'+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);renderAll();try{forceRenderDetail();}catch(e){}
+  if(typeof toast==='function')toast('\u2713 '+(j.reg||'Job')+' closed');
+}
+function reopenJob(id){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j||!j.closedAt)return;
+  if(!confirm('Reopen '+(j.reg||'this job')+'? It goes back on the board at Follow-up.'))return;
+  delete j.closedAt;delete j.closedMs;delete j.closedBy;j.stageAt=Date.now();
+  j.log=j.log||[];j.log.push({t:ts(),s:'\u21a9 Reopened'+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);renderAll();try{forceRenderDetail();}catch(e){}
+}
 function mv(stage,msg){
   if(stage==='financial')stage='signoff';
   if(stage==='contact')stage='contacted';
