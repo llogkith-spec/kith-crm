@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v21.1 \u00b7 21 Nov';
+const BUILD='v21.2 \u00b7 21 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -11502,6 +11502,17 @@ function brainFixDiag(j){
     bj.srt_source='Fixed diagnostic price (SOP) \u2014 '+tier+' \u00a3'+price.toFixed(2)+' + VAT. Change the level if needed.';
     ch=true;
   });
+  // 21 Nov 2026: ONE diagnostic per job. "Test drive and diagnosis" and
+  // "selector inspection" are the same diagnostic — charge the dearest once,
+  // the rest are included in it.
+  const ds=ai.jobs.filter(b=>b.fixedDiag&&!b.excluded);
+  if(ds.length>1){
+    const keep=ds.reduce((a,b)=>(parseFloat(T[b.diagTier])||0)>(parseFloat(T[a.diagTier])||0)?b:a,ds[0]);
+    ds.forEach(b=>{
+      if(b===keep){if(b.diagIncluded){delete b.diagIncluded;b.labour_ex_vat=parseFloat(T[b.diagTier])||60;ch=true;}return;}
+      if(!b.diagIncluded||b.labour_ex_vat){b.diagIncluded=true;b.labour_ex_vat=0;b.srt_source='Included in the diagnostic above \u2014 no extra charge';ch=true;}
+    });
+  } else ds.forEach(b=>{if(b.diagIncluded){delete b.diagIncluded;b.labour_ex_vat=parseFloat(T[b.diagTier])||60;ch=true;}});
   return ch;
 }
 function brainSetDiagTier(id,i,tier){
@@ -11516,8 +11527,31 @@ function brainSetDiagTier(id,i,tier){
 // the customer's own words too, and asks again when they change.
 function brainComplaint(j){
   const w=String(j.work||'').trim(), c=String(j.judgement&&j.judgement.customer_words||'').trim();
-  if(c&&!w.toLowerCase().includes(c.toLowerCase()))return (w?w+' — customer said: ':'')+c;
-  return w;
+  let out=(c&&!w.toLowerCase().includes(c.toLowerCase()))?((w?w+' — customer said: ':'')+c):w;
+  // 21 Nov 2026: what the estimator has added ("diag found the selector cable snapped")
+  const x=(Array.isArray(j.brainExtra)?j.brainExtra:[]).map(e=>e.text).filter(Boolean);
+  if(x.length)out+=' — estimator notes: '+x.join('. ');
+  return out;
+}
+function brainTellMore(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const box=document.getElementById('bm-'+id);const t=String(box&&box.value||'').trim();if(!t)return;
+  j.brainExtra=(Array.isArray(j.brainExtra)?j.brainExtra:[]).concat([{text:t.slice(0,400),by:currentUser?currentUser.name:'',at:ts()}]);
+  j.log=j.log||[];j.log.push({t:ts(),s:'\ud83e\udde0 Told the Brain: '+t.slice(0,100)+(currentUser?' ['+currentUser.name+']':'')});
+  delete j.brainPrefillDismissedAt;delete j.brainAppliedAt;
+  save(j);brainRetry(id);
+}
+function brainExtraDel(id,i){
+  const j=jobs.find(x=>x.id===id);if(!j||!Array.isArray(j.brainExtra))return;
+  j.brainExtra.splice(i,1);save(j);brainRetry(id);
+}
+function brainTellMoreH(j){
+  const x=Array.isArray(j.brainExtra)?j.brainExtra:[];
+  return '<div style="margin:10px 0 4px;padding:10px;border:1px dashed var(--gold);border-radius:var(--rs)">'+
+    '<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:4px">\ud83e\udde0 Tell the Brain more \u2014 it works the labour out again</div>'+
+    (x.length?'<div style="font-size:11.5px;margin-bottom:6px">'+x.map((e,i)=>'<div style="display:flex;gap:6px;align-items:flex-start;padding:2px 0">\u2022 <span style="flex:1">'+escHtml(e.text)+' <span style="color:var(--faint)">\u2014 '+escHtml(e.by||'')+'</span></span><button onclick="brainExtraDel(\''+j.id+'\','+i+')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:11px">\u2715</button></div>').join('')+'</div>':'')+
+    '<textarea id="bm-'+j.id+'" class="fi2" style="width:100%;min-height:40px;font-size:12.5px" placeholder="e.g. Diagnosis found the gear selector cable snapped \u2014 replace cable. Also needs a clutch fluid change."></textarea>'+
+    '<button class="btn btn-gold btn-sm" style="margin-top:6px" onclick="brainTellMore(\''+j.id+'\')">\ud83e\udde0 Work it out again with this</button></div>';
 }
 function brainStale(j){
   const ai=j&&j.brainAI;if(!ai||j.brainAppliedAt)return false;
@@ -12191,7 +12225,7 @@ function brainPrefillH(j){
     return '<div style="background:rgba(200,140,20,.12);border:1px solid var(--amber);border-radius:var(--r);padding:11px 14px;margin-bottom:14px;font-size:12.5px">'+
       '\ud83e\udde0 <strong>No AI estimate on this one</strong> \u2014 the Brain '+escHtml(j._brainErr||'did not answer')+'.'+
       '<div style="font-size:11.5px;color:var(--dim);margin:4px 0 8px">Price it by hand below (+ Add an operation), or try again. It retries by itself every few minutes.</div>'+
-      '<button class="btn btn-ghost btn-sm" onclick="brainRetry(\''+j.id+'\')">\u21bb Try the Brain again</button></div>';
+      '<button class="btn btn-ghost btn-sm" onclick="brainRetry(\''+j.id+'\')">\u21bb Try the Brain again</button>'+brainTellMoreH(j)+'</div>';
   }
   if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)|brainMergeSides(j)|brainFixService(j)|brainTurboOil(j)|brainPairRule(j)|brainRecalcAll(j)|brainFixAlloy(j)|brainFixBody(j)|brainApplyLessons(j)){try{save(j);}catch(e){}}
   const applied = !!j.brainAppliedAt;
@@ -12268,7 +12302,7 @@ function brainPrefillH(j){
       '<div style="text-align:right"><div style="font-family:ui-monospace,monospace;font-size:16px;font-weight:800;color:var(--gold)">£'+totLabour.toFixed(2)+' <span style="font-size:11px;font-weight:600;color:var(--dim)">ex VAT</span></div>'+
         '<div style="font-size:11px;color:var(--dim)">+ VAT £'+(totLabour*0.2).toFixed(2)+' = <strong style="color:var(--text)">£'+(totLabour*1.2).toFixed(2)+' inc VAT</strong> to the customer</div></div>'+
     '</div>'+
-    addLine + buttons +
+    addLine + (applied?'':brainTellMoreH(j)) + buttons +
   '</div>';
 }
 
@@ -16616,7 +16650,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-21-1350';
+const CRM_BUILD='2026-11-21-1400';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
