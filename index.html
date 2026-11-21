@@ -5546,6 +5546,7 @@ function carHere(id){
 function quickStage(jobId, stage){
   if(!stage)return;
   const j=jobs.find(x=>x.id===jobId);if(!j)return;
+  if(!stageMoveAllowed(j,stage)){renderAll();return;}
   const who=currentUser?currentUser.name:'';
   const was=j.stage;
   j.stage=stage;
@@ -5786,10 +5787,36 @@ function moveFromPanel(id){
   if(!sel.value){alert('Pick a stage from the list first, or use the gold button above to move it to the next one.');return;}
   moveToStage(id,sel.value);
 }
+// The checks every hand-picked stage move goes through (gold "Move to" button,
+// the panel's stage picker, the card dropdown and bulk move). The buttons on
+// each stage already check these through mv(); the pickers did not, so anyone
+// could take a job past sign-off or into ordering without the customer's OK.
+// Moving a job back, or to Lost / Later, is always allowed.
+function stageMoveProblem(j,to){
+  const ix=id=>STAGES.findIndex(x=>x.id===id);
+  if(!j||!to||to===j.stage)return '';
+  if(['lost','later'].includes(to)||ix(to)<ix(j.stage))return '';
+  const boss=!!(currentUser&&currentUser.name==='Logkith');
+  if(!boss&&!canMove(to,j))
+    return {hard:true,msg:'This stage belongs to: '+(stg(j.stage).owner||'another role')+'.\n\nOnly that role or Logkith can move it on.'};
+  const past=ix(to)>ix('signoff');
+  if(past&&['financial','signoff','disapproved'].includes(j.stage)&&!j.signedOff&&!j.comebackNoCharge)
+    return {hard:!boss,msg:'\u26d4 '+(j.reg||'This job')+' has not been signed off.\n\nUse \u201c\u2713 Approve \u2014 send the quote\u201d on the Sign-Off stage.'};
+  if(ix(to)>=ix('po')&&!j.estApproved&&!j.comebackNoCharge&&!j.isInternal)
+    return {hard:!boss,msg:'\u26d4 '+(j.reg||'This job')+' has not been approved by the customer (\u00a3'+((parseFloat(j.quote)||0).toFixed(2))+').\n\nGet it approved, or mark it Lost.'};
+  return '';
+}
+function stageMoveAllowed(j,to){
+  const p=stageMoveProblem(j,to);
+  if(!p)return true;
+  if(p.hard){alert(p.msg);return false;}
+  return confirm(p.msg+'\n\nOK = move it anyway (director override).');
+}
 function moveToStage(id,to){
   const j=jobs.find(x=>x.id===id)||gj();
   if(!j){alert('Could not find that job \u2014 close the panel and open it again.');return;}
   if(!to||to===j.stage){if(typeof toast==='function')toast('Already at '+stg(j.stage).label);return;}
+  if(!stageMoveAllowed(j,to))return;
   const from=j.stage;
   j.stage=to;
   if(STAGES.findIndex(x=>x.id===to)<STAGES.findIndex(x=>x.id===from))pauseAuto(j,to);
@@ -9480,10 +9507,10 @@ function fireNotifForStage(job,newStage){
 }
 
 // ── MOVE / ACTIONS ───────────────────────────────────────
-function canMove(target){
+function canMove(target,forJob){
   if(!currentUser) return false;
   if(currentUser.name==='Logkith') return true;
-  const j=gj();
+  const j=forJob||gj();
   if(!j) return false;
   const stage=j.stage;
   // ON-SITE: whoever is at the unit (Sudha) books the car in when it
@@ -17716,8 +17743,13 @@ function bulkClearAll(){
 async function applyBulkStage(){
   const stage=document.getElementById('bulk-stage-select').value;
   if(!stage){alert('Select a stage first.');return;}
-  const checked=[...document.querySelectorAll('.bulk-cb:checked')].map(cb=>cb.value);
+  let checked=[...document.querySelectorAll('.bulk-cb:checked')].map(cb=>cb.value);
   if(!checked.length){alert('Tick at least one job.');return;}
+  // the same checks as a single move; jobs that fail them are left where they are
+  const blocked=checked.filter(id=>{const j=jobs.find(x=>x.id===id);const p=stageMoveProblem(j,stage);return p&&(p.hard||!(currentUser&&currentUser.name==='Logkith'));});
+  if(blocked.length&&!confirm(blocked.length+' of the '+checked.length+' job(s) cannot go to "'+stg(stage).label+'" (not signed off, not approved, or not your stage) and will be left where they are.\n\nMove the rest?'))return;
+  checked=checked.filter(id=>!blocked.includes(id));
+  if(!checked.length)return;
   if(!confirm('Move '+checked.length+' job(s) to "'+stg(stage).label+'"?'))return;
   const who=currentUser?currentUser.name:'';
   const now=Date.now();
