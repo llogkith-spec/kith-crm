@@ -5844,6 +5844,12 @@ function twoPriceTotals(j){
   const lab=parseFloat(j.labourCost)||0;
   out.md=Number(incVatTotal(j,mdParts+lab).toFixed(2));
   out.af=Number(incVatTotal(j,afParts+lab).toFixed(2));
+  // The two prices are the totals on the Option A / Option B estimates the
+  // customer is sent: same lines, discount and VAT treatment. Working them out
+  // separately here lost the discount, so the job price came out higher than
+  // the PDF the customer agreed to.
+  try{const a=estDocData(j,'md').total,b=estDocData(j,'af').total;
+    if(isFinite(a))out.md=Number(a.toFixed(2));if(isFinite(b))out.af=Number(b.toFixed(2));}catch(e){}
   out.ready=(j.parts||[]).length>0&&!out.mdMissing&&!out.afMissing;
   return out;
 }
