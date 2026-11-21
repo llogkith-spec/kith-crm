@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v21.2 \u00b7 21 Nov';
+const BUILD='v21.3 \u00b7 21 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -10800,18 +10800,35 @@ const ADBLUE_FAULT_RX=/delete|fault|light|warning|injector|pump|sensor|heater|ta
 function adblueWords(j){const jd=j.judgement||{};return [j.work,jd.customer_words,j.labourDesc].filter(Boolean).join(' ');}
 function adblueNeedsAsk(j){
   if(!j||j.adblueAnswer||!['intake','range','labour','parts'].includes(j.stage))return false;
-  const w=adblueWords(j);return ADBLUE_RX.test(w)&&!ADBLUE_FAULT_RX.test(w);
+  const w=adblueWords(j);return ADBLUE_RX.test(w)&&!ADBLUE_FAULT_RX.test(w.replace(/\bdelete\b|\bsolution\b/ig,''));
+}
+// 21 Nov 2026 (Logan): "AdBlue solution" = the AdBlue delete on the SOP tuning list (fixed price)
+function adblueSolutionPrice(){try{const t=(KITH_SOP&&KITH_SOP.tuning)||{};const k=Object.keys(t).find(x=>/ad\s?blue/i.test(x));return k?parseFloat(t[k]):250;}catch(e){return 250;}}
+function adblueSolution(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const p=adblueSolutionPrice();
+  j.adblueAnswer='solution';
+  j.parts=(j.parts||[]).filter(x=>!(x&&x.fromAdblue));
+  j.srtLines=[{op:'AdBlue solution (SOP fixed price)',fixed:true,qty:1,labour:p,code:'TUNE',by:currentUser?currentUser.name:'',at:ts()}];
+  j.srtHours=0;j.srtCharged=0;j.labourCost=p;
+  j.labourDesc='AdBlue solution \u2014 SOP fixed price \u00a3'+p.toFixed(2)+' + VAT';
+  j.brainPrefillDismissedAt=ts();
+  j.log=j.log||[];j.log.push({t:ts(),s:'\ud83e\uddea AdBlue solution \u2014 SOP fixed price \u00a3'+p.toFixed(2)+' + VAT'+(currentUser?' ['+currentUser.name+']':'')});
+  try{reprice(j);}catch(e){}
+  save(j);
+  if(j.stage!=='signoff')moveToStage(j.id,'signoff');else{renderDetail();renderAll();}
 }
 function adblueLitrePrice(){try{const f=(KITH_SOP&&KITH_SOP.fluids)||{};const k=Object.keys(f).find(x=>/ad\s?blue/i.test(x));return k?parseFloat(f[k]):2.5;}catch(e){return 2.5;}}
 function adblueAskH(j){
   if(!adblueNeedsAsk(j))return '';
   const p=adblueLitrePrice();
   return '<div style="background:rgba(40,120,200,.13);border:2px solid var(--blue,#4a8fe0);border-radius:var(--r);padding:11px 13px;margin-bottom:12px">'+
-    '<div style="font-weight:800;font-size:13px">🧪 AdBlue — is it just a top-up of AdBlue solution?</div>'+
-    '<div style="font-size:11.5px;color:var(--dim);margin:3px 0 8px">Ask the customer. A top-up is priced from the SOP: £'+p.toFixed(2)+' a litre ex VAT, no labour.</div>'+
-    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+
+    '<div style="font-weight:800;font-size:13px">\ud83e\uddea AdBlue \u2014 what do they want?</div>'+
+    '<div style="font-size:11.5px;color:var(--dim);margin:3px 0 8px">Ask the customer. Both are priced straight from the SOP and go to sign-off.</div>'+
+    '<button class="btn btn-gold btn-sm" style="margin-bottom:8px" onclick="adblueSolution(\''+j.id+'\')">AdBlue solution \u2014 \u00a3'+adblueSolutionPrice().toFixed(2)+' + VAT (SOP)</button>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px"><span style="color:var(--dim)">Top-up of AdBlue fluid (\u00a3'+p.toFixed(2)+'/L):</span>'+
       '<input id="ab-l-'+j.id+'" type="number" step="any" inputmode="decimal" value="10" style="width:64px;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:6px;color:var(--fg)"> litres'+
-      '<button class="btn btn-gold btn-sm" onclick="adblueTopup(\''+j.id+'\')">Yes — top-up</button>'+
+      '<button class="btn btn-ghost btn-sm" onclick="adblueTopup(\''+j.id+'\')">Top-up</button>'+
       '<button class="btn btn-ghost btn-sm" onclick="adblueFault(\''+j.id+'\')">No — it’s a fault</button>'+
     '</div></div>';
 }
@@ -10841,6 +10858,7 @@ function adblueFault(id){
 function adblueFromIntake(j){
   if(!j||j.adblueAnswer)return false;
   const jd=j.judgement||{};
+  if(jd.adblue_choice==='solution'&&['intake','range','labour'].includes(j.stage)){adblueSolution(j.id);return true;}
   if(jd.adblue_topup===true&&['intake','range','labour'].includes(j.stage)){adblueTopup(j.id,jd.adblue_litres||10);return true;}
   if(jd.adblue_topup===false){j.adblueAnswer='fault';return true;}
   return false;
@@ -11369,7 +11387,7 @@ function brainRetry(id){
 }
 function brainMaybeFire(j){
   if(!j||j.brainAI||j._brainAIPending)return;
-  if(j.adblueAnswer==='topup')return;
+  if(j.adblueAnswer==='topup'||j.adblueAnswer==='solution')return;
   if(j._brainTriedMs&&Date.now()-j._brainTriedMs<3*60*1000)return;   // failed just now — don't hammer it
   try{if(ensureBodyAI(j)){save(j);return;}}catch(e){}
   if(!['intake','range','labour','parts','financial','signoff'].includes(j.stage))return;
@@ -12206,7 +12224,7 @@ function brainAddLine(id){
 function brainPrefillH(j){
   if(!j||j.stage!=='labour')return '';
   if(j.brainPrefillDismissedAt){
-    if(j.adblueAnswer==='topup')return '';
+    if(j.adblueAnswer==='topup'||j.adblueAnswer==='solution')return '';
     return '<div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px dashed var(--border);border-radius:var(--r);padding:8px 12px;margin-bottom:14px;font-size:12px;color:var(--dim)">'+
       '\ud83e\udde0 Brain pre-fill hidden'+
       '<button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="brainUndismiss(\''+j.id+'\')">\u21a9 Bring the Brain back</button></div>';
@@ -16650,7 +16668,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-21-1400';
+const CRM_BUILD='2026-11-21-1355';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
