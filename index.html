@@ -14015,7 +14015,12 @@ async function syncJobNow(j){
       try{
         if(base.stage&&mine.stage!==base.stage&&server.stage!==base.stage&&mine.stage!==server.stage){
           const ix=id=>STAGES.findIndex(x=>x.id===id);
-          const keepTheirs=['lost','later','done','review','followup'].includes(server.stage)||ix(server.stage)>ix(mine.stage);
+          // Lost / Later are decisions and always stand, as does a closed job.
+          // Otherwise the stage further along wins. ('done', 'review' and
+          // 'followup' used to always win too, so a job moved on from
+          // 17 · Work Complete to Accounts was put back to Work Complete
+          // whenever another screen had saved Work Complete at the same time.)
+          const keepTheirs=['lost','later'].includes(server.stage)||!!server.closedAt||ix(server.stage)>ix(mine.stage);
           if(keepTheirs){
             out.stage=server.stage;out.stageAt=server.stageAt;
             out.log=(out.log||[]).concat([{t:ts(),s:'\u21ba Another screen tried to move this back to '+stg(mine.stage).label+' \u2014 kept it at '+stg(server.stage).label}]);
