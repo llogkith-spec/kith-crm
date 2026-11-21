@@ -466,7 +466,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
 var SB_URL=KithCore.URL;
 var SB_KEY=KithCore.KEY;
 var SOP_VERSION='8.0';
-var INTAKE_BUILD='4.1';
+var INTAKE_BUILD='4.2';
 // The CRM keeps one row per job in `jobs` ({id, data, updated_at}).
 // Earlier builds wrote to `kith_jobs`, which nothing reads — jobs vanished.
 var JOBS_TABLE='jobs';
@@ -1382,6 +1382,12 @@ async function submitJob(){
      '\n\nSubmit anyway? These will show on the job as MISSING so the next person chases them.'))return;
   if(intakePics.some(function(p){return p.busy;})&&!confirm('Photos are still uploading. Submit now without them?'))return;
   // 16 Nov 2026: a diagnostic AND a repair in one request — ask here, not later in the CRM
+  // 21 Nov 2026: "AdBlue" on its own — top-up of AdBlue solution, or a fault?
+  var adTop=null,adL=null,adW=fval('f-words');
+  if(/\bad\s?-?blue\b/i.test(adW)&&!/delete|fault|light|warning|injector|pump|sensor|heater|tank|nox|error|code|not\s+work|repair|replace|leak|limp|start/i.test(adW)){
+    adTop=confirm('AdBlue \u2014 is it just a TOP-UP of AdBlue solution?\n\nOK = top-up (priced from the SOP, no labour)\nCancel = it\u2019s a fault');
+    if(adTop){adL=parseFloat(prompt('How many litres? (usually 10)','10'))||10;}
+  }
   var splitAsk=diagRepairSplit(), splitChoice=null;
   if(splitAsk){
     splitChoice=confirm('\u270b Hold up \u2014 this looks like a DIAGNOSTIC and a REPAIR in one:\n\n'+
@@ -1453,6 +1459,7 @@ async function submitJob(){
     photos_in_hand:(area==='bodywork'||alsoBody)?fchk('f-photos'):null,
     missing_at_intake:stillMissing.map(function(x){return (x.lvl==='must'?'MUST: ':'ASK: ')+x.l;}),
     ai_triage:triageResult||null,
+    adblue_topup:adTop, adblue_litres:adL,
     split_choice:splitChoice, split_diag:splitAsk?splitAsk.diag:null, split_rep:splitAsk?splitAsk.rep:null,
     captured_by:staffName, captured_at:new Date().toISOString()
   };
