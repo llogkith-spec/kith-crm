@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v20.9 \u00b7 20 Nov';
+const BUILD='v21.0 \u00b7 21 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -11262,8 +11262,19 @@ async function brainSupabase(j){
         complaint: brainComplaint(j)
       })
     });
-    const d = await res.json();
+    let d={};try{d=await res.json();}catch(e){d={error:'no readable answer (HTTP '+res.status+')'};}
+    // 21 Nov 2026: say WHY the Brain didn't price it, instead of showing nothing
+    if(res.ok && !d.error && !(d.jobs&&d.jobs.length)){
+      delete j._brainAIPending;j._brainTriedMs=Date.now();
+      j._brainErr='it found no operations it could price in “'+String(brainComplaint(j)).slice(0,80)+'”';
+      try{renderDetail();}catch(e){}
+      return null;
+    }
+    if(!res.ok || d.error){
+      j._brainErr=(d.error||d.message||('HTTP '+res.status))+(res.status?' (HTTP '+res.status+')':'');
+    }
     if(res.ok && !d.error){
+      delete j._brainErr;
       j.brainAI = {
         total: d.total_inc_vat||0,
         lo: (d.total_range&&d.total_range.lo)||0,
@@ -11286,14 +11297,23 @@ async function brainSupabase(j){
       return j.brainAI;
     }
     delete j._brainAIPending;j._brainTriedMs=Date.now();
+    try{renderDetail();}catch(e){}
     return null;
   }catch(e){
     delete j._brainAIPending;j._brainTriedMs=Date.now();
+    j._brainErr='could not reach it ('+(e&&e.message||'network error')+')';
+    try{renderDetail();}catch(e2){}
     return null;
   }
 }
+function brainRetry(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  delete j.brainAI;delete j._brainTriedMs;delete j._brainErr;delete j._brainAIPending;
+  brainSupabase(j);try{renderDetail();}catch(e){}
+}
 function brainMaybeFire(j){
   if(!j||j.brainAI||j._brainAIPending)return;
+  if(j._brainTriedMs&&Date.now()-j._brainTriedMs<3*60*1000)return;   // failed just now — don't hammer it
   try{if(ensureBodyAI(j)){save(j);return;}}catch(e){}
   if(!['intake','range','labour','parts','financial','signoff'].includes(j.stage))return;
   setTimeout(()=>brainSupabase(j),10);
@@ -12103,7 +12123,14 @@ function brainPrefillH(j){
       '⚙ Brain pre-fill loading…</div>';
   }
   const ai = j.brainAI;
-  if(!ai||!ai.jobs||!ai.jobs.length)return '';
+  if(!ai||!ai.jobs||!ai.jobs.length){
+    if(ai&&ai.jobs&&!ai.jobs.length){delete j.brainAI;j._brainErr=j._brainErr||'it came back with no operations';}
+    if(!j._brainTriedMs&&!j._brainErr)return '';
+    return '<div style="background:rgba(200,140,20,.12);border:1px solid var(--amber);border-radius:var(--r);padding:11px 14px;margin-bottom:14px;font-size:12.5px">'+
+      '\ud83e\udde0 <strong>No AI estimate on this one</strong> \u2014 the Brain '+escHtml(j._brainErr||'did not answer')+'.'+
+      '<div style="font-size:11.5px;color:var(--dim);margin:4px 0 8px">Price it by hand below (+ Add an operation), or try again. It retries by itself every few minutes.</div>'+
+      '<button class="btn btn-ghost btn-sm" onclick="brainRetry(\''+j.id+'\')">\u21bb Try the Brain again</button></div>';
+  }
   if(brainFixTyres(j)|brainFixDiag(j)|brainFixSop(j)|brainMergeSides(j)|brainFixService(j)|brainTurboOil(j)|brainPairRule(j)|brainRecalcAll(j)|brainFixAlloy(j)|brainFixBody(j)|brainApplyLessons(j)){try{save(j);}catch(e){}}
   const applied = !!j.brainAppliedAt;
   const firmN = ai.jobs.filter(b=>b.is_firm).length;
@@ -16511,7 +16538,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-20-1325';
+const CRM_BUILD='2026-11-21-1340';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
