@@ -287,8 +287,8 @@ input:checked+.tsl:before{transform:translateX(20px)}
       <div style="margin-top:14px">
         <label class="fl">Photos <span style="font-weight:400;color:#888">(damage, dash lights, the reg — optional)</span></label>
         <label class="btn" style="display:block;text-align:center;padding:12px;cursor:pointer;background:#222;border:1px dashed #c9a84c;color:#c9a84c;font-weight:700">
-          &#128247; Add photos
-          <input type="file" id="f-pics" accept="image/*" multiple style="display:none" onchange="addIntakePhotos(this)"/>
+          &#128247; Add photos or a video
+          <input type="file" id="f-pics" accept="image/*,video/*" multiple style="display:none" onchange="addIntakePhotos(this)"/>
         </label>
         <div id="pics-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px"></div>
         <div id="pics-st" style="font-size:11px;color:#888;margin-top:4px"></div>
@@ -434,6 +434,13 @@ input:checked+.tsl:before{transform:translateX(20px)}
       <div id="custparts-warn"></div>
     </div>
 
+    <div class="fg"><label class="fl">Photos / video <span style="font-weight:400;color:#888">(optional)</span></label>
+      <label class="btn" style="display:block;text-align:center;padding:12px;cursor:pointer;background:#222;border:1px dashed #c9a84c;color:#c9a84c;font-weight:700">
+        &#128247; Add photos or a video
+        <input type="file" accept="image/*,video/*" multiple style="display:none" onchange="addIntakePhotos(this)"/>
+      </label>
+      <div id="pics-grid-2" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px"></div>
+      <div id="pics-st-2" style="font-size:11px;color:#888;margin-top:4px"></div></div>
     <div class="fg"><label class="fl">Additional Notes</label><textarea class="fi" id="f-notes" rows="2" placeholder="Anything else the team should know..."></textarea></div>
     <div id="summary-card"></div>
     <button class="btn btn-ghost" id="check-btn" onclick="runIntakeCheck()" style="margin-bottom:10px">&#129504; Check this before I submit</button>
@@ -466,7 +473,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
 var SB_URL=KithCore.URL;
 var SB_KEY=KithCore.KEY;
 var SOP_VERSION='8.0';
-var INTAKE_BUILD='4.3';
+var INTAKE_BUILD='4.4';
 // The CRM keeps one row per job in `jobs` ({id, data, updated_at}).
 // Earlier builds wrote to `kith_jobs`, which nothing reads — jobs vanished.
 var JOBS_TABLE='jobs';
@@ -1656,17 +1663,22 @@ function shrinkPic(file,max){
   });
 }
 function drawPics(){
-  var g=document.getElementById('pics-grid');if(!g)return;
+  ['pics-grid','pics-grid-2'].forEach(function(gid){
+  var g=document.getElementById(gid);if(!g)return;
   g.innerHTML=intakePics.map(function(p,i){
     return '<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid '+(p.err?'#c0392b':'#333')+';background:#1a1a1a">'+
       (p.thumb?'<img src="'+p.thumb+'" style="width:100%;height:100%;object-fit:cover;opacity:'+(p.busy?'.45':'1')+'"/>':'')+
+      (p.video?'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:26px">\ud83c\udfa5</div>':'')+
       (p.busy?'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:#c9a84c;font-weight:700">Uploading…</div>':'')+
       (p.err?'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:#ff6b6b;font-weight:700;text-align:center;padding:4px;background:rgba(0,0,0,.5)">Failed</div>':'')+
       '<button type="button" onclick="dropPic('+i+')" style="position:absolute;top:2px;right:2px;width:22px;height:22px;border-radius:11px;border:none;background:rgba(0,0,0,.7);color:#fff;font-size:13px;line-height:22px;padding:0;cursor:pointer">×</button></div>';
   }).join('');
-  var st=document.getElementById('pics-st');
+  });
+  ['pics-st','pics-st-2'].forEach(function(sid){
+  var st=document.getElementById(sid);
   if(st){var up=intakePics.filter(function(p){return p.url;}).length,bz=intakePics.filter(function(p){return p.busy;}).length,bad=intakePics.filter(function(p){return p.err;}).length;
     st.textContent=intakePics.length?(up+' uploaded'+(bz?' · '+bz+' uploading':'')+(bad?' · '+bad+' failed — tap × and try again':'')):'';}
+  });
 }
 function dropPic(i){intakePics.splice(i,1);drawPics();}
 async function addIntakePhotos(input){
@@ -1674,6 +1686,18 @@ async function addIntakePhotos(input){
   for(var k=0;k<files.length;k++){
     var rec={busy:true};intakePics.push(rec);drawPics();
     try{
+      if(/^video\//.test(files[k].type||'')||/\.(mov|mp4|m4v|webm)$/i.test(files[k].name||'')){
+        var f=files[k];rec.video=true;drawPics();
+        if(f.size>200*1024*1024)throw new Error('Video too big (max 200MB) \u2014 send a shorter clip');
+        var ext=((f.name||'').match(/\.(\w+)$/)||[,'mp4'])[1].toLowerCase();
+        var vreg=(fval('f-reg')||'NOREG').replace(/[^A-Z0-9]/gi,'');
+        var vpath='intake/'+vreg+'-'+Date.now()+'-'+k+'.'+ext;
+        var vr=await fetch(SB_URL+'/storage/v1/object/'+PIC_BUCKET+'/'+vpath,{method:'POST',
+          headers:sbHdr({'Content-Type':f.type||'video/mp4','x-upsert':'true'}),body:f});
+        if(!vr.ok)throw new Error('Video upload refused ('+vr.status+')');
+        rec.url=SB_URL+'/storage/v1/object/public/'+PIC_BUCKET+'/'+vpath;
+        rec.busy=false;drawPics();continue;
+      }
       var sm=await shrinkPic(files[k],1800);rec.thumb=sm.thumb;drawPics();
       var reg=(fval('f-reg')||'NOREG').replace(/[^A-Z0-9]/gi,'');
       var path='intake/'+reg+'-'+Date.now()+'-'+k+'.jpg';
