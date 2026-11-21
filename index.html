@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v21.0 \u00b7 21 Nov';
+const BUILD='v21.1 \u00b7 21 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -5668,7 +5668,7 @@ function renderPipeline(){
   if(q&&!total)h+='<div style="padding:20px;text-align:center;color:var(--faint)">No jobs match “'+escHtml(q)+'”</div>';
   vp.innerHTML=h;
 }
-function openJob(id){try{const _j=jobs.find(x=>x.id===id);if(_j){let c=mergeSidesForJob(_j);if(discountFromIntake(_j))c=true;if(syncQuoteToEstimate(_j))c=true;if(serviceTidyParts(_j))c=true;if(oilPartsTidy(_j))c=true;if(brainFixService(_j))c=true;if(c)save(_j);}}catch(e){}curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
+function openJob(id){try{const _j=jobs.find(x=>x.id===id);if(_j){let c=mergeSidesForJob(_j);try{if(adblueFromIntake(_j))c=true;}catch(e){}if(discountFromIntake(_j))c=true;if(syncQuoteToEstimate(_j))c=true;if(serviceTidyParts(_j))c=true;if(oilPartsTidy(_j))c=true;if(brainFixService(_j))c=true;if(c)save(_j);}}catch(e){}curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
 
 // Redraw even if something still has focus. Only ever called straight
 // after a stage change, when there is nothing half-typed to protect.
@@ -8101,6 +8101,7 @@ function actH(j){
   if(['financial','signoff','disapproved','contact','contacted','waiting','waiting2','ready'].includes(j.stage))
     h+=estDocPanelH(j,j.stage==='signoff');
   try{h+=partsLatePanelH(j);}catch(e){}
+  try{h+=adblueAskH(j);}catch(e){}
   try{h+=teamNotesH(j);}catch(e){}
   switch(j.stage){
     case 'intake':
@@ -10789,6 +10790,61 @@ function toggleFixedLabour(){
 }
 
 
+// ── ADBLUE: TOP-UP OR FAULT? (21 Nov 2026, Logan) ───────────────────
+// A job that just says "AdBlue" is usually a top-up of AdBlue solution. Ask;
+// if it is, price it straight from the SOP fluids list (sell price, no
+// markup, no labour) and send it to sign-off. If not, it's a fault — the
+// estimator prices it as normal (usually a diagnostic first).
+const ADBLUE_RX=/\bad\s?-?blue\b/i;
+const ADBLUE_FAULT_RX=/delete|fault|light|warning|injector|pump|sensor|heater|tank|nox|error|code|not\s+work|isn.t|won.t|repair|replace|leak|crystal|countdown|limp|start/i;
+function adblueWords(j){const jd=j.judgement||{};return [j.work,jd.customer_words,j.labourDesc].filter(Boolean).join(' ');}
+function adblueNeedsAsk(j){
+  if(!j||j.adblueAnswer||!['intake','range','labour','parts'].includes(j.stage))return false;
+  const w=adblueWords(j);return ADBLUE_RX.test(w)&&!ADBLUE_FAULT_RX.test(w);
+}
+function adblueLitrePrice(){try{const f=(KITH_SOP&&KITH_SOP.fluids)||{};const k=Object.keys(f).find(x=>/ad\s?blue/i.test(x));return k?parseFloat(f[k]):2.5;}catch(e){return 2.5;}}
+function adblueAskH(j){
+  if(!adblueNeedsAsk(j))return '';
+  const p=adblueLitrePrice();
+  return '<div style="background:rgba(40,120,200,.13);border:2px solid var(--blue,#4a8fe0);border-radius:var(--r);padding:11px 13px;margin-bottom:12px">'+
+    '<div style="font-weight:800;font-size:13px">🧪 AdBlue — is it just a top-up of AdBlue solution?</div>'+
+    '<div style="font-size:11.5px;color:var(--dim);margin:3px 0 8px">Ask the customer. A top-up is priced from the SOP: £'+p.toFixed(2)+' a litre ex VAT, no labour.</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+
+      '<input id="ab-l-'+j.id+'" type="number" step="any" inputmode="decimal" value="10" style="width:64px;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:6px;color:var(--fg)"> litres'+
+      '<button class="btn btn-gold btn-sm" onclick="adblueTopup(\''+j.id+'\')">Yes — top-up</button>'+
+      '<button class="btn btn-ghost btn-sm" onclick="adblueFault(\''+j.id+'\')">No — it’s a fault</button>'+
+    '</div></div>';
+}
+function adblueTopup(id,litres){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const inp=document.getElementById('ab-l-'+id);
+  const L=parseFloat(litres!=null?litres:(inp&&inp.value))||10;
+  const p=adblueLitrePrice();
+  j.adblueAnswer='topup';
+  j.parts=(j.parts||[]).filter(x=>!(x&&x.fromAdblue));
+  j.parts.push({name:'AdBlue solution (1L)',num:'',qty:L,price:p,supplier:'Stock',status:'ready',fromAdblue:true,noMarkup:true});
+  j.srtLines=[];j.srtHours=0;j.srtCharged=0;j.labourCost=0;
+  j.labourDesc='AdBlue top-up — '+L+'L of AdBlue solution (SOP fluid price)';
+  j.brainPrefillDismissedAt=ts();
+  j.log=j.log||[];j.log.push({t:ts(),s:'🧪 AdBlue top-up: '+L+'L × £'+p.toFixed(2)+' (SOP) — no labour'+(currentUser?' ['+currentUser.name+']':'')});
+  try{reprice(j);}catch(e){}
+  save(j);
+  if(j.stage!=='signoff')moveToStage(j.id,'signoff');else{renderDetail();renderAll();}
+}
+function adblueFault(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  j.adblueAnswer='fault';
+  j.log=j.log||[];j.log.push({t:ts(),s:'🧪 AdBlue: not a top-up — a fault, price as normal'+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);renderDetail();
+}
+// the intake already asked — apply it
+function adblueFromIntake(j){
+  if(!j||j.adblueAnswer)return false;
+  const jd=j.judgement||{};
+  if(jd.adblue_topup===true&&['intake','range','labour'].includes(j.stage)){adblueTopup(j.id,jd.adblue_litres||10);return true;}
+  if(jd.adblue_topup===false){j.adblueAnswer='fault';return true;}
+  return false;
+}
 // ── ADD AN OPERATION WITH ITS LABOUR RATE (20 Nov 2026, Joel) ───────
 // One small form instead of a string of pop-ups: operation, book hours and
 // the rate (LOW / MED / TOP). Charged hours follow the SOP multiplier and
@@ -11313,6 +11369,7 @@ function brainRetry(id){
 }
 function brainMaybeFire(j){
   if(!j||j.brainAI||j._brainAIPending)return;
+  if(j.adblueAnswer==='topup')return;
   if(j._brainTriedMs&&Date.now()-j._brainTriedMs<3*60*1000)return;   // failed just now — don't hammer it
   try{if(ensureBodyAI(j)){save(j);return;}}catch(e){}
   if(!['intake','range','labour','parts','financial','signoff'].includes(j.stage))return;
@@ -12114,7 +12171,12 @@ function brainAddLine(id){
 }
 function brainPrefillH(j){
   if(!j||j.stage!=='labour')return '';
-  if(j.brainPrefillDismissedAt)return '';
+  if(j.brainPrefillDismissedAt){
+    if(j.adblueAnswer==='topup')return '';
+    return '<div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px dashed var(--border);border-radius:var(--r);padding:8px 12px;margin-bottom:14px;font-size:12px;color:var(--dim)">'+
+      '\ud83e\udde0 Brain pre-fill hidden'+
+      '<button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="brainUndismiss(\''+j.id+'\')">\u21a9 Bring the Brain back</button></div>';
+  }
   if(ensureBodyAI(j)){try{save(j);}catch(e){}}
   if(!(j.brainAI&&j.brainAI.fromDamage)&&brainStale(j)){delete j.brainAI;delete j._brainTriedMs;}
   brainMaybeFire(j);  // kick it off if it hasn't run
@@ -12188,9 +12250,10 @@ function brainPrefillH(j){
   }).join('');
   const addLine = applied?'':brainAddLineH(j);
   const buttons = applied
-    ? '<div style="display:flex;gap:8px;align-items:center;margin-top:10px"><div style="color:var(--green);font-size:12px;font-weight:600">✓ Applied '+fmtWhen(j.brainAppliedAt)+'</div><button onclick="brainResetApply(\''+j.id+'\')" style="background:transparent;color:var(--dim);border:1px solid var(--border);padding:4px 10px;border-radius:3px;font-size:11px;cursor:pointer;margin-left:auto">Reset</button></div>'
+    ? '<div style="display:flex;gap:8px;align-items:center;margin-top:10px"><div style="color:var(--green);font-size:12px;font-weight:600">✓ Applied '+fmtWhen(j.brainAppliedAt)+'</div><button onclick="brainEditApplied(\''+j.id+'\')" style="background:transparent;color:var(--gold);border:1px solid var(--gold);padding:4px 10px;border-radius:3px;font-size:11px;cursor:pointer;margin-left:auto">\u270f\ufe0f Edit lines</button><button onclick="brainResetApply(\''+j.id+'\')" style="background:transparent;color:var(--dim);border:1px solid var(--border);padding:4px 10px;border-radius:3px;font-size:11px;cursor:pointer">\u21a9 Undo apply</button></div>'
     : '<div style="display:flex;gap:8px;margin-top:10px"><button onclick="brainApplyToJob(\''+j.id+'\')" style="background:var(--gold);color:#000;border:none;padding:8px 14px;border-radius:4px;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.5px;text-transform:uppercase">Apply to job</button>'+
-      '<button onclick="brainDismissPrefill(\''+j.id+'\')" style="background:transparent;color:var(--dim);border:1px solid var(--border);padding:8px 14px;border-radius:4px;font-size:12px;cursor:pointer">Dismiss — I\'ll do it manually</button></div>';
+      '<button onclick="brainDismissPrefill(\''+j.id+'\')" style="background:transparent;color:var(--dim);border:1px solid var(--border);padding:8px 14px;border-radius:4px;font-size:12px;cursor:pointer">Dismiss — I\'ll do it manually</button>'+
+      '<button onclick="if(confirm(\'Throw these lines away and ask the Brain again from the customer\\u2019s words?\'))brainRetry(\''+j.id+'\')" style="background:transparent;color:var(--dim);border:1px solid var(--border);padding:8px 14px;border-radius:4px;font-size:12px;cursor:pointer">\u21bb Ask again</button></div>';
   return '<div style="background:var(--surface2);border:1px solid '+totCard+';border-radius:var(--r);padding:12px 14px;margin-bottom:14px">'+
     '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">'+
       '<div style="font-size:12px;font-weight:800;color:'+totCard+';text-transform:uppercase;letter-spacing:.5px">🧠 Brain pre-fill — audit and apply</div>'+
@@ -12456,12 +12519,27 @@ window.brainApplyToJob = function(jobId){
 
 window.brainResetApply = function(jobId){
   const j = _brainJob(jobId); if(!j)return;
-  if(!confirm('Clear the applied labour and re-edit?'))return;
+  if(!confirm('Undo the apply? This clears the labour it put on the job so you can start again.'))return;
   j.srt = 0; j.srtCharged = 0; j.labourCost = 0; j.srtSource = '';
   delete j.brainAppliedAt; delete j.brainAppliedBy;
   save(j); renderDetail();
 };
 
+window.brainUndismiss = function(jobId){
+  const j = _brainJob(jobId); if(!j)return;
+  delete j.brainPrefillDismissedAt;
+  j.log=j.log||[];j.log.push({t:ts(),s:'\ud83e\udde0 Brain pre-fill brought back'+(currentUser?' ['+currentUser.name+']':'')});
+  save(j); renderDetail();
+};
+// Applied, but a line needs changing: unlock the lines WITHOUT clearing the
+// labour — change them, then press Apply again to update the job.
+window.brainEditApplied = function(jobId){
+  const j = _brainJob(jobId); if(!j)return;
+  delete j.brainAppliedAt; delete j.brainAppliedBy;
+  j.log=j.log||[];j.log.push({t:ts(),s:'\u270f\ufe0f Brain lines unlocked for editing'+(currentUser?' ['+currentUser.name+']':'')});
+  save(j); renderDetail();
+  if(typeof toast==='function')toast('Change the lines, then press Apply again');
+};
 window.brainDismissPrefill = function(jobId){
   const j = _brainJob(jobId); if(!j)return;
   j.brainPrefillDismissedAt = ts();
@@ -16538,7 +16616,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-21-1340';
+const CRM_BUILD='2026-11-21-1350';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
