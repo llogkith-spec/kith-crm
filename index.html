@@ -1489,11 +1489,23 @@ async function loadDismissed(){
 }
 // Job numbers repeat every ~17 minutes (last six digits of the clock), and a
 // save overwrites whatever has that number — so never hand out one in use.
+// Job ids: J + date (YYMMDD) + 5 random letters/digits, e.g. J261121K7Q2M.
+// They used to be J + the last 6 digits of the clock, which repeat every
+// 16.7 minutes, so a new job could land on an old job's id and be merged
+// into it. The intake app makes ids the same way.
 function nid(){
-  let n=Date.now()%1000000;
   const taken=new Set((typeof jobs!=='undefined'&&Array.isArray(jobs)?jobs:[]).map(j=>j&&j.id));
-  for(let i=0;i<1000&&taken.has('J'+String(n).padStart(6,'0'));i++)n=(n+1+Math.floor(Math.random()*997))%1000000;
-  return'J'+String(n).padStart(6,'0');
+  let id='';
+  for(let i=0;i<20;i++){id=kithJobId();if(!taken.has(id))break;}
+  return id;
+}
+function kithJobId(){
+  const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789', d=new Date();
+  const ymd=String(d.getFullYear()%100).padStart(2,'0')+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');
+  let r='';
+  try{crypto.getRandomValues(new Uint8Array(5)).forEach(b=>{r+=A[b%32];});}
+  catch(e){for(let i=0;i<5;i++)r+=A[Math.floor(Math.random()*32)];}
+  return 'J'+ymd+r;
 }
 function ts(){return new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});}
 // Every stage button goes through gj(). Closing the panel clears curId,
