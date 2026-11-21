@@ -30,6 +30,7 @@
      TWILIO_SID         Twilio account SID (texts) — optional
      TWILIO_TOKEN       Twilio auth token
      TWILIO_FROM        the Twilio number texts come from, e.g. +447…
+     RELAY_SECRET       the WhatsApp relay's SHARED_SECRET (for WhatsApp campaigns)
 
    Run setup() once from the editor: it checks the properties and adds the
    5-minute Gmail trigger and the 10-minute campaign trigger. Deploy → New deployment → Web app → Execute as Me,
@@ -495,10 +496,14 @@ function deliver(send, conf) {
   if (send.channel === 'sms') return sendSms(send.to, send.text);
   if (send.channel === 'whatsapp') {
     const ch = conf.channels || {};
-    if (!ch.relay || !ch.secret) return { ok: false, error: 'WhatsApp relay not set up' };
+    // The pass phrase is a Script Property here (RELAY_SECRET), not read from the
+    // database: the jobs table is readable with the public key. ch.secret is only
+    // a fallback for a database row written before 21 Nov 2026.
+    const secret = prop('RELAY_SECRET') || ch.secret;
+    if (!ch.relay || !secret) return { ok: false, error: 'WhatsApp relay not set up (set RELAY_SECRET in Script Properties)' };
     if (!send.template) return { ok: false, error: 'No WhatsApp template on this campaign' };
     const r = UrlFetchApp.fetch(ch.relay, { method: 'post', contentType: 'text/plain', muteHttpExceptions: true,
-      payload: JSON.stringify({ action: 'send', secret: ch.secret, to: send.to, useTemplate: true, template: send.template, params: send.params || [] }) });
+      payload: JSON.stringify({ action: 'send', secret: secret, to: send.to, useTemplate: true, template: send.template, params: send.params || [] }) });
     let d = {}; try { d = JSON.parse(r.getContentText() || '{}'); } catch (err) {}
     return d.ok ? { ok: true, via: 'WhatsApp' } : { ok: false, error: d.error || ('relay ' + r.getResponseCode()) };
   }
