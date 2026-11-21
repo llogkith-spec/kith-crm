@@ -16643,13 +16643,8 @@ function flagPrivatePlate(){
   j.privatePlate=true;
   j.log=j.log||[];
   j.log.push({t:ts(),s:'\ud83c\udff7 Private plate flagged — adviser to collect vehicle details'+(currentUser?' ['+currentUser.name+']':'')});
-  const from=j.stage;
-  if(from!=='contact'&&from!=='waiting'&&from!=='done'&&from!=='lost'){
-    j.stagePreWrongReg=from;
-    j.stage='contact';
-    j.stageAt=Date.now();
-    j.log.push({t:ts(),s:'\u2192 Auto-moved to Service Adviser from '+stg(from).label+' (private plate — details needed)'});
-  }
+  // stays at its stage (see flagWrongReg); the adviser is asked for the details
+  try{pushNotif('adviser','\ud83c\udff7 Private plate \u2014 '+(j.reg||'job'),'Get the vehicle details from the customer',{jobId:j.id,key:'privplate|'+j.id});}catch(e){}
   save(j);renderAll();renderDetail();
 }
 function setVehField(k,v){
@@ -16672,11 +16667,14 @@ function privatePlateDone(){
   const j=gj();if(!j)return;
   const miss=vehMissing(j);
   if(miss.length){alert('Still missing: '+miss.join(', ')+'\n\nGet these from the customer before sending it back.');return;}
-  const back=j.stagePreWrongReg||'labour';
-  j.stage=back;j.stageAt=Date.now();
-  j.stagePreWrongReg='';
   j.log=j.log||[];
-  j.log.push({t:ts(),s:'\u2192 Details complete, returned to '+stg(back).label+(currentUser?' ['+currentUser.name+']':'')});
+  // Only a job moved by the old private-plate flag goes back; otherwise it never left its stage
+  if(j.stagePreWrongReg&&['contact','contacted'].includes(j.stage)){
+    const back=j.stagePreWrongReg;
+    j.stage=back;j.stageAt=Date.now();
+    j.log.push({t:ts(),s:'\u2192 Details complete, returned to '+stg(back).label+(currentUser?' ['+currentUser.name+']':'')});
+  } else j.log.push({t:ts(),s:'\u2713 Vehicle details complete'+(currentUser?' ['+currentUser.name+']':'')});
+  j.stagePreWrongReg='';j.vehDetailsDone=true;
   save(j);renderAll();renderDetail();
 }
 function clearPrivatePlate(){
@@ -16712,15 +16710,12 @@ function flagWrongReg(){
   if(!note)return;
   j.wrongReg=note;
   j.log.push({t:ts(),s:'\u26a0 Wrong reg flagged: '+note+(currentUser?' ['+currentUser.name+']':'')});
-  // Auto-route to Service Adviser so the customer gets called.
-  // Bypasses the usual role check on purpose: this is a system move, not a manual one.
-  const from=j.stage;
-  if(from!=='contact'&&from!=='waiting'&&from!=='done'&&from!=='lost'){
-    j.stagePreWrongReg=from;
-    j.stage='contact';
-    j.stageAt=Date.now();
-    j.log.push({t:ts(),s:'\u2192 Auto-moved to Service Adviser from '+stg(from).label+' (wrong reg needs a call)'});
-  }
+  // 21 Nov 2026: the job stays where it is. It used to be moved to the old
+  // 'contact' stage, which every save turns into 7 · Contacted, so clearing
+  // the flag could never put it back and the autopilot chased it as a quote
+  // and eventually marked it lost. The red flag on the card and a
+  // notification to the Service Adviser ask for the call instead.
+  try{pushNotif('adviser','\ud83d\udcde Wrong reg \u2014 '+(j.reg||'job'),'Call the customer to check the reg: '+note,{jobId:j.id,key:'wrongreg|'+j.id});}catch(e){}
   save(j);renderAll();renderDetail();
 }
 
@@ -16729,7 +16724,7 @@ function clearWrongReg(){
   j.wrongReg='';
   j.log.push({t:ts(),s:'Wrong reg flag cleared'+(currentUser?' ['+currentUser.name+']':'')});
   // Send it back where it was before the auto-move, if it hasn't moved on since
-  if(j.stagePreWrongReg&&j.stage==='contact'){
+  if(j.stagePreWrongReg&&(j.stage==='contact'||j.stage==='contacted')){
     const back=j.stagePreWrongReg;
     j.stage=back;
     j.stageAt=Date.now();
@@ -17049,7 +17044,7 @@ function correctReg(){
   // The job was pulled out of the pipeline because the reg was wrong. Now
   // that we have a reg or VIN, put it back where it came from so the
   // estimators can carry on — leaving it with the adviser stalls it.
-  if(j.stage==='contact'&&!j.wrongReg&&!j.privatePlate){
+  if((j.stage==='contact'||(j.stage==='contacted'&&j.stagePreWrongReg))&&!j.wrongReg&&!j.privatePlate){
     const back=j.stagePreWrongReg||'intake';
     j.stage=back;
     j.stageAt=Date.now();
