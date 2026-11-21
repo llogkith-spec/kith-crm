@@ -1261,6 +1261,7 @@ function migrateJob(j){
     if(!j.log) j.log=[];
     cleanJob(j);
     if(!j.parts) j.parts=[];
+    try{ensurePartIds(j);}catch(e){}   // ids as soon as a job arrives, before anyone edits it
     if(j.work==null) j.work='';   // other apps write jobs too — a missing description must not break the lists
     if(!j.stage) j.stage='intake';
     return j;
@@ -1452,6 +1453,7 @@ function save(jobToSave){
     if(!window._sweepT)window._sweepT=setTimeout(()=>{window._sweepT=null;try{sweepAssign(true);}catch(e){}},2500);
   }
   j.updatedAt=new Date().toISOString();
+  try{ensurePartIds(j);}catch(e){}
   // merged with whatever the server has now, so nobody's work is lost
   queueJobSync(j);
 }
@@ -13879,11 +13881,25 @@ var PO_LISTS={
   msgOutbox: x=>(x.t||'')+'|'+(x.kind||'')+'|'+(x.to||'')
 };
 
+// ── PARTS MERGE PER PART (21 Nov 2026) ─────────────────────────────
+// The parts list used to be merged as one value, so when two screens edited
+// different parts of the same job at once (Parts tagging a PO number while
+// someone changed another part's price), the last save wiped the other's
+// change. Each part now has an id, and parts are merged one by one, field by
+// field. A part without an id gets one worked out from its place, name and
+// number, so two screens giving it an id at the same moment agree.
+function partPid(p,i){ return p&&p.pid?p.pid:('L'+i+':'+String((p&&p.name)||'').toLowerCase().trim()+'|'+String((p&&p.num)||'').trim()); }
+function withPids(list){ return Array.isArray(list)?list.map((p,i)=>(p&&typeof p==='object'&&!p.pid)?Object.assign({},p,{pid:partPid(p,i)}):p):list; }
+function ensurePartIds(j){ (j&&Array.isArray(j.parts)?j.parts:[]).forEach((p,i)=>{ if(p&&typeof p==='object'&&!p.pid)p.pid=partPid(p,i); }); }
 function mergeObj(b,m,t,lists){
   b=b||{};m=m||{};t=t||{};
   const out={};
   const keys=new Set([...Object.keys(b),...Object.keys(m),...Object.keys(t)]);
   keys.forEach(k=>{
+    if(lists&&lists===JOB_LISTS&&k==='parts'&&(Array.isArray(m[k])||Array.isArray(t[k]))){
+      out[k]=mergeList(withPids(b[k]),withPids(m[k]),withPids(t[k]),x=>x&&x.pid,(pb,pm,pt)=>mergeObj(pb,pm,pt));
+      return;
+    }
     if(lists&&lists[k]){ out[k]=mergeList(b[k],m[k],t[k],lists[k]); return; }
     const bs=JSON.stringify(b[k]), ms=JSON.stringify(m[k]);
     const v=(ms!==bs)?m[k]:t[k];      // I changed it: mine. Otherwise: theirs.
