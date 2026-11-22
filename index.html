@@ -14425,6 +14425,12 @@ function moveDupeContents(from,to){
 // when  : the fact that makes the move true
 // why   : what gets written in the job log
 const AUTO_RULES=[
+  // 22 Nov 2026 (Logan): MOT, tyre and fixed-price jobs don't wait for sign-off.
+  // Never moved by the general mover (when is false) \u2014 autoSignOffFixed()
+  // approves them the same way the Approve button does, so the quote is sent.
+  { id:'auto-signoff-fixed', from:'signoff', to:'contacted',
+    label:'Sign-off \u2192 approved and quote sent automatically for MOT-only, tyre-only and SOP fixed-price jobs (signed-in Logan or Joel)',
+    why:j=>'', when:j=>false },
   // 16 Nov 2026 — step 1 is the instant price range. A job on Intake moves
   // on by itself: to Price Range when the Brain can give an instant range,
   // otherwise straight to Labour Estimate (step 2). No estimator needed first.
@@ -14609,11 +14615,54 @@ function contactLaterDue(){
 // to Price Range again. Automatic moves now only run on a screen that is
 // being looked at and has pulled fresh data in the last minute.
 function dataFresh(){return !document.hidden&&window._freshMs&&(Date.now()-window._freshMs)<60*1000;}
+// ── AUTO SIGN-OFF (22 Nov 2026) ───────────────────────────────────
+// Which jobs are approved without waiting for Logan: an MOT on its own, tyres
+// on their own, or a job made only of fixed SOP prices (diagnostics, remaps,
+// health checks \u2026). Anything with hourly labour, other parts, bodywork,
+// two prices, unpriced asks, a declined quote or email-only customers still
+// waits for a person.
+function autoSignOffKind(j){
+  try{
+    if(!j||j.stage!=='signoff'||j.signedOff||j.mergedInto||j.twoPrice||j.autoHold)return '';
+    if(j.declined&&!j.declined.closed)return '';
+    if(!(parseFloat(j.quote)>0)||!String(j.phone||'').trim())return '';
+    if(sendPref(j)==='email')return '';
+    if(unpricedAsks(j).length)return '';
+    if(typeof isBodyJob==='function'&&isBodyJob(j))return '';
+    const lines=srtLines(j), parts=realParts(j);
+    const allFixed=lines.every(l=>l&&l.fixed);
+    if((j.motRouted||motOnlyJob(j))&&allFixed&&!parts.length)return 'MOT';
+    if(parts.length&&parts.every(p=>/\btyres?\b|\btires?\b/i.test(String(p.name||'')))&&allFixed&&!lines.some(l=>!l.fixed))return 'tyres';
+    if(lines.length&&allFixed&&!parts.length)return 'fixed price';
+  }catch(e){}
+  return '';
+}
+function autoSignOffFixed(){
+  // only a screen whose user may sign off does it, so it isn't done twice
+  if(!autoRuleOn('auto-signoff-fixed')||!canSignOff(currentUser))return 0;
+  let n=0;
+  jobs.forEach(j=>{
+    const kind=autoSignOffKind(j);if(!kind)return;
+    try{
+      const out=KITHBot.approveAndSend(j,'Auto sign-off ('+kind+')');
+      Object.keys(out.job).forEach(k=>{j[k]=out.job[k];});
+      j.autoSignedOff=kind;
+      if(!waAuto()){try{const L=j.log||[];for(let i=L.length-1;i>=Math.max(0,L.length-3);i--){
+        if(/quote sent to the customer/i.test(L[i].s||'')){L[i].s=String(L[i].s).replace(/quote sent to the customer[^\[]*/i,'to send to the customer on WhatsApp (by hand \u2014 not sent yet) ');break;}}}catch(e){}}
+      try{stampStage(j,'contacted');}catch(e){}
+      try{stageMoved(j,'signoff','contacted');}catch(e){}
+      save(j);n++;
+    }catch(e){console.warn('auto sign-off '+(j&&j.reg)+':',e.message);}
+  });
+  if(n)renderAll();
+  return n;
+}
 function autoPilot(){
   if(!dataFresh())return 0;
   try{if(contactLaterDue())renderAll();}catch(e){console.warn('later',e);}
   if(!AUTO_ON)return 0;
   try{autoCloseDoneElsewhere();}catch(e){console.warn('done-elsewhere',e);}
+  try{autoSignOffFixed();}catch(e){console.warn('auto-signoff',e);}
   try{fixLabelOnlyWork();}catch(e){console.warn('labelfix',e);}
   // Descriptions auto-written in v9.5 showed book time — rewrite with charged hours only
   try{jobs.forEach(j=>{if(j&&/h book/.test(String(j.labourDesc||''))&&/\nTotal: .*h book/.test(String(j.labourDesc||''))&&srtLines(j).length){j.labourDesc=labourDescFromLines(j);save(j);}});}catch(e){}
