@@ -1030,7 +1030,8 @@ function buildLoginGrid(){
   STAFF.forEach(s=>{
     const btn=document.createElement('button');
     btn.className='login-btn';
-    btn.innerHTML='<div class="li">'+s.icon+'</div><div class="ln">'+s.name+'</div>';
+    // names and icons can come from the kith_staff table: shown as text, never as page code
+    btn.innerHTML='<div class="li">'+escHtml(s.icon||'')+'</div><div class="ln">'+escHtml(s.name||'')+'</div>';
     btn.addEventListener('click',()=>showPinScreen(s));
     grid.appendChild(btn);
   });
@@ -2280,7 +2281,7 @@ function renderInbox(){
     return'<div style="display:flex;gap:6px;align-items:center;padding:5px 8px;margin-bottom:4px;border-left:3px solid '+col+';background:var(--surface2);border-radius:0 var(--rs) var(--rs) 0">'+
       '<div style="flex:1;min-width:0">'+
         '<div style="display:flex;gap:5px;align-items:center">'+
-          '<span style="font-family:monospace;font-weight:800;color:var(--gold);font-size:12px">'+d.reg+'</span>'+
+          '<span style="font-family:monospace;font-weight:800;color:var(--gold);font-size:12px">'+escHtml(d.reg||'')+'</span>'+
           '<span style="font-size:12px;font-weight:600">'+escHtml(d.name||'')+'</span>'+
           '<span style="font-size:10px;color:'+col+';font-weight:700">\u2713 '+stg(job.stage).label+'</span>'+
           (job.tmJob?'<span style="font-size:9px;color:var(--blue);font-weight:700">'+escHtml(job.tmJob)+'</span>':'')+
@@ -5585,12 +5586,12 @@ function renderList(){
   document.getElementById('list-body').innerHTML=list.map(j=>{
     const s=stg(j.stage);
     return'<tr onclick="openJob(\''+j.id+'\')">'+
-      '<td style="font-family:\'Courier New\',monospace;font-weight:800;color:var(--gold)">'+j.reg+'</td>'+
-      '<td>'+j.name+'<br><span style="font-size:11px;color:var(--dim)">'+j.phone+'</span></td>'+
+      '<td style="font-family:\'Courier New\',monospace;font-weight:800;color:var(--gold)">'+escHtml(j.reg||'')+'</td>'+
+      '<td>'+escHtml(j.name||'')+'<br><span style="font-size:11px;color:var(--dim)">'+escHtml(j.phone||'')+'</span></td>'+
       '<td style="font-size:12px">'+escHtml(vehDesc(j,false))+'</td>'+
       '<td><span class="badge '+s.badge+'">'+s.label+'</span></td>'+
       '<td style="font-family:\'Courier New\',monospace;font-size:12px;color:var(--blue)">'+(j.tmJob||'—')+'</td>'+
-      '<td style="font-size:12px;color:var(--dim);max-width:180px">'+j.work.slice(0,55)+(j.work.length>55?'…':'')+'</td>'+
+      '<td style="font-size:12px;color:var(--dim);max-width:180px">'+escHtml(String(j.work||'').slice(0,55))+(String(j.work||'').length>55?'…':'')+'</td>'+
       '<td><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();openJob(\''+j.id+'\')">Open</button></td>'+
     '</tr>';
   }).join('');

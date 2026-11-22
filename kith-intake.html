@@ -1554,8 +1554,8 @@ async function submitJob(){
   document.getElementById('scr-success').style.display='block';
   document.getElementById('suc-msg').innerHTML=
     '<strong style="font-family:monospace;font-size:18px">'+id+'</strong><br>'+
-    '<strong style="font-family:monospace">'+reg+'</strong> · '+job.name+'<br><br>'+
-    '<strong>'+(f.label||jt.n)+'</strong><br>'+work+'<br><br>'+
+    '<strong style="font-family:monospace">'+esc(reg)+'</strong> · '+esc(job.name)+'<br><br>'+
+    '<strong>'+esc(f.label||jt.n)+'</strong><br>'+esc(work)+'<br><br>'+
     (needsDiag?'<span style="color:var(--red)">🔍 Booked for a diagnostic first</span><br>':'')+
     (warrantyState&&warrantyState.verdict==='covered'?'<span style="color:var(--green)">✓ In warranty — no charge</span><br>':'')+
     (warrantyState&&(warrantyState.verdict==='expired'||warrantyState.verdict==='chargeable')?'<span style="color:var(--amber)">Chargeable — outside warranty</span><br>':'')+
