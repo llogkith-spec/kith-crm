@@ -66,7 +66,10 @@ function buildCustomers(sop: any): Record<string, any> {
       for (const t of (cc.tiers || [])) rates[t] = baseRates[t];
       out[key] = { rates, hasMed: (cc.tiers || []).includes("MED"), threshold: cc.threshold ?? 2.0, parts: "tiered", collapseMed: !!cc.collapseMed };
     } else {
-      const rates: Record<string, number> = { ALL: cc.labourRate };
+      // A rate the SOP gives "inc VAT" (warranty) is stored ex VAT here, because
+      // VAT is added to every total below.
+      const incVat = /inc(l|lusive)?\.?\s*vat/i.test(String(cc.note || ""));
+      const rates: Record<string, number> = { ALL: incVat ? cc.labourRate / 1.2 : cc.labourRate };
       if (cc.diagRate != null) rates.DIAG = cc.diagRate;
       if (cc.diagFixed != null) rates.DIAG = cc.diagFixed;
       out[key] = { rates, threshold: null, parts: "flat", flat: 1 + (cc.partsPct || 0), diagAuthMax: cc.diagAuthMax };
@@ -80,12 +83,14 @@ function tierFor(tier: string, c: string, customers: Record<string, any>) {
   if (cfg && cfg.collapseMed && tier === "MED") return "TOP";
   return tier;
 }
-function multiplierFor(hours: number, alwaysDouble: boolean, c: string, sop: any, customers: Record<string, any>) {
-  if (alwaysDouble) return (sop.multiplier?.normal?.lower) ?? 2.0;
+function multiplierFor(hours: number, alwaysDouble: boolean, c: string, sop: any, customers: Record<string, any>, ramp = false) {
+  // the ramp-exempt set (SOP multiplier.ramp) when the job is ramp-exempt, as engine.js does
+  const set = (ramp && sop.multiplier?.ramp) ? sop.multiplier.ramp : (sop.multiplier?.normal || {});
+  if (alwaysDouble) { const cfg0 = customers[c]; if (!cfg0 || cfg0.threshold === null) return 1.0; return set.lower ?? 2.0; }
   const cfg = customers[c];
   if (!cfg || cfg.threshold === null) return 1.0;
-  const lower = sop.multiplier?.normal?.lower ?? 2.0;
-  const upper = sop.multiplier?.normal?.upper ?? 1.5;
+  const lower = set.lower ?? 2.0;
+  const upper = set.upper ?? 1.5;
   return hours < cfg.threshold ? lower : upper;
 }
 function rateFor(tier: string, c: string, customers: Record<string, any>) {
@@ -97,10 +102,20 @@ function rateFor(tier: string, c: string, customers: Record<string, any>) {
   if (rate == null) throw new Error(`No rate for tier ${tier} on customer ${c}`);
   return rate;
 }
-function labourFor(hours: number, tier: string, alwaysDouble: boolean, c: string, sop: any, customers: Record<string, any>) {
+// Same order as engine.js labourLine(): the minimum applies to the BOOK hours
+// (not after the multiplier), bulbs / tyres / wipers have no minimum, and
+// the multiplier is chosen on the hours after the minimum. It used to apply
+// the minimum after the multiplier, so a 0.3h job came out at £42 instead
+// of £70 (and a 0.2h bulb at £35 instead of £28).
+function labourFor(hours: number, tier: string, alwaysDouble: boolean, c: string, sop: any, customers: Record<string, any>, jobKey = "", ramp = false) {
   if (!Number.isFinite(hours) || hours <= 0) return 0;
   const minHours = sop.minimums?.labourHours ?? 0.5;
-  return Math.max(hours * multiplierFor(hours, alwaysDouble, c, sop, customers), minHours) * rateFor(tier, c, customers);
+  const exempt: string[] = sop.minimums?.exemptCategories ?? ["bulb", "tyre", "wiper"];
+  const isBody = tier === "BODY";
+  const noMin = isBody || exempt.some((x) => String(jobKey).toLowerCase().includes(x));
+  const h = (!noMin && hours < minHours) ? minHours : hours;
+  const mult = isBody ? 1 : multiplierFor(h, alwaysDouble, c, sop, customers, ramp);
+  return h * mult * rateFor(tier, c, customers);
 }
 function partsFor(net: number, c: string, sop: any, customers: Record<string, any>) {
   const cfg = customers[c];
@@ -175,7 +190,7 @@ Give realistic UK garage estimates. Be conservative — err slightly high rather
 ${srtMisses.length > 0 ? `LABOUR HOURS NEEDED (SRT estimates for this vehicle):
 ${srtMisses.map(j => `- ${j.job_normalised}: ${j.job_label}`).join('\n')}` : ''}
 
-${partMisses.length > 0 ? `PARTS NET COSTS NEEDED (what a garage pays trade, inc VAT, for mid-market OE-equivalent brand — e.g. TRW, Bosch, Delphi — in £):
+${partMisses.length > 0 ? `PARTS NET COSTS NEEDED (what a garage pays trade, EXCLUDING VAT, for mid-market OE-equivalent brand — e.g. TRW, Bosch, Delphi — in £):
 ${partMisses.map(p => `- ${p.part_normalised}: ${p.part_label}`).join('\n')}` : ''}
 
 Return ONLY JSON, no fences:
@@ -266,7 +281,8 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
   const body = await req.json();
-  const { customer_type = "retail", vehicle = "", complaint, reg = "" } = body;
+  const { customer_type = "retail", vehicle = "", complaint, reg = "", ramp_exempt = false } = body;
+  const ramp = !!ramp_exempt;
   if (!complaint) return json({ error: "complaint required" }, 400);
 
   const caller = req.headers.get("x-caller") || "unknown";
@@ -416,7 +432,7 @@ Deno.serve(async (req) => {
   // ─── Step 4: apply SOP maths ────────────────────────────────────────────────
   for (const j of pricedJobs) {
     const labour = (j.srt_hours && j.srt_hours > 0)
-      ? labourFor(j.srt_hours, j._tier_raw, j._is_always_double, customer_type, sop, customers)
+      ? labourFor(j.srt_hours, j._tier_raw, j._is_always_double, customer_type, sop, customers, j.job_normalised || "", ramp)
       : 0;
 
     const partsCharge = j.parts_lines
