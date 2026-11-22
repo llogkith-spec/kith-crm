@@ -17393,6 +17393,21 @@ function setFilter(f,btn){
 }
 
 
+// The "\u2630 List" button in the top bar called toggleView(), which did not
+// exist, so it did nothing. It now switches between the board and the list.
+function toggleView(){
+  const vl=document.getElementById('v-list');
+  const listOn=!!(vl&&vl.style.display==='block');
+  const tog=document.getElementById('vtog');
+  if(listOn){
+    const all=Array.from(document.querySelectorAll('.tabs .tab')).find(b=>/All Jobs/.test(b.textContent));
+    setFilter('all',all||null);
+    if(tog)tog.textContent='\u2630 List';
+  }else{
+    setFilter('list',null);
+    if(tog)tog.textContent='\u25a6 Board';
+  }
+}
 function cx(id){
   const el=document.getElementById(id);
   if(el){el.classList.remove('open');}
