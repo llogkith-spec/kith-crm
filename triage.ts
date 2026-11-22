@@ -42,9 +42,14 @@ async function recentCorrections(): Promise<string> {
       .order("corrected_at", { ascending: false })
       .limit(20);
     if (!data || data.length === 0) return "";
-    const lines = data.map((c: any) =>
-      `- "${String(c.original_text).slice(0, 120)}" — AI said ${c.original_category}, actually ${c.corrected_category}`
+    // The corrections table can be written with the public key, so only rows
+    // whose categories look like category names are used, and the quoted text
+    // is stripped of quotes and line breaks so it can't pose as instructions.
+    const ok = (v: unknown) => /^[a-z_]{2,24}$/.test(String(v || ""));
+    const lines = data.filter((c: any) => ok(c.original_category) && ok(c.corrected_category)).map((c: any) =>
+      `- "${String(c.original_text).replace(/["\r\n]+/g, " ").slice(0, 120)}" — AI said ${c.original_category}, actually ${c.corrected_category}`
     );
+    if (!lines.length) return "";
     return `\n\nRECENT CORRECTIONS from the director — learn from these mistakes:\n${lines.join("\n")}`;
   } catch {
     return "";
@@ -132,8 +137,12 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
-  const body = await req.json();
-  const text = String(body.text || "").trim();
+  const len = Number(req.headers.get("content-length") || 0);
+  if (len > 30000) return json({ error: "too large" }, 413);
+  let body: any;
+  try { body = await req.json(); } catch { return json({ error: "invalid JSON" }, 400); }
+  // capped: every call goes to the AI, and anyone with the public key can call this
+  const text = String(body.text || "").trim().slice(0, 4000);
   if (!text) return json({ error: "text required" }, 400);
 
   const channel = body.channel || "unknown";
@@ -141,7 +150,8 @@ Deno.serve(async (req) => {
   const senderPhone = body.sender_phone || "";
   const contextHints = body.context_hints || "";
   const isKnownCustomer = !!body.is_known_customer;
-  const prevMessages = Array.isArray(body.prev_messages) ? body.prev_messages.slice(-3) : [];
+  const prevMessages = (Array.isArray(body.prev_messages) ? body.prev_messages.slice(-3) : [])
+    .map((m: any) => ({ dir: String(m && m.dir || "").slice(0, 10), text: String(m && m.text || "").slice(0, 1000) }));
 
   const corrections = await recentCorrections();
   const system = SYSTEM_PROMPT(corrections);

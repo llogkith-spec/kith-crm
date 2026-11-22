@@ -197,8 +197,18 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
+  // Anyone with the public key can call this, so keep requests small.
+  const len = Number(req.headers.get("content-length") || 0);
+  if (len > 20000) return json({ error: "too large" }, 413);
   let body: any;
   try { body = await req.json(); } catch { return json({ error: "invalid JSON" }, 400); }
+  if (!body || typeof body !== "object") return json({ error: "invalid JSON" }, 400);
+  // long fields are cut, not rejected, so a real customer's message still lands
+  const cap = (v: unknown, n: number) => String(v ?? "").slice(0, n);
+  for (const k of ["sender_name", "sender_phone", "sender_email", "sender_handle", "reg", "channel", "wa_message_id", "received_at"]) {
+    if (body[k] != null) body[k] = cap(body[k], 200);
+  }
+  if (body.message_text != null) body.message_text = cap(body.message_text, 4000);
 
   const rawChannel = String(body.channel || "").toLowerCase();
   const channel = CHANNELS.has(rawChannel) ? rawChannel : "other";
@@ -211,16 +221,12 @@ Deno.serve(async (req) => {
 
   try {
     const { lead, created } = await upsertLead(body, channel, msgAt);
-    return json({
-      ok: true,
-      created,
-      lead_id: lead.id,
-      channel,
-      lead_summary: {
-        name: lead.name, phone: lead.phone, email: lead.email, handle: lead.handle,
-        reg: lead.reg, what: lead.what, messages: (lead.messages || []).length
-      }
-    });
+    // 22 Nov 2026: the reply no longer carries the lead's name, phone, email,
+    // reg and request, or whether this person already had a lead: anyone could
+    // post a phone number and read back who it belonged to. The callers only
+    // use ok and lead_id.
+    void created;
+    return json({ ok: true, lead_id: lead.id, channel });
   } catch (e) {
     return json({ error: (e as Error).message }, 500);
   }

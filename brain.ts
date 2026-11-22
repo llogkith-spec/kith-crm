@@ -280,9 +280,16 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
-  const body = await req.json();
+  const len = Number(req.headers.get("content-length") || 0);
+  if (len > 20000) return json({ error: "too large" }, 413);
+  let body: any;
+  try { body = await req.json(); } catch { return json({ error: "invalid JSON" }, 400); }
   const { customer_type = "retail", vehicle = "", complaint, reg = "", ramp_exempt = false } = body;
   const ramp = !!ramp_exempt;
+  // Each call goes to the AI and costs money; anyone with the public key can
+  // call this, so the text sent on is capped.
+  if (typeof complaint !== "string" || complaint.length > 3000) return json({ error: "complaint must be text under 3000 characters" }, 413);
+  if (String(vehicle).length > 200 || String(reg).length > 20) return json({ error: "vehicle / reg too long" }, 413);
   if (!complaint) return json({ error: "complaint required" }, 400);
 
   const caller = req.headers.get("x-caller") || "unknown";
