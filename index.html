@@ -8371,7 +8371,7 @@ function actH(j){
         vehicleCheckH(j)+
         healthCheckH(j)+
         '<button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--amber);border-color:var(--amber)" onclick="holdForAuth(\''+j.id+'\')">\u23f8 Hold \u2014 needs customer authority</button>'+
-        '<button class="btn btn-gold btn-full" style="margin-top:8px" onclick="mv(\'done\',\'Work finished\')">\u2192 Work complete</button>';
+        '<button class="btn btn-gold btn-full" style="margin-top:8px" onclick="workComplete(\''+j.id+'\')">\u2192 Work complete \u2014 send to Accounts</button>';
             h+=jobDocsH(j);
       break;
     case 'done':
@@ -8381,7 +8381,7 @@ function actH(j){
         (j.referralCode?'<div style="font-size:11px;font-weight:400;margin-top:2px">Referral code <strong>'+escHtml(j.referralCode)+'</strong></div>':'')+
       '</div>'+
       tcH(j)+
-      '<button class="btn btn-gold btn-full" style="margin:10px 0 6px" onclick="mv(\'accounts\',\'Work complete \\u2014 passed to Accounts\')">\u2192 Send to Accounts</button>'+
+      '<button class="btn btn-gold btn-full" style="margin:10px 0 6px" onclick="workComplete(\''+j.id+'\')">\u2192 Send to Accounts</button>'+
       '<button class="btn btn-ghost btn-full" onclick="openFollowUp(\''+j.id+'\')">\u2b50 Review / referral follow-up</button>'+
       jobSheetH(j)+
       extraWorkH(j)+
@@ -16626,6 +16626,18 @@ function markReviewSent(id,withRef){
   save(j);
 }
 
+// 22 Nov 2026: "Work complete" goes straight to Accounts. It used to stop
+// at 17 \u00b7 Work Complete for someone to press "Send to Accounts", and
+// nothing in the normal flow recorded when the work finished (completedAt),
+// so the 7-day follow-up call never came due and Accounts dated the sale by
+// the booking instead of the day the work was done.
+function workComplete(id){
+  const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
+  curId=j.id;
+  if(!j.completedAt){j.completedAt=Date.now();j.completedBy=currentUser?currentUser.name:'';}
+  mv('accounts','\u2713 Work complete \u2014 passed to Accounts');
+  if(typeof toast==='function'&&j.stage==='accounts')toast('\u2713 '+(j.reg||'Job')+' complete \u2014 with Accounts for the invoice');
+}
 function markComplete(silent){
   const j=gj();if(!j)return;
   if(!silent){
