@@ -3773,6 +3773,9 @@ async function signOff(id){
   }catch(e){}
   if(!(parseFloat(j.quote)>0)){alert('Put the final quote in first.');return;}
   if(_signOffBusy)return;
+  try{const big=partsToEscalate(j);
+    if(big.length&&!confirm('\u26a0 '+big.map(p=>(p.name||'Part')+' \u2014 \u00a3'+(parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0).toFixed(2)+' net').join('\n')+
+      '\n\nOver \u00a32,000 net: the SOP has no markup band for this \u2014 it is your call. The quote has it at the top band (+30%).\n\nApprove at \u00a3'+(parseFloat(j.quote)||0).toFixed(2)+'?'))return;}catch(e){}
   const miss=unpricedAsks(j);
   if(miss.length&&!confirm('\u26a0 The customer asked for this, but it is not priced:\n\n'+miss.map(m=>'\u2022 '+m).join('\n')+'\n\nSend the quote without it anyway?'))return;
   // B2B diagnostics: no quote to send — straight on to booking
@@ -4662,7 +4665,7 @@ function advMaybeAuto(j){
 function _advSell(j,p,which){
   const c=which?_twoMoney(which==='md'?p.mdCost:p.afCost):(parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0);
   if(!(c>0))return 0;
-  return applyMarkup(c,p)*((parseFloat(p.qty)||0)||1)*(j.vatExempt?1:1.2);
+  return applyMarkup(c,p,j)*((parseFloat(p.qty)||0)||1)*(j.vatExempt?1:1.2);
 }
 function advNoteTxt(j){return [_advNoteTxt(j),unavailableNoteTxt(j)].filter(Boolean).join('\n\n');}
 function _advNoteTxt(j){
@@ -5869,8 +5872,8 @@ function twoPriceTotals(j){
   (j.parts||[]).forEach(p=>{
     const q=(parseFloat(p.qty)||0)||1;
     const m=_twoMoney(p.mdCost),a=_twoMoney(p.afCost);
-    if(m===null)out.mdMissing++;else mdParts+=applyMarkup(m,p)*q;
-    if(a===null)out.afMissing++;else afParts+=applyMarkup(a,p)*q;
+    if(m===null)out.mdMissing++;else mdParts+=applyMarkup(m,p,j)*q;
+    if(a===null)out.afMissing++;else afParts+=applyMarkup(a,p,j)*q;
   });
   const lab=parseFloat(j.labourCost)||0;
   out.md=Number(incVatTotal(j,mdParts+lab).toFixed(2));
@@ -7419,7 +7422,7 @@ function estDocData(j,opt){
     const oc=opt?_twoMoney(opt==='md'?p.mdCost:p.afCost):null;
     const cost=opt?(oc||0):(parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0);
     if(!(cost>0))return;
-    const q=partQty(p), unit=applyMarkup(partCostEach(p,cost),p);
+    const q=partQty(p), unit=applyMarkup(partCostEach(p,cost),p,j);
     const mot=/\bmot\b/i.test(String(p.name||''));
     // brand the customer is getting (manufacturer), never the shop we buy from
     const brand=String(p.brand||p.make||p.manufacturer||'').trim();
@@ -9209,7 +9212,7 @@ function jobMarginH(j){
   const best=p=>parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
   const parts=j.parts||[];
   let pCost=0,pSell=0;
-  parts.forEach(p=>{const q=(parseFloat(p.qty)||0)||1;const c=best(p);pCost+=c*q;pSell+=applyMarkup(c,p)*q;});
+  parts.forEach(p=>{const q=(parseFloat(p.qty)||0)||1;const c=best(p);pCost+=c*q;pSell+=applyMarkup(c,p,j)*q;});
   const lab=parseFloat(j.labourCost)||0;
   if(!pCost&&!lab)return'';
   const sell=pSell+lab, cost=pCost, gp=sell-cost;
@@ -9358,7 +9361,7 @@ function quoteDrift(j){
   let sell=0;
   j.parts.forEach(p=>{const q=(parseFloat(p.qty)||0)||1;
     const c=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
-    sell+=applyMarkup(c,p)*q;});
+    sell+=applyMarkup(c,p,j)*q;});
   const ex=sell+(parseFloat(j.labourCost)||0);
   const inc=incVatTotal(j,ex);
   const d=inc-(parseFloat(j.quote)||0);
@@ -9391,7 +9394,7 @@ function psH(j){
     '</div>'+
     j.parts.map(p=>{
       const cost=bestPrice(p);
-      const sell=applyMarkup(cost,p);
+      const sell=applyMarkup(cost,p,j);
       const qty=(parseFloat(p.qty)||0)||1;
       const sellIncVAT=vatExempt?sell:sell*1.20;
       const mk=markupLabel(p,cost,sell);
@@ -9415,7 +9418,7 @@ function psH(j){
     (pricedCount>0?
       (()=>{
         const totalCost=j.parts.reduce((s,p)=>s+bestPrice(p)*((parseFloat(p.qty)||0)||1),0);
-        const totalSell=j.parts.reduce((s,p)=>s+applyMarkup(bestPrice(p),p)*((parseFloat(p.qty)||0)||1),0);
+        const totalSell=j.parts.reduce((s,p)=>s+applyMarkup(bestPrice(p),p,j)*((parseFloat(p.qty)||0)||1),0);
         const totalInc=vatExempt?totalSell:totalSell*1.20;
         return'<div style="display:grid;grid-template-columns:2fr 60px 70px 70px 70px 80px;gap:4px;padding:6px 0;font-weight:700;border-top:2px solid var(--border)">'+
           '<div style="font-size:12px;color:var(--dim)">Total parts</div><div></div>'+
@@ -9673,13 +9676,41 @@ setInterval(() => loadLiveSop(true), 120000);
 // Realtime push for SOP changes is handled by the 2-min poll above; a future
 // refactor can swap in the supabase-js realtime subscription for instant push.
 
-function applyMarkup(costPrice,part){
+// 22 Nov 2026: the customer's parts terms from the SOP. AA schemes, warranty
+// companies and insurers get a flat % on cost, not the retail/trade ladder
+// (the estimator app and engine.js already did this; the CRM charged them the
+// ladder: an AA Smart part costing £100 went out at £130 instead of £115).
+const SOP_PARTS_PCT={aa_smart:0.15,aa_towin:0.20,aa_pgc:0.15,aa_fleet:0.15,warranty:0.15,insurance:0.10};
+function sopCustomerKey(j){
+  if(!j)return 'retail';
+  const t=String((typeof custTypeOf==='function'?custTypeOf(j):j.custType)||j.custType||'').toLowerCase();
+  if(/aa\s*fleet/.test(t))return 'aa_fleet';
+  if(/\bpgc\b|aa\s*pgc/.test(t))return 'aa_pgc';
+  if(/tow/.test(t)&&/\baa\b/.test(t))return 'aa_towin';
+  if(/^aa\b|aa\s*smart/.test(t)||(j.isAA&&!t))return 'aa_smart';
+  if(/warranty/.test(t))return 'warranty';
+  if(/insurance|insurer/.test(t))return 'insurance';
+  return 'retail';
+}
+function partsPctFor(j){
+  const k=sopCustomerKey(j);if(k==='retail')return null;
+  try{const c=KITH_SOP&&KITH_SOP.customers&&KITH_SOP.customers[k];if(c&&c.partsPct!=null&&isFinite(+c.partsPct))return +c.partsPct;}catch(e){}
+  return SOP_PARTS_PCT[k]!=null?SOP_PARTS_PCT[k]:null;
+}
+// Parts above this net cost have no band in the SOP: Logan prices them.
+function partsToEscalate(j){
+  const lim=(typeof KITH_SOP!=='undefined'&&KITH_SOP&&+KITH_SOP.partsEscalateAbove)||2000;
+  return (j&&j.parts||[]).filter(p=>{const c=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;return c>lim;});
+}
+function applyMarkup(costPrice,part,job){
   const c=parseFloat(costPrice)||0;
   if(c<=0) return 0;
   if(part&&typeof part==='object'&&part.noMarkup) return c; // switched off by hand
   if(part&&typeof part==='object'&&_isOilPart(part.name)) return c; // 18 Nov 2026: engine oil is entered already marked up
   if(isNoMarkup(part)&&!isFluid(part)) return c;            // tyres, MOT
   if(isBarrelFluid(part)) return c;                          // barrel oil: list price
+  const pct=job?partsPctFor(job):null;
+  if(pct!=null) return Math.round(c*(1+pct)*100)/100;       // AA / warranty / insurance terms
   return ladderSell(c);                                      // parts and bought-in fluids
 }
 function markupLabel(p,cost,sell){
@@ -14869,7 +14900,7 @@ function toggleVATExempt(exempt){
   const labourCost=parseFloat(j.labourCost)||0;
   const partsCost=(j.parts||[]).reduce((s,p)=>{
     const best=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
-    return s+applyMarkup(best,p)*((parseFloat(p.qty)||0)||1);
+    return s+applyMarkup(best,p,j)*((parseFloat(p.qty)||0)||1);
   },0);
   const addLabour=parseFloat(j.addLabourCost)||0;
   const addParts=parseFloat(j.addPartsCost)||0;
@@ -14895,7 +14926,7 @@ function finEditH(j,merged){
   // Parts team enters RAW cost - system applies markup to get sell price
   const partsCost=(j.parts||[]).reduce((s,p)=>{
     const best=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
-    return s+applyMarkup(best,p)*((parseFloat(p.qty)||0)||1);
+    return s+applyMarkup(best,p,j)*((parseFloat(p.qty)||0)||1);
   },0);
   const addLabour=parseFloat(j.addLabourCost)||0;
   const addParts=parseFloat(j.addPartsCost)||0;
@@ -14937,7 +14968,7 @@ function finEditH(j,merged){
         '</div>'+
         j.parts.map((p,pi)=>{
           const cost=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
-          const sell=applyMarkup(cost,p);
+          const sell=applyMarkup(cost,p,j);
           const qty=(parseFloat(p.qty)||0)||1;
           const markupPct=cost>0?Math.round((sell/cost-1)*100):0;
           const bestSup=p.supplier||p.supplier1||p.supplier2||p.supplier3||'';
@@ -17014,7 +17045,7 @@ function _reprice(j){
   (j.parts||[]).forEach(p=>{
     const q=partQty(p);
     const c=partCostEach(p,parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0);
-    raw+=c*q; sell+=applyMarkup(c,p)*q;
+    raw+=c*q; sell+=applyMarkup(c,p,j)*q;
   });
   const lab=parseFloat(j.labourCost)||0;
   const ex=sell+lab;
