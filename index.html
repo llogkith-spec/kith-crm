@@ -2966,10 +2966,15 @@ async function approveEstimate(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
   if(twoPriceOpen(j)){
     const t=twoPriceTotals(j);
-    const A='Main dealer parts \u2014 '+_gbp(t.md), B='Non-main-dealer parts \u2014 '+_gbp(t.af);
-    const pr=await pickSheet({title:'Which price did the customer pick?',options:[A,B]});
+    // an option with parts not priced yet would come out as labour only, so it can't be picked
+    const opts=[];
+    if(!t.mdMissing)opts.push({k:'md',l:'Main dealer parts \u2014 '+_gbp(t.md)});
+    if(!t.afMissing)opts.push({k:'af',l:'Non-main-dealer parts \u2014 '+_gbp(t.af)});
+    if(!opts.length){alert('\u26d4 Neither price is complete yet \u2014 '+(t.mdMissing+t.afMissing)+' part price'+((t.mdMissing+t.afMissing)===1?' is':'s are')+' missing.\n\nAsk Parts to finish both prices first.');return;}
+    const miss=t.mdMissing?'Main dealer price not complete ('+t.mdMissing+' part'+(t.mdMissing===1?'':'s')+' not priced)':t.afMissing?'Non-main-dealer price not complete ('+t.afMissing+' part'+(t.afMissing===1?'':'s')+' not priced)':'';
+    const pr=await pickSheet({title:'Which price did the customer pick?',sub:miss,options:opts.map(o=>o.l)});
     if(!pr)return;
-    applyTwoChoice(j,pr.choice===A?'md':'af');
+    applyTwoChoice(j,(opts.find(o=>o.l===pr.choice)||opts[0]).k);
   }
   const amt=parseFloat(j.quote)||0;
   // 22 Nov 2026: one step. Tap how they said yes (their name is already
