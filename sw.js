@@ -19,7 +19,14 @@ self.addEventListener('push', e => {
 
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  const url = new URL((e.notification.data && e.notification.data.url) || './', self.registration.scope).href;
+  // Only open pages of this site. A ping's url comes from a table anyone with
+  // the public key can write to, so an outside address (e.g. a fake PIN page)
+  // is replaced with the CRM's own front page.
+  let url = new URL('./', self.registration.scope).href;
+  try {
+    const want = new URL((e.notification.data && e.notification.data.url) || './', self.registration.scope);
+    if (want.origin === self.location.origin && want.href.indexOf(self.registration.scope) === 0) url = want.href;
+  } catch (x) {}
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
     for (const c of list) {
       if (c.url.split('?')[0] === url.split('?')[0] && 'focus' in c) {
