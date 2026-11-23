@@ -484,7 +484,15 @@ var CRM_CUST={retail:'Retail',business:'',warranty:'Warranty',
 var CLOSED_STAGES=['archived','lost','done','accounts','receivable','review','followup'];
 function sbHdr(extra){var h={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY};
   for(var k in (extra||{}))h[k]=extra[k];return h;}
-function newJobId(){return 'J'+Date.now().toString().slice(-6);}
+// J + date (YYMMDD) + 5 random letters/digits, the same as the CRM's nid().
+// The old 'J' + last 6 clock digits repeated every 16.7 minutes.
+function newJobId(){
+  var A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',d=new Date(),r='';
+  var ymd=String(d.getFullYear()%100).padStart(2,'0')+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');
+  try{crypto.getRandomValues(new Uint8Array(5)).forEach(function(b){r+=A[b%32];});}
+  catch(e){for(var i=0;i<5;i++)r+=A[Math.floor(Math.random()*32)];}
+  return 'J'+ymd+r;
+}
 function newIntakeKey(){return 'IK'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
 var AI={url:localStorage.getItem('kith_ai_url')||'',secret:localStorage.getItem('kith_ai_secret')||''};
 var triageResult=null;
@@ -1585,7 +1593,7 @@ async function pushJob(job){
     var rows=await g.json();var there=rows[0]&&rows[0].data;
     if(there&&there.intakeKey&&there.intakeKey===job.intakeKey)return true;
     var was=job.id;
-    job.id='J'+String((parseInt(was.slice(1),10)+1+Math.floor(Math.random()*997))%1000000).padStart(6,'0');
+    job.id=newJobId();
     (job.log=job.log||[]).push({t:new Date().toLocaleString('en-GB'),s:'Job number '+was+' was already taken — filed as '+job.id});
   }
   return false;
