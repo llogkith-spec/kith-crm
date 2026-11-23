@@ -142,7 +142,7 @@ KITH SERVICE DEFINITIONS (follow exactly — 18 Nov 2026):
 
 TURBO: a turbocharger replacement ALWAYS comes with an oil and filter change — list it as its own job ("Oil and filter change", tier LOW) with engine oil, oil filter and sump plug washer.
 
-BODYWORK: bodywork is NEVER hours. It is priced per panel from the SOP (inc VAT), so for any paint / respray / dent / scratch / scuff / blend job give ONE job per panel, named by the panel ("Rear bumper respray", "Nearside rear door dent and paint", "Rear panel repaint"), tier "BODY", srt_hours 0. Never invent SRT hours for bodywork.
+BODYWORK: bodywork is NEVER hours. It is priced per panel from the SOP (ex VAT), so for any paint / respray / dent / scratch / scuff / blend job give ONE job per panel, named by the panel ("Rear bumper respray", "Nearside rear door dent and paint", "Rear panel repaint"), tier "BODY", srt_hours 0. Never invent SRT hours for bodywork.
 BRAKES: never split a brake job into left and right. Pads, discs and shoes are one job per axle ("Rear brake pads replacement"), never "rear left" + "rear right".
 
 For each job, also list the main parts needed with normalised keys (e.g. front_brake_pads, front_brake_discs). The brain will look up prices separately.

@@ -418,7 +418,7 @@ function renderFixed(){
   const fixed = [
     { title:'MOT (outside VAT)', obj: SOP.mot, prefix:'Class ' },
     { title:'Diagnostics (ex VAT)', obj: SOP.diagnostics },
-    { title:'Remaps & tuning (inc VAT)', obj: SOP.tuning },
+    { title:'Remaps & tuning (ex VAT \u2014 VAT is added on the quote)', obj: SOP.tuning },
   ];
   let html = fixed.map(f => {
     const rows = Object.keys(f.obj).map(k => {

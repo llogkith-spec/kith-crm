@@ -11962,9 +11962,12 @@ function brainFixBody(j){
   // 16 Nov 2026 (Logan): every panel at its full SOP price — no multi-panel discount
   painted.sort((a,b)=>b.panelPrice-a.panelPrice).forEach((bj,ix)=>{
     const p=bj.panelPrice;
-    const inc=Math.round((p+bj.dentPrice+bj.blendPrice)*100)/100;bj.labour_ex_vat=bodyExVat(inc);
+    // 23 Nov 2026 (Logan): SOP panel, dent and blend prices are EX VAT, as in the
+    // estimator app and engine.js. They used to be read as inc VAT here (÷1.2), so
+    // a £320 bumper came out at £320 to the customer instead of £384.
+    const ex=Math.round((p+bj.dentPrice+bj.blendPrice)*100)/100;bj.labour_ex_vat=ex;
     bj.srt_source=bj.bodyPanel+' ('+cat+') £'+p.toFixed(2)+(E.base[bj.bodyPanel]==null?' (not on the SOP panel list — check the price)':'')+(old?' · 25% off, over 10 years old':'')+
-      (bj.dentPrice?' + dent straightening £'+bj.dentPrice:'')+(bj.blendPrice?' + blend £'+bj.blendPrice:'')+' = £'+inc.toFixed(2)+' inc VAT → £'+bj.labour_ex_vat.toFixed(2)+' ex VAT — SOP panel price, not hours';
+      (bj.dentPrice?' + dent straightening £'+bj.dentPrice:'')+(bj.blendPrice?' + blend £'+bj.blendPrice:'')+' = £'+ex.toFixed(2)+' ex VAT (£'+(ex*1.2).toFixed(2)+' inc VAT) — SOP panel price, not hours';
   });
   return ch;
 }
@@ -12126,7 +12129,7 @@ function bodyAIFromDamage(j){
   }).sort((a,b)=>b.price-a.price);
   priced.forEach((p,ix)=>{
     const paint=p.price;  // 16 Nov: every panel at its full SOP price (Logan) — no multi-panel 20% off
-    const inc=Math.round((paint+p.dent+p.blend)*100)/100, tot=bodyExVat(inc);
+    const tot=Math.round((paint+p.dent+p.blend)*100)/100, inc=Math.round(tot*1.2*100)/100;   // SOP prices are ex VAT
     jobsOut.push({job_label:(p.d.label||p.panel)+' — '+(p.d.type==='dent'?'dent repair, prep and paint full panel':'prep and paint full panel'),job_normalised:'body_'+(p.d.panel||ix),
       srt_hours:0,labour_ex_vat:tot,tier:'BODY',fixedBody:true,fromDamage:true,bodyPanel:p.panel,
       srt_source:'Full panel: '+p.panel+' ('+cat+') £'+paint.toFixed(2)+(p.d.type?'':' · damage type not marked, priced as full panel paint')+(old?' · 25% off, over 10 years old':'')+
@@ -12172,7 +12175,7 @@ function brainAddLineH(j){
       '</span>'+
       '<button class="btn btn-gold btn-xs" onclick="brainAddLine(\''+j.id+'\')">Add</button>'+
     '</div>'+
-    '<div id="bal-st-'+j.id+'" style="font-size:10px;color:var(--faint);margin-top:4px">Panels are priced from the SOP (inc VAT \u2192 ex VAT on the job). For Other, leave the price blank and the Brain works out the labour and parts (e.g. \u201cheadlight replacement\u201d).</div>'+
+    '<div id="bal-st-'+j.id+'" style="font-size:10px;color:var(--faint);margin-top:4px">Panels are priced from the SOP (ex VAT; VAT is added on the quote). For Other, leave the price blank and the Brain works out the labour and parts (e.g. \u201cheadlight replacement\u201d).</div>'+
   '</details>';
 }
 var BRAIN_ADD_OPEN={};
@@ -12220,7 +12223,7 @@ function brainAddLine(id){
     const E=bodyEng(),cat=BODY_CAT[j.bodySize]||'5-seater',up=E.uplift[cat]||0,old=vehAgeYears(j)>10;
     let price=(E.base[panel]!=null?E.base[panel]:300)+up;if(old)price=Math.round(price*0.75*100)/100;
     const w=v('bal-work'),dent=w==='paint'?0:(DENT_BY_MARK[w]||150),blend=v('bal-blend')?50:0;
-    const inc=Math.round((price+dent+blend)*100)/100,tot=bodyExVat(inc);
+    const tot=Math.round((price+dent+blend)*100)/100,inc=Math.round(tot*1.2*100)/100;   // SOP prices are ex VAT
     const side=v('bal-side'),name=(side?side+' ':'')+panel.replace(/\s*\(each\)/,'').toLowerCase();
     line={job_label:name.charAt(0).toUpperCase()+name.slice(1)+' \u2014 '+(dent?'dent repair, prep and paint full panel':'prep and paint full panel'),job_normalised:'body_manual',
       srt_hours:0,labour_ex_vat:tot,tier:'BODY',fixedBody:true,fromDamage:true,manual:true,bodyPanel:panel,
