@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v22.8 \u00b7 23 Nov';
+const BUILD='v22.9 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -5826,7 +5826,7 @@ function renderPipeline(){
   if(q&&!total)h+='<div style="padding:20px;text-align:center;color:var(--faint)">No jobs match “'+escHtml(q)+'”</div>';
   vp.innerHTML=h;
 }
-function openJob(id){try{const _j=jobs.find(x=>x.id===id);if(_j){let c=mergeSidesForJob(_j);try{if(adblueFromIntake(_j))c=true;}catch(e){}if(discountFromIntake(_j))c=true;if(syncQuoteToEstimate(_j))c=true;if(serviceTidyParts(_j))c=true;if(oilPartsTidy(_j))c=true;if(brainFixService(_j))c=true;if(c)save(_j);}}catch(e){}curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
+function openJob(id){try{const _j=jobs.find(x=>x.id===id);if(_j){let c=mergeSidesForJob(_j);try{if(adblueFromIntake(_j))c=true;}catch(e){}if(discountFromIntake(_j))c=true;if(syncQuoteToEstimate(_j))c=true;if(serviceTidyParts(_j))c=true;if(oilPartsTidy(_j))c=true;if(brainFixService(_j))c=true;try{if(diagLinesDedupe(_j))c=true;}catch(e){}if(c)save(_j);}}catch(e){}curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
 
 // Redraw even if something still has focus. Only ever called straight
 // after a stage change, when there is nothing half-typed to protect.
@@ -11843,14 +11843,16 @@ function brainFixDiag(j){
   // 21 Nov 2026: ONE diagnostic per job. "Test drive and diagnosis" and
   // "selector inspection" are the same diagnostic — charge the dearest once,
   // the rest are included in it.
-  const ds=ai.jobs.filter(b=>b.fixedDiag&&!b.excluded&&!b.labourManual&&_brainCustType(j)!=='trade');
+  const ds=ai.jobs.filter(b=>b.fixedDiag&&!b.excluded&&!b.labourManual);
+  const _b2b=_brainCustType(j)==='trade';
+  const _dp=b=>_b2b?0:(parseFloat(T[b.diagTier])||60);
   if(ds.length>1){
     const keep=ds.reduce((a,b)=>(parseFloat(T[b.diagTier])||0)>(parseFloat(T[a.diagTier])||0)?b:a,ds[0]);
     ds.forEach(b=>{
-      if(b===keep){if(b.diagIncluded){delete b.diagIncluded;b.labour_ex_vat=parseFloat(T[b.diagTier])||60;ch=true;}return;}
+      if(b===keep){if(b.diagIncluded){delete b.diagIncluded;b.labour_ex_vat=_dp(b);ch=true;}return;}
       if(!b.diagIncluded||b.labour_ex_vat){b.diagIncluded=true;b.labour_ex_vat=0;b.srt_source='Included in the diagnostic above \u2014 no extra charge';ch=true;}
     });
-  } else ds.forEach(b=>{if(b.diagIncluded){delete b.diagIncluded;b.labour_ex_vat=parseFloat(T[b.diagTier])||60;ch=true;}});
+  } else ds.forEach(b=>{if(b.diagIncluded){delete b.diagIncluded;b.labour_ex_vat=_dp(b);ch=true;}});
   return ch;
 }
 function brainSetDiagTier(id,i,tier){
@@ -12060,7 +12062,9 @@ const SERVICE_SPEC={
   major:['engine oil','oil filter','sump plug washer','air filter','cabin filter']
 };
 function serviceLevel(j){
-  const t=String(brainComplaint(j)||'')+' '+String(j.labourDesc||'');
+  let t=String(brainComplaint(j)||'')+' '+String(j.labourDesc||'');
+  try{(j.brainAI&&j.brainAI.jobs||[]).forEach(b=>{if(!b.excluded)t+=' '+String(b.job_label||'');});}catch(e){}
+  try{srtLines(j).forEach(l=>{t+=' '+String(l.op||'');});}catch(e){}
   if(/major service/i.test(t))return 'major';
   if(/full service/i.test(t))return 'full';
   if(/interim service|basic service|oil (and|&) filter/i.test(t))return 'interim';
@@ -12103,9 +12107,22 @@ function _svcWrong(j,key,lvl){
   return '';
 }
 // parts nobody has priced yet that a service should not have
+// 23 Nov 2026: one diagnostic line on the labour breakdown — a second £0 copy is removed
+function diagLinesDedupe(j){
+  const L=srtLines(j);if(L.length<2)return false;
+  if(!['intake','range','labour','parts','signoff'].includes(j.stage))return false;
+  const isD=l=>l&&l.fixed&&/diagnos/i.test(String(l.op||''));
+  const d=L.filter(isD);if(d.length<2)return false;
+  const keep=d.reduce((a,b)=>(parseFloat(b.labour)||0)>(parseFloat(a.labour)||0)?b:a,d[0]);
+  const drop=d.filter(l=>l!==keep&&!(parseFloat(l.labour)>0));if(!drop.length)return false;
+  j.srtLines=L.filter(l=>!drop.includes(l));syncSrtTotals(j);
+  try{if(labourDescReplaceable(j))j.labourDesc=labourDescFromLines(j);}catch(e){}
+  j.log=j.log||[];j.log.push({t:ts(),s:'\ud83e\uddf9 Duplicate diagnostic line removed (one diagnostic per job)'});
+  return true;
+}
 function serviceTidyParts(j){
   if(!j||!Array.isArray(j.parts)||!j.parts.length)return false;
-  if(!['intake','range','labour','parts','signoff'].includes(j.stage)||j.signedOff)return false;
+  if(!['intake','range','labour','parts','signoff'].includes(j.stage)||(j.signedOff&&j.stage==='signoff'))return false;
   const lvl=serviceLevel(j);
   const priced=p=>['price1','price2','price3','supplier1','supplier2','supplier3','po','poId','partNo','num'].some(k=>p[k]!=null&&String(p[k]).trim()!==''&&String(p[k])!=='0');
   const gone=[],seen={};
@@ -12797,7 +12814,7 @@ function _isOilJob(l){return /oil (and|&) filter|oil change|oil service|(interim
 // no part named after a job ("Oil and filter change"), turbo gasket listed once
 function oilPartsTidy(j){
   if(!j||!Array.isArray(j.parts)||!j.parts.length)return false;
-  if(!['intake','range','labour','parts','signoff'].includes(j.stage)||j.signedOff)return false;
+  if(!['intake','range','labour','parts','signoff'].includes(j.stage)||(j.signedOff&&j.stage==='signoff'))return false;
   const priced=p=>['price1','price2','price3','supplier1','supplier2','supplier3','po','poId','partNo','num'].some(k=>p[k]!=null&&String(p[k]).trim()!==''&&String(p[k])!=='0');
   const ai=j.brainAI&&Array.isArray(j.brainAI.jobs)?j.brainAI.jobs.filter(b=>!b.excluded):[];
   const oilJob=ai.find(b=>_isOilJob(b.job_label));
@@ -12843,6 +12860,12 @@ function brainAutoParts(j){
   const have=()=>j.parts.map(p=>_pkey(p.name)).filter(Boolean);
   let n=0;const added=[];
   const add=(name,qty,why,extra)=>{
+    // 23 Nov 2026 (Logan): the car's fuel is known (DVLA) — no "(if petrol)" guesses,
+    // and a service only gets what the SOP says it contains
+    const fuel=partsFuel(j);
+    const m=String(name).match(/\(\s*if\s+(petrol|diesel)\s*\)/i);
+    if(m){if(fuel&&!new RegExp(m[1],'i').test(fuel))return;name=String(name).replace(m[0],'').replace(/\s+$/,'');}
+    try{const key=_svcPartKey(name);if(key&&_svcWrong(j,key,serviceLevel(j)))return;}catch(e){}
     const k=_pkey(name);if(!k)return;
     const ks=k.replace(/s\b/g,'');if(have().some(h=>{const hs=h.replace(/s\b/g,'');return hs===ks||(extra&&extra.rule&&hs.includes(ks));}))return;
     j.parts.push(Object.assign({name:name,num:'',qty:qty||1,price1:'',price2:'',price3:'',supplier1:'',supplier2:'',supplier3:'',eta1:'',eta2:'',eta3:'',status:'pending',fromBrain:true,brainWhy:why},extra||{}));
@@ -12860,6 +12883,7 @@ function brainAutoParts(j){
   });
   j.brainPartsAutoAt=ts();
   try{oilPartsTidy(j);}catch(e){}
+  try{serviceTidyParts(j);}catch(e){}
   if(n){
     j.brainPartsAppliedAt=j.brainPartsAppliedAt||ts();  // parts stage won't add them twice
     j.log=j.log||[];
@@ -12877,7 +12901,7 @@ window.brainAutoPartsNow=function(id){
 window.brainApplyToJob = function(jobId){
   const j = _brainJob(jobId); if(!j||!j.brainAI)return;
   try{brainFixTyres(j);brainFixDiag(j);brainFixSop(j);brainMergeSides(j);brainFixService(j);brainTurboOil(j);brainPairRule(j);brainRecalcAll(j);brainFixAlloy(j);brainFixBody(j);brainApplyLessons(j);}catch(e){}
-  const inc = j.brainAI.jobs.filter(b=>!b.excluded);
+  const inc = j.brainAI.jobs.filter(b=>!b.excluded&&!(b.fixedDiag&&b.diagIncluded&&!(parseFloat(b.labour_ex_vat)>0)));
   const totSrt = inc.reduce((s,b)=>s+(parseFloat(b.srt_hours)||0),0);
   const totLabour = inc.reduce((s,b)=>s+(parseFloat(b.labour_ex_vat)||0),0);
   // 16 Nov 2026: book time (SRT) and hours CHARGED are different — the
@@ -17062,7 +17086,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1500';
+const CRM_BUILD='2026-11-23-1520';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
