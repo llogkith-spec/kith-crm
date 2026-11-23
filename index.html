@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v23.0 \u00b7 23 Nov';
+const BUILD='v23.1 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -17086,7 +17086,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1530';
+const CRM_BUILD='2026-11-23-1540';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -17989,7 +17989,80 @@ function unavailableNoteTxt(j){
   const u=(j&&j.partsUnavailable)||[];if(!u.length)return '';
   return u.map(p=>'Not included: '+String(p.name||'a part').replace(/\s*[—-]\s*\d.*$/,'')+' — we cannot get this part ('+p.unavailableWhy+'), so it and the labour to fit it are not in this estimate.').join('\n');
 }
+// ── OIL, LUBRICANTS & CONSUMABLES FROM THE SOP PRICE LIST (23 Nov 2026, Logan) ──
+// The SOP fluids list IS the selling price (no markup). Matching lines show as
+// tap-to-fill buttons on the part; a clear single match fills itself.
+function fluidList(){
+  let f=null;try{f=KITH_SOP&&KITH_SOP.fluids;}catch(e){}
+  if(!f||!Object.keys(f).length){try{f=FLUIDS;}catch(e){f={};}}
+  return f||{};
+}
+const _FL_BRANDS=['Castrol','Mobil','Shell','Total','Comma','Millers','Fuchs','Liqui Moly','Motul','Elf','Valvoline','Petronas','Cataclean',"Wynn's",'WD-40','Prestone','Bluechem','Bosch'];
+function _flBrand(k){const t=String(k);const b=_FL_BRANDS.find(x=>t.toLowerCase().startsWith(x.toLowerCase()));return b||'';}
+function _flGrade(s){const m=String(s||'').match(/\b(\d{1,2})\s?w[-\s]?(\d{2})(\s?(c\d|ll|vw\s?\d+|ac))?/i);return m?(m[1]+'W-'+m[2]+(m[4]?' '+m[4].toUpperCase():'')):'';}
+function fluidMatches(p){
+  const n=String(p&&p.name||'').toLowerCase(), L=fluidList(), keys=Object.keys(L);
+  const has=rx=>keys.filter(k=>rx.test(k.toLowerCase()));
+  let out=[];
+  if(_isOilPart(p.name)){
+    out=keys.filter(k=>(/\boil\b/i.test(k)||_flGrade(k))&&!/transmission|pas|gear/i.test(k));
+    const g=(_flGrade(p.oilGrade)||_flGrade(n)).toLowerCase().replace(/\s+/g,'');
+    if(g){const gg=g.replace(/-/g,'');out.sort((a,b)=>{const x=a.toLowerCase().replace(/[\s-]/g,''),y=b.toLowerCase().replace(/[\s-]/g,'');return (y.includes(gg)?1:0)-(x.includes(gg)?1:0);});}
+  }
+  else if(/brake.*fluid|clutch fluid|dot ?4/.test(n))out=has(/brake.*fluid|clutch fluid/);
+  else if(/brake clean/.test(n))out=has(/brake clean/);
+  else if(/coolant|antifreeze/.test(n))out=has(/coolant|antifreeze/);
+  else if(/screen ?wash|washer fluid/.test(n))out=has(/screen ?wash/);
+  else if(/ad ?blue/.test(n))out=has(/ad ?blue/);
+  else if(/gear ?oil|gearbox oil|transmission|atf|power steering|pas fluid/.test(n))out=has(/transmission|pas|gear|atf/);
+  else if(/dpf.*clean|cataclean/.test(n))out=has(/dpf|cataclean/);
+  else if(/wd-?40|lubricant|grease|copper slip/.test(n))out=has(/wd-?40|lubric|grease|copper/);
+  else if(/wiper/.test(n))out=has(/wiper/).sort((a,b)=>((/rear/.test(n)===/rear/i.test(b))?1:0)-((/rear/.test(n)===/rear/i.test(a))?1:0));
+  else if(/\bbulbs?\b/.test(n))out=has(/bulb/);
+  return out.slice(0,6);
+}
+function fluidAutoFill(j){
+  let ch=false;
+  (j.parts||[]).forEach((p,i)=>{
+    if(p.price1||p.price2||p.price3||p.fluidPicked)return;
+    const m=fluidMatches(p);if(!m.length)return;
+    if(_isOilPart(p.name)){const g=(_flGrade(p.oilGrade)||_flGrade(p.name)).replace(/[\s-]/g,'').toLowerCase();
+      if(!g||!m[0].toLowerCase().replace(/[\s-]/g,'').includes(g))return;}   // grade not known — the parts person picks
+    else if(m.length!==1)return;
+    _fluidApply(p,m[0]);p.fluidAuto=true;ch=true;
+  });
+  return ch;
+}
+function _fluidApply(p,key){
+  const price=parseFloat(fluidList()[key])||0;
+  p.supplier1='KITH stock';p.price1=price;p.eta1='In stock';
+  const b=_flBrand(key);if(b){p.brand1=b;p.brand=b;}
+  if(_isOilPart(p.name)){p.unit='L';const g=_flGrade(key);if(g&&!p.oilGrade)p.oilGrade=g;if(!b&&!p.brand)p.brand=key.replace(/\s*\(.*\)\s*$/,'');}
+  else p.stockStatus='stock';                 // barrel / shelf: the list figure is the sell price
+  p.chosenSupplier=1;p.supplier='KITH stock';p.price=price;p.eta='In stock';
+  p.fluidPicked=key;
+}
+function fluidPick(i,k){
+  try{autoSaveParts();}catch(e){}
+  const j=gj();if(!j||!j.parts[i])return;
+  const key=Object.keys(fluidList())[k];if(!key)return;
+  _fluidApply(j.parts[i],key);delete j.parts[i].fluidAuto;
+  j.log=j.log||[];j.log.push({t:ts(),s:'\ud83d\udee2 '+(j.parts[i].name||'Part')+' priced from the SOP list: '+key+' \u00a3'+(+j.parts[i].price1).toFixed(2)+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);const el=document.getElementById('parts-price-list');if(el)el.innerHTML=renderPartsPriceList(j);
+}
+function fluidPickH(p,i){
+  const m=fluidMatches(p);if(!m.length)return '';
+  const L=fluidList(),keys=Object.keys(L),oil=_isOilPart(p.name);
+  return '<div style="background:rgba(201,168,76,.08);border:1px solid var(--gold);border-radius:var(--rs);padding:8px 10px;margin-bottom:8px">'+
+    '<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:5px">\ud83d\udccb KITH price list \u2014 our selling price'+(oil?' per litre':'')+', no markup. Tap to fill:</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">'+m.map(k=>{const on=p.fluidPicked===k;
+      return '<button class="btn btn-sm '+(on?'btn-gold':'btn-ghost')+'" onclick="fluidPick('+i+','+keys.indexOf(k)+')">'+(on?'\u2713 ':'')+escHtml(k)+' \u00b7 \u00a3'+(+L[k]).toFixed(2)+'</button>';}).join('')+'</div>'+
+    (p.fluidAuto?'<div style="font-size:10px;color:var(--faint);margin-top:4px">Filled in from the list automatically \u2014 tap another to change, or type a supplier price below.</div>':'')+
+    '<div style="font-size:10px;color:var(--faint);margin-top:4px">Not in stock / different brand? Leave this and price it from a supplier as normal (it\u2019s then marked up).</div>'+
+  '</div>';
+}
 function renderPartsPriceList(j){
+  try{if(fluidAutoFill(j))save(j);}catch(e){}
   if(!j.parts||!j.parts.length) return partsUnavailableH(j)+'<div class="notice n-blue" style="margin-bottom:8px">No parts listed by estimator — tap + Add Part below to add parts to price.</div>';
   return partsUnavailableH(j)+j.parts.map((p,i)=>
     '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:10px 12px;margin-bottom:12px">'+
@@ -18017,13 +18090,14 @@ function renderPartsPriceList(j){
           '<div style="font-size:10px;color:var(--faint);margin-top:2px">Goes on the PO and the job sheet, so goods-in can check it off.</div>'+
         '</div>'+
       '</div>'+
+      fluidPickH(p,i)+
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">'+
         [1,2,3].map(n=>
           '<div style="background:var(--surface3);border-radius:var(--rs);padding:8px 10px">'+
             '<div style="font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Supplier '+n+'</div>'+
             '<select class="fsel" id="pp-sup'+n+'-'+i+'" style="margin-bottom:5px;font-size:12px">'+
               '<option value="">— Select —</option>'+
-              SUPPLIERS.map(s=>'<option'+(p['supplier'+n]===s?' selected':'')+'>'+s+'</option>').join('')+
+              (SUPPLIERS.includes('KITH stock')?SUPPLIERS:SUPPLIERS.concat(['KITH stock'])).map(s=>'<option'+(p['supplier'+n]===s?' selected':'')+'>'+s+'</option>').join('')+
             '</select>'+
             '<input class="fi2" type="number" step="any" inputmode="decimal" id="pp-price'+n+'-'+i+'" value="'+(p['price'+n]||'')+'" placeholder="\u00a3 cost (ex-VAT)" style="margin-bottom:3px"/>'+
             (p['price'+n]?(isBarrelFluid(p)||(isNoMarkup(p)&&!isFluid(p))?'<div style="font-size:11px;padding:3px 6px;background:var(--surface3);border-radius:4px;color:var(--dim);margin-bottom:5px">'+(isFluid(p)?'From the barrel \u2014 list price, no markup':'No markup (tyre / MOT)')+'</div>':'<div style="font-size:11px;padding:3px 6px;background:var(--green-bg);border-radius:4px;color:var(--green);margin-bottom:5px">With markup: £'+applyMarkup(parseFloat(p['price'+n]),p).toFixed(2)+'</div>'):'<div style="font-size:10px;color:var(--faint);margin-bottom:5px">Enter price to see markup</div>')+
@@ -18106,6 +18180,7 @@ function chooseSup(partIdx,supNum){
   p.price=p['price'+supNum]||'';
   p.eta=p['eta'+supNum]||'';
   if(p['brand'+supNum])p.brand=p['brand'+supNum];
+  if(p.fluidPicked&&p['supplier'+supNum]!=='KITH stock')delete p.stockStatus;   // bought in — normal markup
   [1,2,3].forEach(n=>{
     const btn=document.getElementById('pp-choose'+n+'-'+partIdx);
     if(!btn)return;
@@ -18217,7 +18292,7 @@ function savePartPricesInner(){
     [1,2,3].forEach(n=>{
       const pr=(document.getElementById('pp-price'+n+'-'+i)||{}).value||p['price'+n];
       const bd=((document.getElementById('pp-brand'+n+'-'+i)||{}).value||p['brand'+n]||'').trim();
-      if(pr&&!bd)brandMiss.push((p.name||'Part')+' \u2014 supplier '+n);
+      if(pr&&!bd&&p['supplier'+n]!=='KITH stock')brandMiss.push((p.name||'Part')+' \u2014 supplier '+n);
     });
   });
   if(brandMiss.length&&!confirm('No BRAND on:\n\n\u2022 '+brandMiss.join('\n\u2022 ')+'\n\nThe brand goes on the customer\u2019s estimate (e.g. Bosch, TRW, OE). Press Cancel to add it, or OK to save without.'))return;
@@ -18236,6 +18311,7 @@ function savePartPricesInner(){
       p.price=p['price'+p.chosenSupplier]||'';
       p.eta=p['eta'+p.chosenSupplier]||'';
       if(p['brand'+p.chosenSupplier])p.brand=p['brand'+p.chosenSupplier];
+      if(p.fluidPicked)p.stockStatus=p.supplier==='KITH stock'?'stock':undefined;
     }
     p.status=(p.price1||p.price2||p.price3)?'priced':'pending';
     if(!p.price1&&!p.price2&&!p.price3) allDone=false;
