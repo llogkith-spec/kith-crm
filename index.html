@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v22.5 \u00b7 23 Nov';
+const BUILD='v22.6 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -11699,16 +11699,19 @@ function brainFixDiag(j){
     if(bj.fixedTyre||bj.fixedBody||!DIAG_LINE_RX.test(lab))return;
     if(isBodyJob(j)&&/panel|trim|moulding|paint|bumper|wing|door|quarter|bonnet|boot|dent|scratch|scuff|sill|mirror cover/i.test(lab))return;
     const tier=bj.diagTier&&T[bj.diagTier]!=null?bj.diagTier:diagGuess(lab+' '+(j.work||''));
-    const price=parseFloat(T[tier])||60;
+    // 23 Nov 2026 (Logan): B2B customers are not charged for diagnostics
+    const b2b=_brainCustType(j)==='trade';
+    const price=b2b?0:(parseFloat(T[tier])||60);
+    if(bj.labourManual){bj.fixedDiag=true;bj.diagTier=tier;bj.srt_hours=0;bj.tier='DIAG';return;}
     if(bj.fixedDiag&&bj.diagTier===tier&&bj.labour_ex_vat===price)return;
     bj.fixedDiag=true;bj.diagTier=tier;bj.srt_hours=0;bj.labour_ex_vat=price;bj.tier='DIAG';
-    bj.srt_source='Fixed diagnostic price (SOP) \u2014 '+tier+' \u00a3'+price.toFixed(2)+' + VAT. Change the level if needed.';
+    bj.srt_source=b2b?'B2B \u2014 no charge for the diagnostic (type a price to charge it)':'Fixed diagnostic price (SOP) \u2014 '+tier+' \u00a3'+price.toFixed(2)+' + VAT. Change the level if needed.';
     ch=true;
   });
   // 21 Nov 2026: ONE diagnostic per job. "Test drive and diagnosis" and
   // "selector inspection" are the same diagnostic — charge the dearest once,
   // the rest are included in it.
-  const ds=ai.jobs.filter(b=>b.fixedDiag&&!b.excluded);
+  const ds=ai.jobs.filter(b=>b.fixedDiag&&!b.excluded&&!b.labourManual&&_brainCustType(j)!=='trade');
   if(ds.length>1){
     const keep=ds.reduce((a,b)=>(parseFloat(T[b.diagTier])||0)>(parseFloat(T[a.diagTier])||0)?b:a,ds[0]);
     ds.forEach(b=>{
@@ -11762,6 +11765,7 @@ function brainStale(j){
   if(ai.complaint!=null)return ai.complaint!==want;
   return want!==String(j.work||'').trim();      // cached before the words were sent
 }
+function brainRate(bj){const c=parseFloat(bj&&bj.customRate);if(c>0)return c;const R=sopRates();return R[bj&&bj.tier]||R.TOP||70;}
 function sopRates(){try{return (KITH_SOP&&KITH_SOP.rates)||{LOW:50,MED:60,TOP:70,BODY:90};}catch(e){return {LOW:50,MED:60,TOP:70,BODY:90};}}
 // the working behind a line: book hours (after the minimum) × multiplier × rate
 function brainCalc(j,bj){
@@ -11769,23 +11773,37 @@ function brainCalc(j,bj){
   let lower=2,upper=1.5,threshold=2;
   try{const M=KITH_SOP&&KITH_SOP.multiplier&&KITH_SOP.multiplier.normal;if(M){lower=M.lower||2;upper=M.upper||1.5;}
     const c=_brainCustType(j);if(c==='trade')threshold=1.5;const t=KITH_SOP&&KITH_SOP.customers&&KITH_SOP.customers[c]&&KITH_SOP.customers[c].threshold;if(t)threshold=t;}catch(e){}
-  const rate=sopRates()[bj.tier]||sopRates().TOP||70;
+  const rate=brainRate(bj);
   let minH=0.5;try{const m=KITH_SOP&&KITH_SOP.minimums&&parseFloat(KITH_SOP.minimums.labourHours);if(m)minH=m;}catch(e){}
   const hh=bj.paired?h:Math.max(h,minH),mult=bj.paired?1:(hh<threshold?lower:upper);
   return {h,hh,mult,rate,charged:Math.round(hh*mult*100)/100,tier:bj.tier||'TOP'};
 }
+// 23 Nov 2026: type the labour £ for any Brain line (null = back to the worked-out price)
+function brainSetLabour(id,i,v){
+  const j=jobs.find(x=>x.id===id);const b=j&&j.brainAI&&j.brainAI.jobs[i];if(!b)return;
+  if(v===null){delete b.labourManual;if(b.fixedDiag){b.labour_ex_vat=-1;brainFixDiag(j);}else brainRecalc(j,b);}
+  else{const n=parseFloat(v);if(!(n>=0)){renderDetail();return;}b.labourManual=true;b.labour_ex_vat=Math.round(n*100)/100;}
+  j.log=j.log||[];j.log.push({t:ts(),s:'\u270f Labour for '+(b.job_label||'line')+(v===null?' back to the worked-out price':' set by hand to \u00a3'+(+b.labour_ex_vat).toFixed(2)+' ex VAT')+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);renderDetail();
+}
 function brainSetTier(id,i,tier){
   const j=jobs.find(x=>x.id===id);const b=j&&j.brainAI&&j.brainAI.jobs[i];if(!b)return;
-  b.tier=tier;b.tierManual=true;brainRecalc(j,b);
-  j.log=j.log||[];j.log.push({t:ts(),s:'\u270f Rate for '+(b.job_label||'line')+' set to '+tier+' (\u00a3'+(sopRates()[tier]||'')+'/h) \u2014 labour \u00a3'+(+b.labour_ex_vat||0).toFixed(2)+(currentUser?' ['+currentUser.name+']':'')});
+  if(tier==='CUSTOM'){
+    const v=prompt('Labour rate for "'+(b.job_label||'this line')+'" \u2014 \u00a3 per hour (ex VAT):',String(b.customRate||brainRate(b)));
+    const r=parseFloat(v);if(!(r>=0)){renderDetail();return;}
+    b.customRate=r;
+  }else{delete b.customRate;b.tier=tier;}
+  b.tierManual=true;delete b.labourManual;brainRecalc(j,b);
+  j.log=j.log||[];j.log.push({t:ts(),s:'\u270f Rate for '+(b.job_label||'line')+' set to '+(b.customRate>0?'custom':tier)+' (\u00a3'+brainRate(b)+'/h) \u2014 labour \u00a3'+(+b.labour_ex_vat||0).toFixed(2)+(currentUser?' ['+currentUser.name+']':'')});
   save(j);renderDetail();
 }
 function brainRecalc(j,bj){
+  if(bj.labourManual)return;                       // £ typed by hand — keep it
   const h=parseFloat(bj.srt_hours)||0;if(h<=0)return;
   let lower=2,upper=1.5,threshold=2;
   try{const M=KITH_SOP&&KITH_SOP.multiplier&&KITH_SOP.multiplier.normal;if(M){lower=M.lower||2;upper=M.upper||1.5;}
     const c=_brainCustType(j);if(c==='trade')threshold=1.5;const t=KITH_SOP&&KITH_SOP.customers&&KITH_SOP.customers[c]&&KITH_SOP.customers[c].threshold;if(t)threshold=t;}catch(e){}
-  const rate=sopRates()[bj.tier]||sopRates().TOP||70;
+  const rate=brainRate(bj);
   // pair rule: the second item of a pair is billed at its raw SRT
   if(bj.paired){bj.labour_ex_vat=Math.round(h*rate*100)/100;return;}
   // SOP: the minimum applies to the book hours, THEN the multiplier
@@ -11809,7 +11827,7 @@ function brainRecalcAll(j){
   const ai=j&&j.brainAI;if(!ai||!Array.isArray(ai.jobs))return false;
   const R=sopRates();let ch=false;
   ai.jobs.forEach(b=>{
-    if(b.fixedTyre||b.fixedDiag||b.fixedBody||b.fixedAlloy||b.fixedMot||b.manual&&b.fixedBody)return;
+    if(b.fixedTyre||b.fixedDiag||b.fixedBody||b.fixedAlloy||b.fixedMot||b.manual&&b.fixedBody||b.labourManual)return;
     if(!(parseFloat(b.srt_hours)>0))return;
     if(!R[b.tier]){b.tier=/service|brake|pads?|dis[ck]s?|caliper/i.test(String(b.job_label||''))?'LOW':'TOP';}
     const was=parseFloat(b.labour_ex_vat)||0;
@@ -12454,7 +12472,8 @@ function brainPrefillH(j){
     const rateCell=fixedLine?'<div style="text-align:right;font-size:11px;color:var(--faint)">\u2014</div>':
       '<div style="text-align:right">'+
         '<select '+(applied?'disabled':'')+' onchange="brainSetTier(\''+j.id+'\','+i+',this.value)" style="width:100%;background:var(--surface);border:1px solid '+(bj.tierManual?'var(--gold)':'var(--border)')+';border-radius:3px;padding:3px;font-size:12px;color:var(--fg)">'+
-          ['LOW','MED','TOP'].filter(t=>R[t]).map(t=>'<option value="'+t+'"'+(t===(bj.tier||'TOP')?' selected':'')+'>'+t+' \u00a3'+R[t]+'/h</option>').join('')+'</select>'+
+          ['LOW','MED','TOP'].filter(t=>R[t]).map(t=>'<option value="'+t+'"'+(!(bj.customRate>0)&&t===(bj.tier||'TOP')?' selected':'')+'>'+t+' \u00a3'+R[t]+'/h</option>').join('')+
+          '<option value="CUSTOM"'+(bj.customRate>0?' selected':'')+'>'+(bj.customRate>0?'Custom \u00a3'+bj.customRate+'/h':'Other rate\u2026')+'</option></select>'+
         (C&&C.h>0?'<div style="font-size:10px;color:var(--dim);margin-top:2px;line-height:1.35">'+C.hh+'h \u00d7'+C.mult+(bj.paired?' (pair)':'')+' = <strong>'+C.charged+'h</strong><br>'+C.charged+'h \u00d7 \u00a3'+C.rate+' = <strong style="color:var(--gold)">\u00a3'+(C.charged*C.rate).toFixed(2)+'</strong></div>':'')+
       '</div>';
     return '<div style="display:grid;grid-template-columns:1fr 80px 120px 100px 90px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)'+(off?';opacity:.4':'')+'">'+
@@ -12478,7 +12497,8 @@ function brainPrefillH(j){
         '<span style="font-size:10px;color:var(--faint);margin-left:3px">h</span>'+
       '</div>')+
       rateCell+
-      '<div style="text-align:right;font-family:ui-monospace,monospace;font-size:13px;font-weight:600;color:var(--gold)">£'+(+bj.labour_ex_vat||0).toFixed(2)+'</div>'+
+      ((applied||off||bj.fixedMot||bj.fixedTyre)?'<div style="text-align:right;font-family:ui-monospace,monospace;font-size:13px;font-weight:600;color:var(--gold)">£'+(+bj.labour_ex_vat||0).toFixed(2)+'</div>':
+        '<div style="text-align:right;font-size:12px;color:var(--gold);font-weight:700">\u00a3<input type="number" step="any" inputmode="decimal" min="0" value="'+(Math.round((+bj.labour_ex_vat||0)*100)/100)+'" title="Labour \u00a3 ex VAT \u2014 type a price to override" onchange="brainSetLabour(\''+j.id+'\','+i+',this.value)" style="width:72px;background:var(--surface);border:1px solid '+(bj.labourManual?'var(--gold)':'var(--border)')+';border-radius:3px;padding:3px 5px;font-family:ui-monospace,monospace;font-size:13px;font-weight:700;color:var(--gold);text-align:right"/>'+(bj.labourManual?'<div style="font-size:9px;color:var(--faint)">set by hand \u00b7 <a href="#" style="color:var(--gold)" onclick="brainSetLabour(\''+j.id+'\','+i+',null);return false">undo</a></div>':'')+'</div>')+
       '<div style="display:flex;gap:4px;justify-content:flex-end;align-items:center">'+
         chip +
         (!bj.fixedTyre&&!bj.fixedDiag&&!bj.fixedMot&&!bj.fixedBody&&!bj.fixedAlloy&&!firm&&!verified&&!applied?' <button onclick="brainVerifySrt(\''+j.id+'\','+i+')" style="background:var(--gold);color:#000;border:none;padding:3px 8px;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer">✓</button>':'')+
@@ -12527,7 +12547,8 @@ window.brainEditSrt = function(jobId, idx, val){
     const rates = (KITH_SOP&&KITH_SOP.rates)||{LOW:50,MED:60,TOP:70,BODY:90};
     const threshold = (KITH_SOP&&KITH_SOP.customers&&KITH_SOP.customers[cust]&&KITH_SOP.customers[cust].threshold)||2.0;
     const mult = h<threshold?lower:upper;
-    const rate = rates[tierKey]||rates.TOP||70;
+    const rate = brainRate(bj);
+    delete bj.labourManual;
     bj.labour_ex_vat = Math.max(h*mult, 0.5)*rate;
     try{brainRecalc(j,bj);brainPairRule(j);}catch(e){}
   }catch(e){}
@@ -12739,7 +12760,7 @@ window.brainApplyToJob = function(jobId){
     if(b.fixedDiag)return {op:String(b.diagTier||'Diagnostic'),book:0,charged:0,qty:1,fixed:true,labour:parseFloat(b.labour_ex_vat)||0,rate:parseFloat(b.labour_ex_vat)||0,src:'fixed',by:brainWho(),at:ts()};
     if(b.fixedTyre)return {op:'Tyre fitting \u00d7'+(b.tyreQty||1)+' (fixed \u00a3'+tyreFitEach().toFixed(2)+' each)',book:0,charged:0,qty:b.tyreQty||1,fixed:true,labour:parseFloat(b.labour_ex_vat)||0,rate:tyreFitEach(),src:'fixed',by:brainWho(),at:ts()};
     const book=parseFloat(b.srt_hours)||0, lab=parseFloat(b.labour_ex_vat)||0;
-    const rate=rates[b.tier]||rates.TOP||70;
+    const rate=brainRate(b);
     const charged=rate>0?Math.round(lab/rate*100)/100:book;
     return {op:b.job_label||b.job_normalised||'Job',book,charged,rate,labour:lab,src:b.is_firm?'firm':'ai',by:brainWho(),at:ts()};
   });
@@ -16909,7 +16930,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1340';
+const CRM_BUILD='2026-11-23-1350';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
