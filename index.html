@@ -2954,7 +2954,7 @@ const APPROVE_HOWS=['Verbal on the phone','Replied on WhatsApp','Replied by text
 // for "how did they approve it". Resolves {choice,text} or null on cancel.
 function pickSheet(opts){
   return new Promise(resolve=>{
-    const o=Object.assign({title:'',sub:'',options:[],def:'',field:null},opts||{});
+    const o=Object.assign({title:'',sub:'',options:[],def:'',field:null,check:null,tapToFinish:false},opts||{});
     const bg=document.createElement('div');
     bg.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center';
     const box=document.createElement('div');
@@ -2965,18 +2965,24 @@ function pickSheet(opts){
       (o.sub?'<div style="font-size:13px;color:var(--gold,#d4a843);font-weight:700;margin-bottom:10px">'+esc(o.sub)+'</div>':'')+
       '<div class="ps-opts">'+o.options.map((x,i)=>'<button type="button" data-i="'+i+'" style="display:block;width:100%;text-align:left;padding:14px 12px;margin-bottom:8px;border-radius:10px;border:2px solid var(--border,#333);background:var(--surface2,#242424);color:inherit;font-size:15px;font-weight:600">'+esc(x)+'</button>').join('')+'</div>'+
       (o.field?'<div style="font-size:12px;color:var(--dim,#999);margin:8px 0 4px">'+esc(o.field.label)+'</div><input class="ps-text" value="'+esc(o.field.value||'')+'" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid var(--border,#333);background:var(--surface2,#242424);color:inherit;font-size:16px">':'')+
+      (o.check?'<label style="display:flex;gap:10px;align-items:center;margin:12px 0 0;font-size:14px;cursor:pointer"><input type="checkbox" class="ps-check" style="width:20px;height:20px"'+(o.check.value?' checked':'')+'> '+esc(o.check.label)+'</label>':'')+
       '<div style="display:flex;gap:8px;margin-top:12px"><button type="button" class="ps-cancel btn btn-ghost" style="flex:1;padding:12px">Cancel</button><button type="button" class="ps-ok btn btn-gold" style="flex:2;padding:12px;font-weight:800">OK</button></div>';
     bg.appendChild(box);document.body.appendChild(bg);
     const btns=[...box.querySelectorAll('.ps-opts button')];
     const paint=()=>btns.forEach(b=>{const on=o.options[+b.dataset.i]===picked;b.style.borderColor=on?'var(--gold,#d4a843)':'var(--border,#333)';b.style.background=on?'rgba(212,168,67,.18)':'var(--surface2,#242424)';});
     paint();
     const done=v=>{bg.remove();resolve(v);};
-    btns.forEach(b=>b.onclick=()=>{picked=o.options[+b.dataset.i];paint();if(!o.field)done({choice:picked,text:''});});
+    const finish=()=>{const t=box.querySelector('.ps-text'),c=box.querySelector('.ps-check');
+      done({choice:picked,text:t?t.value.trim():'',checked:c?!!c.checked:undefined});};
+    // one tap: picking an option finishes when there is nothing else to fill in
+    btns.forEach(b=>b.onclick=()=>{picked=o.options[+b.dataset.i];paint();
+      const t=box.querySelector('.ps-text');
+      if(!o.field||(o.tapToFinish&&t&&t.value.trim()))finish();});
     box.querySelector('.ps-cancel').onclick=()=>done(null);
     bg.addEventListener('click',e=>{if(e.target===bg)done(null);});
     box.querySelector('.ps-ok').onclick=()=>{
-      if(!picked){alert('Pick one first.');return;}
-      const t=box.querySelector('.ps-text');done({choice:picked,text:t?t.value.trim():''});
+      if(!picked){alert('Tap how they said yes.');return;}
+      finish();
     };
   });
 }
@@ -2984,17 +2990,30 @@ async function approveEstimate(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
   if(twoPriceOpen(j)){
     const t=twoPriceTotals(j);
-    const pick=prompt('This job has two prices. Which did the customer pick?\n\n1 = Main dealer parts \u2014 '+_gbp(t.md)+'\n2 = Non-main-dealer parts \u2014 '+_gbp(t.af)+'\n\nType 1 or 2:','');
-    if(pick===null)return;
-    const w=String(pick).trim()==='1'?'md':String(pick).trim()==='2'?'af':null;
-    if(!w){alert('Type 1 or 2.');return;}
-    applyTwoChoice(j,w);
+    // an option with parts not priced yet would come out as labour only, so it can't be picked
+    const opts=[];
+    if(!t.mdMissing)opts.push({k:'md',l:'Main dealer parts \u2014 '+_gbp(t.md)});
+    if(!t.afMissing)opts.push({k:'af',l:'Non-main-dealer parts \u2014 '+_gbp(t.af)});
+    if(!opts.length){alert('\u26d4 Neither price is complete yet \u2014 '+(t.mdMissing+t.afMissing)+' part price'+((t.mdMissing+t.afMissing)===1?' is':'s are')+' missing.\n\nAsk Parts to finish both prices first.');return;}
+    const miss=t.mdMissing?'Main dealer price not complete ('+t.mdMissing+' part'+(t.mdMissing===1?'':'s')+' not priced)':t.afMissing?'Non-main-dealer price not complete ('+t.afMissing+' part'+(t.afMissing===1?'':'s')+' not priced)':'';
+    const pr=await pickSheet({title:'Which price did the customer pick?',sub:miss,options:opts.map(o=>o.l)});
+    if(!pr)return;
+    applyTwoChoice(j,(opts.find(o=>o.l===pr.choice)||opts[0]).k);
   }
   const amt=parseFloat(j.quote)||0;
+  // 22 Nov 2026: one step. Tap how they said yes (their name is already
+  // filled in) and it is recorded; the T&Cs can be ticked in the same step,
+  // instead of a second "How did the customer confirm?" box later on.
+  const tcOpen=!j.tcAgreedAt&&!j.fleetAccount&&!j.comebackNoCharge;
   const res=await pickSheet({title:'How did the customer approve it?',sub:amt?'Quote: \u00a3'+amt.toFixed(2):'',
-    options:APPROVE_HOWS,def:'',field:{label:'Who said yes?',value:j.name||''}});
+    options:APPROVE_HOWS,def:'',field:{label:'Who said yes?',value:j.name||''},tapToFinish:true,
+    check:tcOpen?{label:'They also agreed our terms & conditions',value:!!j.tcSentAt}:null});
   if(!res)return;
   const how=res.choice, who=res.text;
+  if(tcOpen&&res.checked){
+    j.tcAgreedAt=ts();j.tcAgreedHow=String(how||'').trim();j.tcAgreedBy=currentUser?currentUser.name:'';
+    j.log=j.log||[];j.log.push({t:ts(),s:'\u2713 Customer confirmed T&Cs \u2014 '+j.tcAgreedHow+' (with the estimate)'+(currentUser?' ['+currentUser.name+']':'')});
+  }
   j.estApproved=true;
   j.estApprovedAt=ts();
   j.estApprovedHow=String(how||'').trim();
@@ -16150,10 +16169,11 @@ function markTCSent(id){
   j.log.push({t:ts(),s:'\ud83d\udcc3 T&Cs sent to customer'+(currentUser?' ['+currentUser.name+']':'')});
   save(j);renderDetail();
 }
-function markTCAgreed(id){
+async function markTCAgreed(id){
   const j=jobs.find(x=>x.id===id);if(!j)return;
-  const how=prompt('How did the customer confirm?\n\ne.g. "Replied YES on WhatsApp" / "Verbal on the phone" / "Signed on collection"','Replied YES on WhatsApp');
-  if(how===null)return;
+  const r=await pickSheet({title:'How did the customer agree the T&Cs?',options:['Replied YES on WhatsApp','Signed the form','Verbal on the phone','In person','Email','Signed on collection']});
+  if(!r)return;
+  const how=r.choice;
   j.tcAgreedAt=ts();
   j.tcAgreedHow=String(how||'').trim();
   j.tcAgreedBy=currentUser?currentUser.name:'';
