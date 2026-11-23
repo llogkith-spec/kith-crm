@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v22.1 \u00b7 23 Nov';
+const BUILD='v22.2 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -7084,6 +7084,10 @@ function openSendNowBox(id,docI,notJustApproved){
   w.innerHTML='<div style="background:var(--surface);border:2px solid var(--green);border-radius:var(--r);padding:20px;max-width:460px;width:100%">'+
     '<div style="font-weight:800;font-size:16px;margin-bottom:4px">'+(notJustApproved?'💬 Send the estimate PDF to ':'✓ Approved — now send the PDF to ')+escHtml(firstName(j))+'</div>'+
     '<div style="font-size:12px;color:var(--dim);margin-bottom:14px">'+(notJustApproved?'':'Nothing has gone to the customer yet. ')+(num?'WhatsApp: <strong>+'+escHtml(num)+'</strong> · '+money2(parseFloat(j.quote)||0):'<span style="color:var(--red)">No valid mobile on this job — fix it with Edit first.</span>')+'</div>'+
+    // 23 Nov 2026: since 21 Nov the relay pass phrase lives on each device, not in the
+    // database — a phone without it drops back to sending by hand. Say so here.
+    (CHANNELS&&CHANNELS.live===true&&relayUrl()&&!RELAY_SECRET_LOCAL?
+      '<div style="border:1px solid var(--amber);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:var(--amber);line-height:1.45">\u26a0 <strong>Auto-send is LIVE but this device can\u2019t use it</strong> \u2014 the relay pass phrase isn\u2019t on this phone/laptop. <a href="#" style="color:var(--gold);font-weight:800" onclick="sendBoxClose();try{openSettings();setTimeout(()=>{try{document.getElementById(\'channel-box\').scrollIntoView({block:\'center\'});}catch(_){}},300);}catch(e){}return false">Settings \u2192 Channels</a> \u2192 type the pass phrase once, Save. Then estimates send by themselves with the PDF.</div>':'')+
     (ios&&share&&num?
       // 18 Nov 2026: WhatsApp Business only takes the PDF from the share box once it is
       // awake — and only lists customers you already have a chat with. Step 1 does both.
@@ -16838,7 +16842,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1300';
+const CRM_BUILD='2026-11-23-1040';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
