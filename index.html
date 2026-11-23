@@ -7086,6 +7086,39 @@ function estMoveToContacted(j,why){
   j.log.push({t:ts(),s:'\u2192 Contacted \u2014 '+why+(currentUser?' ['+currentUser.name+']':'')});
   try{stageMoved(j,from,'contacted');}catch(e){}
 }
+// ── ONE PRESS: WHATSAPP AND EMAIL (23 Nov 2026, Logan) ─────────────
+// When an estimate or invoice goes to the customer on WhatsApp and the job
+// has an email address, the same PDF is emailed too, through the relay
+// (shop Gmail), with no extra tap. Once per document. Needs the relay set
+// up on this device; without it nothing extra happens.
+async function emailCopy(j,kind,d){
+  try{
+    if(!j||!relayConnected())return false;
+    const to=estEmailTo(j);if(!to)return false;
+    const key=kind+'|'+(d&&d.url||'');
+    j.emailCopies=j.emailCopies||{};
+    if(j.emailCopies[key])return false;
+    j.emailCopies[key]='sending';
+    const inv=kind==='invoice';
+    const subject=inv?'KITH Cars invoice '+invNo(j)+(j.reg?' \u2014 '+String(j.reg).toUpperCase():''):'Your estimate \u2014 '+(j.reg||'')+' \u2014 KITH Cars';
+    const text=(inv?invMsg(j):estimateWAMsg(j).replace(/\*/g,''))+'\n\n'+KITH_CO.name+' \u00b7 '+KITH_CO.tel+' \u00b7 '+KITH_CO.web;
+    const res=await fetch(relayUrl(),{method:'POST',headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'email',secret:relaySecret(),to,subject,text,fromName:'KITH Cars',replyTo:KITH_CO.email,
+        pdfUrl:d&&d.url,pdfName:d?(inv?invFileName(j):estDocName(j,d)):undefined})});
+    let r={};try{r=await res.json();}catch(e){}
+    j.log=j.log||[];
+    if(r&&r.ok){
+      j.emailCopies[key]=ts();
+      j.log.push({t:ts(),s:'\u2709 '+(inv?'Invoice':'Estimate')+' also emailed to '+to+(d?' with the PDF':'')+(currentUser?' ['+currentUser.name+']':'')});
+      if(typeof toast==='function')toast('\u2709 Also emailed to '+to);
+    }else{
+      delete j.emailCopies[key];
+      j.log.push({t:ts(),s:'\u26a0 Email copy did not go: '+((r&&r.error)||('relay '+res.status))});
+    }
+    save(j);
+    return !!(r&&r.ok);
+  }catch(e){try{delete j.emailCopies[kind+'|'+(d&&d.url||'')];}catch(x){}return false;}
+}
 function markEstimateSent(j,d,how){
   j.estimateSentAt=ts();j.estimateSentMs=Date.now();
   j.estimateSentBy=currentUser?currentUser.name:'';
@@ -7096,6 +7129,7 @@ function markEstimateSent(j,d,how){
   estMoveToContacted(j,'the quote has gone to the customer');
   save(j);
   try{autoPilot();}catch(e){}
+  try{emailCopy(j,'estimate',d);}catch(e){}
 }
 function confirmEstimateSent(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
@@ -7786,6 +7820,8 @@ function invSent(j,how){
   j.invoiceSentAt=ts();if(!j.invoicedAt)j.invoicedAt=ts();
   j.log=j.log||[];j.log.push({t:ts(),s:'📤 Invoice '+invNo(j)+' sent ('+how+')'+(currentUser?' ['+currentUser.name+']':'')});
   save(j);
+  // sent on WhatsApp / shared: email the same invoice too (an email send already did)
+  if(!/^email/.test(String(how||'')))try{emailCopy(j,'invoice',invLast(j));}catch(e){}
 }
 function setInvField(id,k,v){
   const j=jobs.find(x=>x.id===id);if(!j)return;
@@ -7985,6 +8021,7 @@ async function emailEstimate(id){
   estSetStatus(j,'\u2709 Sending\u2026','var(--amber)');
   const rr=await relayEmail(toAll,'Your estimate \u2014 '+(j.reg||'')+' \u2014 KITH Cars',text0,d0,j);
   if(rr&&rr.ok){
+    j.emailCopies=j.emailCopies||{};j.emailCopies['estimate|'+(d0&&d0.url||'')]=ts();   // no second copy if it then goes on WhatsApp
     j.estimateSentAt=ts();j.estimateSentMs=Date.now();j.estimateSentBy=currentUser?currentUser.name:'';
     j.log=j.log||[];j.log.push({t:ts(),s:'\u2709 Estimate emailed to '+toAll+' with the PDF attached (sent by the CRM'+(rr.from?' from '+rr.from:'')+')'+(currentUser?' ['+currentUser.name+']':'')});
     try{estMoveToContacted(j,'the quote went to the customer by email');}catch(e){}
