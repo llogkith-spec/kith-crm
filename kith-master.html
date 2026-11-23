@@ -917,7 +917,7 @@ window.openStage = function(stageId, groupId, pseudoSrc){
         const owner = j.assignedEstimator || j.assignedAdviser || j.by || '';
         return '<div class="job-row" onclick="window.location=\'index.html?job='+encodeURIComponent(j.id)+'\'">'+
           '<div class="job-row-top">'+
-            '<div class="job-reg">'+(j.reg||'—')+'</div>'+
+            '<div class="job-reg">'+esc(j.reg||'—')+'</div>'+
             '<div class="job-quote">'+fmtQuote(j)+'</div>'+
           '</div>'+
           '<div class="job-cust">'+esc(cust)+' · '+esc((j.year||'')+' '+(j.make||'')+' '+(j.model||''))+'</div>'+
