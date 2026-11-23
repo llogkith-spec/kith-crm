@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v22.9 \u00b7 23 Nov';
+const BUILD='v23.0 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -17086,7 +17086,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1520';
+const CRM_BUILD='2026-11-23-1530';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -18027,6 +18027,7 @@ function renderPartsPriceList(j){
             '</select>'+
             '<input class="fi2" type="number" step="any" inputmode="decimal" id="pp-price'+n+'-'+i+'" value="'+(p['price'+n]||'')+'" placeholder="\u00a3 cost (ex-VAT)" style="margin-bottom:3px"/>'+
             (p['price'+n]?(isBarrelFluid(p)||(isNoMarkup(p)&&!isFluid(p))?'<div style="font-size:11px;padding:3px 6px;background:var(--surface3);border-radius:4px;color:var(--dim);margin-bottom:5px">'+(isFluid(p)?'From the barrel \u2014 list price, no markup':'No markup (tyre / MOT)')+'</div>':'<div style="font-size:11px;padding:3px 6px;background:var(--green-bg);border-radius:4px;color:var(--green);margin-bottom:5px">With markup: £'+applyMarkup(parseFloat(p['price'+n]),p).toFixed(2)+'</div>'):'<div style="font-size:10px;color:var(--faint);margin-bottom:5px">Enter price to see markup</div>')+
+            '<input class="fi2" id="pp-brand'+n+'-'+i+'" value="'+escHtml(p['brand'+n]||'')+'" placeholder="Brand * e.g. Bosch, TRW, OE" style="margin-bottom:5px"/>'+
             '<input class="fi2" id="pp-eta'+n+'-'+i+'" value="'+escHtml(p['eta'+n]||'')+'" placeholder="ETA / in stock"/>'+
           '</div>'
         ).join('')+
@@ -18040,7 +18041,7 @@ function renderPartsPriceList(j){
           const sel=p.chosenSupplier===n;
           return price?
             '<button class="btn btn-sm '+(sel?'btn-gold':'btn-ghost')+'" id="pp-choose'+n+'-'+i+'" onclick="chooseSup('+i+','+n+')">'+
-              (sel?'✓ ':'')+escHtml(sup)+' · £'+parseFloat(price).toFixed(2)+(eta?' · '+eta:'')+
+              (sel?'✓ ':'')+escHtml(sup)+(p['brand'+n]?' · '+escHtml(p['brand'+n]):'')+' · £'+parseFloat(price).toFixed(2)+(eta?' · '+eta:'')+
             '</button>':'';
         }).join('')+
         (!p.price1&&!p.price2&&!p.price3?'<span style="font-size:11px;color:var(--faint)">Enter prices above first</span>':'')+
@@ -18070,6 +18071,7 @@ function autoSaveParts(){
         p['supplier'+n]=document.getElementById('pp-sup'+n+'-'+i)?.value||p['supplier'+n]||'';
         p['price'+n]=document.getElementById('pp-price'+n+'-'+i)?.value||p['price'+n]||'';
         p['eta'+n]=document.getElementById('pp-eta'+n+'-'+i)?.value||p['eta'+n]||'';
+        p['brand'+n]=document.getElementById('pp-brand'+n+'-'+i)?.value.trim()||p['brand'+n]||'';
       });
     });
     cacheJobs();
@@ -18097,11 +18099,13 @@ function chooseSup(partIdx,supNum){
     p['supplier'+n]=document.getElementById('pp-sup'+n+'-'+partIdx)?.value||'';
     p['price'+n]=document.getElementById('pp-price'+n+'-'+partIdx)?.value||'';
     p['eta'+n]=document.getElementById('pp-eta'+n+'-'+partIdx)?.value||'';
+    p['brand'+n]=document.getElementById('pp-brand'+n+'-'+partIdx)?.value.trim()||'';
   });
   p.chosenSupplier=supNum;
   p.supplier=p['supplier'+supNum]||'';
   p.price=p['price'+supNum]||'';
   p.eta=p['eta'+supNum]||'';
+  if(p['brand'+supNum])p.brand=p['brand'+supNum];
   [1,2,3].forEach(n=>{
     const btn=document.getElementById('pp-choose'+n+'-'+partIdx);
     if(!btn)return;
@@ -18109,7 +18113,8 @@ function chooseSup(partIdx,supNum){
     const sup=p['supplier'+n]||'Supplier '+n;
     const pr=p['price'+n];
     const et=p['eta'+n];
-    btn.textContent=(n===supNum?'✓ ':'')+sup+(pr?' · £'+parseFloat(pr).toFixed(2):'')+(et?' · '+et:'');
+    const bd=p['brand'+n];
+    btn.textContent=(n===supNum?'✓ ':'')+sup+(bd?' · '+bd:'')+(pr?' · £'+parseFloat(pr).toFixed(2):'')+(et?' · '+et:'');
   });
 }
 
@@ -18205,6 +18210,17 @@ function savePartPricesInner(){
       if(anyPrice&&(!p.oilGrade||!p.brand))oilMiss.push(p.name);}
   });
   if(oilMiss.length){alert('Put the oil GRADE and BRAND in before saving (e.g. 5W-30 LL, Castrol).\n\nThey go on the customer\u2019s estimate.');return;}
+  // 23 Nov 2026 (Logan): every priced option needs its brand — it goes on the customer's estimate
+  const brandMiss=[];
+  j.parts.forEach((p,i)=>{
+    if(_isOilPart(p.name))return;
+    [1,2,3].forEach(n=>{
+      const pr=(document.getElementById('pp-price'+n+'-'+i)||{}).value||p['price'+n];
+      const bd=((document.getElementById('pp-brand'+n+'-'+i)||{}).value||p['brand'+n]||'').trim();
+      if(pr&&!bd)brandMiss.push((p.name||'Part')+' \u2014 supplier '+n);
+    });
+  });
+  if(brandMiss.length&&!confirm('No BRAND on:\n\n\u2022 '+brandMiss.join('\n\u2022 ')+'\n\nThe brand goes on the customer\u2019s estimate (e.g. Bosch, TRW, OE). Press Cancel to add it, or OK to save without.'))return;
   j.parts.forEach((p,i)=>{
     p.name=document.getElementById('pp-name-'+i)?.value||p.name||'';
     p.num=document.getElementById('pp-num-'+i)?.value||p.num||'';
@@ -18213,11 +18229,13 @@ function savePartPricesInner(){
       p['supplier'+n]=document.getElementById('pp-sup'+n+'-'+i)?.value||p['supplier'+n]||'';
       p['price'+n]=document.getElementById('pp-price'+n+'-'+i)?.value||p['price'+n]||'';
       p['eta'+n]=document.getElementById('pp-eta'+n+'-'+i)?.value||p['eta'+n]||'';
+      p['brand'+n]=document.getElementById('pp-brand'+n+'-'+i)?.value.trim()||p['brand'+n]||'';
     });
     if(p.chosenSupplier){
       p.supplier=p['supplier'+p.chosenSupplier]||'';
       p.price=p['price'+p.chosenSupplier]||'';
       p.eta=p['eta'+p.chosenSupplier]||'';
+      if(p['brand'+p.chosenSupplier])p.brand=p['brand'+p.chosenSupplier];
     }
     p.status=(p.price1||p.price2||p.price3)?'priced':'pending';
     if(!p.price1&&!p.price2&&!p.price3) allDone=false;
