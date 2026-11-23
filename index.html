@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v22.7 \u00b7 23 Nov';
+const BUILD='v22.8 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -3721,6 +3721,131 @@ async function partsLateRebook(id,ds){
   }
   try{forceRenderDetail();}catch(e){renderDetail();}renderAll();
 }
+// ── PARTS PRICE CHANGED AFTER THE ESTIMATE (23 Nov 2026, Logan) ─────
+// The estimate has gone to the customer, then a part's price changes
+// (not available, supplier price up, different brand). One button: type the
+// new prices, the estimate recalculates, and the adviser / estimator / parts
+// person are told — the job shows a red "price changed" banner until the new
+// estimate is sent and the customer has OK'd it.
+function priceChangeCanStart(j){
+  if(!j||!(j.parts||[]).length)return false;
+  if(['invoiced','paid','lost','receivable','done','collected'].includes(j.stage))return false;
+  return !!(j.estimateSentMs||j.signedOff||j.estApproved);
+}
+function priceChangeOpen(j){return !!(j&&j.priceChange&&j.priceChange.status!=='done');}
+function priceChangeBadgeH(j){
+  if(!priceChangeOpen(j))return '';
+  const c=j.priceChange;
+  return '<div style="font-size:10px;font-weight:800;color:var(--red);margin:3px 0">⚠ PARTS PRICE CHANGED · '+(c.sentMs?'waiting for customer OK':'new estimate NOT sent')+'</div>';
+}
+function _pcPeople(j){
+  const s=new Set();[j.estimateSentBy,j.signedOffBy,j.assignedEstimator,j.partsBy,j.intakeBy].forEach(n=>{if(n&&typeof n==='string')s.add(n.trim());});
+  if(currentUser)s.delete(currentUser.name);
+  return [...s].filter(Boolean);
+}
+function priceChangePanelH(j){
+  let h='';
+  if(priceChangeOpen(j)){
+    const c=j.priceChange;
+    h+='<div style="background:rgba(160,30,30,.14);border:2px solid var(--red);border-radius:var(--r);padding:11px;margin-bottom:10px">'+
+      '<div style="font-size:13px;font-weight:800;color:var(--red)">⚠ Parts price changed — the customer must see the new estimate</div>'+
+      '<div style="font-size:12px;margin:4px 0">Was <strong>£'+(+c.oldTotal).toFixed(2)+'</strong> → now <strong style="color:var(--gold)">£'+(+c.newTotal).toFixed(2)+'</strong> inc VAT ('+(c.newTotal>=c.oldTotal?'+':'−')+'£'+Math.abs(c.newTotal-c.oldTotal).toFixed(2)+') · '+escHtml(c.reason||'')+'</div>'+
+      '<div style="font-size:11.5px;background:var(--surface2);border-radius:var(--rs);padding:6px 9px;margin:6px 0">'+(c.lines||[]).map(l=>'• '+escHtml(l.name)+': £'+(+l.was).toFixed(2)+' → '+(l.gone?'<strong>removed (not available)</strong>':'£'+(+l.now).toFixed(2))+' cost').join('<br>')+'</div>'+
+      '<div style="font-size:11px;color:var(--dim);margin-bottom:8px">Changed by '+escHtml(c.by||'')+' · '+escHtml(c.at||'')+(c.told&&c.told.length?' · told '+escHtml(c.told.join(', ')):'')+'</div>'+
+      '<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:4px">'+(c.sentMs?'✓ STEP 1 done — new estimate sent '+escHtml(c.sentAt||''):'STEP 1')+'</div>'+
+      '<button class="btn '+(c.sentMs?'btn-ghost':'btn-gold')+' btn-full btn-sm" style="margin-bottom:8px" onclick="priceChangeSend(\''+j.id+'\')">📤 '+(c.sentMs?'Send the new estimate again':'Send the new estimate to '+escHtml(firstName(j)))+'</button>'+
+      '<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:4px">STEP 2 — what did the customer say?</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+        '<button class="btn btn-green btn-sm" onclick="priceChangeDone(\''+j.id+'\',\'ok\')">✓ Customer OK’d the new price</button>'+
+        '<button class="btn btn-ghost btn-sm" style="color:var(--amber);border-color:var(--amber)" onclick="priceChangeDone(\''+j.id+'\',\'undo\')">↩ Undo — back to the old prices</button>'+
+      '</div></div>';
+  }else if(priceChangeCanStart(j)){
+    h+='<button class="btn btn-ghost btn-full btn-sm" style="margin-bottom:10px;border-color:var(--red);color:var(--red);font-weight:800" onclick="priceChangeForm(\''+j.id+'\')">💷 Parts price changed? (not available, price up, different brand)</button>';
+  }
+  return h;
+}
+function priceChangeForm(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  document.getElementById('pc-box')?.remove();
+  const w=document.createElement('div');w.id='pc-box';
+  w.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1500;display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto';
+  const rows=(j.parts||[]).map((p,i)=>{
+    const c=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
+    return '<div style="display:grid;grid-template-columns:1fr 70px 80px 34px;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">'+
+      '<div><strong>'+escHtml(p.name||'—')+'</strong><div style="font-size:10px;color:var(--faint)">'+escHtml(p.supplier||p.supplier1||'')+'</div></div>'+
+      '<div style="color:var(--dim)">£'+c.toFixed(2)+'</div>'+
+      '<input type="number" step="0.01" min="0" id="pc-c-'+i+'" class="fi2" style="font-size:13px;padding:4px 6px" placeholder="new cost" data-was="'+c+'"/>'+
+      '<label title="Not available — take it off" style="font-size:10px;color:var(--red);text-align:center"><input type="checkbox" id="pc-x-'+i+'"/><br>gone</label></div>';
+  }).join('');
+  w.innerHTML='<div style="background:var(--surface);border:2px solid var(--red);border-radius:var(--r);padding:18px;max-width:520px;width:100%">'+
+    '<div style="font-weight:800;font-size:16px;margin-bottom:2px">💷 Parts price changed — '+escHtml(j.reg||'')+'</div>'+
+    '<div style="font-size:12px;color:var(--dim);margin-bottom:10px">Type the <strong>new cost</strong> only for parts that changed (markup is added as normal). Tick <strong>gone</strong> if a part can’t be got. The estimate recalculates and the adviser, estimator and parts are told.</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 70px 80px 34px;gap:6px;font-size:10px;color:var(--faint);text-transform:uppercase"><span>Part</span><span>Cost now</span><span>New cost</span><span></span></div>'+rows+
+    '<div class="fg" style="margin-top:10px"><label class="fl2">Why?</label><select id="pc-why" class="fi2">'+
+      ['Not available — dearer supplier','Supplier price went up','Different brand / OE only','Part discontinued','Cheaper option found','Other'].map(x=>'<option>'+x+'</option>').join('')+'</select></div>'+
+    '<input id="pc-note" class="fi2" style="margin-top:6px" placeholder="Note (optional) — e.g. GSF out of stock, Berry only, 2 days"/>'+
+    '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-gold" style="flex:1;font-weight:800" onclick="priceChangeSave(\''+j.id+'\')">Save &amp; tell the team</button>'+
+    '<button class="btn btn-ghost" onclick="document.getElementById(\'pc-box\').remove()">Cancel</button></div></div>';
+  document.body.appendChild(w);
+}
+function _pcTotal(j){try{return Math.round(estDocData(j).total*100)/100;}catch(e){return parseFloat(j.quote)||0;}}
+function priceChangeSave(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const oldTotal=parseFloat(j.quote)||_pcTotal(j);
+  const snap=JSON.parse(JSON.stringify(j.parts||[]));
+  const lines=[],gone=[];
+  (j.parts||[]).forEach((p,i)=>{
+    const was=parseFloat(document.getElementById('pc-c-'+i)?.dataset.was)||0;
+    const x=document.getElementById('pc-x-'+i)?.checked;
+    const v=parseFloat(document.getElementById('pc-c-'+i)?.value);
+    if(x){lines.push({name:p.name||'—',was,now:0,gone:true});gone.push(i);return;}
+    if(v>=0&&Math.abs(v-was)>0.004){lines.push({name:p.name||'—',was,now:v});p.priceWas=was;p.price=v;}
+  });
+  if(!lines.length){alert('Type a new cost (or tick gone) on the part that changed.');return;}
+  gone.sort((a,b)=>b-a).forEach(i=>j.parts.splice(i,1));
+  const newTotal=_pcTotal(j);
+  const why=(document.getElementById('pc-why')||{}).value||'';const note=String((document.getElementById('pc-note')||{}).value||'').trim();
+  const who=currentUser?currentUser.name:'';
+  const told=_pcPeople(j);
+  j.priceChange={status:'open',at:ts(),ms:Date.now(),by:who,oldTotal,newTotal,reason:why+(note?' — '+note:''),lines,partsBefore:snap,quoteBefore:oldTotal,approvedBefore:j.estApproved||false,told};
+  j.quote=newTotal;j.finalEst=newTotal;if(j.signedOff)j.signedOffAmount=newTotal;
+  if(j.estApproved){j.estApprovedWas=j.estApproved;j.estApproved=false;}
+  const txt='⚠ Parts price changed: '+lines.map(l=>l.name+' £'+l.was.toFixed(2)+'→'+(l.gone?'removed':'£'+l.now.toFixed(2))).join(', ')+' ('+why+(note?' — '+note:'')+'). Estimate £'+oldTotal.toFixed(2)+' → £'+newTotal.toFixed(2)+'. Send the new estimate to the customer and get their OK. '+told.map(n=>'@'+n.split(' ')[0]).join(' ');
+  j.teamNotes=teamNotes(j).concat([{at:ts(),ms:Date.now(),by:who||'Someone',stage:j.stage,text:txt}]);
+  j.log=j.log||[];j.log.push({t:ts(),s:txt+(who?' ['+who+']':'')});
+  try{told.forEach(n=>pushNotif('all','⚠ '+(j.reg||'Job')+' — parts price changed',txt.slice(0,160),{jobId:j.id,to:n,key:'pc|'+j.id+'|'+j.priceChange.ms+'|'+n}));}catch(e){}
+  document.getElementById('pc-box')?.remove();
+  save(j);try{forceRenderDetail();}catch(e){renderDetail();}renderAll();
+  if(typeof toast==='function')toast('✓ Saved — '+(told.length?told.join(', ')+' told':'team told')+'. Now send the new estimate.');
+}
+async function priceChangeSend(id){
+  const j=jobs.find(x=>x.id===id);if(!j||!j.priceChange)return;
+  try{if(!kithPdfFresh(j))await ensureKithEstPdf(j);}catch(e){}
+  j.priceChange.sentMs=Date.now();j.priceChange.sentAt=ts();j.priceChange.sentBy=currentUser?currentUser.name:'';
+  save(j);
+  try{openSendNowBox(j.id,null,true);}catch(e){renderDetail();}
+}
+function priceChangeDone(id,how){
+  const j=jobs.find(x=>x.id===id);const c=j&&j.priceChange;if(!c)return;
+  const who=currentUser?currentUser.name:'';
+  if(how==='undo'){
+    if(!confirm('Put the old part prices back (£'+(+c.oldTotal).toFixed(2)+')?'))return;
+    j.parts=c.partsBefore||j.parts;j.quote=c.quoteBefore;j.finalEst=c.quoteBefore;if(j.signedOff)j.signedOffAmount=c.quoteBefore;
+    if(c.approvedBefore)j.estApproved=c.approvedBefore;
+    c.status='done';c.result='undone';
+  }else{
+    if(!c.sentMs&&!confirm('The new estimate hasn’t been sent from here. Did the customer agree £'+(+c.newTotal).toFixed(2)+' anyway (phone / WhatsApp)?'))return;
+    c.status='done';c.result='customer ok';
+    j.estApproved=Object.assign({},(typeof j.estApprovedWas==='object'&&j.estApprovedWas)||{},{amount:c.newTotal,at:ts(),by:who,how:'agreed new parts price'});
+    j.estApprovedAmount=c.newTotal;
+  }
+  c.doneAt=ts();c.doneBy=who;delete c.partsBefore;
+  const txt=how==='undo'?'↩ Parts price change undone — back to £'+(+c.oldTotal).toFixed(2):'✓ Customer OK’d the new price £'+(+c.newTotal).toFixed(2)+' — order the parts at the new price'+(j.partsBy?' @'+String(j.partsBy).split(' ')[0]:'');
+  j.teamNotes=teamNotes(j).concat([{at:ts(),ms:Date.now(),by:who||'Someone',stage:j.stage,text:txt}]);
+  j.log=j.log||[];j.log.push({t:ts(),s:txt+(who?' ['+who+']':'')});
+  try{if(j.partsBy&&how!=='undo')pushNotif('all','✓ '+(j.reg||'Job')+' — new price agreed',txt,{jobId:j.id,to:j.partsBy,key:'pcok|'+j.id+'|'+Date.now()});}catch(e){}
+  save(j);try{forceRenderDetail();}catch(e){renderDetail();}renderAll();
+}
 function partsLatePanelH(j){
   if(!partsLateOpen(j))return '';
   let slots=[];try{slots=offerSlots(j).slots.slice(0,4);}catch(e){}
@@ -5119,7 +5244,7 @@ function cardH(j){
   const partsPending=j.parts&&j.parts.length&&j.parts.some(p=>!p.price);
   const _sp=speedLate(j);
   return'<div class="card"'+((age&&age.over)||(_sp&&_sp.late)?' style="border-color:var(--red)"':'')+'>'+
-    speedBadgeH(j)+
+    speedBadgeH(j)+(function(){try{return priceChangeBadgeH(j);}catch(e){return '';}})()+
     (teamNotes(j).length?'<div style="font-size:9px;font-weight:700;color:var(--blue,#6aa8ff);margin-bottom:4px">\ud83d\udcac '+teamNotes(j).length+' \u00b7 '+escHtml(teamNotes(j)[teamNotes(j).length-1].by||'')+': '+escHtml(String(teamNotes(j)[teamNotes(j).length-1].text||'').slice(0,40))+'</div>':'')+
     // Wrong reg warning — red box at top, visible to everyone
     (j.wrongReg?'<div onclick="openJob(\''+j.id+'\')" style="background:var(--red-bg);border:1px solid var(--red);border-radius:var(--rs);padding:5px 8px;margin-bottom:6px;font-size:11px;font-weight:700;color:var(--red)">'+
@@ -8173,6 +8298,7 @@ function actH(j){
   if(['financial','signoff','disapproved','contact','contacted','waiting','waiting2','ready'].includes(j.stage))
     h+=estDocPanelH(j,j.stage==='signoff');
   try{h+=partsLatePanelH(j);}catch(e){}
+  try{h+=priceChangePanelH(j);}catch(e){}
   try{h+=adblueAskH(j);}catch(e){}
   try{h+=teamNotesH(j);}catch(e){}
   switch(j.stage){
@@ -16936,7 +17062,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1400';
+const CRM_BUILD='2026-11-23-1500';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
