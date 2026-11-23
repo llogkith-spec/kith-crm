@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v23.2 \u00b7 23 Nov';
+const BUILD='v23.3 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -3727,6 +3727,125 @@ async function partsLateRebook(id,ds){
 // new prices, the estimate recalculates, and the adviser / estimator / parts
 // person are told — the job shows a red "price changed" banner until the new
 // estimate is sent and the customer has OK'd it.
+// ── MOT RESULT: SCAN THE PAPER, SEND IT, FAIL → NEW ESTIMATE (23 Nov 2026, Logan) ──
+function isMotJob(j){return /\bmot\b/i.test(String(j&&j.work||'')+' '+String(j&&j.labourDesc||''))&&!j.motFailOf;}
+function motResultH(j){
+  if(!isMotJob(j)||!['booked','checkin','authwait','inprog','done','accounts'].includes(j.stage))return '';
+  const r=j.motResult||{}, doc=j.motDoc;
+  const fj=r.failJobId&&jobs.find(x=>x.id===r.failJobId);
+  let h='<div style="background:var(--surface2);border:2px solid '+(r.result==='fail'?'var(--red)':r.result==='pass'?'var(--green)':'var(--gold)')+';border-radius:var(--r);padding:11px;margin-bottom:10px">'+
+    '<div style="font-size:13px;font-weight:800;margin-bottom:6px">📄 MOT result'+(r.result?' — <span style="color:'+(r.result==='fail'?'var(--red)':'var(--green)')+'">'+(r.result==='fail'?'FAILED':'PASSED')+'</span>':'')+'</div>';
+  // 1. the paper
+  h+='<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:4px">'+(doc?'✓ 1 · MOT paper scanned':'1 · Scan the MOT paper')+'</div>'+
+    (doc?'<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><a href="'+escHtml(doc.url)+'" target="_blank" style="color:var(--gold);font-size:12px">📄 Open the certificate / fail sheet</a><span style="font-size:10px;color:var(--faint)">'+escHtml(doc.by||'')+' · '+escHtml(doc.at||'')+'</span></div>':'')+
+    '<label class="btn '+(doc?'btn-ghost':'btn-gold')+' btn-sm btn-full" style="margin-bottom:8px;cursor:pointer">📷 '+(doc?'Scan again':'Take a photo of the MOT paper')+
+      '<input type="file" accept="image/*,application/pdf" capture="environment" style="display:none" onchange="motScan(\''+j.id+'\',this)"/></label>'+
+    '<div class="mot-st" data-id="'+j.id+'" style="font-size:11px;color:var(--dim);margin-bottom:6px"></div>';
+  // 2. pass or fail
+  if(!r.result){
+    h+='<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:4px">2 · Did it pass?</div>'+
+      '<div style="display:flex;gap:6px;margin-bottom:6px"><button class="btn btn-green btn-sm" style="flex:1" onclick="motSetResult(\''+j.id+'\',\'pass\')">✓ Passed</button>'+
+      '<button class="btn btn-sm" style="flex:1;background:var(--red);color:#fff;font-weight:800" onclick="motFailForm(\''+j.id+'\')">✗ Failed</button></div>'+
+      '<div id="mot-fail-'+j.id+'"></div>';
+  }else{
+    if(r.result==='fail')h+='<div style="font-size:12px;margin-bottom:6px"><strong>Failed on:</strong><div style="white-space:pre-wrap;font-size:11.5px;background:var(--surface3);border-radius:var(--rs);padding:6px 8px;margin-top:3px">'+escHtml(r.items||'')+'</div>'+
+      (fj?'<div style="margin-top:6px">🛠 Repair estimate: <a href="#" style="color:var(--gold);font-weight:800" onclick="openJob(\''+fj.id+'\');return false">'+escHtml((jobNo(fj)||'')+' · '+stg(fj.stage).label)+'</a></div>':'')+'</div>';
+    if(r.advisories)h+='<div style="font-size:11px;color:var(--dim);margin-bottom:6px"><strong>Advisories:</strong> '+escHtml(r.advisories)+'</div>';
+    h+='<div style="font-size:10px;color:var(--faint);margin-bottom:6px">Set by '+escHtml(r.by||'')+' · '+escHtml(r.at||'')+' · <a href="#" style="color:var(--gold)" onclick="motUndo(\''+j.id+'\');return false">change</a></div>';
+  }
+  // 3. send
+  if(r.result){
+    h+='<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:4px">'+(r.sentMs?'✓ 3 · Sent to the customer '+escHtml(r.sentAt||''):'3 · Send it to '+escHtml(firstName(j)))+'</div>'+
+      (doc?'':'<div style="font-size:11px;color:var(--amber);margin-bottom:4px">Scan the paper first so it goes with the message.</div>')+
+      '<button class="btn '+(r.sentMs?'btn-ghost':'btn-green')+' btn-sm btn-full" onclick="motSend(\''+j.id+'\')">💬 '+(r.sentMs?'Send again':'Send the MOT '+(r.result==='fail'?'fail sheet':'certificate')+' on WhatsApp')+'</button>';
+  }
+  return h+'</div>';
+}
+async function motScan(id,input){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const f=(input.files||[])[0];input.value='';if(!f)return;
+  const st=t=>document.querySelectorAll('.mot-st[data-id="'+id+'"]').forEach(e=>e.textContent=t);
+  st('Uploading…');
+  try{
+    const reg=String(j.reg||j.id).replace(/[^A-Z0-9]/gi,'');let path,body,type;
+    if(/pdf/i.test(f.type||'')||/\.pdf$/i.test(f.name||'')){path='mot/'+reg+'-'+Date.now()+'.pdf';body=f;type='application/pdf';}
+    else{const prep=await prepImage(f,2200);body=Uint8Array.from(atob(prep.base64),c=>c.charCodeAt(0));path='mot/'+reg+'-'+Date.now()+'.jpg';type='image/jpeg';}
+    const res=await fetch(SB_URL+'/storage/v1/object/'+SHEET_BUCKET+'/'+path,{method:'POST',headers:{...SB_HDR,'Content-Type':type,'x-upsert':'true'},body});
+    if(!res.ok)throw new Error('Upload refused ('+res.status+')');
+    const url=SB_URL+'/storage/v1/object/public/'+SHEET_BUCKET+'/'+path;
+    j.motDoc={url,type,at:ts(),by:currentUser?currentUser.name:''};
+    j.photoLinks=(j.photoLinks||[]).concat([url]);
+    j.log=j.log||[];j.log.push({t:ts(),s:'📄 MOT paper scanned'+(currentUser?' by '+currentUser.name:'')});
+    save(j);try{forceRenderDetail();}catch(e){renderDetail();}renderAll();
+    if(typeof toast==='function')toast('📄 MOT paper saved on the job');
+  }catch(e){st('⚠ '+(e.message||'Upload failed'));}
+}
+function motSetResult(id,res,items,adv){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  j.motResult={result:res,items:items||'',advisories:adv||'',at:ts(),by:currentUser?currentUser.name:''};
+  j.log=j.log||[];j.log.push({t:ts(),s:'📄 MOT '+(res==='pass'?'PASSED':'FAILED'+(items?': '+items.replace(/\n/g,', '):''))+(currentUser?' ['+currentUser.name+']':'')});
+  if(res==='fail'&&items){
+    const nj={id:nid(),name:j.name,phone:j.phone,wa:j.wa,email:j.email||'',reg:j.reg,make:j.make||'',model:j.model||'',fuel:j.fuel||'',year:j.year||'',engineSize:j.engineSize||'',
+      custType:j.custType||'',isB2B:j.isB2B,fleetAccount:j.fleetAccount,company:j.company,dvla:j.dvla,ramp:true,
+      work:'MOT failure repairs: '+items.split('\n').map(s=>s.trim()).filter(Boolean).join('; '),
+      by:currentUser?currentUser.name:'',source:'MOT fail — '+(jobNo(j)||j.reg),
+      stage:'labour',tmJob:'',tmPart:'',est:null,finalEst:null,parts:[],finalNotes:'',fromForm:false,stageAt:Date.now(),
+      motFailOf:j.id,priority:true,photoLinks:j.motDoc?[j.motDoc.url]:[],
+      teamNotes:[{at:ts(),ms:Date.now(),by:currentUser?currentUser.name:'',stage:'labour',text:'🚨 MOT FAIL — car is here. Price the failure items fast so the customer can OK them today.'+(adv?'\nAdvisories (offer, not required): '+adv:'')}],
+      log:[{t:ts(),s:'Made from the MOT fail on '+(jobNo(j)||j.reg)+(currentUser?' by '+currentUser.name:'')}]};
+    try{stampStage(nj,'labour');}catch(e){}
+    jobs.unshift(nj);
+    j.motResult.failJobId=nj.id;
+    try{save(nj);}catch(e){}
+    try{pushNotif('estimator','🚨 MOT fail — '+(j.reg||''),'Car is on site. Estimate the failure items: '+items.replace(/\n/g,', ').slice(0,120),{jobId:nj.id,key:'motfail|'+nj.id});}catch(e){}
+    try{pushNotif('adviser','🚨 MOT fail — '+(j.reg||''),'New estimate being made for the failure items',{jobId:nj.id,key:'motfailsa|'+nj.id});}catch(e){}
+  }
+  save(j);try{forceRenderDetail();}catch(e){renderDetail();}renderAll();
+  if(typeof toast==='function')toast(res==='pass'?'✓ MOT passed — now send the certificate':'✗ MOT failed — repair estimate made, estimators told');
+}
+function motFailForm(id){
+  const el=document.getElementById('mot-fail-'+id);if(!el)return;
+  el.innerHTML='<div style="background:var(--surface3);border-radius:var(--rs);padding:8px 10px;margin-top:4px">'+
+    '<div style="font-size:11px;font-weight:800;margin-bottom:4px">What did it fail on? <span style="font-weight:400;color:var(--faint)">(one per line, from the fail sheet)</span></div>'+
+    '<textarea id="mot-items-'+id+'" class="fi2" style="width:100%;min-height:70px;font-size:12.5px" placeholder="Nearside front tyre tread below limit\nOffside headlamp aim too high\nFront brake discs worn"></textarea>'+
+    '<input id="mot-adv-'+id+'" class="fi2" style="margin-top:6px" placeholder="Advisories (optional)"/>'+
+    '<button class="btn btn-sm" style="margin-top:6px;width:100%;background:var(--red);color:#fff;font-weight:800" onclick="motFailSave(\''+id+'\')">✗ Save the fail &amp; make the repair estimate</button>'+
+    '<div style="font-size:10px;color:var(--faint);margin-top:4px">A new job goes into Labour Estimate with these items, the fail sheet and the customer’s details — the estimators are told straight away.</div></div>';
+}
+function motFailSave(id){
+  const items=String((document.getElementById('mot-items-'+id)||{}).value||'').trim();
+  if(!items){alert('Type what it failed on (one per line).');return;}
+  motSetResult(id,'fail',items,String((document.getElementById('mot-adv-'+id)||{}).value||'').trim());
+}
+function motUndo(id){
+  const j=jobs.find(x=>x.id===id);if(!j||!j.motResult)return;
+  const fj=j.motResult.failJobId&&jobs.find(x=>x.id===j.motResult.failJobId);
+  if(!confirm('Change the MOT result?'+(fj?'\n\nThe repair estimate job ('+(jobNo(fj)||fj.reg)+') stays — mark it Lost yourself if it is not needed.':'')))return;
+  j.log=j.log||[];j.log.push({t:ts(),s:'📄 MOT result cleared'+(currentUser?' ['+currentUser.name+']':'')});
+  delete j.motResult;save(j);try{forceRenderDetail();}catch(e){renderDetail();}
+}
+async function motSend(id){
+  const j=jobs.find(x=>x.id===id);const r=j&&j.motResult;if(!r)return;
+  const num=estPhone(j);if(!num){alert('No valid mobile on this job — fix it with Edit first.');return;}
+  const doc=j.motDoc;
+  const msg=r.result==='pass'
+    ?'Hi '+firstName(j)+', good news — your '+(j.reg||'car')+' has passed its MOT ✅'+(doc?'\n\nYour MOT certificate: '+doc.url:'')+'\n\nThanks for choosing KITH Cars.'
+    :'Hi '+firstName(j)+', your '+(j.reg||'car')+' didn’t pass its MOT this time.'+(r.items?'\n\nIt failed on:\n• '+r.items.split('\n').filter(Boolean).join('\n• '):'')+(doc?'\n\nThe MOT sheet: '+doc.url:'')+'\n\nWe’re pricing the repairs now and will send you the estimate shortly — once they’re done we’ll put it back through.';
+  // phone: share the paper itself with the message
+  if(doc&&typeof canShareFiles==='function'&&canShareFiles()&&estIsPhone()){
+    try{const b=await (await fetch(doc.url)).blob();
+      const file=new File([b],'MOT-'+String(j.reg||'').replace(/\s/g,'')+(doc.type==='application/pdf'?'.pdf':'.jpg'),{type:doc.type||b.type});
+      try{navigator.clipboard&&navigator.clipboard.writeText(msg).catch(()=>{});}catch(e){}
+      await navigator.share({files:[file],text:msg});_motSent(j);return;
+    }catch(e){if(e&&e.name==='AbortError')return;}
+  }
+  openWa(waLink(num,msg),'_blank');_motSent(j);
+}
+function _motSent(j){
+  j.motResult.sentMs=Date.now();j.motResult.sentAt=ts();
+  j.log=j.log||[];j.log.push({t:ts(),s:'💬 MOT '+(j.motResult.result==='pass'?'certificate':'fail sheet')+' sent to the customer'+(currentUser?' ['+currentUser.name+']':'')});
+  save(j);try{forceRenderDetail();}catch(e){renderDetail();}
+}
 function priceChangeCanStart(j){
   if(!j||!(j.parts||[]).length)return false;
   if(['invoiced','paid','lost','receivable','done','collected'].includes(j.stage))return false;
@@ -8299,6 +8418,7 @@ function actH(j){
     h+=estDocPanelH(j,j.stage==='signoff');
   try{h+=partsLatePanelH(j);}catch(e){}
   try{h+=priceChangePanelH(j);}catch(e){}
+  try{h+=motResultH(j);}catch(e){}
   try{h+=adblueAskH(j);}catch(e){}
   try{h+=teamNotesH(j);}catch(e){}
   switch(j.stage){
@@ -17100,7 +17220,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1550';
+const CRM_BUILD='2026-11-23-1600';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
