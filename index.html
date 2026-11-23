@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v23.3 \u00b7 23 Nov';
+const BUILD='v23.4 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -2472,6 +2472,9 @@ function renderBoard(){
   STAGES.forEach(s=>{
     if(HIDDEN_STAGES.includes(s.id)&&!jobs.some(j=>j.stage===s.id))return;
     if(onCheckinTab&&!ARRIVAL_FROM.concat(['checkin']).includes(s.id))return;
+    // 23 Nov 2026 (Logan): no Booked column — a booking lives on the calendar. A job
+    // still waiting for its date shows in Deposit & T&Cs; dated ones go straight on to ordering.
+    if(s.id==='booked'&&!onCheckinTab)return;
     const _d=deptOf(s.id);
     if(_d&&_d!==_lastDept&&!onCheckinTab){
       const sep=document.createElement('div');sep.className='dept-sep';
@@ -2479,13 +2482,15 @@ function renderBoard(){
       board.appendChild(sep);
     }
     if(_d)_lastDept=_d;
-    let sj=_F.filter(j=>j.stage===s.id);
+    let sj=_F.filter(j=>j.stage===s.id||(s.id==='ready'&&!onCheckinTab&&j.stage==='booked'));
     if(onCheckinTab)sj=sj.sort((a,b)=>arrivalKey(a)-arrivalKey(b));
+    // ordering columns: soonest booking first
+    if(['po','raised','so','soraised'].includes(s.id))sj=sj.sort((a,b)=>(a.bookedFor?arrivalKey(a):9e15)-(b.bookedFor?arrivalKey(b):9e15));
     const col=document.createElement('div');
     col.className='col '+s.cls;
     col.setAttribute('data-stage',s.id);
     const recentOnly=(s.id==='done'||s.id==='lost');
-    col.innerHTML='<div class="col-head"><span class="col-label">'+s.label+
+    col.innerHTML='<div class="col-head"><span class="col-label">'+(s.id==='ready'&&!onCheckinTab?'10 \u00b7 Deposit, T&amp;Cs &amp; Booking':s.label)+
         (recentOnly?'<span style="font-size:9px;color:var(--faint);font-weight:400;letter-spacing:0"> last 7 days</span>':'')+
       '</span><span class="col-n">'+(function(){const L=SPEED_TARGET_MIN[s.id]?sj.filter(x=>{const q=speedLate(x);return q&&q.late;}).length:0;
         return (L?'<span style="color:var(--red);font-size:10px;font-weight:800;margin-right:5px">'+L+' late</span>':'')+sj.length;})()+'</span></div>'+
@@ -3845,6 +3850,24 @@ function _motSent(j){
   j.motResult.sentMs=Date.now();j.motResult.sentAt=ts();
   j.log=j.log||[];j.log.push({t:ts(),s:'💬 MOT '+(j.motResult.result==='pass'?'certificate':'fail sheet')+' sent to the customer'+(currentUser?' ['+currentUser.name+']':'')});
   save(j);try{forceRenderDetail();}catch(e){renderDetail();}
+}
+// 23 Nov 2026 (Logan): order as soon as it's booked \u2014 parts must be here the day before.
+// Ordering cards say when the parts are needed; red inside 3 days.
+function partsNeededBy(j){
+  if(!j||!j.bookedFor)return null;
+  const d=new Date(j.bookedFor+'T09:00:00');if(isNaN(d))return null;
+  d.setDate(d.getDate()-1);if(d.getDay()===0)d.setDate(d.getDate()-1);   // Sunday \u2192 Saturday
+  return d;
+}
+function partsByH(j){
+  if(!['po','so','raised','soraised'].includes(j.stage))return '';
+  const by=partsNeededBy(j);if(!by)return '';
+  const today=new Date();today.setHours(0,0,0,0);
+  const days=Math.round((by-today)/864e5);
+  const raised=['raised','soraised'].includes(j.stage);
+  const col=raised?'var(--teal)':days<=0?'var(--red)':days<=3?'var(--amber)':'var(--dim)';
+  const when=days<0?'OVERDUE':days===0?'TODAY':days===1?'TOMORROW':by.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+  return '<div style="font-size:9.5px;font-weight:800;color:'+col+';margin-bottom:4px">\ud83d\udce6 '+(raised?'ARRIVING BY':'PARTS NEEDED BY')+' '+when+(raised?'':(days<=3?' \u2014 ORDER NOW':''))+'</div>';
 }
 function priceChangeCanStart(j){
   if(!j||!(j.parts||[]).length)return false;
@@ -5373,6 +5396,7 @@ function cardH(j){
     (j.stage==='signoff'?'<div style="font-size:9px;font-weight:800;color:var(--amber);margin-bottom:4px">\u23f3 AWAITING SIGN-OFF</div>':'')+
     (Array.isArray(j.damage)&&j.damage.length?'<div style="font-size:9px;font-weight:800;color:var(--red);margin-bottom:4px">\ud83d\ude97 '+j.damage.length+' PANEL'+(j.damage.length===1?'':'S')+(j.bodySize?' \u00b7 '+escHtml(String((BODY_SIZES.find(z=>z.k===j.bodySize)||{}).label||'').toUpperCase()):'')+'</div>':'')+
     (j.partsLate&&!j.partsLate.clearedAt?'<div style="font-size:9px;font-weight:800;color:var(--red);margin-bottom:4px">\u26a0 PARTS LATE \u2014 REBOOK</div>':'')+
+    (function(){try{return partsByH(j);}catch(e){return '';}})()+
     (j.orderNeeded&&j.orderNeeded.pingedAt&&!j.orderNeeded.doneAt?'<div style="font-size:9px;font-weight:800;color:var(--amber);margin-bottom:4px">\ud83d\udce6 ORDER PARTS NOW</div>':'')+
     (j.stage==='ready'?'<div style="font-size:9px;font-weight:800;color:'+(readyToBook(j)?'var(--green)':'var(--amber)')+';margin-bottom:4px">'+
       (readyToBook(j)?'\u2713 DEPOSIT + T&CS DONE':'\u23f3 '+(depositDone(j)?'':'DEPOSIT')+((!depositDone(j)&&!tcDone(j))?' + ':'')+(tcDone(j)?'':'T&CS')+' OUTSTANDING')+'</div>':'')+
@@ -17220,7 +17244,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1600';
+const CRM_BUILD='2026-11-23-1620';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
