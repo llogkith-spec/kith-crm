@@ -11600,7 +11600,8 @@ async function brainSupabase(j){
         customer_type: _brainCustType(j),
         vehicle: _brainVeh(j),
         reg: j.reg||'',
-        complaint: brainComplaint(j)
+        complaint: brainComplaint(j),
+        ramp_exempt: !!(j.judgement&&j.judgement.ramp_exempt)
       })
     });
     let d={};try{d=await res.json();}catch(e){d={error:'no readable answer (HTTP '+res.status+')'};}
@@ -12456,7 +12457,7 @@ async function brainAskLine(j,desc){
   if(st){st.textContent='\ud83e\udde0 Asking the Brain to price \u201c'+desc+'\u201d\u2026';st.style.color='var(--amber)';}
   try{
     const res=await fetch(BRAIN_URL,{method:'POST',headers:{...SB_HDR,'x-caller':'crm'},
-      body:JSON.stringify({customer_type:_brainCustType(j),vehicle:_brainVeh(j),reg:j.reg||'',complaint:desc})});
+      body:JSON.stringify({customer_type:_brainCustType(j),vehicle:_brainVeh(j),reg:j.reg||'',complaint:desc,ramp_exempt:!!(j.judgement&&j.judgement.ramp_exempt)})});
     const d=await res.json();
     if(!res.ok||d.error||!Array.isArray(d.jobs)||!d.jobs.length)throw new Error((d&&d.error)||'no answer');
     if(!j.brainAI)j.brainAI={jobs:[],at:ts(),ms:Date.now(),conf:d.confidence||'low'};
