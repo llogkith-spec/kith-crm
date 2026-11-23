@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v22.4 \u00b7 23 Nov';
+const BUILD='v22.5 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -7272,7 +7272,9 @@ async function sendEstimateWA(id,i,viaShare){
   let d=estDocFor(j,i), waited=false;
   // 16 Nov 2026: never send the quote without our estimate — make the
   // KITH PDF (both options when two prices are out) if it isn't there yet.
-  if((!d||(d.kith&&!kithPdfFresh(j)))&&(i==null||i==='')){
+  // 23 Nov 2026: also when Send is pressed on the latest KITH PDF and the parts/labour changed since
+  const _isLatest=d&&d.kith&&(j.estimateDocs||[]).length&&(j.estimateDocs.slice(-1)[0]||{}).url===d.url;
+  if((!d||(d.kith&&!kithPdfFresh(j)))&&(i==null||i===''||_isLatest)){
     estSetStatus(j,'\ud83d\udcc4 Making the estimate PDF\u2026','var(--amber)');
     try{await ensureKithEstPdf(j);d=estDocFor(j);waited=true;}catch(e){}
   }
@@ -15186,7 +15188,7 @@ function finEditH(j,merged){
         '</div>'+
         '<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addPartAtFinal(\''+j.id+'\')">+ Add another part</button>'+
         partsPOButtons(j)+
-        '<div style="font-size:10px;color:var(--faint);margin-top:6px">Change a quantity or cost above and the quote updates itself. Set a quantity to 0 to remove the line.</div>'+
+        '<div style="font-size:10px;color:var(--faint);margin-top:6px">Changes save by themselves \u2014 no Save button. Change a quantity or cost, or tap the red \u00d7, and the quote updates. The PDF is remade with the new prices when you Approve or Send.</div>'+
       '</div>':
       '<button class="btn btn-ghost btn-sm" style="margin-bottom:12px" onclick="addPartAtFinal(\''+j.id+'\')">+ Add a part</button>')+
     estQuickEditH(j)+
@@ -16907,7 +16909,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1330';
+const CRM_BUILD='2026-11-23-1340';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
