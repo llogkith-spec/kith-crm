@@ -257,6 +257,9 @@ async function loadSOP(){
   if(!rows.length) throw new Error('No SOP config row — run the SQL schema first');
   SOP = rows[0].data;
   SOP_ORIG = JSON.parse(JSON.stringify(SOP));
+  // 23 Nov 2026 (Logan): new fixed price — shows as a change to save
+  SOP.tuning = SOP.tuning || {};
+  if(!Object.keys(SOP.tuning).some(k=>/body\s*kit/i.test(k))) SOP.tuning['Body kit fitting (side skirts, spoiler, rear splitters)'] = 250;
   SOP_VERSION = rows[0].version;
   document.getElementById('verPill').textContent = 'v'+SOP_VERSION+' · '+rows[0].updated_at.slice(0,10);
 }
@@ -418,7 +421,7 @@ function renderFixed(){
   const fixed = [
     { title:'MOT (outside VAT)', obj: SOP.mot, prefix:'Class ' },
     { title:'Diagnostics (ex VAT)', obj: SOP.diagnostics },
-    { title:'Remaps & tuning (inc VAT)', obj: SOP.tuning },
+    { title:'Remaps, tuning & body kits (ex VAT)', obj: SOP.tuning },
   ];
   let html = fixed.map(f => {
     const rows = Object.keys(f.obj).map(k => {

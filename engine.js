@@ -120,7 +120,8 @@ const TUNING = {
   'Stage 1 remap': 200, 'Stage 2 remap': 300, 'Economy remap': 200,
   'Pop & bang (standalone)': 150, 'Pop & bang + Stage 1': 350,
   'Map restore to stock': 75, 'EGR Solution': 200, 'AdBlue delete': 250,
-  'DPF remap (+ removal labour)': 330
+  'DPF remap (+ removal labour)': 330,
+  'Body kit fitting (side skirts, spoiler, rear splitters)': 250   // 23 Nov 2026 (Logan), + VAT
 };
 const SUBCONTRACT = {
   'Wheel alignment (HS Tyres)':      { cost: 60,  sell: 80  },

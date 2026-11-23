@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v21.9 \u00b7 23 Nov';
+const BUILD='v22.0 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -10915,8 +10915,29 @@ function adblueAuto(j){
   if(j.adblueAnswer==='topup'&&!/^\s*ad\s?-?blue\s*$/i.test(String(j.work||'')))return false;
   adblueSolution(j.id,true);return true;
 }
+// 23 Nov 2026 (Logan): body kit fitting (side skirts, spoiler, rear side
+// splitters) is a fixed SOP price — £250 + VAT labour. Parts still priced as normal.
+function bodyKitPrice(){try{const t=(KITH_SOP&&KITH_SOP.tuning)||{};const k=Object.keys(t).find(x=>/body\s*kit/i.test(x));return k?parseFloat(t[k]):250;}catch(e){return 250;}}
+function bodyKitAuto(j){
+  if(!j||j.bodyKitPriced||!['intake','range','labour','parts'].includes(j.stage))return false;
+  const w=[j.work,j.judgement&&j.judgement.customer_words].filter(Boolean).join(' ');
+  if(!/body\s*-?\s*kit/i.test(w))return false;
+  const p=bodyKitPrice();
+  j.bodyKitPriced=true;
+  j.srtLines=[{op:'Body kit fitting \u2014 side skirts, spoiler, rear side splitters (SOP fixed price)',fixed:true,qty:1,labour:p,code:'BODYKIT',at:ts()}];
+  j.srtHours=0;j.srtCharged=0;j.labourCost=p;
+  j.labourDesc='Body kit fitting \u2014 SOP fixed price \u00a3'+p.toFixed(2)+' + VAT';
+  j.brainPrefillDismissedAt=ts();
+  j.log=j.log||[];j.log.push({t:ts(),s:'\ud83d\ude97 Body kit fitting \u2014 SOP fixed price \u00a3'+p.toFixed(2)+' + VAT (labour)'});
+  try{reprice(j);}catch(e){}
+  if(j.stage==='labour'){const from=j.stage;j.stage='parts';j.stageAt=Date.now();try{stampStage(j,'parts');}catch(e){}
+    j.log.push({t:ts(),s:'Stage '+stg(from).label+' \u2192 '+stg('parts').label+' (body kit labour is a fixed price)'});}
+  save(j);try{if(curId===j.id)forceRenderDetail();}catch(e){}
+  return true;
+}
 // the intake already asked — apply it
 function adblueFromIntake(j){
+  try{bodyKitAuto(j);}catch(e){}
   if(adblueAuto(j))return true;
   if(!j||j.adblueAnswer)return false;
   const jd=j.judgement||{};
@@ -11449,7 +11470,7 @@ function brainRetry(id){
 }
 function brainMaybeFire(j){
   if(!j||j.brainAI||j._brainAIPending)return;
-  if(j.adblueAnswer==='topup'||j.adblueAnswer==='solution')return;
+  if(j.adblueAnswer==='topup'||j.adblueAnswer==='solution'||j.bodyKitPriced)return;
   if(j._brainTriedMs&&Date.now()-j._brainTriedMs<3*60*1000)return;   // failed just now — don't hammer it
   try{if(ensureBodyAI(j)){save(j);return;}}catch(e){}
   if(!['intake','range','labour','parts','financial','signoff'].includes(j.stage))return;
@@ -14715,7 +14736,7 @@ function moveListedToAccounts(){
 function autoPilot(){
   if(!dataFresh())return 0;
   try{moveListedToAccounts();}catch(e){console.warn('move list',e);}
-  try{jobs.forEach(j=>{try{adblueAuto(j);}catch(e){}});}catch(e){}
+  try{jobs.forEach(j=>{try{adblueAuto(j);}catch(e){}try{bodyKitAuto(j);}catch(e){}});}catch(e){}
   try{if(contactLaterDue())renderAll();}catch(e){console.warn('later',e);}
   if(!AUTO_ON)return 0;
   try{autoCloseDoneElsewhere();}catch(e){console.warn('done-elsewhere',e);}
@@ -16784,7 +16805,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1025';
+const CRM_BUILD='2026-11-23-1035';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
