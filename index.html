@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v22.3 \u00b7 23 Nov';
+const BUILD='v22.4 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -11135,8 +11135,75 @@ function removeSrtLine(id,i){
   const j=jobs.find(x=>x.id===id);if(!j)return;
   const l=srtLines(j)[i];if(!l)return;
   if(!confirm('Remove "'+(l.op||'this line')+'" from the labour breakdown?'))return;
-  j.srtLines.splice(i,1);
-  syncSrtTotals(j);save(j);renderDetail();renderAll();
+  _dropLabourLine(j,i);
+  j.log=j.log||[];j.log.push({t:ts(),s:'Labour removed: '+(l.op||'\u2014')+(currentUser?' ['+currentUser.name+']':'')});
+  try{if(labourDescReplaceable(j))j.labourDesc=labourDescFromLines(j);}catch(e){}
+  reprice(j);
+}
+// 23 Nov 2026: removing a labour line takes its money off the labour total too
+function _dropLabourLine(j,i){
+  const l=srtLines(j)[i];if(!l)return 0;
+  const share=l.labour!=null?(parseFloat(l.labour)||0):((parseFloat(j.labourCost)||0)*((parseFloat(l.charged)||parseFloat(l.book)||0)/(parseFloat(j.srtCharged)||parseFloat(j.srt)||1)));
+  j.srtLines=srtLines(j);j.srtLines.splice(i,1);syncSrtTotals(j);
+  if(!j.srtLines.length){j.srt=0;j.srtCharged=0;}
+  j.labourCost=Math.max(0,Math.round(((parseFloat(j.labourCost)||0)-share)*100)/100);
+  if(!j.srtLines.length&&j.labourCost<0.01)j.labourCost=0;
+  return share;
+}
+// ── QUICK EDIT (23 Nov 2026, Logan) ─────────────────────────────────
+// Type what to take off ("remove the mirror glass and the brake pads labour")
+// — it finds the matching parts / labour lines by name, shows them ticked,
+// and one tap removes them and recalculates the estimate.
+const _QE_STOP=new Set('remove delete take off out the and from estimate please pls also them all this that its for with lines line item items get rid drop dont need not any one two job jobs both too can you just put away cancel no'.split(' '));
+function _qeStem(w){return w.replace(/(ies)$/,'y').replace(/(es|s)$/,'');}
+function _qeWords(s){return String(s||'').toLowerCase().replace(/[^a-z0-9 ]+/g,' ').split(/\s+/).filter(w=>w.length>=3&&!_QE_STOP.has(w)).map(_qeStem);}
+function estQuickFind(j,text){
+  const parts=(j.parts||[]).map((p,i)=>({kind:'part',i,name:p.name||'',w:_qeWords(p.name)}));
+  const labs=srtLines(j).map((l,i)=>({kind:'labour',i,name:l.op||'',w:_qeWords(l.op)}));
+  const out=new Map();
+  String(text||'').toLowerCase().split(/\band\b|,|;|\n|\bthen\b|\balso\b|&|\+/).forEach(cl=>{
+    cl=cl.trim();if(!cl)return;
+    const onlyLab=/\blabou?r\b|\bhours?\b|\bfitting\b/.test(cl)&&!/\bparts?\b/.test(cl);
+    const onlyPart=/\bparts?\b/.test(cl)&&!/\blabou?r\b/.test(cl);
+    if(/\ball\b/.test(cl)&&(onlyLab||onlyPart)&&_qeWords(cl.replace(/labou?r|parts?|hours?/g,'')).length===0){
+      (onlyLab?labs:parts).forEach(x=>out.set(x.kind+x.i,x));return;}
+    const w=_qeWords(cl.replace(/\blabou?r\b|\bparts?\b|\bhours?\b/g,''));if(!w.length)return;
+    const pool=onlyLab?labs:onlyPart?parts:parts.concat(labs);
+    let best=0;const sc=pool.map(x=>{const n=w.filter(a=>x.w.some(b=>b===a||(a.length>=4&&b.length>=4&&(b.startsWith(a)||a.startsWith(b))))).length;if(n>best)best=n;return n;});
+    if(best>0)pool.forEach((x,k)=>{if(sc[k]===best)out.set(x.kind+x.i,x);});
+  });
+  return [...out.values()];
+}
+function estQuickEditH(j){
+  if(j.signedOff||!['labour','parts','signoff','range','intake'].includes(j.stage))return '';
+  return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:10px 12px;margin-bottom:12px">'+
+    '<div style="font-size:12px;font-weight:800;margin-bottom:4px">\u270d Tell it what to remove</div>'+
+    '<div style="font-size:11px;color:var(--faint);margin-bottom:6px">e.g. <em>remove the mirror glass and the wing mirror labour</em> \u00b7 <em>take off the brake pads</em> \u00b7 <em>remove all labour</em>. The estimate recalculates itself.</div>'+
+    '<div style="display:flex;gap:6px"><input class="fi2" id="qe-text" style="flex:1" placeholder="What should come off?" onkeydown="if(event.key===\'Enter\')estQuickPreview(\''+j.id+'\')"/>'+
+    '<button class="btn btn-sm" style="background:var(--gold);color:#111;font-weight:800" onclick="estQuickPreview(\''+j.id+'\')">Find</button></div>'+
+    '<div id="qe-out" style="margin-top:6px"></div></div>';
+}
+function estQuickPreview(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const t=(document.getElementById('qe-text')||{}).value||'';
+  const box=document.getElementById('qe-out');if(!box)return;
+  const hits=estQuickFind(j,t);
+  if(!hits.length){box.innerHTML='<div style="font-size:12px;color:var(--amber)">Couldn\u2019t match that to a part or labour line \u2014 use a word from its name (e.g. <em>mirror</em>, <em>pads</em>), or tap the \u00d7 on the line.</div>';return;}
+  window._qeHits=hits;
+  box.innerHTML='<div style="font-size:11px;color:var(--dim);margin-bottom:4px">These will come off \u2014 untick any you want to keep:</div>'+
+    hits.map((x,k)=>'<label style="display:flex;gap:8px;align-items:center;font-size:12px;padding:3px 0"><input type="checkbox" id="qe-h-'+k+'" checked/><span style="font-size:10px;font-weight:800;color:'+(x.kind==='part'?'var(--green)':'var(--blue)')+'">'+(x.kind==='part'?'PART':'LABOUR')+'</span>'+escHtml(x.name||'\u2014')+'</label>').join('')+
+    '<button class="btn btn-sm" style="margin-top:6px;background:var(--red);color:#fff;font-weight:800" onclick="estQuickApply(\''+j.id+'\')">\u00d7 Remove ticked &amp; recalculate</button>';
+}
+function estQuickApply(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const hits=(window._qeHits||[]).filter((x,k)=>{const c=document.getElementById('qe-h-'+k);return c&&c.checked;});
+  if(!hits.length)return;
+  j.log=j.log||[];const who=currentUser?' ['+currentUser.name+']':'';
+  hits.filter(x=>x.kind==='part').sort((a,b)=>b.i-a.i).forEach(x=>{const p=j.parts[x.i];if(!p)return;j.parts.splice(x.i,1);j.log.push({t:ts(),s:'Part removed (quick edit): '+(p.name||'\u2014')+who});});
+  hits.filter(x=>x.kind==='labour').sort((a,b)=>b.i-a.i).forEach(x=>{const l=srtLines(j)[x.i];if(!l)return;_dropLabourLine(j,x.i);j.log.push({t:ts(),s:'Labour removed (quick edit): '+(l.op||'\u2014')+who});});
+  try{if(labourDescReplaceable(j))j.labourDesc=labourDescFromLines(j);}catch(e){}
+  window._qeHits=null;
+  reprice(j);
 }
 // Keep the headline SRT figures equal to the sum of the lines
 // The labour breakdown written out as the labour description (16 Nov 2026)
@@ -12569,7 +12636,7 @@ function oilLitres(j){
   const l=cc<=1000?3.5:cc<=1400?4:cc<=1600?(d?4.5:4.3):cc<=2000?(d?5.5:4.8):cc<=2500?5.8:cc<=3000?(d?7:6.5):8;
   return {l,sure:true,cc};
 }
-function _isOilPart(n){const t=String(n||'').toLowerCase();if(/change|service|filter|feed|return|pipe|seal|cooler|pressure|pump|sensor/.test(t)&&!/engine oil/.test(t))return false;return /engine oil|^oil\b/.test(t);}
+function _isOilPart(n){const t=String(n||'').toLowerCase();if(/change|service|filter|feed|return|pipe|seal|cooler|pressure|pump|sensor/.test(t)&&!/engine oil/.test(t))return false;return /engine oil|^oil\b/.test(t)||(/\b(0|5|10|15|20)\s?w[-\s]?\d{2}\b/.test(t)&&!/gear|atf|transmission|diff|axle|hydraulic|steering/.test(t));}
 function _isOilJob(l){return /oil (and|&) filter|oil change|oil service|(interim|full|major) service/i.test(String(l||''));}
 // tidy the parts list: one engine oil line (in litres), oil parts under the oil job,
 // no part named after a job ("Oil and filter change"), turbo gasket listed once
@@ -15091,8 +15158,8 @@ function finEditH(j,merged){
     (j.parts&&j.parts.length?
       '<div class="stitle" style="margin-bottom:6px">Parts Breakdown (cost → markup → sell price)</div>'+
       '<div style="background:var(--surface2);border-radius:var(--rs);padding:8px 10px;margin-bottom:12px">'+
-        '<div style="display:grid;grid-template-columns:2fr 60px 70px 60px 80px;gap:4px;padding:4px 0;border-bottom:1px solid var(--border);font-size:10px;color:var(--faint);text-transform:uppercase">'+
-          '<span>Part</span><span>Qty</span><span>Cost</span><span>Markup</span><span>Sell (ex-VAT)</span>'+
+        '<div style="display:grid;grid-template-columns:2fr 60px 70px 60px 80px 26px;gap:4px;padding:4px 0;border-bottom:1px solid var(--border);font-size:10px;color:var(--faint);text-transform:uppercase">'+
+          '<span>Part</span><span>Qty</span><span>Cost</span><span>Markup</span><span>Sell (ex-VAT)</span><span></span>'+
         '</div>'+
         j.parts.map((p,pi)=>{
           const cost=parseFloat(p.price)||parseFloat(p.price1)||parseFloat(p.price2)||parseFloat(p.price3)||0;
@@ -15100,7 +15167,7 @@ function finEditH(j,merged){
           const qty=(parseFloat(p.qty)||0)||1;
           const markupPct=cost>0?Math.round((sell/cost-1)*100):0;
           const bestSup=p.supplier||p.supplier1||p.supplier2||p.supplier3||'';
-          return'<div style="display:grid;grid-template-columns:2fr 60px 70px 60px 80px;gap:4px;padding:5px 0;border-bottom:1px solid var(--border);align-items:center;font-size:12px">'+
+          return'<div style="display:grid;grid-template-columns:2fr 60px 70px 60px 80px 26px;gap:4px;padding:5px 0;border-bottom:1px solid var(--border);align-items:center;font-size:12px">'+
             '<div><span style="font-weight:600">'+escHtml(p.name||'\u2014')+'</span>'+(p.isKit?'<span style="font-size:9px;font-weight:800;color:var(--blue);margin-left:4px">KIT</span>':'')+(bestSup?'<span style="color:var(--faint);font-size:10px;margin-left:4px">\u00b7 '+escHtml(bestSup)+'</span>':'')+
               (p.kitContents?'<div style="font-size:10px;color:var(--faint);white-space:pre-line;padding-left:6px;border-left:2px solid var(--border);margin-top:2px">'+escHtml(p.kitContents)+'</div>':'')+' </div>'+
             '<div><input type="number" min="0" value="'+qty+'" style="width:46px;background:var(--surface);border:1px solid var(--border);color:var(--fg);border-radius:4px;padding:2px 4px;font-size:12px;text-align:center" onchange="setPartQty(\''+j.id+'\','+pi+',this.value)" title="Change quantity \u2014 set 0 to remove"/></div>'+
@@ -15108,19 +15175,21 @@ function finEditH(j,merged){
             '<div><span style="color:'+(isNoMarkup(p)?'var(--faint)':'var(--amber)')+';font-weight:700">'+(isNoMarkup(p)?'no mkup':'+'+markupPct+'%')+'</span>'+
               '<button class="btn btn-ghost btn-xs" style="padding:0 5px;margin-left:4px;font-size:9px" onclick="setPartNoMarkup(\''+j.id+'\','+pi+')" title="Switch markup off for this line">'+(p.noMarkup?'undo':'\u00d7')+'</button></div>'+
             '<div style="font-weight:800;color:var(--green)">\u00a3'+(sell*qty).toFixed(2)+'</div>'+
+            '<button class="btn btn-ghost btn-xs" style="padding:2px 6px;color:var(--red);border-color:var(--red);font-weight:800" title="Remove this part" onclick="setPartQty(\''+j.id+'\','+pi+',0)">\u00d7</button>'+
           '</div>';
         }).join('')+
-        '<div style="display:grid;grid-template-columns:2fr 60px 70px 60px 80px;gap:4px;padding:6px 0;font-weight:700;font-size:12px;border-top:2px solid var(--border);margin-top:2px">'+
+        '<div style="display:grid;grid-template-columns:2fr 60px 70px 60px 80px 26px;gap:4px;padding:6px 0;font-weight:700;font-size:12px;border-top:2px solid var(--border);margin-top:2px">'+
           '<span style="color:var(--dim)">Total parts</span><span></span>'+
           '<span style="color:var(--dim)">\u00a3'+partsCostRaw.toFixed(2)+'</span>'+
           '<span style="color:var(--amber)">\u2192</span>'+
-          '<span style="color:var(--green)">\u00a3'+partsCost.toFixed(2)+'</span>'+
+          '<span style="color:var(--green)">\u00a3'+partsCost.toFixed(2)+'</span><span></span>'+
         '</div>'+
         '<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addPartAtFinal(\''+j.id+'\')">+ Add another part</button>'+
         partsPOButtons(j)+
         '<div style="font-size:10px;color:var(--faint);margin-top:6px">Change a quantity or cost above and the quote updates itself. Set a quantity to 0 to remove the line.</div>'+
       '</div>':
       '<button class="btn btn-ghost btn-sm" style="margin-bottom:12px" onclick="addPartAtFinal(\''+j.id+'\')">+ Add a part</button>')+
+    estQuickEditH(j)+
     estimateDocsH(j,false)+
     '<div class="fg" style="margin-bottom:12px"><label class="fl2">Notes for Service Adviser</label><textarea class="fta" id="a-final-notes" placeholder="Any caveats or scope notes...">'+(j.finalNotes||'')+'</textarea></div>'+
     (merged?'<div style="font-size:11px;color:var(--dim);margin-bottom:10px">Change the quote above if needed \u2014 Approve below sends exactly this to the customer.</div>'
@@ -16838,7 +16907,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1320';
+const CRM_BUILD='2026-11-23-1330';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
