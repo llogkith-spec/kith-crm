@@ -51,7 +51,7 @@ const DEFAULTS = {
   caps: { email: 90, sms: 200, whatsapp: 200 },    // per day — Gmail allows 100, 10 kept back for inbox replies
   hours: { weekday: [9, 19], saturday: [9, 17], sunday: null },
   reviewLink: '',
-  motPrice: 54.85
+  motPrice: 50                  // the SOP's Class 4 MOT (was 54.85, the DVSA maximum)
 };
 
 /* ------------------------------------------------------------ little bits */
