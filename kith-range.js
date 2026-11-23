@@ -33,7 +33,8 @@ const ROUND_TO = 10;         // £10 steps, low rounded down, high rounded up
 // Fixed prices, INC VAT (what the customer pays). Logan can change these on
 // the inbox Settings screen; the CRM row __rangecfg__ wins over these.
 const FIXED_DEFAULTS = {
-  mot: 54.85,          // the CRM's MOT test fee default (outside the scope of VAT)
+  mot: 50,             // the SOP's Class 4 MOT (kith_sop_config mot.4), outside the scope of VAT.
+                       // Was 54.85 (the DVSA maximum), so a customer was told £54.85 and billed £50.
   remap1: 240,         // Stage 1 remap, software only
   remap2: 360,         // Stage 2 remap, software only
   diagnostic: 72       // mechanical diagnostic, £60 ex VAT (engine v8)
@@ -224,7 +225,7 @@ const money = n => {
   const v = num(n);
   return '£' + (Math.round(v) === v ? String(v) : v.toFixed(2));
 };
-// "between £180 and £240" or, for a fixed price, "£54.85"
+// "between £180 and £240" or, for a fixed price, "£50"
 function say(r) {
   if (!r || !r.ok) return '';
   return r.low === r.high ? money(r.low) : 'between ' + money(r.low) + ' and ' + money(r.high);
