@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v21.4 \u00b7 21 Nov';
+const BUILD='v21.5 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -2486,6 +2486,7 @@ function renderBoard(){
         (recentOnly?'<span style="font-size:9px;color:var(--faint);font-weight:400;letter-spacing:0"> last 7 days</span>':'')+
       '</span><span class="col-n">'+(function(){const L=SPEED_TARGET_MIN[s.id]?sj.filter(x=>{const q=speedLate(x);return q&&q.late;}).length:0;
         return (L?'<span style="color:var(--red);font-size:10px;font-weight:800;margin-right:5px">'+L+' late</span>':'')+sj.length;})()+'</span></div>'+
+      (s.id==='signoff'&&sj.length&&typeof canSignOff==='function'&&canSignOff(currentUser)?'<div style="padding:4px 8px 0"><button class="btn btn-ghost btn-xs" style="width:100%" onclick="bulkSignoffToAccounts()">\u21aa Move all '+sj.length+' to Accounts</button></div>':'')+
       '<div class="col-cards">'+(sj.length?sj.map(cardH).join(''):'<div class="empty">—</div>')+'</div>';
     board.appendChild(col);
     if(keep[s.id]){const cc=col.querySelector('.col-cards');if(cc)cc.scrollTop=keep[s.id];}
@@ -16679,7 +16680,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-21-1520';
+const CRM_BUILD='2026-11-23-1000';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -17033,6 +17034,23 @@ function _reprice(j){
 // ── STAGE TIMING ───────────────────────────────────────────────────
 // Every stage change is stamped so we can measure how long each part
 // of the process actually takes, per job and per estimator.
+// 23 Nov 2026 (Logan): the Sign-Off column filled with jobs that were already
+// done in TechMan under the old system — move them all to Accounts in one go.
+// Quiet move: no customer messages, no estimate sending.
+function bulkSignoffToAccounts(){
+  if(!canSignOff(currentUser))return;
+  const list=jobs.filter(j=>j&&j.stage==='signoff'&&!j.mergedInto);
+  if(!list.length)return;
+  if(!confirm('Move all '+list.length+' jobs in Final Estimate & Sign-Off to Accounts?\n\nNothing is sent to the customers. Each job\u2019s history notes the move.'))return;
+  list.forEach(j=>{
+    j.stage='accounts';j.stageAt=Date.now();
+    try{stampStage(j,'accounts');}catch(e){}
+    j.log=j.log||[];j.log.push({t:ts(),s:'\u21aa Moved from Sign-Off to Accounts in bulk (old-system job)'+(currentUser?' ['+currentUser.name+']':'')});
+    save(j);
+  });
+  renderAll();
+  if(typeof toast==='function')toast('\u2713 '+list.length+' jobs moved to Accounts');
+}
 function stampStage(j,to){
   j.stageHistory=j.stageHistory||[];
   const last=j.stageHistory[j.stageHistory.length-1];
