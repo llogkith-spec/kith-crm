@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v21.8 \u00b7 23 Nov';
+const BUILD='v21.9 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -10846,7 +10846,7 @@ function adblueNeedsAsk(j){
 }
 // 21 Nov 2026 (Logan): "AdBlue solution" = the AdBlue delete on the SOP tuning list (fixed price)
 function adblueSolutionPrice(){try{const t=(KITH_SOP&&KITH_SOP.tuning)||{};const k=Object.keys(t).find(x=>/ad\s?blue/i.test(x));return k?parseFloat(t[k]):250;}catch(e){return 250;}}
-function adblueSolution(id){
+function adblueSolution(id,quiet){
   const j=jobs.find(x=>x.id===id);if(!j)return;
   const p=adblueSolutionPrice();
   j.adblueAnswer='solution';
@@ -10857,6 +10857,12 @@ function adblueSolution(id){
   j.brainPrefillDismissedAt=ts();
   j.log=j.log||[];j.log.push({t:ts(),s:'\ud83e\uddea AdBlue solution \u2014 SOP fixed price \u00a3'+p.toFixed(2)+' + VAT'+(currentUser?' ['+currentUser.name+']':'')});
   try{reprice(j);}catch(e){}
+  if(quiet&&j.stage!=='signoff'){
+    const from=j.stage;j.stage='signoff';j.stageAt=Date.now();try{stampStage(j,'signoff');}catch(e){}
+    j.log.push({t:ts(),s:'Stage '+stg(from).label+' \u2192 '+stg('signoff').label+' (AdBlue solution, SOP price)'});
+    save(j);try{fireNotifForStage(j,'signoff');}catch(e){}
+    try{if(curId===j.id)forceRenderDetail();}catch(e){}renderAll();return;
+  }
   save(j);
   if(j.stage!=='signoff')moveToStage(j.id,'signoff');else{renderDetail();renderAll();}
 }
@@ -10896,8 +10902,22 @@ function adblueFault(id){
   j.log=j.log||[];j.log.push({t:ts(),s:'🧪 AdBlue: not a top-up — a fault, price as normal'+(currentUser?' ['+currentUser.name+']':'')});
   save(j);renderDetail();
 }
+// 23 Nov 2026 (Logan): a job that just says "AdBlue" IS the AdBlue solution —
+// price it from the SOP straight away, no question. Only a job that talks
+// about topping up / fluid / refill gets asked; a fault goes to the estimator.
+function adblueAuto(j){
+  if(!j||!['intake','range','labour','parts'].includes(j.stage))return false;
+  if(j.adblueAnswer==='solution')return false;
+  const w=adblueWords(j);
+  if(!ADBLUE_RX.test(w))return false;
+  if(/top\s*-?\s*up|fluid|refill|litre|liter/i.test(w))return false;
+  if(ADBLUE_FAULT_RX.test(w.replace(/\bdelete\b|\bsolution\b/ig,'')))return false;
+  if(j.adblueAnswer==='topup'&&!/^\s*ad\s?-?blue\s*$/i.test(String(j.work||'')))return false;
+  adblueSolution(j.id,true);return true;
+}
 // the intake already asked — apply it
 function adblueFromIntake(j){
+  if(adblueAuto(j))return true;
   if(!j||j.adblueAnswer)return false;
   const jd=j.judgement||{};
   if(jd.adblue_choice==='solution'&&['intake','range','labour'].includes(j.stage)){adblueSolution(j.id);return true;}
@@ -14695,6 +14715,7 @@ function moveListedToAccounts(){
 function autoPilot(){
   if(!dataFresh())return 0;
   try{moveListedToAccounts();}catch(e){console.warn('move list',e);}
+  try{jobs.forEach(j=>{try{adblueAuto(j);}catch(e){}});}catch(e){}
   try{if(contactLaterDue())renderAll();}catch(e){console.warn('later',e);}
   if(!AUTO_ON)return 0;
   try{autoCloseDoneElsewhere();}catch(e){console.warn('done-elsewhere',e);}
@@ -16763,7 +16784,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1030';
+const CRM_BUILD='2026-11-23-1025';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
