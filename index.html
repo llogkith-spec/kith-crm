@@ -6599,11 +6599,11 @@ window.markInTechman = function(jobId){
 
 // Clipboard helper used across the handoff panel copy buttons
 window.copyToClip = function(btn, text){
-  try{
-    navigator.clipboard.writeText(String(text));
+  copyText(text,'','Copy this:').then(ok=>{
+    if(!ok||!btn)return;
     const o = btn.textContent; btn.textContent = '✓'; btn.style.color = 'var(--green)';
     setTimeout(() => { btn.textContent = o; btn.style.color = ''; }, 900);
-  }catch(e){ alert('Copy failed — your browser may not allow it on this page'); }
+  });
 };
 
 // Print just the TechMan handoff — opens a clean, paper-friendly window
@@ -9202,8 +9202,7 @@ function copyPhotoLinks(id){
   const links=(String(raw).match(/https?:\/\/[^\s,]+/g)||[]);
   if(!links.length){alert('No photo links on this job.');return;}
   const txt=links.join('\n');
-  try{navigator.clipboard.writeText(txt);if(typeof toast==='function')toast('\ud83d\udd17 '+links.length+' link(s) copied');}
-  catch(e){prompt('Copy these:',txt);}
+  copyText(txt,'\ud83d\udd17 '+links.length+' link(s) copied','Copy these:');
 }
 
 // ── RAISE PO STRAIGHT FROM THE PARTS LIST ──────────────────────────
@@ -16604,13 +16603,21 @@ function tcMsg(j){
     '\n\u2193 Please read and sign our terms here:\n'+tcLink(j)+
     '\n\nQuote your reg ('+(j.reg||'')+') on the form. Takes a minute.';
 }
+// Copy text, then say so only if it worked. navigator.clipboard.writeText
+// returns a promise: when the phone refuses (no permission, not a secure
+// page, in-app browser) the old code still said "Link copied" and the
+// "copy it by hand" box never came up, so staff pasted nothing.
+function copyText(text,okMsg,label){
+  const fallback=()=>{try{prompt(label||'Copy this:',text);}catch(e){}};
+  try{
+    if(!navigator.clipboard||!navigator.clipboard.writeText){fallback();return Promise.resolve(false);}
+    return navigator.clipboard.writeText(String(text)).then(()=>{if(okMsg&&typeof toast==='function')toast(okMsg);return true;},()=>{fallback();return false;});
+  }catch(e){fallback();return Promise.resolve(false);}
+}
 function copyTCLink(id){
   const j=jobs.find(x=>x.id===id);if(!j)return;
   const url=tcLink(j);
-  try{
-    navigator.clipboard.writeText(url);
-    if(typeof toast==='function')toast('\ud83d\udd17 Link copied');
-  }catch(e){prompt('Copy this link:',url);}
+  copyText(url,'\ud83d\udd17 Link copied','Copy this link:');
   markTCSent(id);
 }
 function markTCSent(id){
@@ -16989,7 +16996,7 @@ function shareJobDocs(id){
     docs.map(d=>'\u2022 '+((DOC_TYPES.find(t=>t.k===d.kind)||{}).label||'Document')+'\n'+(d.driveUrl||d.url)).join('\n\n')+
     '\n\n\u2014 KITH Cars';
   if(num)openWa(waLink(num,msg),'_blank');
-  else{try{navigator.clipboard.writeText(msg);toast('\ud83d\udd17 Copied \u2014 no phone number on this job');}catch(e){prompt('Copy:',msg);}}
+  else copyText(msg,'\ud83d\udd17 Copied \u2014 no phone number on this job','Copy:');
 }
 function jobDocsH(j){
   const docs=j.docs||[];
@@ -18610,7 +18617,12 @@ function removePartByParts(i){
     p.num=document.getElementById('pp-num-'+idx)?.value||p.num;
     p.qty=document.getElementById('pp-qty-'+idx)?.value||p.qty;
   });
-  j.parts.splice(i,1);
+  const gone=j.parts.splice(i,1)[0];
+  // saved straight away, like the final-estimate parts box (it used to wait
+  // for "Save Parts Prices", so closing the job lost the removal)
+  j.log=j.log||[];j.log.push({t:ts(),s:'\u2715 Part removed: '+((gone&&gone.name)||'part')+(currentUser?' ['+currentUser.name+']':'')});
+  try{reprice(j);}catch(e){}
+  save(j);
   const el=document.getElementById('parts-price-list');
   if(el) el.innerHTML=renderPartsPriceList(j);
 }
@@ -18640,6 +18652,9 @@ function chooseSup(partIdx,supNum){
     const bd=p['brand'+n];
     btn.textContent=(n===supNum?'✓ ':'')+sup+(bd?' · '+bd:'')+(pr?' · £'+parseFloat(pr).toFixed(2):'')+(et?' · '+et:'');
   });
+  // the pick is saved straight away (it used to wait for "Save Parts Prices")
+  try{reprice(j);}catch(e){}
+  save(j);
 }
 
 
