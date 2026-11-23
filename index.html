@@ -16698,16 +16698,44 @@ function refundsH(j){
   '</div>';
 }
 
-function addPayment(id){
+// 22 Nov 2026: one small form instead of three pop-up boxes. The balance is
+// already in the amount; tapping how they paid records it.
+function paymentSheet(j){
+  return new Promise(resolve=>{
+    const bal=jobBalance(j);
+    const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const bg=document.createElement('div');bg.id='pay-sheet';
+    bg.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center';
+    const box=document.createElement('div');
+    box.style.cssText='background:var(--surface,#1b1b1b);color:var(--text,#eee);width:100%;max-width:520px;max-height:85vh;overflow-y:auto;border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))';
+    const inp='width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid var(--border,#333);background:var(--surface2,#242424);color:inherit;font-size:16px';
+    box.innerHTML='<div style="font-size:16px;font-weight:800;margin-bottom:4px">Record a payment</div>'+
+      '<div style="font-size:13px;color:var(--gold,#d4a843);font-weight:700;margin-bottom:10px">'+esc(j.reg||'')+' \u00b7 balance \u00a3'+bal.toFixed(2)+'</div>'+
+      '<div style="font-size:12px;color:var(--dim,#999);margin-bottom:4px">Amount received (\u00a3)</div>'+
+      '<input class="pay-amt" inputmode="decimal" value="'+(bal>0?bal.toFixed(2):'')+'" style="'+inp+'">'+
+      '<div style="font-size:12px;color:var(--dim,#999);margin:10px 0 4px">Reference (optional) \u2014 last 4 digits, transfer ref, receipt no.</div>'+
+      '<input class="pay-ref" style="'+inp+'">'+
+      '<div class="pay-err" style="color:var(--red,#e55);font-size:12px;margin-top:8px;min-height:14px"></div>'+
+      '<div style="font-size:12px;color:var(--dim,#999);margin:4px 0 6px">How did they pay? (tap to record)</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+PAY_METHODS.map((m,i)=>'<button type="button" data-i="'+i+'" class="pay-m" style="padding:14px 10px;border-radius:10px;border:2px solid var(--border,#333);background:var(--surface2,#242424);color:inherit;font-size:15px;font-weight:700">'+esc(m)+'</button>').join('')+'</div>'+
+      '<button type="button" class="pay-cancel btn btn-ghost" style="width:100%;margin-top:12px;padding:12px">Cancel</button>';
+    bg.appendChild(box);document.body.appendChild(bg);
+    const done=v=>{bg.remove();resolve(v);};
+    box.querySelector('.pay-cancel').onclick=()=>done(null);
+    bg.addEventListener('click',e=>{if(e.target===bg)done(null);});
+    box.querySelectorAll('.pay-m').forEach(b=>b.onclick=()=>{
+      const raw=box.querySelector('.pay-amt').value, amt=parseMoney(raw);
+      if(isNaN(amt)||amt<=0){box.querySelector('.pay-err').textContent='That is not an amount \u2014 type it like 150 or 1,200.50';box.querySelector('.pay-amt').focus();return;}
+      done({amt,method:PAY_METHODS[+b.dataset.i],ref:box.querySelector('.pay-ref').value.trim()});
+    });
+    setTimeout(()=>{try{const a=box.querySelector('.pay-amt');if(!a.value)a.focus();}catch(e){}},50);
+  });
+}
+async function addPayment(id){
   const j=jobs.find(x=>x.id===id);if(!j)return;
-  const bal=jobBalance(j);
-  const amtRaw=prompt('Amount received (\u00a3):',bal>0?bal.toFixed(2):'');
-  if(amtRaw===null)return;
-  const amt=parseMoney(amtRaw);
-  if(isNaN(amt)||amt<=0){alert('That is not an amount I can read: "'+amtRaw+'"\n\nType it like 150 or 1,200.50');return;}
-  const method=prompt('Payment method:\n\n'+PAY_METHODS.join(' / '),'Card');
-  if(method===null)return;
-  const ref=prompt('Reference (optional) \u2014 last 4 digits, transfer ref, receipt no.:','')||'';
+  const r=await paymentSheet(j);
+  if(!r)return;
+  const amt=r.amt, method=r.method, ref=r.ref||'';
   j.payments=j.payments||[];
   j.payments.push({amount:amt,method:String(method||'').trim()||'Other',ref:String(ref).trim(),
     at:ts(),ts:Date.now(),by:currentUser?currentUser.name:''});
