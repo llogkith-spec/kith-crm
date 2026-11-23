@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v22.2 \u00b7 23 Nov';
+const BUILD='v22.3 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -7089,20 +7089,16 @@ function openSendNowBox(id,docI,notJustApproved){
     (CHANNELS&&CHANNELS.live===true&&relayUrl()&&!RELAY_SECRET_LOCAL?
       '<div style="border:1px solid var(--amber);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:var(--amber);line-height:1.45">\u26a0 <strong>Auto-send is LIVE but this device can\u2019t use it</strong> \u2014 the relay pass phrase isn\u2019t on this phone/laptop. <a href="#" style="color:var(--gold);font-weight:800" onclick="sendBoxClose();try{openSettings();setTimeout(()=>{try{document.getElementById(\'channel-box\').scrollIntoView({block:\'center\'});}catch(_){}},300);}catch(e){}return false">Settings \u2192 Channels</a> \u2192 type the pass phrase once, Save. Then estimates send by themselves with the PDF.</div>':'')+
     (ios&&share&&num?
-      // 18 Nov 2026: WhatsApp Business only takes the PDF from the share box once it is
-      // awake — and only lists customers you already have a chat with. Step 1 does both.
+      // 23 Nov 2026: on iPhone the PDF no longer goes through WhatsApp Business's share
+      // extension (it keeps saying "Open WhatsApp Business from the home screen before
+      // continuing"). Save the PDF to Files, open the chat, attach it — works every time.
       '<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:4px">STEP 1</div>'+
-      '<button class="btn btn-full" style="margin-bottom:4px;background:var(--surface2);border:1px solid var(--green);color:var(--green);font-weight:800" onclick="sendBoxWake(\''+j.id+'\')">\ud83d\udccb Copy '+escHtml(firstName(j))+'\u2019s number</button>'+
-      '<div style="font-size:11px;color:var(--faint);margin-bottom:10px">Then open <strong>WhatsApp Business from your home screen</strong> (this wakes it up). If you have no chat with '+escHtml(firstName(j))+' yet: tap \u270f new chat, paste the number, say hello. Then come back here.</div>'+
-      '<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:4px">STEP 2</div>'+shareBtn+
-      // 23 Nov 2026: WhatsApp Business's own popup "Open WhatsApp Business from the home screen
-      // before continuing" blocks Step 2 whenever iOS has closed the app. Plan B never uses
-      // WhatsApp's share extension: save the PDF to Files, open the chat, attach from Files.
-      '<div style="border-top:1px dashed var(--border,#444);margin:10px 0 8px;padding-top:8px;font-size:11px;font-weight:800;color:var(--amber)">GOT THE \u201cOPEN WHATSAPP BUSINESS FROM THE HOME SCREEN\u201d POPUP? \u2192 PLAN B (always works)</div>'+
-      '<button id="sb-save" class="btn btn-full" style="margin-bottom:4px;background:var(--surface2);border:1px solid var(--amber);color:var(--amber);font-weight:800" onclick="sendBoxSaveFiles(\''+j.id+'\')">\ud83d\udcbe B1 \u00b7 Save the PDF to Files</button>'+
-      '<div style="font-size:11px;color:var(--faint);margin-bottom:6px">In the share box scroll down and tap <strong>Save to Files</strong> (not WhatsApp).</div>'+
-      '<button class="btn btn-full" style="margin-bottom:4px;background:var(--surface2);border:1px solid var(--amber);color:var(--amber);font-weight:800" onclick="sendBoxOpenChat(\''+j.id+'\')">\ud83d\udcac B2 \u00b7 Open '+escHtml(firstName(j))+'\u2019s chat with the message</button>'+
-      '<div style="font-size:11px;color:var(--faint);margin-bottom:10px">In the chat tap <strong>+</strong> \u2192 <strong>Document</strong> \u2192 pick the PDF you just saved \u2192 send.</div>'
+      '<button id="sb-save" class="btn btn-full" style="margin-bottom:4px;background:var(--green);color:#111;font-weight:800" onclick="sendBoxSaveFiles(\''+j.id+'\')">💾 Save the PDF to Files</button>'+
+      '<div style="font-size:11px;color:var(--faint);margin-bottom:10px">In the share box scroll down and tap <strong>Save to Files</strong> → Save. (Not WhatsApp.)</div>'+
+      '<div style="font-size:11px;font-weight:800;color:var(--gold);margin-bottom:4px">STEP 2</div>'+
+      '<button class="btn btn-full" style="margin-bottom:4px;background:var(--green);color:#111;font-weight:800" onclick="sendBoxOpenChat(\''+j.id+'\')">💬 Open '+escHtml(firstName(j))+'’s chat with the message</button>'+
+      '<div style="font-size:11px;color:var(--faint);margin-bottom:10px">In the chat tap <strong>+</strong> → <strong>Document</strong> → pick the PDF → send. Then come back and tap ✓ Yes, it’s sent.</div>'+
+      '<details style="margin-bottom:8px"><summary style="font-size:11px;color:var(--faint);cursor:pointer">Other way: share straight to WhatsApp (only if WhatsApp Business is open)</summary><div style="margin-top:6px">'+shareBtn+'</div></details>'
      :(phone?shareBtn+chatBtn:chatBtn+shareBtn))+
     (function(){try{return companySendH(j);}catch(e){return '';}})()+
     (estIsPhone()&&/Android/i.test(navigator.userAgent||'')?'<div style="font-size:11px;color:var(--faint);margin:2px 0 6px">Opens: <strong>'+(waAppPref()==='business'?'WhatsApp Business':'WhatsApp')+'</strong> \u00b7 <a href="#" style="color:var(--gold)" onclick="setWaAppPref(waAppPref()===\'business\'?\'personal\':\'business\');openSendNowBox(\''+j.id+'\',window._sbDoc,true);return false">switch to '+(waAppPref()==='business'?'normal WhatsApp':'WhatsApp Business')+'</a></div>':'')+
@@ -7162,7 +7158,7 @@ function sendBoxShare(id){
     try{refreshEstimateDocs(j);renderDetail();renderAll();}catch(e){}
   }).catch(e=>{
     sendBoxMsg(e&&e.name==='AbortError'
-      ?'✕ <strong>Not sent.</strong> Got <em>“Open WhatsApp Business from the home screen”</em>? Skip it \u2014 use <strong>Plan B</strong> below (B1 save to Files, B2 open the chat, attach it). Or open WhatsApp Business from the home screen, leave it open, come back and try Step 2 again.'
+      ?'✕ <strong>Not sent.</strong> Got <em>“Open WhatsApp Business from the home screen”</em>? Use <strong>Step 1</strong> and <strong>Step 2</strong> above (save to Files, open the chat, attach it). Or open WhatsApp Business from the home screen, leave it open, come back and try Step 2 again.'
       :'✕ <strong>Not sent</strong> — the share box would not open ('+escHtml(e&&e.message||'blocked')+'). Use <strong>Open WhatsApp</strong>.','var(--red)');
   });
 }
@@ -7173,11 +7169,11 @@ function sendBoxSaveFiles(id){
   const d=estDocFor(j,window._sbDoc), f=d&&EST_FILES[d.url];
   if(!(f instanceof File)){sendBoxMsg('The PDF is still loading \u2014 try again in a second.','var(--amber)');return;}
   navigator.share({files:[f]}).then(()=>{
-    sendBoxMsg('\u2713 PDF saved. Now press <strong>B2</strong> to open '+escHtml(firstName(j))+'\u2019s chat, then <strong>+</strong> \u2192 <strong>Document</strong> \u2192 pick it.','var(--green)');
+    sendBoxMsg('\u2713 PDF saved. Now press <strong>Step 2</strong> to open '+escHtml(firstName(j))+'\u2019s chat, then <strong>+</strong> \u2192 <strong>Document</strong> \u2192 pick it.','var(--green)');
   }).catch(e=>{
-    if(e&&e.name==='AbortError')sendBoxMsg('Not saved \u2014 press B1 again and pick <strong>Save to Files</strong> (scroll down in the share box).','var(--amber)');
+    if(e&&e.name==='AbortError')sendBoxMsg('Not saved \u2014 press Step 1 again and pick <strong>Save to Files</strong> (scroll down in the share box).','var(--amber)');
     else{try{const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=f.name||'estimate.pdf';document.body.appendChild(a);a.click();a.remove();}catch(_){}
-      sendBoxMsg('Opened the PDF \u2014 tap the share icon \u2192 <strong>Save to Files</strong>, then press B2.','var(--amber)');}
+      sendBoxMsg('Opened the PDF \u2014 tap the share icon \u2192 <strong>Save to Files</strong>, then press Step 2.','var(--amber)');}
   });
 }
 // Plan B step 2: straight into the customer's chat with the message — no share box,
@@ -16842,7 +16838,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1310';
+const CRM_BUILD='2026-11-23-1320';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
