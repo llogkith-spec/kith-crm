@@ -25,11 +25,11 @@
 
   // name, icon, filter (the CRM's main role), roles, PIN, WhatsApp, label (shown on pickers)
   var BASE = [
-    { name: 'Ali',     icon: '📞', filter: 'adviser',   roles: ['adviser', 'parts'],               pin: '7777', wa: '2348126024190', label: 'Service Adviser' },
-    { name: 'Joel',    icon: '📋', filter: 'estimator', roles: ['estimator', 'adviser'],           pin: '2222', wa: '639072943859',  label: 'Estimator + Service Adviser (12pm–5pm)' },
-    { name: 'Paul',    icon: '📋', filter: 'estimator', roles: ['estimator', 'parts', 'adviser'],  pin: '3333', wa: '',              label: 'Estimator (parts + labour) + Service Adviser' },
-    { name: 'Elvis',   icon: '📞', filter: 'adviser',   roles: ['adviser', 'parts'],               pin: '8888', wa: '',              label: 'Service Adviser + Parts' },
-    { name: 'Sudha',   icon: '🔩', filter: 'parts',     roles: ['parts', 'accounts', 'onsite'],    pin: '6666', wa: '447514422991',  label: 'Accounts / Parts' },
+    { name: 'Ali',     icon: '📞', filter: 'adviser',   roles: ['adviser', 'estimator', 'parts'],  pin: '7777', wa: '2348126024190', label: 'Adviser (service + labour + parts)' },
+    { name: 'Joel',    icon: '📋', filter: 'adviser',   roles: ['adviser', 'estimator', 'parts'],  pin: '2222', wa: '639072943859',  label: 'Adviser (service + labour + parts) 12pm–5pm' },
+    { name: 'Paul',    icon: '📋', filter: 'adviser',   roles: ['adviser', 'estimator', 'parts'],  pin: '3333', wa: '',              label: 'Adviser (service + labour + parts)' },
+    { name: 'Elvis',   icon: '📞', filter: 'adviser',   roles: ['adviser', 'estimator', 'parts'],  pin: '8888', wa: '',              label: 'Adviser (service + labour + parts)' },
+    { name: 'Sudha',   icon: '🔩', filter: 'workshop',  roles: ['workshop', 'accounts', 'onsite', 'parts'], pin: '6666', wa: '447514422991', label: 'Workshop Manager + Accounts' },
     { name: 'Giles',   icon: '🔧', filter: 'parts',     roles: ['parts', 'workshop'],              pin: '4444', wa: '447496673248',  label: 'Parts / Workshop' },
     { name: 'Harith',  icon: '📋', filter: 'estimator', roles: ['estimator'],                      pin: '5555', wa: '',              label: 'Parts' },
     { name: 'Logkith', icon: '⭐', filter: 'all',       roles: ['director'],                       pin: '0000', wa: '',              label: 'Director' }
@@ -183,9 +183,11 @@
     estimator: { label: '⏱ Labour hours',    href: 'kith-estimator.html' }
   };
   var DASH_FOR = {               // who sees which — by name first, then by role
-    Elvis: ['adviser', 'parts'],
-    Ali:   ['adviser'],
-    Joel:  ['adviser', 'estimator']
+    // 23 Nov 2026: every adviser does all three — service, labour and parts
+    Ali:   ['adviser', 'estimator', 'parts'],
+    Elvis: ['adviser', 'estimator', 'parts'],
+    Joel:  ['adviser', 'estimator', 'parts'],
+    Paul:  ['adviser', 'estimator', 'parts']
   };
   function dashUser() {
     var keys = ['kith_user', 'kith_adv_me', 'kith_parts_me', 'kith_est_me'];
