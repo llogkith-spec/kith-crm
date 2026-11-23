@@ -9025,6 +9025,8 @@ function raisePOForSupplier(jobId,supplier){
     if(sup&&supplier!=='(no supplier)'){
       const m=Array.from(sup.options).find(o=>o.value&&o.value.toLowerCase().includes(supplier.toLowerCase().slice(0,5)));
       if(m)sup.value=m.value;
+      else{try{sup.add(new Option(supplier,supplier));sup.value=supplier;}catch(e){}}   // priced from a supplier not in the list yet
+      try{if(typeof supplierAcctNote==='function')supplierAcctNote();}catch(e){}
     }
     // one row per part, adding rows as needed
     list.forEach((it,idx)=>{
@@ -17107,7 +17109,24 @@ function toast(msg){
   clearTimeout(t._h);t._h=setTimeout(()=>{t.style.opacity='0';},2600);
 }
 
-function raisePOFromJob(){cx('ov-detail');openNewPO(curId);}
+// 22 Nov 2026: "Raise PO" on a job closed the panel first, which clears
+// curId, so the form always opened for no job and Parts typed the job,
+// supplier and every part in again. It now opens on this job, already
+// filled with the parts still to order from one supplier (name, number,
+// price, qty). Press it again for the next supplier.
+function raisePOFromJob(){
+  const id=curId||(gj()&&gj().id);
+  const j=id?jobs.find(x=>x.id===id):null;
+  if(!j){cx('ov-detail');openNewPO(null);return;}
+  let groups={};try{groups=partsBySupplier(j);}catch(e){}
+  const sups=Object.keys(groups);
+  if(!sups.length){cx('ov-detail');openNewPO(j.id);return;}   // nothing estimated to order: blank PO for this job
+  // a named supplier before "(no supplier)", then the biggest order first
+  sups.sort((a,b)=>((a==='(no supplier)')-(b==='(no supplier)'))||(groups[b].length-groups[a].length));
+  raisePOForSupplier(j.id,sups[0]);
+  if(sups.length>1&&typeof toast==='function')
+    toast(groups[sups[0]].length+' part'+(groups[sups[0]].length===1?'':'s')+' from '+sups[0]+' filled in \u2014 '+(sups.length-1)+' more supplier'+(sups.length>2?'s':'')+' to go: press Raise PO again after this one');
+}
 
 
 // ── PRIVATE / PERSONALISED PLATES ──────────────────────────────────
@@ -20852,7 +20871,19 @@ function finishPO(po,jobId){
   // team now says explicitly when everything has been ordered.
   if(jobId&&jobId!=='consumables'){
     const job=jobs.find(j=>j.id===jobId);
-    if(job&&['booked','po'].includes(job.stage)){
+    // Parts still on the job with no PO: no need to ask "are all orders
+    // raised?" (OK there moved the job on with parts not ordered). Say which
+    // supplier is next; Raise PO on the job fills that one in.
+    let left={};try{left=partsBySupplier(job||{});}catch(e){}
+    const leftSups=Object.keys(left);
+    if(job&&['booked','po'].includes(job.stage)&&leftSups.length){
+      const n=leftSups.reduce((a,k)=>a+left[k].length,0);
+      if(job.stage!=='po'){job.stage='po';job.stageAt=Date.now();try{stampStage(job,'po');}catch(e){}}
+      job.log.push({t:ts(),s:'PO raised \u2014 '+n+' part'+(n===1?'':'s')+' still to order from '+leftSups.join(', ')+(currentUser?' ['+currentUser.name+']':'')});
+      save(job);renderAll();
+      if(typeof toast==='function')toast('\u2713 PO raised \u2014 next: '+leftSups.join(', ')+' ('+n+' part'+(n===1?'':'s')+'). Press Raise PO on the job.');
+    }
+    else if(job&&['booked','po'].includes(job.stage)){
       const mine=posForJob(jobId);
       const msg=mine.length>1
         ? 'That is PO '+mine.length+' for '+(job.reg||'this job')+'.\n\nAll orders now raised?'
