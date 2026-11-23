@@ -1320,6 +1320,7 @@ async function flushOutbox(){
       await syncJobNow(lj||outbox[id].payload.data);
       outboxDrop(id);ok++;
     }catch(e){
+      if(e&&e.deletedOnServer){dropDeletedJob(id);continue;}
       const st=e.status||0;
       // 4xx (except timeout/rate-limit) means the server REJECTED this row.
       // Retrying forever would jam the queue and hold the dot red, so park it
@@ -1572,6 +1573,11 @@ function subscribeRealtime(){
       rows.forEach(r=>{ if(r.data&&r.id&&!r.id.startsWith('__'))rawById[r.id]=JSON.stringify(r.data); });
       const incoming=rows.filter(r=>r.data&&r.id&&!r.id.startsWith('__')).map(r=>migrateJob(r.data)).filter(Boolean);
       let changed=pullSysLists(rows);
+      if(full&&rows.length<4999){        // a full list (not cut off at the 5000-row page)
+        const onServer=new Set(rows.map(r=>r.id));
+        jobs.filter(j=>j&&j.id&&!onServer.has(j.id)&&BASE[j.id]!==undefined&&!outbox[j.id]&&!JOB_PENDING[j.id])
+          .map(j=>j.id).forEach(id=>{jobs=jobs.filter(x=>x.id!==id);delete BASE[id];if(curId===id){try{cx('ov-detail');}catch(e){}curId=null;}changed=true;});
+      }
       incoming.forEach(remoteJob=>{
         const idx=jobs.findIndex(j=>j.id===remoteJob.id);
         const raw=rawById[remoteJob.id];
@@ -14227,6 +14233,16 @@ setTimeout(()=>{ try{ if(typeof currentUser!=='undefined'&&currentUser)loadLeads
 var BASE={};                       // job id -> JSON the server last had
 var POS_BASE=null, SUBS_BASE=null;   // same for the orders and subcontract lists
 function rememberBase(j){ if(j&&j.id){ try{BASE[j.id]=JSON.stringify(j);}catch(e){} } }
+// A job deleted on another screen: take it off this one too
+function dropDeletedJob(id){
+  const was=jobs.find(x=>x.id===id);
+  jobs=jobs.filter(x=>x.id!==id);delete BASE[id];
+  try{outboxDrop(id);}catch(e){}
+  try{cacheJobs();}catch(e){}
+  if(curId===id){try{cx('ov-detail');}catch(e){}curId=null;}
+  try{renderAll();}catch(e){}
+  if(was&&typeof toast==='function')toast((was.reg||'A job')+' was deleted on another screen');
+}
 function clone(x){ return x===undefined?undefined:JSON.parse(JSON.stringify(x)); }
 
 var JOB_LISTS={
@@ -14373,6 +14389,10 @@ async function syncJobNow(j){
   const baseStr=BASE[j.id];
   let fromOthers=false;
   const written=await casWrite(j.id,server=>{
+    // 21 Nov 2026: the row is gone from the server but this device has had it
+    // from there before, so someone deleted it. Saving used to put it straight
+    // back (an insert), so deleted jobs kept coming back from other screens.
+    if(!server&&BASE[j.id]!==undefined){const e=new Error('Job was deleted on another screen');e.deletedOnServer=true;throw e;}
     let out=clone(mine);
     if(server&&(baseStr===undefined||JSON.stringify(server)!==baseStr)){
       const base=baseStr?JSON.parse(baseStr):{};
@@ -14416,7 +14436,9 @@ function queueJobSync(j){
     JOB_PENDING[j.id]=false;
     return syncSlot(()=>syncJobNow(j));
   }).then(()=>{outboxDrop(j.id);setSbStatus(outboxCount()?'err':'ok');})
-    .catch(e=>{JOB_PENDING[j.id]=false;console.warn('Save queued for retry:',e.message);
+    .catch(e=>{JOB_PENDING[j.id]=false;
+      if(e&&e.deletedOnServer){dropDeletedJob(j.id);return;}
+      console.warn('Save queued for retry:',e.message);
       outboxAdd(j.id,{id:j.id,data:j,updated_at:j.updatedAt});setSbStatus('err');});
 }
 
