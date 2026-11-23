@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v23.1 \u00b7 23 Nov';
+const BUILD='v23.2 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -5826,7 +5826,7 @@ function renderPipeline(){
   if(q&&!total)h+='<div style="padding:20px;text-align:center;color:var(--faint)">No jobs match “'+escHtml(q)+'”</div>';
   vp.innerHTML=h;
 }
-function openJob(id){try{const _j=jobs.find(x=>x.id===id);if(_j){let c=mergeSidesForJob(_j);try{if(adblueFromIntake(_j))c=true;}catch(e){}if(discountFromIntake(_j))c=true;if(syncQuoteToEstimate(_j))c=true;if(serviceTidyParts(_j))c=true;if(oilPartsTidy(_j))c=true;if(brainFixService(_j))c=true;try{if(diagLinesDedupe(_j))c=true;}catch(e){}if(c)save(_j);}}catch(e){}curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
+function openJob(id){try{const _j=jobs.find(x=>x.id===id);if(_j){let c=mergeSidesForJob(_j);try{if(adblueFromIntake(_j))c=true;}catch(e){}if(discountFromIntake(_j))c=true;if(syncQuoteToEstimate(_j))c=true;if(serviceTidyParts(_j))c=true;if(oilPartsTidy(_j))c=true;if(brainFixService(_j))c=true;try{if(diagLinesDedupe(_j))c=true;}catch(e){}try{if(b2bDiagFree(_j))c=true;}catch(e){}if(c)save(_j);}}catch(e){}curId=id;lastJobId=id;renderDetail();document.getElementById('ov-detail').classList.add('open');}
 
 // Redraw even if something still has focus. Only ever called straight
 // after a stage change, when there is nothing half-typed to protect.
@@ -12108,6 +12108,18 @@ function _svcWrong(j,key,lvl){
 }
 // parts nobody has priced yet that a service should not have
 // 23 Nov 2026: one diagnostic line on the labour breakdown — a second £0 copy is removed
+// 23 Nov 2026: B2B — the diagnostic already on the labour breakdown comes off too (not yet approved)
+function b2bDiagFree(j){
+  if(_brainCustType(j)!=='trade'||j.signedOff)return false;
+  if(!['intake','range','labour','parts','signoff'].includes(j.stage))return false;
+  let off=0;
+  srtLines(j).forEach(l=>{if(l&&l.fixed&&/diagnos/i.test(String(l.op||''))&&parseFloat(l.labour)>0&&!l.priceManual){off+=parseFloat(l.labour);l.labour=0;l.rate=0;}});
+  if(!off)return false;
+  j.labourCost=Math.max(0,Math.round(((parseFloat(j.labourCost)||0)-off)*100)/100);
+  try{if(labourDescReplaceable(j))j.labourDesc=labourDescFromLines(j);}catch(e){}
+  j.log=j.log||[];j.log.push({t:ts(),s:'B2B \u2014 no charge for the diagnostic (\u00a3'+off.toFixed(2)+' taken off)'});
+  return true;
+}
 function diagLinesDedupe(j){
   const L=srtLines(j);if(L.length<2)return false;
   if(!['intake','range','labour','parts','signoff'].includes(j.stage))return false;
@@ -13599,7 +13611,7 @@ function _toLabour(j,why){
 }
 function setSkipOrders(id,v){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
-  if(!currentUser||currentUser.name!=='Logkith'){alert('Only Logkith can switch POs and SOs off.');return;}
+  if(!canSetOrders(currentUser)){alert('Only Logan, Joel or the parts team can change this.');return;}
   j.skipOrders=!!v;
   j.log=j.log||[];
   j.log.push({t:ts(),s:(v?'\u23ed No POs or SOs \u2014 goes straight from Booked to Check-In':'\ud83d\udce6 POs/SOs back on')+' \u2014 set by '+currentUser.name});
@@ -13612,20 +13624,22 @@ function setSkipOrders(id,v){
   if(v&&j.orderNeeded&&!j.orderNeeded.doneAt)j.orderNeeded.doneAt=Date.now();
   save(j);
   try{if(typeof autoPilot==='function')autoPilot();}catch(e){}
-  renderDetail();renderAll();
+  try{forceRenderDetail();}catch(e){renderDetail();}renderAll();if(typeof toast==='function')toast('\u2713 Saved');
 }
 function setSoNeeded(id,v){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
-  if(!currentUser||currentUser.name!=='Logkith'){alert('Only Logkith can set whether an SO is needed.');return;}
+  if(!canSetOrders(currentUser)){alert('Only Logan, Joel or the parts team can change this.');return;}
   j.soNeeded=!!v;
   j.log=j.log||[];
   j.log.push({t:ts(),s:(v?'\ud83d\udd27 SO needed':'\u2715 No SO needed')+' \u2014 set by '+currentUser.name});
   save(j);
   try{if(typeof autoPilot==='function')autoPilot();}catch(e){}
-  renderDetail();renderAll();
+  try{forceRenderDetail();}catch(e){renderDetail();}renderAll();if(typeof toast==='function')toast('\u2713 Saved');
 }
+// 23 Nov 2026: Logan, sign-off people (Joel) and the parts team can set ordering
+function canSetOrders(u){return !!(u&&(u.name==='Logkith'||canSignOff(u)||(typeof hasRole==='function'&&hasRole(u,'parts'))));}
 function soToggleH(j){
-  const isBoss=currentUser&&currentUser.name==='Logkith';
+  const isBoss=canSetOrders(currentUser);
   const guess=(function(){try{return soNeeded(j);}catch(e){return [];}})();
   const set=(j.soNeeded===true||j.soNeeded===false);
   const skip=skipsOrders(j);
@@ -13637,7 +13651,7 @@ function soToggleH(j){
     '<div style="font-size:10px;color:var(--faint);margin-top:5px">'+
       (skip?'Set: no POs or SOs. Once booked it waits in Booked, then goes straight to Vehicle Check-In on the day.'
            :'Normal: parts go through POs to Raise, and SOs if needed.')+
-      (isBoss?'':' Only Logkith can change this.')+'</div></div>';
+      (isBoss?'':' Only Logan, Joel or the parts team can change this.')+'</div></div>';
   if(skip)return skipBox;
   const on=jobNeedsSO(j);
   const b=(v,label)=>'<button class="btn btn-sm" style="flex:1;'+((set&&j.soNeeded===v)?'background:'+(v?'var(--teal)':'var(--surface3)')+';color:'+(v?'#111':'var(--text,#eee)')+';font-weight:800':'background:none;border:1px solid var(--border);color:var(--dim)')+
@@ -13648,7 +13662,7 @@ function soToggleH(j){
     '<div style="font-size:10px;color:var(--faint);margin-top:5px">'+
       (set?(j.soNeeded?'Set: this job goes through SOs to Raise.':'Set: no SO \u2014 skips SOs to Raise.')
           :(guess.length?'Not set \u2014 looks like it needs one ('+escHtml(guess.join(', '))+'). Treated as YES until you choose.':'Not set \u2014 treated as no SO until you choose.'))+
-      ' Parts always need a PO.'+(isBoss?'':' Only Logkith can change this.')+'</div>'+
+      ' Parts always need a PO.'+(isBoss?'':' Only Logan, Joel or the parts team can change this.')+'</div>'+
   '</div>';
 }
 
@@ -17086,7 +17100,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1540';
+const CRM_BUILD='2026-11-23-1550';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
