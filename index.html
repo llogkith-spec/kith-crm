@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v22.6 \u00b7 23 Nov';
+const BUILD='v22.7 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -1438,6 +1438,8 @@ function save(jobToSave){
   const j=jobToSave||gj();
   if(!j)return;
   cleanJob(j);
+  // 23 Nov 2026: every change (line removed, labour edited) keeps the final quote = the estimate
+  try{if(typeof syncQuoteToEstimate==='function')syncQuoteToEstimate(j);}catch(e){}
   // 16 Nov 2026: Final Estimate is one stage with Sign-Off, and the Service Adviser stage is gone
   if(j.stage==='financial'){j.stage='signoff';try{stampStage(j,'signoff');}catch(e){}}
   else if(j.stage==='contact'){j.stage='contacted';try{stampStage(j,'contacted');}catch(e){}}
@@ -7891,8 +7893,12 @@ function discountPanelH(j){
 // Until the estimate has gone to the customer, the job's quote follows the lines.
 function syncQuoteToEstimate(j){
   // once the customer has agreed a price it only changes by hand (and then needs their OK again)
-  if(!j||j.mergedInto||j.estimateSentMs||j.comebackNoCharge||j.estApproved)return false;
+  if(!j||j.mergedInto||j.comebackNoCharge)return false;
   if(!['intake','range','labour','parts','signoff','contacted'].includes(j.stage))return false;
+  // 23 Nov 2026: a job back in the estimate stages (not approved yet) is being
+  // re-estimated — the quote follows the new estimate even if an old one went out.
+  const reEst=['intake','range','labour','parts','signoff'].includes(j.stage)&&!j.signedOff;
+  if(!reEst&&(j.estimateSentMs||j.estApproved))return false;
   if(j.stage==='contacted'&&(j.estimateOpenedMs||j.estimateSentMs))return false;
   try{if(estTwo(j))return false;}catch(e){}
   let d;try{d=estDocData(j);}catch(e){return false;}
@@ -16930,7 +16936,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1350';
+const CRM_BUILD='2026-11-23-1400';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
