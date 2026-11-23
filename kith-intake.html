@@ -269,7 +269,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
           <input type="checkbox" id="f-noemail" style="width:18px;height:18px"/> No email either — we'll text or call them</label></div>
       <div class="fg">
         <label class="fl">Registration <span class="req">*</span></label>
-        <input class="fi fi-reg" id="f-reg" maxlength="8" placeholder="AB12 CDE" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'');dupCheck(this.value);vehLookupSoon(this.value)"/>
+        <input class="fi fi-reg" id="f-reg" maxlength="14" placeholder="AB12 CDE" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8);dupCheck(this.value);vehLookupSoon(this.value)"/>
         <div class="dup" id="dup-msg"></div>
         <div class="back" id="back-msg"></div>
       </div>
@@ -1274,7 +1274,7 @@ function buildStep4(){
     ['Diagnostic first?',safetyHits.length?(diagOverride?'Overridden by Logan':'Yes'):'No']];
   if(warrantyState)rows.push(['Warranty',warrantyState.verdict+' — '+warrantyState.reason]);
   document.getElementById('summary-card').innerHTML='<div class="card"><div class="sec">What the estimator will see</div>'+
-    rows.map(function(r){return'<div class="ref-row" style="padding:5px 0;border-bottom:1px solid #f4f4f4"><span style="color:#888">'+r[0]+'</span><b>'+r[1]+'</b></div>';}).join('')+'</div>';
+    rows.map(function(r){return'<div class="ref-row" style="padding:5px 0;border-bottom:1px solid #f4f4f4"><span style="color:#888">'+esc(r[0])+'</span><b>'+esc(r[1])+'</b></div>';}).join('')+'</div>';
 }
 
 // =============================================================================
@@ -1301,8 +1301,9 @@ function dupCheck(v){
           String(j.reg||'').replace(/\s/g,'').toUpperCase()===v&&CLOSED_STAGES.indexOf(j.stage)===-1;});
       var el=document.getElementById('dup-msg');
       if(act.length){el.style.display='block';
-        el.innerHTML='⚠ Active job already exists for '+v+':<br>'+
-          act.map(function(j){return j.id+' · '+(j.name||'')+' · '+j.stage;}).join('<br>')+
+        // job names come from the database: shown as text, never as page code
+        el.innerHTML='⚠ Active job already exists for '+esc(v)+':<br>'+
+          act.map(function(j){return esc(j.id)+' · '+esc(j.name||'')+' · '+esc(j.stage);}).join('<br>')+
           '<br><br>If this is work coming back, go to the start and pick <b>Coming back</b>.';}
       else el.style.display='none';
       var same=(rows||[]).filter(function(j){return j&&String(j.id).indexOf('__')!==0&&!j.merged&&
@@ -1350,7 +1351,7 @@ function diagRepairSplit(){
 // unless a business account was picked, and nothing else is asked.
 async function expressSubmit(){
   var miss=essentialsMissing();
-  if(!fval('f-words')&&!jobType)miss.push('what they want');
+  if(!fval('f-words')&&!jobType&&miss.indexOf('what they want')<0)miss.push('what they want');
   if(miss.length){alert('Still need: '+miss.join(', ')+'.');return;}
   var b=document.getElementById('express-btn');
   if(b){b.disabled=true;b.innerHTML='<span class="spin"></span> Sending…';}
@@ -2575,7 +2576,7 @@ function staffPartsPanel(){
       '<select class="fi" id="q-for" onchange="document.getElementById(\'q-car\').style.display=this.value===\'car\'?\'block\':\'none\'">'+
       '<option value="">— Select —</option><option value="car">A car that’s already in</option><option value="kit">Workshop kit, tools or equipment</option></select></div>'+
     '<div id="q-car" style="display:none"><div class="grid2">'+
-      '<div class="fg"><label class="fl">Reg <span class="req">*</span></label><input class="fi fi-reg" id="q-reg" maxlength="8" placeholder="AB12CDE" style="font-size:16px" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,\'\')"/></div>'+
+      '<div class="fg"><label class="fl">Reg <span class="req">*</span></label><input class="fi fi-reg" id="q-reg" maxlength="14" placeholder="AB12CDE" style="font-size:16px" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,\'\').slice(0,8)"/></div>'+
       '<div class="fg"><label class="fl">Job number</label><input class="fi" id="q-job" placeholder="J123456"/></div></div></div>'+
     '<label class="fl">Parts <span class="req">*</span></label><div id="q-items"></div>'+
     '<button class="btn btn-ghost" style="padding:9px;font-size:13px;margin-bottom:14px" onclick="addItemRow()">+ Add another</button>'+
