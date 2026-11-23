@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v21.6 \u00b7 23 Nov';
+const BUILD='v21.7 \u00b7 23 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -14612,20 +14612,54 @@ function contactLaterDue(){
 function dataFresh(){return !document.hidden&&window._freshMs&&(Date.now()-window._freshMs)<60*1000;}
 // 23 Nov 2026 (Logan): the Sign-Off jobs he photographed were done under the
 // old system — move them to Accounts once, quietly, on the first fresh screen.
-const MOVE_TO_ACCOUNTS_2311=['GX66ODV','GX66NYH','GX66OBD','LB10XFG','MV16XGY','CF75EHM','LC72PRZ','WN67SJV','KV16BVL','RY04GKN','LO69FPY','GX66ODT','CR19GZY','GX66OCJ','GX66OBE','SA68PUF','HK74AUO','YK66VYN'];
+// 23 Nov 2026 (Logan): the exact Sign-Off jobs he photographed — matched on
+// reg AND the job itself (several regs have more than one job). Moved once,
+// quietly, on the first fresh screen.
+const MOVE_TO_ACCOUNTS_2311=[
+  ['GX66ODV',/oil\s*(and|&)?\s*oil filter/i],
+  ['GX66NYH',/\bEML\b/i],
+  ['GX66OBD',/EML light on|loss of power/i],
+  ['GX66OBD',/oxygen sensor/i],
+  ['LB10XFG',/mot and full service/i],
+  ['MV16XGY',/heating/i],
+  ['CF75EHM',/brake pads/i],
+  ['LC72PRZ',/major service/i],
+  ['WN67SJV',/\bmot\b/i],
+  ['KV16BVL',/\bmot\b/i],
+  ['RY04GKN',/top mount|drop link/i],
+  ['LO69FPY',/oil/i],
+  ['GX66ODT',/brake light/i],
+  ['CR19GZY',/dog bone|clutch pump|diesel line/i],
+  ['CR19GZY',/vacuum pump|injector line/i],
+  ['GX66OCJ',/lug nut/i],
+  ['GX66OBE',/vacuum pump|starter/i],
+  ['SA68PUF',/sliding door/i],
+  ['HK74AUO',/headlamp/i],
+  ['YK66VYN',/crankshaft pulley/i]
+];
+function _onMoveList(j){
+  const r=String(j.reg||'').replace(/\s+/g,'').toUpperCase();
+  const w=[j.work,j.labourDesc,j.judgement&&j.judgement.customer_words].filter(Boolean).join(' ');
+  return MOVE_TO_ACCOUNTS_2311.some(m=>m[0]===r&&m[1].test(w));
+}
 function moveListedToAccounts(){
   if(Date.now()>Date.parse('2026-12-07'))return 0;
-  let n=0;
+  let n=0,back=0;
   jobs.forEach(j=>{
-    if(!j||j.stage!=='signoff'||j.mergedInto)return;
-    const r=String(j.reg||'').replace(/\s+/g,'').toUpperCase();
-    if(MOVE_TO_ACCOUNTS_2311.indexOf(r)<0)return;
+    if(!j||j.mergedInto)return;
+    const log=j.log||[];
+    // the first version matched on reg only — put back anything it moved that isn't on the list
+    if(j.stage==='accounts'&&!_onMoveList(j)&&log.some(x=>/on Logan.s list 23 Nov/.test(x.s||''))&&!log.some(x=>/Put back in Sign-Off/.test(x.s||''))){
+      j.stage='signoff';j.stageAt=Date.now();try{stampStage(j,'signoff');}catch(e){}
+      log.push({t:ts(),s:'↩ Put back in Sign-Off — not one of the photographed jobs'});j.log=log;save(j);back++;return;
+    }
+    if(j.stage!=='signoff'||!_onMoveList(j))return;
     j.stage='accounts';j.stageAt=Date.now();
     try{stampStage(j,'accounts');}catch(e){}
-    j.log=j.log||[];j.log.push({t:ts(),s:'\u21aa Moved from Sign-Off to Accounts (old-system job, on Logan\u2019s list 23 Nov)'});
+    j.log=log;j.log.push({t:ts(),s:'↪ Moved from Sign-Off to Accounts (old-system job, on Logan’s photographed list 23 Nov)'});
     save(j);n++;
   });
-  if(n){try{renderAll();}catch(e){}if(typeof toast==='function')toast('\u2713 '+n+' jobs moved from Sign-Off to Accounts');}
+  if(n||back){try{renderAll();}catch(e){}if(typeof toast==='function')toast('✓ '+n+' jobs moved to Accounts'+(back?' · '+back+' put back in Sign-Off':''));}
   return n;
 }
 function autoPilot(){
@@ -16699,7 +16733,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1005';
+const CRM_BUILD='2026-11-23-1010';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
