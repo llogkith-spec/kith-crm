@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v23.9 \u00b7 25 Nov';
+const BUILD='v24.0 \u00b7 25 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -2763,10 +2763,11 @@ const SAMECAR_STAGES=['intake','range','labour','parts','signoff','contacted','w
 function _regN(r){return String(r||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
 function sameCarOpen(j){
   if(!j||j.mergedInto||!SAMECAR_STAGES.includes(j.stage)||j.additionalWork||j.motFailOf)return [];
+  const _ms=x=>x.manualSplit||x.splitFrom||x.splitInto;
   const r=_regN(j.reg);if(r.length<4)return [];
   const t=jobCameIn(j);
   return jobs.filter(x=>x&&x.id!==j.id&&!x.mergedInto&&SAMECAR_STAGES.includes(x.stage)&&_regN(x.reg)===r
-    &&!x.additionalWork&&!x.motFailOf&&x.linkedJobId!==j.id&&j.linkedJobId!==x.id
+    &&!x.additionalWork&&!x.motFailOf&&x.linkedJobId!==j.id&&j.linkedJobId!==x.id&&!(_ms(x)&&_ms(j))
     &&Math.abs(jobCameIn(x)-t)<=7*864e5);
 }
 function _sameCarKeep(group){
@@ -2797,6 +2798,30 @@ function _foldInto(keep,o){
   keep.log=keep.log||[];keep.log.push({t:ts(),s:'🚗 Merged in '+(jobNo(o)||o.id)+(added.length?' ('+added.join(', ')+')':' (nothing new)')+(currentUser?' ['+currentUser.name+']':'')});
   save(o);
   return added;
+}
+// Splitting a job is the service adviser's call only (25 Nov 2026, Logan)
+function canSplitJob(u){return !!(u&&(u.name==='Logkith'||hasRole(u,'adviser')));}
+function manualSplitH(j){
+  if(!canSplitJob(currentUser)||!SAMECAR_STAGES.includes(j.stage)||j.mergedInto)return '';
+  return '<div style="text-align:right;margin:-4px 0 8px"><button class="btn btn-ghost btn-xs" onclick="manualSplitJob(\''+j.id+'\')" title="Service adviser only">✂ Split into two jobs</button></div>';
+}
+function manualSplitJob(id){
+  const j=jobs.find(x=>x.id===id);if(!j||!canSplitJob(currentUser))return;
+  const nw=prompt('SPLIT — what work goes on the NEW job?\n\n(This job keeps: "'+String(j.work||'').slice(0,120)+'")','');
+  if(!nw||!nw.trim())return;
+  const keepW=prompt('And what does THIS job say now?',String(j.work||''));
+  if(keepW===null)return;
+  const nj={id:nid(),name:j.name,phone:j.phone,wa:j.wa,email:j.email,reg:j.reg,make:j.make,model:j.model,fuel:j.fuel||'',year:j.year||'',engineSize:j.engineSize||'',
+    ramp:j.ramp,custType:j.custType||'',fleetAccount:j.fleetAccount,isB2B:j.isB2B,company:j.company,dvla:j.dvla,photos:j.photos,photoLinks:j.photoLinks,
+    source:j.source,by:currentUser.name,work:nw.trim(),stage:'labour',stageAt:Date.now(),createdAt:new Date().toISOString(),
+    tmJob:'',tmPart:'',parts:[],est:null,finalEst:null,finalNotes:'',splitFrom:j.id,linkedJobId:j.id,linkedRef:jobNo(j)||j.id,manualSplit:true,
+    log:[{t:ts(),s:'✂ Split from '+(jobNo(j)||j.id)+' by '+currentUser.name}]};
+  try{stampStage(nj,'labour');}catch(e){}
+  if(keepW.trim()&&keepW.trim()!==j.work){j.workOriginal=j.workOriginal||j.work;j.work=keepW.trim();delete j.brainAI;delete j._brainTriedMs;}
+  j.splitInto=nj.id;j.log=j.log||[];j.log.push({t:ts(),s:'✂ Split by '+currentUser.name+' — "'+nw.trim()+'" is now job '+nj.id});
+  jobs.unshift(nj);save(nj);save(j);
+  try{openJob(nj.id);}catch(e){}renderAll();
+  if(typeof toast==='function')toast('✂ Split — new job made for: '+nw.trim().slice(0,40));
 }
 function sameCarPanelH(j){
   const o=sameCarOpen(j);if(!o.length)return '';
@@ -8614,6 +8639,7 @@ function actH(j){
     h+=estDocPanelH(j,j.stage==='signoff');
   try{h+=partsLatePanelH(j);}catch(e){}
   try{h+=sameCarPanelH(j);}catch(e){}
+  try{h+=manualSplitH(j);}catch(e){}
   try{h+=priceChangePanelH(j);}catch(e){}
   try{h+=motResultH(j);}catch(e){}
   try{h+=adblueAskH(j);}catch(e){}
@@ -13589,6 +13615,8 @@ function fixLabelOnlyWork(){
   return n;
 }
 function autoSplitJobs(){
+  // 25 Nov 2026 (Logan): NEVER split jobs automatically — only a service adviser, by hand
+  return 0;
   let n=0;
   try{jobs.slice().forEach(j=>{try{if(splitDiagRepair(j))n++;}catch(e){}});}catch(e){}
   if(n&&typeof toast==='function')toast('✂ '+n+' job'+(n===1?'':'s')+' split into diagnostic + repair');
@@ -17582,7 +17610,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-25-1830';
+const CRM_BUILD='2026-11-25-1840';
 let _updateShown=false;
 async function checkForUpdate(){
   try{

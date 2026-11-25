@@ -473,7 +473,7 @@ input:checked+.tsl:before{transform:translateX(20px)}
 var SB_URL=KithCore.URL;
 var SB_KEY=KithCore.KEY;
 var SOP_VERSION='8.0';
-var INTAKE_BUILD='4.4';
+var INTAKE_BUILD='4.5';
 // The CRM keeps one row per job in `jobs` ({id, data, updated_at}).
 // Earlier builds wrote to `kith_jobs`, which nothing reads — jobs vanished.
 var JOBS_TABLE='jobs';
@@ -1328,6 +1328,8 @@ var BODY_WORDS=/\b(dent|scratch|scuff|paint|panel|bumper|wing|door|bonnet|respra
 // Diagnostic + repair in one request? Same test the CRM uses (16 Nov 2026).
 var INTAKE_DIAG_RX=/\b(diag\w*|health ?check|fault[ -]?find\w*|investigat\w*|inspect\w*|check (why|what)|find (the )?(fault|cause))\b/i;
 function diagRepairSplit(){
+  // 25 Nov 2026 (Logan): the intake never splits a job — one job; only a service adviser splits, in the CRM
+  return null;
   if(jobType==='comeback')return null;
   var txt=[fval('f-words'),fval('f-other-work'),fval('f-diag-type')].filter(Boolean).join(', ');
   if(hasCat('diagnostic')&&!INTAKE_DIAG_RX.test(txt))txt='Diagnostic, '+txt;
