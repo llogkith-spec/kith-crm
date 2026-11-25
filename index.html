@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v23.6 \u00b7 25 Nov';
+const BUILD='v23.7 \u00b7 25 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -7911,7 +7911,8 @@ function estDocHTML(j,opt){
 // been paid, the balance and how to pay (bank transfer to the Metro Bank
 // account). The total is always the job's final price.
 var INV_FILES={};
-function invBank(){const b=(CHANNELS&&CHANNELS.bank)||{};return {name:b.name||'Kith Cars Ltd',bank:b.bank||'Metro Bank',sort:b.sort||'',acc:b.acc||''};}
+// 25 Nov 2026 (Logan): KITH Cars Ltd Metro Bank business account — on every invoice
+function invBank(){const b=(CHANNELS&&CHANNELS.bank)||{};return {name:b.name||'KITH CARS LTD',bank:b.bank||'Metro Bank',sort:b.sort||'23-05-80',acc:b.acc||'56074252',iban:b.iban||'GB93MYMB23058056074252',bic:b.bic||'MYMBGB2L'};}
 function invNo(j){return j.invoiceNo||('KI'+String(j.id||'').replace(/^J/,''));}
 function invDueDays(j){const m=String(j.payTerms||'').match(/(\d+)\s*days?/i);return m?parseInt(m[1]):0;}
 function invDocData(j){
@@ -7979,7 +7980,7 @@ function invDocHTML(j){
       '<tr><td style="padding:6px 30px 2px 0;border-top:2px solid #111">Balance Due:</td><td style="text-align:right;font-size:18px;border-top:2px solid #111;padding-top:6px">'+f(Math.max(0,d.due))+'</td></tr></table>'+
     (paidUp?'':'<div style="margin-top:18px;border:2px solid #1d3f8f;border-radius:5px;padding:10px 12px;font-size:12px">'+
       '<div style="font-weight:800;margin-bottom:4px">How to pay — bank transfer</div>'+
-      '<table style="border-collapse:collapse;font-size:12px">'+row('Account name:',b.name)+row('Bank:',b.bank)+row('Sort code:',b.sort)+row('Account no:',b.acc)+
+      '<table style="border-collapse:collapse;font-size:12px">'+row('Account name:',b.name)+row('Bank:',b.bank)+row('Sort code:',b.sort)+row('Account no:',b.acc)+(b.iban?row('IBAN (from abroad):',b.iban):'')+(b.bic?row('SWIFT / BIC:',b.bic):'')+
       '<tr><td style="padding:1px 14px 1px 0">Reference:</td><td style="font-weight:800">'+escHtml(invNo(j)+' '+String(j.reg||'').toUpperCase())+'</td></tr></table>'+
       (b.sort&&b.acc?'':'<div style="margin-top:4px">Call '+KITH_CO.tel+' for our bank details.</div>')+'</div>')+
     (j.invNote?'<div style="margin-top:14px;border:1px solid #bbb;border-radius:4px;padding:8px 10px;font-size:11.5px;white-space:pre-wrap"><strong>Notes</strong><br>'+escHtml(j.invNote)+'</div>':'')+
@@ -8099,7 +8100,7 @@ function setInvField(id,k,v){
 }
 async function saveInvBank(){
   const g=k=>String((document.getElementById('ib-'+k)||{}).value||'').trim();
-  const bank={name:g('name')||'Kith Cars Ltd',bank:g('bank')||'Metro Bank',sort:g('sort'),acc:g('acc')};
+  const bank={name:g('name')||'Kith Cars Ltd',bank:g('bank')||'Metro Bank',sort:g('sort'),acc:g('acc'),iban:(CHANNELS&&CHANNELS.bank&&CHANNELS.bank.iban)||'',bic:(CHANNELS&&CHANNELS.bank&&CHANNELS.bank.bic)||''};
   CHANNELS=Object.assign({},CHANNELS,{bank});
   cacheChannels();
   try{await casWrite('__channels__',()=>({channels:channelsForDb(CHANNELS)}));toast('✓ Bank details saved for every invoice');}
@@ -17491,7 +17492,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-25-1735';
+const CRM_BUILD='2026-11-25-1740';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
