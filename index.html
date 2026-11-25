@@ -1256,9 +1256,29 @@ const STAGE_MAP={
   'addwork':      'parts',
   'addlabour':    'labour',
 };
+// ── STRAIGHT JOBS FROM THE INTAKE (24 Nov 2026) ─────────────────────
+// A straight job (MOT, remap, tyre fit, set-price job) is booked at a fixed
+// price the customer agreed at the counter. The intake saves it as
+// fixedPrice {incVat, exVat, vatFree}, but the CRM never read it, so the job
+// had no price: nothing on the board's money, skipped by Accounts, nothing to
+// invoice. The fixed price becomes the job's quote, already agreed.
+function applyStraightPrice(j){
+  try{
+    if(!j||!j.isStraight||!j.fixedPrice||parseFloat(j.quote)>0)return false;
+    const fp=j.fixedPrice, inc=parseFloat(fp.incVat);
+    if(!(inc>0))return false;
+    j.quote=inc;j.finalEst=inc;
+    if(fp.vatFree)j.vatExempt=true;
+    if(!j.estApproved){j.estApproved=true;j.estApprovedAmount=inc;j.estApprovedHow='Fixed price agreed at the counter (intake)';
+      j.estApprovedWho=j.name||'Customer';j.estApprovedAt=j.estApprovedAt||ts();}
+    j.log=j.log||[];j.log.push({t:ts(),s:'\u00a3 Fixed price from the intake: \u00a3'+inc.toFixed(2)+(fp.vatFree?' (no VAT)':' inc VAT')+' \u2014 '+(fp.label||'straight job')});
+    return true;
+  }catch(e){return false;}
+}
 function migrateJob(j){
   try{
     if(!j||typeof j!=='object'||!j.id)return null;
+    try{applyStraightPrice(j);}catch(e){}
     if(STAGE_MAP[j.stage]) j.stage=STAGE_MAP[j.stage];
     if(!j.log) j.log=[];
     cleanJob(j);
@@ -15374,6 +15394,7 @@ function autoPilot(){
   if(!AUTO_ON)return 0;
   try{autoCloseDoneElsewhere();}catch(e){console.warn('done-elsewhere',e);}
   try{autoSignOffFixed();}catch(e){console.warn('auto-signoff',e);}
+  try{jobs.forEach(j=>{if(j&&j.isStraight&&j.fixedPrice&&(j.straightPriceSaved!==true)&&parseFloat(j.quote)>0){j.straightPriceSaved=true;save(j);}});}catch(e){}
   try{fixLabelOnlyWork();}catch(e){console.warn('labelfix',e);}
   // Descriptions auto-written in v9.5 showed book time — rewrite with charged hours only
   try{jobs.forEach(j=>{if(j&&/h book/.test(String(j.labourDesc||''))&&/\nTotal: .*h book/.test(String(j.labourDesc||''))&&srtLines(j).length){j.labourDesc=labourDescFromLines(j);save(j);}});}catch(e){}
