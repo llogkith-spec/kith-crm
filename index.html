@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v23.5 \u00b7 25 Nov';
+const BUILD='v23.6 \u00b7 25 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -7960,7 +7960,7 @@ function invDocHTML(j){
           '<span style="background:#1d4fbf;color:#fff;font-size:8px;padding:12px 4px 2px">GB</span>'+
           '<span style="background:#f7c600;font-family:Arial Black,Arial,sans-serif;font-weight:900;font-size:18px;padding:4px 26px;letter-spacing:1px">'+escHtml(String(j.reg||'').toUpperCase())+'</span></div>'+
         '<table style="border-collapse:collapse;font-size:12px">'+row('Make/Model:',[v.make||j.make,v.model||j.model].filter(Boolean).join(' ').toUpperCase())+
-          row('Engine Size:',eng)+row('Fuel Type:',String(v.fuelType||j.fuel||'').toUpperCase())+row('Manufacture:',v.yearOfManufacture||j.year)+row('Mileage:',j.mileageOut||j.mileage)+'</table></div>'+
+          row('Engine Size:',eng)+row('Fuel Type:',String(v.fuelType||j.fuel||'').toUpperCase())+row('Manufacture:',v.yearOfManufacture||j.year)+row('Mileage:',invMileage(j))+'</table></div>'+
     '</div>'+
     '<div style="border-top:1px solid #ccc;margin:16px 0 10px"></div>'+
     (d.labour.length?'<div style="font-size:16px;margin-bottom:6px">Labour</div>'+
@@ -7989,7 +7989,9 @@ function invDocHTML(j){
   '</div>';
 }
 function invFileName(j){return 'KITH Cars invoice '+invNo(j)+(j.reg?' '+String(j.reg).replace(/\s+/g,'').toUpperCase():'')+'.pdf';}
-function invSig(j){const d=invDocData(j);return d.total.toFixed(2)+'/'+d.paid.toFixed(2)+'/'+invNo(j)+'/'+(j.invNote||'').length;}
+function invSig(j){const d=invDocData(j);return d.total.toFixed(2)+'/'+d.paid.toFixed(2)+'/'+invNo(j)+'/'+(j.invNote||'').length+'/'+invMileage(j);}
+// 25 Nov 2026 (Logan): the car's mileage always goes on the invoice
+function invMileage(j){const m=j.mileageOut||j.mileage||(j.healthCheck&&j.healthCheck.mileage)||'';return String(m).replace(/[^0-9]/g,'')?Number(String(m).replace(/[^0-9]/g,'')).toLocaleString('en-GB'):'';}
 function invLast(j){const a=j.invoiceDocs||[];return a[a.length-1]||null;}
 function printInvDoc(id){
   const j=jobs.find(x=>x.id===id)||gj();if(!j)return;
@@ -8123,7 +8125,9 @@ function invoicePanelH(j){
       '<input class="fi2" style="width:120px;font-size:12px;padding:4px 8px" placeholder="Invoice no." value="'+escHtml(j.invoiceNo||invNo(j))+'" onchange="setInvField(\''+j.id+'\',\'invoiceNo\',this.value)">'+
       '<select class="fi2" style="font-size:12px;padding:4px 6px" onchange="setInvField(\''+j.id+'\',\'payTerms\',this.value)">'+
         PAY_TERMS.map(t=>'<option'+((j.payTerms||'On collection')===t?' selected':'')+'>'+t+'</option>').join('')+'</select>'+
+      '<input class="fi2" inputmode="numeric" style="width:130px;font-size:12px;padding:4px 8px;border-color:'+(invMileage(j)?'var(--border)':'var(--amber)')+'" placeholder="Mileage *" value="'+escHtml(j.mileageOut||j.mileage||'')+'" onchange="setInvField(\''+j.id+'\',\'mileageOut\',this.value)" title="Mileage when the car leaves \u2014 goes on the invoice">'+
     '</div>'+
+    (invMileage(j)?'':'<div style="font-size:11px;color:var(--amber);margin-top:3px">\u26a0 Put the car\u2019s mileage in \u2014 it goes on the invoice.</div>')+
     '<textarea class="fi2" style="width:100%;margin-top:6px;font-size:12px;min-height:34px" placeholder="Note on the invoice (optional)" onchange="setInvField(\''+j.id+'\',\'invNote\',this.value)">'+escHtml(j.invNote||'')+'</textarea>'+
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+
       '<button class="btn btn-ghost btn-sm" onclick="printInvDoc(\''+j.id+'\')">👁 View / print</button>'+
@@ -17487,7 +17491,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-25-1515';
+const CRM_BUILD='2026-11-25-1735';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
