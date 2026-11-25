@@ -875,13 +875,13 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <div class="overlay" id="ov-detail"><div class="panel" id="dp"></div></div>
 
 
-<script src="kith-core.js"></script>
+<script src="kith-core.js?v=20261125"></script>
 <script src="engine.js"></script>
 <script src="kith-lines.js"></script>
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v23.4 \u00b7 23 Nov';
+const BUILD='v23.5 \u00b7 25 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -17487,7 +17487,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-23-1620';
+const CRM_BUILD='2026-11-25-1515';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
@@ -19165,7 +19165,7 @@ const STAFF_TIMINGS=[
   {name:'Ali',            role:'Service Adviser + Parts',        days:'Mon–Fri', hours:'8am–5pm'},
   {name:'Joel',           role:'Estimator',                      days:'Mon–Fri', hours:'12pm–5pm'},
   {name:'Paul',           role:'Estimator (parts + labour)',     days:'Mon–Fri', hours:'8am–5pm'},
-  {name:'Elvis',          role:'Service Adviser + Parts',        days:'Mon–Fri', hours:'8am–5pm'},
+  {name:'Elvis',          role:'Service Adviser + Parts + Estimator',        days:'Mon–Fri', hours:'8am–5pm'},
   {name:'Sudha',          role:'Parts / Accounts',               days:'Mon–Fri', hours:'9am–5pm'},
   {name:'Giles',          role:'Workshop Manager',               days:'Mon–Sat', hours:'8am–6pm'},
   {name:'Logkith',        role:'Director',                       days:'Mon–Sun', hours:'—'},
