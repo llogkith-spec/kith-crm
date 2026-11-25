@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v23.7 \u00b7 25 Nov';
+const BUILD='v23.8 \u00b7 25 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -12855,9 +12855,10 @@ function brainAddLine(id){
 function brainPrefillH(j){
   if(!j||j.stage!=='labour')return '';
   if(j.brainPrefillDismissedAt){
-    if(j.adblueAnswer==='topup'||j.adblueAnswer==='solution')return '';
+    // 25 Nov 2026 (Logan): AdBlue jobs are SOP fixed price, but the Brain stays one tap away for any other work
+    const ab=(j.adblueAnswer==='topup'||j.adblueAnswer==='solution');
     return '<div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px dashed var(--border);border-radius:var(--r);padding:8px 12px;margin-bottom:14px;font-size:12px;color:var(--dim)">'+
-      '\ud83e\udde0 Brain pre-fill hidden'+
+      (ab?'\ud83e\udde0 AdBlue is priced from the SOP \u2014 no Brain needed. Other work on this car?':'\ud83e\udde0 Brain pre-fill hidden')+
       '<button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="brainUndismiss(\''+j.id+'\')">\u21a9 Bring the Brain back</button></div>';
   }
   if(ensureBodyAI(j)){try{save(j);}catch(e){}}
@@ -17492,7 +17493,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-25-1740';
+const CRM_BUILD='2026-11-25-1745';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
