@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <!--
   KITH Cars — website enquiry form
   Drop this snippet into kithcars.com (any page). It POSTs to the
@@ -29,7 +30,7 @@
 
 <form id="kith-form" onsubmit="return kithSubmit(event)">
   <h2>Get an instant price</h2>
-  <div class="sub">Tell us your reg, how to reach you and what the car needs. We'll ping you a WhatsApp range within 5 minutes, free and no obligation.</div>
+  <div class="sub">Tell us your reg, how to reach you and what the car needs. We'll WhatsApp you a price range — free and no obligation.</div>
 
   <div id="kith-form-body">
     <label for="k-reg">Your registration</label>
@@ -39,7 +40,7 @@
     <input id="k-name" name="name" placeholder="e.g. Jane Patel" required>
 
     <label for="k-phone">Mobile (for the WhatsApp reply)</label>
-    <input id="k-phone" name="phone" type="tel" inputmode="tel" placeholder="e.g. 07700 900123" required>
+    <input id="k-phone" name="phone" type="tel" inputmode="tel" placeholder="e.g. 07700 900123" required pattern="[0-9 +()\-]{10,20}" title="A mobile number, e.g. 07700 900123">
 
     <label for="k-what">What does the car need?</label>
     <textarea id="k-what" name="what" placeholder="e.g. rear brakes grinding and a full service" required></textarea>
@@ -49,6 +50,7 @@
 
     <button id="k-submit" type="submit">Get my price range</button>
     <div id="k-err" class="err" style="display:none"></div>
+    <div style="font-size:11px;color:#6E7885;margin-top:12px;line-height:1.5">We use these details only to reply about your car and your quote. <a href="https://llogkith-spec.github.io/kith-crm/privacy.html" target="_blank" rel="noopener" style="color:#A8B1BD">Privacy policy</a></div>
   </div>
 </form>
 
@@ -68,6 +70,11 @@
     btn.disabled = true;
     btn.textContent = 'Sending…';
     const v = id => (document.getElementById(id).value || '').trim();
+    // a phone we can actually reply to: at least 10 digits
+    if (v('k-phone').replace(/\D/g,'').length < 10) {
+      err.textContent = 'Please put in a mobile number we can WhatsApp, e.g. 07700 900123.';
+      err.style.display = 'block'; btn.disabled = false; btn.textContent = 'Get my price range'; return false;
+    }
     try {
       const r = await fetch(INGEST_URL, {
         method: 'POST',
@@ -88,7 +95,7 @@
           '<div class="tick">✓</div>' +
           '<h3>Thanks ' + escapeHtml(v('k-name').split(' ')[0] || '') + '</h3>' +
           '<p>Your enquiry for <strong style="color:#D8A32B">' + escapeHtml(v('k-reg').toUpperCase()) + '</strong> is in.</p>' +
-          '<p style="margin-top:14px">We\'ll send a WhatsApp price range to <strong>' + escapeHtml(v('k-phone')) + '</strong> in the next few minutes.</p>' +
+          '<p style="margin-top:14px">We\'ll WhatsApp a price range to <strong>' + escapeHtml(v('k-phone')) + '</strong> as soon as we can.</p>' +
           '<p style="margin-top:14px;font-size:12px;color:#6E7885">KITH Cars · Hackbridge · Reply YES on WhatsApp to get the exact figure.</p>' +
         '</div>';
     } catch(e) {
