@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v24.0 \u00b7 25 Nov';
+const BUILD='v24.1 \u00b7 25 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -11684,33 +11684,100 @@ function estQuickFind(j,text){
 function estQuickEditH(j){
   if(j.signedOff||!['labour','parts','signoff','range','intake'].includes(j.stage))return '';
   return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:10px 12px;margin-bottom:12px">'+
-    '<div style="font-size:12px;font-weight:800;margin-bottom:4px">\u270d Tell it what to remove</div>'+
-    '<div style="font-size:11px;color:var(--faint);margin-bottom:6px">e.g. <em>remove the mirror glass and the wing mirror labour</em> \u00b7 <em>take off the brake pads</em> \u00b7 <em>remove all labour</em>. The estimate recalculates itself.</div>'+
-    '<div style="display:flex;gap:6px"><input class="fi2" id="qe-text" style="flex:1" placeholder="What should come off?" onkeydown="if(event.key===\'Enter\')estQuickPreview(\''+j.id+'\')"/>'+
-    '<button class="btn btn-sm" style="background:var(--gold);color:#111;font-weight:800" onclick="estQuickPreview(\''+j.id+'\')">Find</button></div>'+
+    '<div style="font-size:12px;font-weight:800;margin-bottom:4px">\ud83e\udd16 Tell it what to change</div>'+
+    '<div style="font-size:11px;color:var(--faint);margin-bottom:6px">e.g. <em>bill should come to 800 plus vat</em> \u00b7 <em>total 960 inc vat</em> \u00b7 <em>labour rate 60</em> \u00b7 <em>add 1.5h wheel alignment</em> \u00b7 <em>add part wiper blades \u00a312</em> \u00b7 <em>water pump labour to \u00a3180</em> \u00b7 <em>remove the brake pads</em>. Several at once with <em>and</em>. You see the new total before anything changes.</div>'+
+    '<div style="display:flex;gap:6px"><input class="fi2" id="qe-text" style="flex:1" placeholder="What should change?" onkeydown="if(event.key===\'Enter\')estQuickPreview(\''+j.id+'\')"/>'+
+    '<button class="btn btn-sm" style="background:var(--gold);color:#111;font-weight:800" onclick="estQuickPreview(\''+j.id+'\')">Go</button></div>'+
     '<div id="qe-out" style="margin-top:6px"></div></div>';
+}
+// ── TELL IT WHAT TO CHANGE (25 Nov 2026, Logan) ─────────────────────
+// Plain words → a list of changes, previewed with the new total, applied on one tap.
+function _qeNum(s){const m=String(s).replace(/,/g,'').match(/(\d+(?:\.\d+)?)/);return m?parseFloat(m[1]):NaN;}
+function _qeFixedSum(j){return srtLines(j).filter(l=>l.fixed).reduce((a,l)=>a+(parseFloat(l.labour)||0),0);}
+function _qeHrs(j){return srtLines(j).filter(l=>!l.fixed).reduce((a,l)=>a+(parseFloat(l.charged)||parseFloat(l.book)||0),0);}
+function _qeRate(j){const h=_qeHrs(j);return h>0?((parseFloat(j.labourCost)||0)-_qeFixedSum(j))/h:(typeof TARGET_RATE!=='undefined'?TARGET_RATE:70);}
+function _qeParse(j,text){
+  const acts=[],miss=[];
+  String(text||'').split(/\s*(?:;|\n|\band then\b|\bthen\b|\balso\b)\s*|\s+and\s+(?=(?:remove|delete|take|drop|add|labour|rate|make|set|change|total|bill|put)\b)/i)
+  .map(s=>s.trim()).filter(Boolean).forEach(c=>{
+    const lc=c.toLowerCase();
+    if(/^(remove|delete|take (off|out)|drop|get rid|no )/.test(lc)){
+      const h=estQuickFind(j,c);if(h.length)h.forEach(x=>acts.push({type:'remove',x,label:'Remove '+(x.kind==='part'?'part':'labour')+': '+x.name}));else miss.push(c);return;}
+    if(/\b(rate|per hour|an hour|p\/h|\/h|ph)\b/.test(lc)&&!/\badd\b/.test(lc)){
+      const r=_qeNum(c);if(r>0){acts.push({type:'rate',rate:r,label:'Labour rate \u00a3'+r.toFixed(2)+'/h on the hourly lines'});return;}}
+    if(/^add\b/.test(lc)){
+      const hm=lc.match(/(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours)\b/);
+      if(hm){const h=parseFloat(hm[1]);const op=c.replace(/^add\s+/i,'').replace(hm[0],'').replace(/\b(for|of|labour|on)\b/ig,' ').replace(/\s+/g,' ').trim()||'Additional labour';
+        acts.push({type:'addlab',op:op.charAt(0).toUpperCase()+op.slice(1),h,label:'Add labour: '+op+' \u2014 '+h+'h'});return;}
+      const pm=c.match(/\u00a3?\s*(\d+(?:\.\d+)?)/);
+      if(pm){const qm=lc.match(/\bx\s*(\d+)\b|\b(\d+)\s*x\b/);const qty=qm?parseInt(qm[1]||qm[2]):1;
+        const name=c.replace(/^add\s+/i,'').replace(/\bparts?\b/i,'').replace(pm[0],'').replace(/\bx\s*\d+\b|\b\d+\s*x\b/i,'').replace(/\b(at|for|cost|costing)\b/ig,' ').replace(/\s+/g,' ').trim()||'Part';
+        acts.push({type:'addpart',name:name.charAt(0).toUpperCase()+name.slice(1),cost:parseFloat(pm[1]),qty,label:'Add part: '+name+(qty>1?' \u00d7'+qty:'')+' \u2014 cost \u00a3'+parseFloat(pm[1]).toFixed(2)+' (markup added)'});return;}
+    }
+    if(/\b(come to|comes to|total|bill|make it|should be|quote|price it|charge)\b/.test(lc)&&!isNaN(_qeNum(c))&&!/\b(labour|part)\b.*\bto\b/.test(lc)){
+      const v=_qeNum(c);const inc=/\binc|including|with vat\b/.test(lc)&&!/\b(plus|\+|ex|exc|excluding)\s*vat\b/.test(lc);
+      acts.push({type:'target',ex:inc?v/1.2:v,label:'Bring the total to \u00a3'+(inc?(v/1.2):v).toFixed(2)+' + VAT = \u00a3'+(inc?v:v*1.2).toFixed(2)+' inc VAT (labour adjusted)'});return;}
+    const sm=c.match(/^(.*?)\s+(?:to|at|=|for)\s*\u00a3?\s*(\d+(?:\.\d+)?)\s*(?:\+?\s*vat|ex vat)?$/i);
+    if(sm){const words=_qeWords(sm[1].replace(/\blabou?r\b/ig,''));
+      let best=-1,bs=0;srtLines(j).forEach((l,i)=>{const w=_qeWords(l.op);const n=words.filter(a=>w.some(b=>b===a||(a.length>=4&&b.length>=4&&(b.startsWith(a)||a.startsWith(b))))).length;if(n>bs){bs=n;best=i;}});
+      if(best>=0){acts.push({type:'setlab',i:best,v:parseFloat(sm[2]),label:'Labour "'+srtLines(j)[best].op+'" \u2192 \u00a3'+parseFloat(sm[2]).toFixed(2)+' ex VAT'});return;}
+    }
+    miss.push(c);
+  });
+  return {acts,miss};
+}
+function _qeApplyTo(j,acts){
+  const who=currentUser?' ['+currentUser.name+']':'';j.log=j.log||[];
+  const rate0=_qeRate(j);
+  // removals first, highest index first
+  acts.filter(a=>a.type==='remove'&&a.x.kind==='part').sort((a,b)=>b.x.i-a.x.i).forEach(a=>{const p=j.parts[a.x.i];if(p){j.parts.splice(a.x.i,1);j.log.push({t:ts(),s:'\ud83e\udd16 Part removed: '+(p.name||'')+who});}});
+  acts.filter(a=>a.type==='remove'&&a.x.kind==='labour').sort((a,b)=>b.x.i-a.x.i).forEach(a=>{const l=srtLines(j)[a.x.i];if(l){_dropLabourLine(j,a.x.i);j.log.push({t:ts(),s:'\ud83e\udd16 Labour removed: '+(l.op||'')+who});}});
+  acts.forEach(a=>{
+    if(a.type==='rate'){const h=_qeHrs(j);if(h>0){j.labourCost=Math.round((_qeFixedSum(j)+h*a.rate)*100)/100;}j.log.push({t:ts(),s:'\ud83e\udd16 Labour rate set to \u00a3'+a.rate+'/h'+who});}
+    if(a.type==='addlab'){j.srtLines=srtLines(j);j.srtLines.push({op:a.op,book:a.h,charged:a.h,by:currentUser?currentUser.name:'',at:ts()});j.labourCost=Math.round(((parseFloat(j.labourCost)||0)+a.h*(_qeHrs(j)-a.h>0?_qeRate({srtLines:j.srtLines.slice(0,-1),labourCost:j.labourCost}):rate0))*100)/100;j.log.push({t:ts(),s:'\ud83e\udd16 Labour added: '+a.op+' '+a.h+'h'+who});}
+    if(a.type==='addpart'){j.parts=j.parts||[];j.parts.push({name:a.name,qty:a.qty,price1:a.cost,supplier1:'',chosenSupplier:1,price:a.cost,addedBy:currentUser?currentUser.name:'',addedAt:ts()});j.log.push({t:ts(),s:'\ud83e\udd16 Part added: '+a.name+' cost \u00a3'+a.cost+who});}
+    if(a.type==='setlab'){const l=srtLines(j)[a.i];if(!l)return;
+      const old=l.labour!=null?(parseFloat(l.labour)||0):(parseFloat(l.charged)||parseFloat(l.book)||0)*_qeRate(j);
+      l.fixed=true;l.labour=a.v;l.charged=0;l.priceManual=true;
+      j.labourCost=Math.round(((parseFloat(j.labourCost)||0)-old+a.v)*100)/100;
+      j.log.push({t:ts(),s:'\ud83e\udd16 Labour "'+l.op+'" set to \u00a3'+a.v+who});}
+  });
+  syncSrtTotals(j);
+  const tg=acts.find(a=>a.type==='target');
+  if(tg){
+    let cur=0;try{cur=estDocData(j).total/(j.vatExempt?1:1.2);}catch(e){}
+    const want=(parseFloat(j.labourCost)||0)+(tg.ex-cur);
+    if(want<0)throw new Error('The parts alone come to more than that \u2014 remove a part or lower a part price first.');
+    const h=_qeHrs(j),fx=_qeFixedSum(j);
+    if(h>0&&want>=fx)j.labourCost=Math.round(want*100)/100;
+    else{const f=fx>0?want/fx:0;srtLines(j).forEach(l=>{if(l.fixed)l.labour=Math.round((parseFloat(l.labour)||0)*f*100)/100;});j.labourCost=Math.round(want*100)/100;}
+    j.log.push({t:ts(),s:'\ud83e\udd16 Total brought to \u00a3'+tg.ex.toFixed(2)+' + VAT (labour now \u00a3'+(+j.labourCost).toFixed(2)+')'+who});
+  }
+  try{if(labourDescReplaceable(j))j.labourDesc=labourDescFromLines(j);}catch(e){}
 }
 function estQuickPreview(id){
   const j=jobs.find(x=>x.id===id);if(!j)return;
   const t=(document.getElementById('qe-text')||{}).value||'';
   const box=document.getElementById('qe-out');if(!box)return;
-  const hits=estQuickFind(j,t);
-  if(!hits.length){box.innerHTML='<div style="font-size:12px;color:var(--amber)">Couldn\u2019t match that to a part or labour line \u2014 use a word from its name (e.g. <em>mirror</em>, <em>pads</em>), or tap the \u00d7 on the line.</div>';return;}
-  window._qeHits=hits;
-  box.innerHTML='<div style="font-size:11px;color:var(--dim);margin-bottom:4px">These will come off \u2014 untick any you want to keep:</div>'+
-    hits.map((x,k)=>'<label style="display:flex;gap:8px;align-items:center;font-size:12px;padding:3px 0"><input type="checkbox" id="qe-h-'+k+'" checked/><span style="font-size:10px;font-weight:800;color:'+(x.kind==='part'?'var(--green)':'var(--blue)')+'">'+(x.kind==='part'?'PART':'LABOUR')+'</span>'+escHtml(x.name||'\u2014')+'</label>').join('')+
-    '<button class="btn btn-sm" style="margin-top:6px;background:var(--red);color:#fff;font-weight:800" onclick="estQuickApply(\''+j.id+'\')">\u00d7 Remove ticked &amp; recalculate</button>';
+  const P=_qeParse(j,t);
+  if(!P.acts.length){box.innerHTML='<div style="font-size:12px;color:var(--amber)">Didn\u2019t understand that. Try: <em>bill should come to 800 plus vat</em>, <em>labour rate 60</em>, <em>add 1h wheel alignment</em>, <em>add part bulb \u00a35</em>, <em>clutch labour to \u00a3300</em>, <em>remove the pads</em>.</div>';return;}
+  let before=0,after=0,err='';
+  try{before=estDocData(j).total;}catch(e){}
+  try{const c=JSON.parse(JSON.stringify(j));const _cu=currentUser;_qeApplyTo(c,P.acts);after=estDocData(c).total;}catch(e){err=e.message||String(e);}
+  window._qeActs=P.acts;
+  box.innerHTML='<div style="font-size:11px;color:var(--dim);margin-bottom:4px">This will:</div>'+
+    P.acts.map(a=>'<div style="font-size:12px;padding:2px 0">\u2022 '+escHtml(a.label)+'</div>').join('')+
+    (P.miss.length?'<div style="font-size:11px;color:var(--amber);margin-top:4px">Skipped (didn\u2019t understand): '+P.miss.map(escHtml).join(' \u00b7 ')+'</div>':'')+
+    (err?'<div style="font-size:12px;color:var(--red);margin-top:6px">\u26a0 '+escHtml(err)+'</div>':
+    '<div style="font-size:13px;margin:8px 0 6px">Total <strong>\u00a3'+before.toFixed(2)+'</strong> \u2192 <strong style="color:var(--gold)">\u00a3'+after.toFixed(2)+'</strong> inc VAT <span style="color:var(--faint);font-size:11px">(\u00a3'+(after/1.2).toFixed(2)+' + VAT)</span></div>'+
+    '<button class="btn btn-sm" style="background:var(--gold);color:#111;font-weight:800" onclick="estQuickApply(\''+j.id+'\')">\u2713 Make these changes</button>');
 }
 function estQuickApply(id){
-  const j=jobs.find(x=>x.id===id);if(!j)return;
-  const hits=(window._qeHits||[]).filter((x,k)=>{const c=document.getElementById('qe-h-'+k);return c&&c.checked;});
-  if(!hits.length)return;
-  j.log=j.log||[];const who=currentUser?' ['+currentUser.name+']':'';
-  hits.filter(x=>x.kind==='part').sort((a,b)=>b.i-a.i).forEach(x=>{const p=j.parts[x.i];if(!p)return;j.parts.splice(x.i,1);j.log.push({t:ts(),s:'Part removed (quick edit): '+(p.name||'\u2014')+who});});
-  hits.filter(x=>x.kind==='labour').sort((a,b)=>b.i-a.i).forEach(x=>{const l=srtLines(j)[x.i];if(!l)return;_dropLabourLine(j,x.i);j.log.push({t:ts(),s:'Labour removed (quick edit): '+(l.op||'\u2014')+who});});
-  try{if(labourDescReplaceable(j))j.labourDesc=labourDescFromLines(j);}catch(e){}
-  window._qeHits=null;
+  const j=jobs.find(x=>x.id===id);if(!j||!window._qeActs)return;
+  try{_qeApplyTo(j,window._qeActs);}catch(e){alert(e.message||e);return;}
+  window._qeActs=null;window._qeHits=null;
   reprice(j);
+  if(typeof toast==='function')toast('\u2713 Estimate updated');
 }
 // Keep the headline SRT figures equal to the sum of the lines
 // The labour breakdown written out as the labour description (16 Nov 2026)
@@ -17610,7 +17677,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-25-1840';
+const CRM_BUILD='2026-11-25-1910';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
