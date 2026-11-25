@@ -881,7 +881,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 <script src="kith-rules.js"></script>
 <script src="kith-bot.js"></script>
 <script>
-const BUILD='v23.8 \u00b7 25 Nov';
+const BUILD='v23.9 \u00b7 25 Nov';
 try{document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('build-tag');if(b)b.textContent=BUILD;});}catch(e){}
 // On phone, boot into the list view, not the 27-column Kanban board.
 try{document.addEventListener('DOMContentLoaded',()=>{
@@ -2754,6 +2754,92 @@ function isThirdParty(j){return THIRD_PARTY_RE.test(custTypeOf(j)||j.source||'')
 // The same Techman number was getting into the pipeline more than once
 // — MWQ103007 sat at Work Complete AND at Accounts. Nothing checked.
 const DEAD_STAGES=['lost'];
+// ── ONE CAR, ONE ESTIMATE (25 Nov 2026, Logan) ──────────────────────
+// The same car kept landing on the board 2–3 times (each intake send made a
+// new job). Open estimate-stage jobs on the same reg within a week are one
+// visit: new intake copies fold into the existing job by themselves, and
+// older ones get a "merge into one" button.
+const SAMECAR_STAGES=['intake','range','labour','parts','signoff','contacted','waiting','waiting2'];
+function _regN(r){return String(r||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
+function sameCarOpen(j){
+  if(!j||j.mergedInto||!SAMECAR_STAGES.includes(j.stage)||j.additionalWork||j.motFailOf)return [];
+  const r=_regN(j.reg);if(r.length<4)return [];
+  const t=jobCameIn(j);
+  return jobs.filter(x=>x&&x.id!==j.id&&!x.mergedInto&&SAMECAR_STAGES.includes(x.stage)&&_regN(x.reg)===r
+    &&!x.additionalWork&&!x.motFailOf&&x.linkedJobId!==j.id&&j.linkedJobId!==x.id
+    &&Math.abs(jobCameIn(x)-t)<=7*864e5);
+}
+function _sameCarKeep(group){
+  const ix=id=>STAGES.findIndex(s=>s.id===id);
+  return group.slice().sort((a,b)=>(ix(b.stage)-ix(a.stage))||(jobCameIn(a)-jobCameIn(b)))[0];
+}
+function _foldInto(keep,o){
+  const added=[];const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  const ow=String(o.work||'').trim();
+  if(ow&&!norm(keep.work).includes(norm(ow))){keep.work=(String(keep.work||'').trim()?String(keep.work).trim()+' + ':'')+ow;added.push('work');}
+  const have=new Set((keep.parts||[]).map(p=>norm(p.name)));
+  const np=(o.parts||[]).filter(p=>p&&p.name&&!have.has(norm(p.name)));
+  if(np.length){keep.parts=(keep.parts||[]).concat(np.map(p=>Object.assign({},p)));added.push(np.length+' part'+(np.length===1?'':'s'));}
+  const ops=new Set(srtLines(keep).map(l=>norm(l.op)));
+  const nl=srtLines(o).filter(l=>l&&!ops.has(norm(l.op)));
+  if(nl.length){
+    let add=0;nl.forEach(l=>{add+=l.labour!=null?(parseFloat(l.labour)||0):((parseFloat(o.labourCost)||0)*((parseFloat(l.charged)||parseFloat(l.book)||0)/(parseFloat(o.srtCharged)||parseFloat(o.srt)||1)));});
+    keep.srtLines=srtLines(keep).concat(nl.map(l=>Object.assign({},l)));syncSrtTotals(keep);
+    keep.labourCost=Math.round(((parseFloat(keep.labourCost)||0)+add)*100)/100;
+    try{if(labourDescReplaceable(keep))keep.labourDesc=labourDescFromLines(keep);}catch(e){}
+    added.push(nl.length+' labour line'+(nl.length===1?'':'s'));
+  }
+  ['photos','photoLinks','teamNotes'].forEach(k=>{if(Array.isArray(o[k])&&o[k].length)keep[k]=(keep[k]||[]).concat(o[k]);});
+  if(o.brainExtra)keep.brainExtra=[].concat(keep.brainExtra||[],o.brainExtra);
+  if(!keep.email&&o.email)keep.email=o.email;if(!keep.phone&&o.phone)keep.phone=o.phone;
+  closeJobDupe(o,keep);
+  o.log.push({t:ts(),s:'🚗 Same car — folded into '+(jobNo(keep)||keep.id)});
+  keep.log=keep.log||[];keep.log.push({t:ts(),s:'🚗 Merged in '+(jobNo(o)||o.id)+(added.length?' ('+added.join(', ')+')':' (nothing new)')+(currentUser?' ['+currentUser.name+']':'')});
+  save(o);
+  return added;
+}
+function sameCarPanelH(j){
+  const o=sameCarOpen(j);if(!o.length)return '';
+  const all=[j].concat(o),keep=_sameCarKeep(all);
+  return '<div style="background:rgba(160,30,30,.12);border:2px solid var(--red);border-radius:var(--r);padding:11px;margin-bottom:10px">'+
+    '<div style="font-size:13px;font-weight:800;color:var(--red)">🚗 This car is on the board '+all.length+' times</div>'+
+    '<div style="font-size:11.5px;margin:6px 0">'+all.map(x=>'• <a href="#" style="color:var(--gold)" onclick="openJob(\''+x.id+'\');return false">'+escHtml(jobNo(x)||x.id)+'</a> · '+escHtml(stg(x.stage).label)+' · '+escHtml(String(x.work||'').slice(0,60))+(x===keep?' <strong>(keep)</strong>':'')).join('<br>')+'</div>'+
+    '<div style="font-size:11px;color:var(--dim);margin-bottom:8px">Merging keeps '+escHtml(jobNo(keep)||keep.id)+' (furthest along) and brings in the other jobs’ work, parts, labour lines, photos and comments. The others close as duplicates — nothing is deleted.</div>'+
+    '<button class="btn btn-sm btn-full" style="background:var(--red);color:#fff;font-weight:800" onclick="mergeSameCar(\''+j.id+'\')">🔗 Merge into one estimate</button>'+
+    '<div style="font-size:10px;color:var(--faint);margin-top:4px">Genuinely separate jobs? Leave them — or use ADDITIONAL work next time.</div></div>';
+}
+function mergeSameCar(id){
+  const j=jobs.find(x=>x.id===id);if(!j)return;
+  const all=[j].concat(sameCarOpen(j));if(all.length<2)return;
+  const keep=_sameCarKeep(all);
+  if(!confirm('Merge '+all.length+' jobs for '+(j.reg||'this car')+' into '+(jobNo(keep)||keep.id)+' ('+stg(keep.stage).label+')?'))return;
+  let any=false;
+  all.filter(x=>x!==keep).forEach(o=>{if(_foldInto(keep,o).length)any=true;});
+  if(any&&(keep.estimateSentMs||['contacted','waiting','waiting2'].includes(keep.stage)))
+    keep.teamNotes=teamNotes(keep).concat([{at:ts(),ms:Date.now(),by:currentUser?currentUser.name:'',stage:keep.stage,text:'🚗 Jobs merged — the estimate changed. Check it and send the new one to the customer.'}]);
+  save(keep);
+  try{openJob(keep.id);}catch(e){}renderAll();
+  if(typeof toast==='function')toast('✓ Merged into '+(jobNo(keep)||keep.id));
+}
+// New intake copies fold in by themselves (no labour or parts on them yet)
+function autoFoldSameCar(){
+  let n=0;
+  jobs.filter(j=>j&&!j.mergedInto&&j.stage==='intake'&&!(j.parts||[]).length&&!srtLines(j).length&&Date.now()-jobCameIn(j)<3*864e5)
+    .forEach(j=>{
+      const o=sameCarOpen(j).filter(x=>jobCameIn(x)<=jobCameIn(j));if(!o.length)return;
+      const keep=_sameCarKeep(o);
+      const added=_foldInto(keep,j);
+      if(added.includes('work')&&['parts','signoff','contacted','waiting','waiting2'].includes(keep.stage)&&!keep.estimateSentMs){
+        const was=keep.stage;keep.stage='labour';keep.stageAt=Date.now();try{stampStage(keep,'labour');}catch(e){}
+        keep.teamNotes=teamNotes(keep).concat([{at:ts(),ms:Date.now(),by:'Auto',stage:'labour',text:'🚗 More work came in for this car: "'+String(j.work||'').slice(0,120)+'" — add it to the estimate (moved back from '+stg(was).label+').'}]);
+      }else if(added.includes('work')){
+        keep.teamNotes=teamNotes(keep).concat([{at:ts(),ms:Date.now(),by:'Auto',stage:keep.stage,text:'🚗 More work came in for this car: "'+String(j.work||'').slice(0,120)+'" — add it to the estimate.'}]);
+      }
+      save(keep);n++;
+    });
+  if(n){try{renderAll();}catch(e){}if(typeof toast==='function')toast('🚗 '+n+' repeat intake'+(n===1?'':'s')+' folded into the job already on the board');}
+  return n;
+}
 function liveJobs(){return jobs.filter(j=>j&&j.id&&!DEAD_STAGES.includes(j.stage)&&!j.mergedInto);}
 
 // ── ONE PLACE THAT DECIDES WHAT'S A DUPLICATE ──────────────────────
@@ -5457,6 +5543,7 @@ function cardH(j){
       ?'<div style="font-size:9px;font-weight:800;color:var(--red);margin-bottom:4px">\u2715 NOT APPROVED</div>'
       :(j.estApproved&&approvalStale(j)?'<div style="font-size:9px;font-weight:800;color:var(--amber);margin-bottom:4px">\u26a0 PRICE CHANGED SINCE APPROVAL</div>':''))+
     ((parseFloat(j.refunded)||0)>0?'<div style="font-size:9px;font-weight:800;color:var(--red);margin-bottom:4px">\u21a9 REFUNDED \u00a3'+(parseFloat(j.refunded)||0).toFixed(2)+'</div>':'')+
+    (function(){try{const o=sameCarOpen(j);return o.length&&!dupeJobsOf(j).length?'<div style="font-size:9px;font-weight:800;color:var(--red);margin-bottom:4px">\ud83d\ude97 SAME CAR \u00d7'+(o.length+1)+' \u2014 open it to merge into one</div>':'';}catch(e){return '';}})()+
     (dupeJobsOf(j).length?'<div style="font-size:9px;font-weight:800;color:var(--red);margin-bottom:4px">\u26a0 DUPLICATE \u00d7'+(dupeJobsOf(j).length+1)+'</div>':'')+
     ((['contact','contacted'].includes(j.stage)&&!((j.estimateDocs||[]).length))
       ?'<div style="font-size:9px;font-weight:800;color:var(--amber);margin-bottom:4px">\ud83d\udcc4 NO ESTIMATE ATTACHED</div>':'')+
@@ -8526,6 +8613,7 @@ function actH(j){
   if(['financial','signoff','disapproved','contact','contacted','waiting','waiting2','ready'].includes(j.stage))
     h+=estDocPanelH(j,j.stage==='signoff');
   try{h+=partsLatePanelH(j);}catch(e){}
+  try{h+=sameCarPanelH(j);}catch(e){}
   try{h+=priceChangePanelH(j);}catch(e){}
   try{h+=motResultH(j);}catch(e){}
   try{h+=adblueAskH(j);}catch(e){}
@@ -15447,6 +15535,7 @@ function autoPilot(){
       j.log=j.log||[];j.log.push({t:ts2(),s:sent?'\u2192 Contacted (quote already went to the customer)':'\u2192 Final Estimate & Sign-Off \u2014 the Service Adviser step is gone; Approve sends the quote'});save(j);}
   });}catch(e){}
   // jobs already sitting in the PO / SO stages with nothing to order go back to Booked
+  try{autoFoldSameCar();}catch(e){console.warn('same car fold',e);}
   try{jobs.forEach(j=>{if(j&&!j.mergedInto&&['po','so','raised','soraised'].includes(j.stage)&&!j.skipOrders&&noOrdersNeeded(j)){
     const from=j.stage,to=afterOrdersLand(j)||'checkin';j.stage=to;j.stageAt=Date.now();try{stampStage(j,to);}catch(e){}
     j.log=j.log||[];j.log.push({t:ts2(),s:'\u2192 '+stg(to).label+' \u2014 nothing to order (no parts, no subcontractor), so no PO/SO stages'});
@@ -17493,7 +17582,7 @@ function notify(msg,kind){
 // which is how the fixed storage error kept appearing. Every few
 // minutes, compare this page's build with the one on GitHub and ask
 // people to reload. A tab in the background reloads itself.
-const CRM_BUILD='2026-11-25-1745';
+const CRM_BUILD='2026-11-25-1830';
 let _updateShown=false;
 async function checkForUpdate(){
   try{
