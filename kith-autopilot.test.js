@@ -15,14 +15,15 @@ function world(opts) {
   const put = (id, data) => { rows[id] = { data: JSON.parse(JSON.stringify(data)), updated_at: stamp() }; };
   const props = Object.assign({ SB_URL: 'https://sb.test', SB_KEY: 'anon', META_TOKEN: 'tok', PHONE_ID: '123',
     AUTOPILOT: 'test' }, opts.props || {});
-  const calls = { meta: [], brain: [], triage: [], patches: 0 };
+  const calls = { meta: [], brain: [], triage: [], adviser: [], patches: 0 };
   let conflictOnce = opts.conflictOnce || null;   // row id to bump once between read and write
   const W = {
     open: new Set(opts.window || []),          // numbers inside the 24-hour window
     triage: opts.triage || (() => ({ category: 'adviser', routed_to_roles: ['adviser'], is_rapid_fire: true, is_ambiguous: false,
       suggested_reply: '', priority: 'normal', confidence: 'high' })),
     brain: opts.brain || (() => ({ jobs: [{ job_label: 'Front pads' }], total_inc_vat: 200, total_range: { lo: 180.4, hi: 250.2 },
-      confidence: 'medium', sop_version: 7 }))
+      confidence: 'medium', sop_version: 7 })),
+    adviser: opts.adviser || (() => ({ reply: 'Hi! What’s the reg, and what does the car need?', wants_range: false, fields: { name: '', reg: '', what: '' }, handover: null, intent: 'enquiry' }))
   };
   const resp = (code, obj) => ({ getResponseCode: () => code, getContentText: () => obj == null ? '' : JSON.stringify(obj) });
   const UrlFetchApp = { fetch(url, o) {
@@ -36,6 +37,7 @@ function world(opts) {
     }
     if (url === 'https://sb.test/functions/v1/triage') { calls.triage.push(body); return resp(200, W.triage(body)); }
     if (url === 'https://sb.test/functions/v1/brain') { calls.brain.push(body); return resp(200, W.brain(body)); }
+    if (url === 'https://sb.test/functions/v1/adviser') { calls.adviser.push(body); const a = W.adviser(body); return a === 500 ? resp(500, { error: 'boom' }) : resp(200, a); }
     if (url === 'https://sb.test/functions/v1/inbox-ingest') return resp(200, { ok: true });
     const u = new URL(url); const q = u.searchParams;
     if (!u.pathname.endsWith('/rest/v1/jobs')) return resp(404, null);
@@ -284,5 +286,113 @@ console.log('8. Wording matches the CRM and inbox');
   ok(/autopilotAlive\(\)\) return;/.test(html), 'inbox page stands down while the autopilot runs');
 }
 
+console.log('9. AI adviser on WhatsApp');
+const waLead = (o) => lead(Object.assign({ id: 'W1', channel: 'whatsapp', name: 'Tharsan', phone: '+447706941991', reg: '', make: '', model: '', what: 'Hi mate',
+  t: NOW - 60e3, messages: [{ dir: 'in', channel: 'whatsapp', text: 'Hi mate', t: NOW - 60e3, at: 'now' }] }, o || {}));
+{
+  // test mode: draft in the thread, nothing queued to the customer, triage leaves it alone
+  const w = world();
+  w.put('__leads__', { leads: [waLead()] }); w.put('__outbox__', { msgs: [] }); w.put('__msgcfg__', {});
+  const out = w.run();
+  const l = w.get('__leads__').leads[0], box = w.get('__outbox__').msgs;
+  ok(out.agent === 1 && w.calls.adviser.length === 1, 'adviser called once');
+  ok(w.calls.adviser[0].messages.slice(-1)[0].text === 'Hi mate' && w.calls.adviser[0].lead.name === 'Tharsan', 'adviser gets the chat and what we know');
+  ok(l.messages.some(m => m.dir === 'out' && m.status === 'draft' && m.by === 'ai' && /reg/.test(m.text)), 'test mode: AI reply saved as a draft in the thread');
+  ok(!box.some(m => m.to === '447706941991'), 'test mode: nothing queued to the customer');
+  ok(!box.some(m => m.kind === 'staff_ping' || m.kind === 'triage_ack' || m.kind === 'triage_rapid_fire'), 'triage does not ack or ping on an AI chat');
+  ok(l.agent && l.agent.hash && l.agent.mode === 'test' && l.agent.replies === 1, 'agent state recorded');
+  w.run();
+  ok(w.calls.adviser.length === 1, 'same message not answered twice');
+}
+{
+  // waits for the customer to finish typing
+  const w = world();
+  w.put('__leads__', { leads: [waLead({ messages: [{ dir: 'in', text: 'Hi', t: NOW - 5e3 }] })] }); w.put('__outbox__', { msgs: [] });
+  w.run();
+  ok(w.calls.adviser.length === 0, 'no reply within 30s of the last message');
+}
+{
+  // on: range from the Brain filled in and queued; fields filled on the lead
+  const w = world({ props: { AUTOPILOT: 'on' }, window: ['447706941991'],
+    adviser: () => ({ reply: 'Thanks Tharsan — front pads on that usually come to {{RANGE}} including VAT. Want us to put the exact quote together?',
+      wants_range: true, job_for_range: 'front brake pads', fields: { name: 'Tharsan', reg: 'AB12CDE', what: 'front brake pads' }, handover: null, intent: 'enquiry' }) });
+  w.put('__leads__', { leads: [waLead({ what: '' })] }); w.put('__outbox__', { msgs: [] }); w.put('__msgcfg__', {});
+  w.run();
+  const l = w.get('__leads__').leads[0], box = w.get('__outbox__').msgs;
+  ok(w.calls.brain.length === 1 && w.calls.brain[0].reg === 'AB12CDE' && w.calls.brain[0].complaint === 'front brake pads', 'Brain asked for the range');
+  const sent = w.calls.meta.find(m => m.to === '447706941991');
+  ok(sent && /£180–£250/.test(sent.text.body) && !/\{\{RANGE\}\}/.test(sent.text.body), 'reply sent with the Brain range');
+  ok(l.reg === 'AB12CDE' && l.what === 'front brake pads', 'reg and job filled in on the lead');
+  ok(l.agent.rangeSent === '£180–£250', 'range remembered so it is not sent twice');
+  ok(box.some(m => m.kind === 'agent_reply' && m.status === 'sent'), 'outbox shows it sent');
+}
+{
+  // Brain fails: no guessed price, holding reply + handover
+  const w = world({ props: { AUTOPILOT: 'on' }, window: ['447706941991', '2348126024190'], brain: () => ({ error: 'nope' }),
+    adviser: () => ({ reply: 'That usually comes to {{RANGE}}.', wants_range: true, job_for_range: 'service', fields: { reg: 'AB12CDE' }, handover: null }) });
+  w.put('__leads__', { leads: [waLead()] }); w.put('__outbox__', { msgs: [] }); w.put('__msgcfg__', {});
+  w.run();
+  const l = w.get('__leads__').leads[0];
+  const toCust = w.calls.meta.filter(m => m.to === '447706941991');
+  ok(toCust.length === 1 && !/£/.test(toCust[0].text.body) && /team will check/.test(toCust[0].text.body), 'Brain down: holding reply, no price');
+  ok(l.agent.handedOverAt && w.calls.meta.some(m => m.to === '2348126024190' && /AI handover/.test(m.text.body)), 'Brain down: handed to the adviser');
+}
+{
+  // handover on YES: staff pinged with summary, then the AI goes quiet
+  const w = world({ props: { AUTOPILOT: 'on' }, window: ['447706941991', '2348126024190'],
+    adviser: () => ({ reply: 'Brilliant — one of the team will be in touch shortly to book you in.', wants_range: false, fields: {},
+      handover: { to: 'adviser', reason: 'said yes to the range', summary: 'Tharsan, AB12CDE, front pads, said YES to £180–£250', priority: 'normal' }, intent: 'go_ahead' }) });
+  w.put('__leads__', { leads: [waLead({ messages: [{ dir: 'in', text: 'yes please', t: NOW - 60e3 }] })] }); w.put('__outbox__', { msgs: [] }); w.put('__msgcfg__', {});
+  const out = w.run();
+  const l = w.get('__leads__').leads[0];
+  ok(out.handovers === 1 && l.agent.handedOverAt && l.agent.handover.to === 'adviser' && l.agent.handover.pinged[0] === 'Ali', 'handover recorded');
+  const ping = w.calls.meta.find(m => m.to === '2348126024190');
+  ok(ping && /said YES/.test(ping.text.body) && /Why: said yes/.test(ping.text.body), 'staff ping carries the summary');
+  // a new message after handover: the AI stays quiet
+  const L = w.get('__leads__');
+  L.leads[0].messages.push({ dir: 'in', text: 'what time?', t: NOW - 50e3 }); w.put('__leads__', L);
+  w.run();
+  ok(w.calls.adviser.length === 1, 'after handover the AI does not reply');
+  // estimator with no numbers falls back to the adviser
+  const w2 = world({ adviser: () => ({ reply: 'Thanks for the photos — our estimator will price it up.', fields: {}, handover: { to: 'estimator', reason: 'bodywork photos', summary: 'scratch rear bumper' } }) });
+  w2.put('__leads__', { leads: [waLead()] }); w2.put('__outbox__', { msgs: [] });
+  w2.run();
+  ok(w2.get('__outbox__').msgs.some(m => m.kind === 'staff_ping' && m.to === '2348126024190' && /ESTIMATOR/.test(m.text)), 'role with no numbers → adviser pinged');
+}
+{
+  // Take over / STOP / not WhatsApp
+  const w = world();
+  w.put('__leads__', { leads: [
+    waLead({ id: 'P', agent: { paused: 'Logan' } }),
+    waLead({ id: 'S', phone: '+447700900321', messages: [{ dir: 'in', text: 'STOP', t: NOW - 60e3 }] }),
+    waLead({ id: 'R', phone: '+447700900322', messages: [{ dir: 'in', text: 'hi', t: NOW - 90e3 }, { dir: 'out', text: 'staff said hi', t: NOW - 40e3 }] })
+  ] }); w.put('__outbox__', { msgs: [] });
+  w.run();
+  const L = id => w.get('__leads__').leads.find(x => x.id === id);
+  ok(!w.calls.adviser.length, 'paused, STOP and staff-replied chats: adviser not called');
+  ok(L('S').agent && L('S').agent.optedOut, 'STOP recorded');
+  ok(L('P').triage && w.get('__outbox__').msgs.some(m => m.leadId === 'P'), 'taken-over chat goes back to the normal triage flow');
+}
+{
+  // adviser keeps failing → normal triage reply takes over
+  const w = world({ adviser: () => 500 });
+  w.put('__leads__', { leads: [waLead()] }); w.put('__outbox__', { msgs: [] });
+  w.run(); w.run(); w.run();
+  const l = w.get('__leads__').leads[0];
+  ok(w.calls.adviser.length === 3 && l.agent.fallback, 'three failures → fallback');
+  w.run();
+  ok(w.calls.adviser.length === 3 && w.get('__outbox__').msgs.some(m => m.leadId === 'W1' && m.kind !== 'agent_reply'), 'then triage replies as before');
+}
+
+{
+  // the inbox page: chip + Take over / Let AI reply
+  const html = fs.readFileSync(path.join(__dirname, 'kith-inbox.html'), 'utf8');
+  ok(/data-aioff/.test(html) && /data-aion/.test(html) && /function setAI/.test(html), 'inbox has Take over / Let AI reply');
+  const w = world({ props: { AUTOPILOT: 'on' }, window: ['447706941991'] });
+  w.put('__leads__', { leads: [waLead({ agent: { resumedAtMs: NOW - 45e3 }, messages: [{ dir: 'out', text: 'staff', t: NOW - 90e3, msgId: 'MSG1' }, { dir: 'in', text: 'ok and the price?', t: NOW - 40e3 }] })] });
+  w.put('__outbox__', { msgs: [] }); w.put('__msgcfg__', {});
+  w.run();
+  ok(w.calls.adviser.length === 1, 'after "Let AI reply", older staff messages no longer keep it quiet');
+}
 console.log('\n' + (fail ? '✗ ' : '✓ ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

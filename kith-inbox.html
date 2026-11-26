@@ -757,13 +757,14 @@ function leadCard(l) {
       (t.reasoning ? '<div style="opacity:.75;margin-top:4px;line-height:1.4">→ ' + esc(t.reasoning) + '</div>' : '') +
       (t.suggested_reply ? '<div style="opacity:.75;margin-top:3px;font-style:italic">Reply: "' + esc(t.suggested_reply) + '"</div>' : '') +
     '</div>' : '<div style="opacity:.5;font-size:11px;margin:4px 0">' + triageChip(null) + '</div>';
+  const ai = aiBlock(l);
   return '<div class="card" data-lead="' + esc(l.id) + '"><div class="hd">' +
     '<span class="tag gold">' + esc(B.channelLabel(l.channel)) + '</span>' +
     '<div class="t"><b>' + esc(l.name || l.handle || 'No name yet') + '</b><span>' +
       esc([l.phone, l.reg, l.email].filter(Boolean).join(' · ') || 'nothing yet') + ' · ' + esc(l.at) + '</span></div>' +
     (q ? '<span class="tag warn">' + q + ' queued</span>' : mine.length ? '<span class="tag go">sent</span>' : '') +
     '</div><div class="bd">' +
-    triageBlock +
+    ai + triageBlock +
     (l.what ? '<div class="note" style="margin-top:0"><b>What they want</b>' + esc(l.what) + '</div>' : '') +
     '<div class="need">' + B.NEEDED.map(k => '<span class="' + (miss.includes(k) ? '' : 'got') + '">' + (k === 'reg' ? 'reg' : k) + '</span>').join('') + '</div>' +
     last.map(m => '<div class="msg ' + (m.dir === 'in' ? 'in' : 'out') + '"><span class="w">' + (m.dir === 'in' ? '← ' : '→ ') +
@@ -776,7 +777,43 @@ function leadCard(l) {
       '<button class="btn sm stop" data-ljunk="' + esc(l.id) + '">Not a job</button>' +
     '</div></div></div>';
 }
+// The AI adviser on this chat (kith-autopilot.gs step 0) — status + Take over
+function aiOn(l) { return l && l.channel === 'whatsapp' && !(l.agent && l.agent.paused); }
+function aiBlock(l) {
+  if (!l || l.channel !== 'whatsapp') return '';
+  const a = l.agent || {};
+  const staff = (l.messages || []).some(m => m && m.dir === 'out' && m.by !== 'ai' && !/-(ack|rf|ai\d+)$/.test(String(m.msgId || '')) && m.status !== 'draft' && !((m.t || 0) < (a.resumedAtMs || 0)));
+  let tag, txt;
+  if (a.paused) { tag = 'stop'; txt = 'AI off — ' + esc(a.paused) + ' took over'; }
+  else if (a.optedOut) { tag = 'stop'; txt = 'Customer said STOP'; }
+  else if (a.handedOverAt) { tag = 'warn'; txt = 'AI handed over to ' + esc((a.handover && a.handover.to) || 'staff') + (a.handover && a.handover.reason ? ' — ' + esc(a.handover.reason) : ''); }
+  else if (staff) { tag = 'warn'; txt = 'A person is replying — AI is quiet'; }
+  else if (a.fallback) { tag = 'warn'; txt = 'AI could not answer — normal reply used'; }
+  else { tag = 'go'; txt = 'AI is replying' + (a.mode === 'test' ? ' (test mode: drafts only)' : '') + (a.replies ? ' · ' + a.replies + ' repl' + (a.replies === 1 ? 'y' : 'ies') : ''); }
+  const sum = a.handover && a.handover.summary ? '<div style="opacity:.8;margin-top:4px">' + esc(a.handover.summary) + '</div>' : '';
+  return '<div style="border:1px solid var(--border,#333A44);border-radius:4px;padding:8px 10px;margin:6px 0;font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+    '<div><span class="tag ' + tag + '">🤖 ' + txt + '</span>' + sum + '</div>' +
+    (a.paused || a.optedOut
+      ? '<button class="btn sm" data-aion="' + esc(l.id) + '">Let AI reply</button>'
+      : '<button class="btn sm stop" data-aioff="' + esc(l.id) + '">Take over</button>') +
+    '</div>';
+}
+async function setAI(id, on) {
+  try {
+    await withSave(() => {
+      LEADS = LEADS.map(x => {
+        if (x.id !== id) return x;
+        const a = Object.assign({}, x.agent || {});
+        if (on) { delete a.paused; delete a.handedOverAt; delete a.optedOut; delete a.fallback; a.resumedBy = ME; a.resumedAtMs = Date.now(); }
+        else { a.paused = ME || 'staff'; a.pausedAt = new Date().toISOString(); }
+        return Object.assign({}, x, { agent: a });
+      });
+    }, on ? 'AI will answer their next message' : 'You have this chat — the AI is off');
+  } catch (e) { toast('Could not save: ' + e.message); }
+}
 function wireLeadButtons() {
+  document.querySelectorAll('[data-aioff]').forEach(b => b.onclick = () => setAI(b.dataset.aioff, false));
+  document.querySelectorAll('[data-aion]').forEach(b => b.onclick = () => setAI(b.dataset.aion, true));
   document.querySelectorAll('[data-ledit]').forEach(b => b.onclick = () => openEdit(b.dataset.ledit));
   document.querySelectorAll('[data-lreply]').forEach(b => b.onclick = () => openReply(b.dataset.lreply));
   document.querySelectorAll('[data-lask]').forEach(b => b.onclick = () => askMore(b.dataset.lask));

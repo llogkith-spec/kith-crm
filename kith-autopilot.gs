@@ -5,7 +5,18 @@
    a minute on Google's servers, next to kith-relay.gs, in the SAME Apps Script
    project (it uses the relay's Script Properties and its sendMessage()).
 
-   Every minute it does three things:
+   Every minute it does four things:
+
+     0. AGENT     The AI adviser (Supabase function "adviser") answers new
+                  WhatsApp messages in its own words — receptionist, service
+                  adviser and salesperson. It asks for what's missing (name,
+                  reg, what's wrong), answers from KITH's real terms, sends the
+                  Brain's price range on retail mechanical work, and hands the
+                  chat to a person (WhatsApp ping with a summary) on a YES, a
+                  booking, a complaint, haggling, bodywork photos, or anything
+                  it is unsure of. Then it goes quiet on that chat. Staff can
+                  press "Take over" in the inbox to stop it on any chat.
+                  In test mode it writes DRAFTS into the thread — nothing goes.
 
      1. TRIAGE    New inbox messages (last 24 h) go through the triage AI —
                   exactly what kith-inbox.html does when it is open: a rapid
@@ -38,6 +49,7 @@
      AP_TRIAGE          on | off   inbox triage step          (default on)
      AP_RANGE           on | off   intake-form range step     (default on)
      AP_SEND            on | off   outbox sender step         (default on)
+     AP_AGENT           on | off   AI adviser on WhatsApp     (default on)
      AP_MAX_AGE_HOURS   oldest message/job it will act on     (default 24)
      INBOX_URL          link put in staff pings (default the GitHub page)
 
@@ -50,7 +62,7 @@
         inbox. Then set AUTOPILOT = on.
    ============================================================================= */
 
-var AP_VERSION = '1.0';
+var AP_VERSION = '1.1';
 
 /* --------------------------------------------------------------- config --- */
 function apProp(k, d) {
@@ -65,15 +77,18 @@ function apOn(k) { return String(apProp(k, 'on')).toLowerCase().trim() !== 'off'
 function apMaxAgeMs() { return (parseFloat(apProp('AP_MAX_AGE_HOURS', '24')) || 24) * 3600e3; }
 
 // Per-run limits keep one run well inside Apps Script's 6-minute limit
-var AP_LIMIT = { triage: 4, range: 3, send: 25 };
+var AP_LIMIT = { agent: 4, triage: 4, range: 3, send: 25 };
 
 // Who gets the staff ping for each triage category — same table as the inbox
 var AP_STAFF_BY_ROLE = {
   adviser:  [{ name: 'Ali', wa: '2348126024190' }, { name: 'Elvis', wa: '' }],
   parts:    [{ name: 'Sudha', wa: '447514422991' }, { name: 'Giles', wa: '447496673248' }, { name: 'Harith', wa: '' }, { name: 'Paul', wa: '' }],
   accounts: [{ name: 'Sudha', wa: '447514422991' }, { name: 'Logan', wa: '' }],
-  director: [{ name: 'Logan', wa: '' }]
+  director: [{ name: 'Logan', wa: '' }],
+  estimator: [{ name: 'Joel', wa: '' }, { name: 'Elvis', wa: '' }, { name: 'Paul', wa: '' }]
 };
+// A role with no WhatsApp numbers yet hands over to the adviser instead
+var AP_ROLE_FALLBACK = 'adviser';
 
 // The template to use when Meta says we are outside the 24-hour window.
 // Each returns [templateName, params] or null when it cannot be templated.
@@ -90,6 +105,7 @@ var AP_TEMPLATES = {
   triage_ack: function (m, ctx) {
     return ['kith_enquiry_received', [apFirst(ctx.lead ? ctx.lead.name : '')]];
   },
+  agent_reply: function () { return null; },   // only ever sent inside the 24-hour window
   staff_ping: function (m) {
     return ['kith_staff_alert', [apOneLine(m.text, 200)]];
   },
@@ -127,11 +143,12 @@ function autopilotRun() {
   cache.put('ap-running', mine, 330);               // expires on its own after 5½ min
   var lock = { releaseLock: function () { if (cache.get('ap-running') === mine) cache.remove('ap-running'); } };
   var out ={ at: new Date().toISOString(), mode: apMode(), version: AP_VERSION,
-              triaged: 0, ranges: 0, sent: 0, failed: 0, wouldSend: 0, notes: [] };
+              agent: 0, handovers: 0, triaged: 0, ranges: 0, sent: 0, failed: 0, wouldSend: 0, notes: [] };
   try {
     if (out.mode === 'off') { apHeartbeat(out); return out; }
     if (out.mode === 'on' && !apWhatsAppReady()) out.notes.push('AUTOPILOT is on but META_TOKEN / PHONE_ID are missing — working in test mode until they are set');
     var now = Date.now();
+    if (apOn('AP_AGENT'))  apStepAgent(out, now);
     if (apOn('AP_TRIAGE')) apStepTriage(out, now);
     if (apOn('AP_RANGE'))  apStepRange(out, now);
     if (apOn('AP_SEND'))   apStepSend(out, now);
@@ -144,6 +161,164 @@ function autopilotRun() {
     lock.releaseLock();
   }
   return out;
+}
+
+/* ================================================================= 0 AGENT */
+// Wait this long after a customer's last message before answering, so three
+// quick messages in a row get one reply, not three.
+var AP_AGENT_WAIT_MS = 30e3;
+var AP_AGENT_MAX_REPLIES = 12;     // then a person takes over
+var AP_AGENT_MAX_ERRORS = 3;       // then the normal triage reply takes over
+
+// Is this a chat the AI adviser looks after?
+function apAgentOwns(l) {
+  if (!l || !apOn('AP_AGENT') || l.deleted || l.junk) return false;
+  if (l.channel !== 'whatsapp' || !apIntl(l.phone)) return false;
+  var a = l.agent || {};
+  if (a.paused) return false;                               // staff pressed "Take over"
+  if (a.fallback && a.fallback === apTriageHash(l)) return false;   // adviser kept failing on this message
+  return true;
+}
+// …and should it answer right now?
+function apAgentWhyNot(l, now) {
+  if (!apAgentOwns(l)) return 'not the agent’s';
+  var a = l.agent || {};
+  if (a.handedOverAt) return 'handed over';
+  if (a.optedOut || (l.triage && l.triage.optedOut)) return 'opted out';
+  if (l.jobId) return 'already a job';
+  var msgs = l.messages || [], last = msgs[msgs.length - 1];
+  if (!last || last.dir !== 'in') return 'nothing to answer';
+  if (!(last.t >= now - apMaxAgeMs())) return 'too old';
+  if (now - last.t < AP_AGENT_WAIT_MS) return 'waiting for them to finish typing';
+  if (a.hash === apTriageHash(l)) return 'already answered';
+  if (msgs.some(function (m) { return apStaffSent(m) && !((m.t || 0) < (a.resumedAtMs || 0)); })) return 'a person is replying';
+  return '';
+}
+
+// A message a person sent from the inbox or CRM (not the AI, not an automatic ack/range)
+function apStaffSent(m) {
+  return m && m.dir === 'out' && m.by !== 'ai' && !/-(ack|rf|ai\d+)$/.test(String(m.msgId || '')) && m.status !== 'draft';
+}
+
+function apStepAgent(out, now) {
+  var leads = (apGetRow('__leads__').data || {}).leads || [];
+  var todo = leads.filter(function (l) { return !apAgentWhyNot(l, now); }).slice(0, AP_LIMIT.agent);
+  if (!todo.length) return;
+  var test = apMode() !== 'on' || !apWhatsAppReady();
+  var newMsgs = [], patches = {};
+
+  todo.forEach(function (l) {
+    var hash = apTriageHash(l);
+    var a = l.agent || {};
+    var plan = { hash: hash, msgs: [], thread: [], agent: {}, fields: {} };
+
+    if (apIsStopReply(l)) {
+      plan.agent = { optedOut: new Date().toISOString() };
+    } else if ((a.replies || 0) >= AP_AGENT_MAX_REPLIES) {
+      apAgentHandover(l, plan, { to: 'adviser', reason: 'long chat — over ' + AP_AGENT_MAX_REPLIES + ' AI replies', summary: apOneLine(l.what || '', 200), priority: 'normal' });
+    } else {
+      var r = apPost(apFn('adviser'), {
+        now: apTs(),
+        lead: { name: l.name || '', reg: l.reg || '', vehicle: [l.year, l.make, l.model].filter(Boolean).join(' '),
+                what: l.what || '', returning: !!l.returningJobId, range_sent: a.rangeSent || '' },
+        messages: (l.messages || []).slice(-20).map(function (m) { return { dir: m.dir, text: m.text }; })
+      });
+      if (!r.ok) {
+        var errs = (a.hash === 'err:' + hash ? (a.errors || 0) : 0) + 1;
+        out.notes.push('adviser failed for ' + l.id + ': ' + r.error);
+        plan.agent = errs >= AP_AGENT_MAX_ERRORS ? { fallback: hash, errors: errs, lastError: r.error } : { errors: errs, lastError: r.error, hashErr: 'err:' + hash };
+        plan.failed = true;
+      } else {
+        var d = r.data, reply = String(d.reply || '').trim();
+        plan.fields = d.fields || {};
+        if (reply && d.wants_range) {
+          var reg = plan.fields.reg || l.reg || '';
+          var veh = [l.year, l.make, l.model].filter(Boolean).join(' ') || reg;
+          var b = apBrain({ customer_type: 'retail', vehicle: veh, reg: reg, complaint: d.job_for_range || plan.fields.what || l.what || '' });
+          var lo = b.ok && b.data.total_range && Math.round(b.data.total_range.lo);
+          var hi = b.ok && b.data.total_range && Math.round(b.data.total_range.hi);
+          if (lo && hi && !(b.data && b.data.safety_concern)) {
+            reply = reply.replace(/\{\{RANGE\}\}/g, '£' + lo + '–£' + hi);
+            plan.agent.rangeSent = '£' + lo + '–£' + hi;
+            plan.agent.brain = { lo: lo, hi: hi, conf: b.data.confidence || 'low', sop: b.data.sop_version || null };
+          } else {
+            // No safe figure — don't guess. A person picks it up.
+            reply = 'Thanks' + (l.name || plan.fields.name ? ' ' + apFirst(l.name || plan.fields.name) : '') + ' — one of the team will check the exact price for you and come back to you shortly.';
+            apAgentHandover(l, plan, { to: 'adviser', reason: b.ok ? (b.data && b.data.safety_concern ? 'safety concern: ' + apOneLine(b.data.safety_concern, 80) : 'the Brain gave no range') : 'Brain error',
+              summary: 'Wants a price for: ' + apOneLine(d.job_for_range || l.what || '', 120) + (reg ? ' · ' + reg : ''), priority: 'normal' });
+          }
+        }
+        reply = reply.replace(/\{\{RANGE\}\}/g, 'a price we’ll confirm');
+        if (reply) {
+          var m = apMsg({ kind: 'agent_reply', leadId: l.id, phone: l.phone, text: reply, route: ['whatsapp'], idSuffix: '-ai' + (a.replies || 0) });
+          var tm = apThreadMsg(m); tm.by = 'ai';
+          if (test) { tm.status = 'draft'; } else plan.msgs.push(m);
+          plan.thread.push(tm);
+          plan.agent.replies = (a.replies || 0) + 1;
+        }
+        plan.agent.intent = d.intent || '';
+        plan.agent.lastReplyAt = new Date().toISOString();
+        if (d.handover && !plan.agent.handedOverAt) apAgentHandover(l, plan, d.handover);
+      }
+    }
+    if (test) { plan.msgs = plan.msgs.filter(function (m) { return m.kind !== 'agent_reply'; }); }
+    plan.agent.mode = test ? 'test' : 'on';
+    if (!plan.failed) { plan.agent.hash = hash; plan.agent.errors = 0; }
+    out.agent++;
+    if (plan.agent.handedOverAt) out.handovers++;
+    if (test) out.wouldSend += plan.thread.length;
+
+    patches[l.id] = function (fresh) {
+      var fa = fresh.agent || {};
+      if (fa.paused) return fresh;                                  // staff took over meanwhile
+      if (apTriageHash(fresh) !== hash && !plan.failed) return null; // a new message came in — answer that next run
+      if (fa.hash === hash) return null;                            // another run already did this one
+      var f = plan.fields || {};
+      if (f.name && !fresh.name) fresh.name = f.name;
+      if (f.reg && !fresh.reg) fresh.reg = String(f.reg).toUpperCase();
+      if (f.what && !fresh.what) fresh.what = f.what;
+      var na = {}; Object.keys(fa).forEach(function (k) { na[k] = fa[k]; });
+      Object.keys(plan.agent).forEach(function (k) { na[k] = plan.agent[k]; });
+      if (plan.failed && plan.agent.hashErr) { na.hash = plan.agent.hashErr; delete na.hashErr; }
+      if (na.fallback && fresh.triage) delete fresh.triage.text_hash;   // let the normal triage reply happen
+      fresh.agent = na;
+      var have = {}; (fresh.messages || []).forEach(function (x) { if (x && x.msgId) have[x.msgId] = 1; });
+      fresh.messages = (fresh.messages || []).concat(plan.thread.filter(function (x) { return !have[x.msgId]; })).slice(-100);
+      return fresh;
+    };
+    patches[l.id].msgs = plan.msgs;
+  });
+
+  var applied = {};
+  apCasRow('__leads__', function (data) {
+    applied = {};
+    data = data || {}; data.leads = (data.leads || []).map(function (x) {
+      if (!x || !patches[x.id]) return x;
+      var y = patches[x.id](JSON.parse(JSON.stringify(x)));
+      if (!y) return x;
+      applied[x.id] = 1;
+      return y;
+    });
+    return data;
+  });
+  Object.keys(applied).forEach(function (id) { newMsgs = newMsgs.concat(patches[id].msgs || []); });
+  if (newMsgs.length) apQueue(newMsgs);
+}
+
+// Hand the chat to a person: WhatsApp ping with the AI's summary, then quiet.
+function apAgentHandover(l, plan, h) {
+  var role = AP_STAFF_BY_ROLE[h.to] ? h.to : AP_ROLE_FALLBACK;
+  var targets = (AP_STAFF_BY_ROLE[role] || []).filter(function (p) { return p.wa; });
+  if (!targets.length) { role = AP_ROLE_FALLBACK; targets = AP_STAFF_BY_ROLE[role].filter(function (p) { return p.wa; }); }
+  var text = (h.priority === 'urgent' ? '🚨 URGENT · ' : '') + '🤖 AI handover · ' + String(h.to || role).toUpperCase() + ' · WhatsApp\n' +
+    (l.name || (plan.fields && plan.fields.name) || 'unknown') + ' · ' + [l.phone, l.reg || (plan.fields && plan.fields.reg)].filter(Boolean).join(' · ') + '\n' +
+    'Why: ' + apOneLine(h.reason || 'needs a person', 120) + '\n' + apOneLine(h.summary || l.what || '', 400) +
+    '\n\nReply to them from the inbox: ' + apProp('INBOX_URL', 'https://llogkith-spec.github.io/kith-crm/kith-inbox.html');
+  targets.forEach(function (p, i) {
+    plan.msgs.push(apMsg({ kind: 'staff_ping', leadId: l.id, phone: p.wa, text: text, route: ['whatsapp'], idSuffix: '-ho-' + i }));
+  });
+  plan.agent.handedOverAt = new Date().toISOString();
+  plan.agent.handover = { to: h.to || role, pinged: targets.map(function (p) { return p.name; }), reason: h.reason || '', summary: h.summary || '', priority: h.priority || 'normal' };
 }
 
 /* ================================================================ 1 TRIAGE */
@@ -209,6 +384,7 @@ function apStepTriage(out, now) {
 // Same decisions as fireTriageActions() in kith-inbox.html
 function apTriageActions(l, t, newMsgs, added) {
   if (apIsStopReply(l)) { t.optedOut = t.optedOut || new Date().toISOString(); return; }
+  if (apAgentOwns(l)) return;                               // the AI adviser is talking to them
   if (t.is_ambiguous) return;                               // Logan's queue
   if (t.is_rapid_fire && !t.rapidFireSentAt) {
     apRapidFire(l, t, newMsgs, added);
@@ -492,14 +668,14 @@ function apHeartbeat(out) {
     data = data || {};
     var prev = data.autopilot || {};
     var hist = (prev.history || []);
-    if (out.triaged || out.ranges || out.sent || out.failed || out.error) {
-      hist = [{ at: out.at, triaged: out.triaged, ranges: out.ranges, sent: out.sent, failed: out.failed,
+    if (out.agent || out.triaged || out.ranges || out.sent || out.failed || out.error) {
+      hist = [{ at: out.at, agent: out.agent, handovers: out.handovers, triaged: out.triaged, ranges: out.ranges, sent: out.sent, failed: out.failed,
                 wouldSend: out.wouldSend, error: out.error || '', notes: out.notes.slice(0, 5) }].concat(hist).slice(0, 30);
     }
     // The inbox reads live.whatsapp to say whether WhatsApp goes by itself
     data.live = data.live || {};
     data.live.whatsapp = out.mode === 'on' && apWhatsAppReady();
-    data.autopilot = { at: out.at, mode: out.mode, version: AP_VERSION, last: { triaged: out.triaged, ranges: out.ranges,
+    data.autopilot = { at: out.at, mode: out.mode, version: AP_VERSION, last: { agent: out.agent, handovers: out.handovers, triaged: out.triaged, ranges: out.ranges,
       sent: out.sent, failed: out.failed, wouldSend: out.wouldSend, error: out.error || '' }, history: hist };
     return data;
   });
