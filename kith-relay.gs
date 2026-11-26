@@ -13,7 +13,7 @@
                   and read. Kept in the CRM database (jobs row '__wa_status__')
                   so the Awaiting Decision screen can show ✓ / ✓✓ / blue ✓✓.
      3. REPLIES   customer messages land in the unified Inbox (through the
-                  inbox-ingest function), so a "YES" shows up against the job
+                  inbox), so a "YES" shows up against the job
                   it answers in Awaiting Decision.
      4. EMAIL     the CRM posts {action:'email', ...}; this sends it from the
                   Gmail of the Google account the script is deployed under
@@ -187,25 +187,72 @@ function saveStatus(id, status, at, to, err) {
   } finally { lock.releaseLock(); }
 }
 
-// A customer message → the unified Inbox. It goes through the inbox-ingest
-// Edge Function (the single door every channel uses) so it lands beside
-// website, Instagram and phone leads. If that function is not deployed,
-// it falls back to the CRM's own kith_leads table.
+// A customer message → the unified Inbox (jobs row '__leads__').
+// Written straight to the database by this script, so it no longer depends on
+// the inbox-ingest function being deployed. Matching rules:
+//   - same phone, lead still open (not a job, not junk), last 7 days → the
+//     message is added to that lead's thread
+//   - otherwise a NEW lead is started, so a returning customer whose old lead
+//     is already a job still shows up in the inbox (returningJobId links the job)
 function saveIncoming(m, name) {
   var seen = CacheService.getScriptCache(), key = 'in-' + m.id;
   if (m.id && seen.get(key)) return;            // Meta sometimes sends the same message twice
-  if (m.id) seen.put(key, '1', 21600);
-  var text0 = msgText(m);
+  var text = msgText(m);
+  var phone = '+' + String(m.from || '').replace(/\D/g, '');
+  var ms = (parseInt(m.timestamp, 10) * 1000) || Date.now();
   try {
-    var res = UrlFetchApp.fetch(P('SB_URL') + '/functions/v1/inbox-ingest', {
-      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-      headers: { Authorization: 'Bearer ' + P('SB_KEY'), apikey: P('SB_KEY'), 'x-caller': 'kith-relay' },
-      payload: JSON.stringify({ channel: 'whatsapp', sender_name: name, sender_phone: '+' + String(m.from || '').replace(/\D/g, ''),
-        message_text: text0, received_at: new Date((parseInt(m.timestamp, 10) * 1000) || Date.now()).toISOString(), wa_message_id: m.id }) });
-    if (res.getResponseCode() < 300) return;
-    console.warn('inbox-ingest said ' + res.getResponseCode() + ' — using kith_leads');
-  } catch (err) { console.warn('inbox-ingest failed — using kith_leads', err); }
-  saveIncomingTable(m, name);
+    var r = leadsCas(function (data) {
+      data = data || {}; var leads = Array.isArray(data.leads) ? data.leads : [];
+      if (leads.some(function (l) { return l && (l.messages || []).some(function (x) { return x && x.waId === m.id; }); })) return null;
+      var msg = { dir: 'in', channel: 'whatsapp', at: 'just now', t: ms, text: text, waId: m.id };
+      var samePhone = function (l) { return l && digits(l.phone) && digits(l.phone) === digits(phone); };
+      var open = leads.filter(function (l) {
+        return samePhone(l) && !l.jobId && l.state !== 'junk' && !l.deleted && (ms - (l.t || 0)) < 7 * 864e5;
+      })[0];
+      if (open) {
+        open.messages = (open.messages || []).concat([msg]).slice(-100);
+        if (!open.what && text) open.what = text;
+        if (!open.name && name) open.name = name;
+        open.t = Math.max(open.t || 0, ms); open.at = 'just now';
+        if (open.triage) delete open.triage.text_hash;   // the autopilot triages the new message
+      } else {
+        var old = leads.filter(function (l) { return samePhone(l) && l.jobId; })[0];
+        leads.unshift({ id: 'LD' + ms + Math.random().toString(36).slice(2, 5), channel: 'whatsapp', source: 'whatsapp',
+          handle: phone, name: name || '', phone: phone, email: '', reg: '', year: null, make: '', model: '',
+          what: text, state: 'new', jobId: '', returningJobId: old ? old.jobId : '', notes: '',
+          by: 'relay/whatsapp', at: 'just now', t: ms, messages: [msg] });
+      }
+      data.leads = leads.slice(0, 2000);
+      return data;
+    });
+    if (m.id) seen.put(key, '1', 21600);
+    console.log('WhatsApp from ' + phone + (r ? ' saved to the inbox' : ' already in the inbox'));
+  } catch (err) {
+    console.error('Could not save the WhatsApp from ' + phone + ' to the inbox: ' + err + ' — saved to kith_leads instead');
+    saveIncomingTable(m, name);
+  }
+}
+function digits(p) { var d = String(p || '').replace(/\D/g, ''); if (d.indexOf('0') === 0) d = '44' + d.slice(1); return d; }
+// Read → change → write only if nobody saved in between, else go round again.
+function leadsCas(fn) {
+  for (var i = 0; i < 6; i++) {
+    var r = sb('jobs?id=eq.__leads__&select=data,updated_at');
+    var row = Array.isArray(r.data) && r.data[0];
+    var next = fn(row ? JSON.parse(JSON.stringify(row.data || {})) : null);
+    if (next == null) return null;
+    var stamp = new Date().toISOString(), w;
+    if (!row) {
+      w = sb('jobs', { method: 'post', prefer: 'return=representation', body: [{ id: '__leads__', data: next, updated_at: stamp }] });
+      if (w.code === 409) continue;
+    } else {
+      var cond = row.updated_at == null ? 'updated_at=is.null' : 'updated_at=eq.' + encodeURIComponent(row.updated_at);
+      w = sb('jobs?id=eq.__leads__&' + cond, { method: 'patch', prefer: 'return=representation', body: { data: next, updated_at: stamp } });
+    }
+    if (w.code < 300 && Array.isArray(w.data) && w.data.length) return next;
+    if (w.code >= 300 && w.code !== 409) throw new Error('database said ' + w.code);
+    Utilities.sleep(150 + Math.floor(Math.random() * 300));
+  }
+  throw new Error('too many saves at once');
 }
 function msgText(m) {
   if (m.type === 'text') return (m.text && m.text.body) || '';
