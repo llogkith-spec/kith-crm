@@ -112,6 +112,7 @@ INSERT INTO kith_sop_config (id, data, version, updated_by, note) VALUES (
       "multiPanelDiscount": 0.20,
       "blend":   { "panel": 50, "door": 100 },
       "smartRepair": 200,
+      "scratchPct": 0.9,
       "dent":    { "min": 50, "max": 500 },
       "straightening": { "shallowMin": 70, "badMax": 300 },
       "vehicleAgeDiscount": { "overYears": 10, "pct": 0.25, "appliesTo": "panelPainting" }
