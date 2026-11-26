@@ -1,5 +1,5 @@
 // =============================================================================
-// KITH BRAIN — main endpoint (v3 — reads SOP from kith_sop_config table)
+// KITH BRAIN — main endpoint (v4 — bodywork priced per panel from the SOP; v3 read SOP from kith_sop_config)
 // =============================================================================
 // Takes: { customer_type, vehicle, complaint, reg? }
 // Returns: priced jobs with real SRTs from cache + AI estimates where cache missed
@@ -134,6 +134,83 @@ function partsFor(net: number, c: string, sop: any, customers: Record<string, an
 
 // ─── CLAUDE PROMPTS ───────────────────────────────────────────────────────────
 
+// ─── BODYWORK (per panel, from sop.bodywork) ──────────────────────────────────
+// Bodywork is never hours. Each panel is priced off the SOP panel table:
+//   paint      = panel base + vehicle-size uplift, 25% off if the car is over 10 years old
+//   scratch    = paint x scratchPct (a scratch or scuff is 10% off the full panel price — Logan, 26 Nov 2026)
+//   respray    = paint
+//   dent       = paint + straightening (shallow £70 to bad £300)
+//   blend      = £50 a side, £100 for a door, when the repair runs to the panel edge
+//   more than 2 panels painted → multi-panel discount on the painting
+// All figures ex VAT; VAT is added on the total like every other job.
+const PANEL_NAMES: Record<string, string> = {
+  "front-bumper": "Front bumper", "rear-bumper": "Rear bumper", "bonnet": "Bonnet", "roof": "Roof",
+  "boot": "Boot / tailgate", "door": "Door (each)", "sliding-door": "Sliding door",
+  "front-wing": "Front quarter panel", "rear-quarter": "Rear quarter panel", "trim": "Trim / moulding",
+};
+const SIZE_UPLIFT: Record<string, string> = {
+  small: "5-seater", medium: "5-seater", prestige: "5-seater",
+  large: "7-seater / SUV", "9-seater": "9-seater van", van: "Large van",
+};
+const SCRATCH_DAMAGE = ["smart", "scuff", "scratch"];
+function panelBaseFor(bw: any, panel: string): number | null {
+  const name = PANEL_NAMES[panel] || panel;
+  const table = bw.panelBase || {};
+  if (Number.isFinite(Number(table[name]))) return Number(table[name]);
+  // tolerate the AI or an editor writing "Door" for "Door (each)", any case
+  const k = Object.keys(table).find((x) => x.toLowerCase().startsWith(String(name).toLowerCase().split(" (")[0]));
+  return k ? Number(table[k]) : null;
+}
+function bodyworkLines(sop: any, panels: any[], size: string, year: number | null) {
+  const bw = sop.bodywork || {};
+  const scratchPct = Number.isFinite(Number(bw.scratchPct)) ? Number(bw.scratchPct) : 0.9;
+  const upliftKey = SIZE_UPLIFT[size] || size || "5-seater";
+  const uplift = Number((bw.panelUplift || {})[upliftKey]) || 0;
+  const age = bw.vehicleAgeDiscount || { overYears: 10, pct: 0.25 };
+  const thisYear = new Date().getFullYear();
+  const old = Number.isFinite(Number(year)) && Number(year) > 1950 && (thisYear - Number(year)) > Number(age.overYears ?? 10);
+  const straight = bw.straightening || { shallowMin: 70, badMax: 300 };
+  const blend = bw.blend || { panel: 50, door: 100 };
+  const painted = panels.filter((p) => panelBaseFor(bw, p.panel) != null).length;
+  const multi = painted > 2 ? (Number(bw.multiPanelDiscount) || 0) : 0;
+  const out: any[] = [];
+  for (const p of panels) {
+    const base = panelBaseFor(bw, p.panel);
+    const label = String(p.label || PANEL_NAMES[p.panel] || p.panel);
+    if (base == null) { out.push({ job_label: label, tier: "BODY", unpriced: true, reason: "panel not on the SOP table" }); continue; }
+    let paint = (base + uplift) * (old ? 1 - Number(age.pct ?? 0.25) : 1);
+    paint *= 1 - multi;
+    const dmg = String(p.damage || "scuff").toLowerCase();
+    let lo: number, hi: number, what: string;
+    if (SCRATCH_DAMAGE.includes(dmg)) { lo = hi = paint * scratchPct; what = "scratch / scuff repair"; }
+    else if (dmg === "dent") { lo = paint + Number(straight.shallowMin ?? 70); hi = paint + Number(straight.badMax ?? 300); what = "dent straightened and painted"; }
+    else { lo = hi = paint; what = "respray"; }
+    const blendCost = p.panel === "door" || p.panel === "sliding-door" ? Number(blend.door ?? 100) : Number(blend.panel ?? 50);
+    if (p.blend === true) { lo += blendCost; hi += blendCost; }
+    else if (p.blend == null) hi += blendCost;         // not known: allow for it at the top only
+    out.push({
+      job_normalised: `body_${p.panel}_${dmg}`.replace(/[^a-z0-9_]/gi, "_"),
+      job_label: `${label}: ${what}`, tier: "BODY", panel: p.panel, damage: dmg,
+      lo_ex_vat: Math.round(lo * 100) / 100, hi_ex_vat: Math.round(hi * 100) / 100,
+      working: [`${PANEL_NAMES[p.panel] || p.panel} £${base}`, uplift ? `+£${uplift} ${upliftKey}` : "", old ? `-${Math.round(Number(age.pct ?? 0.25) * 100)}% over ${age.overYears ?? 10} years` : "",
+                multi ? `-${Math.round(multi * 100)}% multi-panel` : "", SCRATCH_DAMAGE.includes(dmg) ? `x${scratchPct} scratch` : "",
+                dmg === "dent" ? `+£${straight.shallowMin ?? 70}-£${straight.badMax ?? 300} straightening` : "",
+                p.blend === true ? `+£${blendCost} blend` : p.blend == null ? `up to +£${blendCost} blend` : ""].filter(Boolean).join(", "),
+    });
+  }
+  return out;
+}
+function roundDown5(n: number) { return Math.floor(n / 5) * 5; }
+function roundUp5(n: number) { return Math.ceil(n / 5) * 5; }
+// Bodywork range: the rate card is the floor (a scratch is already 10% off, so no further
+// discount downward); the top allows for prep and blending, +25% or the job's own spread.
+function bodyworkRange(lines: any[], sop: any) {
+  const up = (sop.instantRange?.upperPct ?? 25) / 100;
+  const lo = lines.reduce((s, l) => s + (l.lo_ex_vat || 0), 0) * 1.2;
+  const hi = lines.reduce((s, l) => s + (l.hi_ex_vat || 0), 0) * 1.2;
+  return { lo: roundDown5(lo), hi: roundUp5(Math.max(hi, lo * (1 + up))) };
+}
+
 const IDENTIFY_PROMPT = (vehicle: string, complaint: string, customerType: string) => `You help KITH Cars estimators turn a plain-English complaint into priced-ready job tickets.
 
 CUSTOMER TYPE: ${customerType}
@@ -157,7 +234,7 @@ KITH SERVICE DEFINITIONS (follow exactly — 18 Nov 2026):
 
 TURBO: a turbocharger replacement ALWAYS comes with an oil and filter change — list it as its own job ("Oil and filter change", tier LOW) with engine oil, oil filter and sump plug washer.
 
-BODYWORK: bodywork is NEVER hours. It is priced per panel from the SOP (ex VAT), so for any paint / respray / dent / scratch / scuff / blend job give ONE job per panel, named by the panel ("Rear bumper respray", "Nearside rear door dent and paint", "Rear panel repaint"), tier "BODY", srt_hours 0. Never invent SRT hours for bodywork.
+BODYWORK: bodywork is NEVER hours. It is priced per panel from the SOP (ex VAT), so for any paint / respray / dent / scratch / scuff / blend job give ONE job per panel, named by the panel ("Rear bumper respray", "Nearside rear door dent and paint", "Rear panel repaint"), tier "BODY", srt_hours 0. Never invent SRT hours for bodywork. For every BODY job also give "panel" (one of: front-bumper, rear-bumper, bonnet, roof, boot, door, sliding-door, front-wing, rear-quarter, trim) and "damage" (scratch for any scratch or scuff, dent for a dent, crack or crease, respray for a full repaint of the panel), and give "body_size" on the vehicle (small, medium, large for SUV / 7-seater, van).
 BRAKES: never split a brake job into left and right. Pads, discs and shoes are one job per axle ("Rear brake pads replacement"), never "rear left" + "rear right".
 
 For each job, also list the main parts needed with normalised keys (e.g. front_brake_pads, front_brake_discs). The brain will look up prices separately.
@@ -284,13 +361,16 @@ Deno.serve(async (req) => {
   if (len > 20000) return json({ error: "too large" }, 413);
   let body: any;
   try { body = await req.json(); } catch { return json({ error: "invalid JSON" }, 400); }
-  const { customer_type = "retail", vehicle = "", complaint, reg = "", ramp_exempt = false } = body;
+  const { customer_type = "retail", vehicle = "", complaint, reg = "", ramp_exempt = false, bodywork = null } = body;
   const ramp = !!ramp_exempt;
+  // Structured bodywork (the website's car diagram): panels are already known, so this is
+  // pure SOP arithmetic — no AI call, no cost, answers in well under a second.
+  const bwPanels = bodywork && Array.isArray(bodywork.panels) ? bodywork.panels.slice(0, 20) : null;
   // Each call goes to the AI and costs money; anyone with the public key can
   // call this, so the text sent on is capped.
-  if (typeof complaint !== "string" || complaint.length > 3000) return json({ error: "complaint must be text under 3000 characters" }, 413);
+  if (!bwPanels && (typeof complaint !== "string" || complaint.length > 3000)) return json({ error: "complaint must be text under 3000 characters" }, 413);
   if (String(vehicle).length > 200 || String(reg).length > 20) return json({ error: "vehicle / reg too long" }, 413);
-  if (!complaint) return json({ error: "complaint required" }, 400);
+  if (!complaint && !bwPanels) return json({ error: "complaint or bodywork required" }, 400);
 
   const caller = req.headers.get("x-caller") || "unknown";
 
@@ -305,6 +385,27 @@ Deno.serve(async (req) => {
   }
   if (!customers[customer_type]) return json({ error: `unknown customer type: ${customer_type}` }, 400);
   const sop = sopEntry.data;
+
+  if (bwPanels) {
+    const lines = bodyworkLines(sop, bwPanels, String(bodywork.size || "medium"), Number(bodywork.year) || null);
+    const priced = lines.filter((l) => !l.unpriced);
+    const r = bodyworkRange(priced, sop);
+    const mid = priced.reduce((s, l) => s + (l.lo_ex_vat || 0), 0) * 1.2;
+    await sb.from("kith_brain_queries").insert({
+      caller, customer_type, reg, vehicle: String(vehicle), complaint: "bodywork: " + priced.map((l) => l.job_label).join(", "),
+      jobs_requested: bwPanels, srt_hits: 0, srt_misses: 0, parts_hits: 0, parts_misses: 0,
+      total_quoted_lo: r.lo, total_quoted_hi: r.hi,
+    });
+    return json({
+      vehicle: { description: String(vehicle) }, jobs: lines, kind: "bodywork",
+      confidence: lines.some((l) => l.damage === "dent") ? "medium" : "high",
+      total_inc_vat: Math.round(mid * 100) / 100, total_range: r,
+      cache_stats: { srt_hits: 0, srt_misses: 0, parts_hits: 0, parts_misses: 0 },
+      used_ai_fallback: false, sop_version: sopEntry.version,
+      all_firm: priced.length === lines.length && !lines.some((l) => l.damage === "dent"),
+      safety_concern: "", follow_up: "",
+    });
+  }
 
   // ─── Step 1: identify jobs from the complaint ───────────────────────────────
   let identified: any;
@@ -339,7 +440,12 @@ Deno.serve(async (req) => {
   let srtHits = 0, srtMisses = 0, partsHits = 0, partsMisses = 0;
   const pricedJobs: any[] = [];
 
+  const bodyJobs = identified.jobs.filter((j: any) => String(j.tier).toUpperCase() === "BODY");
+  const bodyPriced = bodyJobs.length
+    ? bodyworkLines(sop, bodyJobs.map((j: any) => ({ panel: j.panel, damage: j.damage, label: j.job_label, blend: null })), String(v.body_size || "medium"), Number(v.year) || null)
+    : [];
   for (const job of identified.jobs) {
+    if (String(job.tier).toUpperCase() === "BODY") continue;   // priced per panel below, never by hours
     const srtHit = await lookupSrt(make, model, variant, job.job_normalised);
     let srtHours: number | null = null;
     let srtSource = "no_data_available";
@@ -462,7 +568,11 @@ Deno.serve(async (req) => {
   }
 
   // ─── Step 5: totals + logging ───────────────────────────────────────────────
-  const total = pricedJobs.reduce((s, j) => s + (j.total_inc_vat || 0), 0);
+  const bodyOk = bodyPriced.filter((l) => !l.unpriced);
+  const bodyR = bodyOk.length ? bodyworkRange(bodyOk, sop) : { lo: 0, hi: 0 };
+  for (const l of bodyPriced) pricedJobs.push({ ...l, srt_hours: 0, srt_source: "bodywork panel price", parts_lines: [],
+    total_ex_vat: l.lo_ex_vat ?? null, total_inc_vat: l.lo_ex_vat != null ? Math.round(l.lo_ex_vat * 120) / 100 : null, is_firm: !l.unpriced && l.damage !== "dent" });
+  const total = pricedJobs.filter((j) => j.tier !== "BODY").reduce((s, j) => s + (j.total_inc_vat || 0), 0);
   // Range from SOP (retail-instant-range widens it; otherwise the fallback-aware default)
   const retailLow  = (sop.instantRange?.lowerPct ?? 10) / 100;
   const retailHigh = (sop.instantRange?.upperPct ?? 25) / 100;
@@ -476,6 +586,10 @@ Deno.serve(async (req) => {
     totalLo = Math.round(total * (1 - spread / 2) * 100) / 100;
     totalHi = Math.round(total * (1 + spread / 2) * 100) / 100;
   }
+
+  // Bodywork carries its own range (card price is the floor) and is added on after.
+  totalLo = Math.round((totalLo + bodyR.lo) * 100) / 100;
+  totalHi = Math.round((totalHi + bodyR.hi) * 100) / 100;
 
   let confidence = identified.confidence || "medium";
   if (usedAiFallback) confidence = pricedJobs.some(j => j.is_firm) ? "medium" : "low";
@@ -501,7 +615,7 @@ Deno.serve(async (req) => {
     safety_concern: identified.safety_concern || "",
     follow_up: identified.follow_up || "",
     confidence,
-    total_inc_vat: Math.round(total * 100) / 100,
+    total_inc_vat: Math.round((total + bodyOk.reduce((s, l) => s + l.lo_ex_vat * 1.2, 0)) * 100) / 100,
     total_range: { lo: totalLo, hi: totalHi },
     cache_stats: { srt_hits: srtHits, srt_misses: srtMisses, parts_hits: partsHits, parts_misses: partsMisses },
     used_ai_fallback: usedAiFallback,
