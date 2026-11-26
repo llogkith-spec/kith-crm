@@ -108,3 +108,22 @@ Meta rejects templates that start or end with a {{ }} variable, so keep the word
 - **Email and text messages.** The autopilot only sends WhatsApp. Email/SMS-only messages stay on the Messages tab, one tap each.
 - **Bot questions asking a website lead for missing details** (reg, number) when the customer has never messaged us on WhatsApp. These need their own template, which comes in the next round.
 - **Booking confirmations, day-before reminders and the chase calls.** These are next on the build list, and will use this same autopilot.
+
+## AI adviser on WhatsApp (v1.1)
+
+Step 0 of the autopilot. Every new WhatsApp message (after a 30-second pause so
+quick bursts get one reply) goes to the Supabase function **adviser**
+(`adviser.ts`), which writes the next reply as KITH's receptionist / service
+adviser / salesperson. It:
+
+- asks one question at a time for what's missing (name, reg, the job) and fills them in on the lead
+- answers from KITH's real terms only (hours, address, warranty, what we don't do, Payment Assist, courtesy car)
+- for retail mechanical work, asks the Brain for the range and drops it in — it never writes a price itself; if the Brain can't price it, the customer gets a holding reply and a person is pinged
+- hands over (WhatsApp ping to the role with a summary, then goes quiet) on YES / booking / complaint / haggling / bodywork photos / trade / anything it's unsure of; after 12 replies it hands over anyway
+- stops on STOP, on **Take over** in the inbox, or as soon as a person replies by hand
+- if the adviser function fails 3 times on a message, the normal triage reply is used instead
+
+In **test** mode replies are saved in the chat as `draft` — nothing goes to the customer.
+`AP_AGENT = off` switches this step off (triage then works as before).
+
+Deploy: Supabase → Edge Functions → new function `adviser` → paste `adviser.ts` → Deploy (uses the existing `ANTHROPIC_API_KEY`).
