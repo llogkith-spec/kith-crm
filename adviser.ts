@@ -129,10 +129,20 @@ async function callClaude(system: string, user: string): Promise<string> {
   return (data.content || []).map((i: any) => i.text || "").join("");
 }
 
+// The first complete {...} in the text — ignores anything the model adds after it
 function parseJson(text: string): any {
-  const t = text.replace(/```json/gi, "").replace(/```/g, "").trim();
-  const a = t.indexOf("{"), b = t.lastIndexOf("}");
-  return JSON.parse(a >= 0 && b > a ? t.slice(a, b + 1) : t);
+  const t = text.replace(/```json/gi, "").replace(/```/g, "");
+  const a = t.indexOf("{");
+  if (a < 0) throw new Error("no JSON in reply");
+  let depth = 0, inStr = false, esc = false;
+  for (let i = a; i < t.length; i++) {
+    const c = t[i];
+    if (inStr) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return JSON.parse(t.slice(a, i + 1));
+  }
+  throw new Error("unfinished JSON in reply");
 }
 
 // WhatsApp placeholders from the relay → words the model won't misread

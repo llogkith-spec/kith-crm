@@ -601,18 +601,24 @@ function apStepSend(out, now) {
     var ctx = {};
     if (m.leadId) { leads = leads || ((apGetRow('__leads__').data || {}).leads || []); ctx.lead = leads.filter(function (l) { return l && l.id === m.leadId; })[0]; }
     if (m.jobId) { if (!(m.jobId in jobsById)) jobsById[m.jobId] = (apGetRow(m.jobId).data || null); ctx.job = jobsById[m.jobId]; }
+    // A quote is only sent if the CRM still says it hasn't gone — someone may
+    // have sent it by hand, or the customer may already have said no.
+    var why = m.kind === 'quote' ? apQuoteWhyNot(ctx.job, m) : '';
+    if (why) { results[m.id] = { ok: false, cancel: why }; out.notes.push(m.id + ' cancelled: ' + why); return; }
     var tpl = AP_TEMPLATES[m.kind] ? AP_TEMPLATES[m.kind](m, ctx) : null;
     var doc = m.kind === 'quote' && ctx.job ? apEstDoc(ctx.job) : null;   // the quote goes WITH the PDF
     var r = apSendWA(m.to, m.text, tpl, doc);
     results[m.id] = r;
     if (r.ok) out.sent++; else out.failed++;
   });
+  if (!Object.keys(results).length) return;
 
   // Write back what happened: the outbox, the lead's thread, the job
   apCasRow('__outbox__', function (data) {
     data = data || {}; data.msgs = (data.msgs || []).map(function (m) {
       var r = m && results[m.id]; if (!r || m.status !== 'queued') return m;
       var x = JSON.parse(JSON.stringify(m));
+      if (r.cancel) { x.status = 'cancelled'; x.error = r.cancel; x.cancelledAt = apTs(); return x; }
       x.tries = (x.tries || 0) + 1;
       if (r.ok) { x.status = 'sent'; x.sentVia = 'whatsapp' + (r.viaTemplate ? ' (template)' : '') + ' · autopilot'; x.sentAt = apTs(); x.waId = r.id || ''; }
       else { x.error = r.error; x.lastTry = apTs(); if (x.tries >= 5 || r.permanent) x.status = 'stuck'; }
@@ -635,6 +641,14 @@ function apStepSend(out, now) {
   }
   due.forEach(function (m) {
     var r = results[m.id]; if (!m.jobId || !r) return;
+    if (r.cancel) {
+      apCasJob(m.jobId, function (x) {
+        x.msgOutbox = (x.msgOutbox || []).map(function (q) { if (q && q.id === m.id && q.status === 'queued') { q.status = 'cancelled'; q.error = r.cancel; } return q; });
+        x.log = (x.log || []).concat([{ t: apTs(), s: '🤖 Autopilot did not send the queued quote — ' + r.cancel }]);
+        return x;
+      });
+      return;
+    }
     apCasJob(m.jobId, function (x) {
       x.msgOutbox = (x.msgOutbox || []).map(function (q) {
         if (!q || q.id !== m.id || q.status !== 'queued') return q;
@@ -654,6 +668,16 @@ function apStepSend(out, now) {
       return x;
     });
   });
+}
+
+// Why a queued quote should NOT go out ('' = send it)
+function apQuoteWhyNot(j, m) {
+  if (!j) return 'the job is no longer in the CRM';
+  if (j.mergedInto) return 'the job was merged into ' + j.mergedInto;
+  if (j.saidNo || /^(lost|dead|cancelled|closed)$/i.test(String(j.stage || ''))) return 'the customer already said no';
+  if (/^(booked|in_progress|workshop|done|complete|collected|invoiced|paid)$/i.test(String(j.stage || ''))) return 'the job has moved on to ' + j.stage;
+  if (j.estimateSentAt && (!j.estimateSentMs || j.estimateSentMs >= (m.t || 0) - 60e3)) return 'already sent (' + (j.estimateSentVia || 'by hand') + ' ' + j.estimateSentAt + ')';
+  return '';
 }
 
 // One WhatsApp message through the relay's sendMessage(), falling back to
