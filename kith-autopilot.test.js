@@ -425,5 +425,16 @@ const waLead = (o) => lead(Object.assign({ id: 'W1', channel: 'whatsapp', name: 
   ok(M('QS').status === 'sent' && w.calls.meta.filter(x => x.to === '447700900456').length === 1, 'unsent quote goes out once');
   ok(/did not send the queued quote/.test(w.get('JH').log.slice(-1)[0].s) && w.get('JH').msgOutbox[0].status === 'cancelled', 'job log says why');
 }
+{
+  // profile names: junk is not used to greet; a typed name replaces it
+  const w = world({ adviser: () => ({ reply: 'Thanks Cam!', fields: { name: 'Cam Henry', reg: 'C2RHX' } }) });
+  w.put('__leads__', { leads: [waLead({ name: 'Boomboom 😎' })] }); w.put('__outbox__', { msgs: [] });
+  w.run();
+  const l = w.get('__leads__').leads[0];
+  ok(w.calls.adviser[0].lead.name === '', 'emoji profile name not sent to the AI');
+  ok(l.name === 'Cam Henry' && l.nameFrom === 'customer' && l.waName === 'Boomboom 😎', 'typed name replaces the profile name (kept as waName)');
+  const c = w.ctx;
+  ok(c.apRealName('Tharsan') && c.apRealName('Rose-Hazel') && c.apRealName("Gaurish O'Neil") && !c.apRealName('.') && !c.apRealName('~Sudha') && !c.apRealName('ALHAMDULILAH THANKS TO ALLAH') && !c.apRealName('APPAN(447472297879'), 'name check');
+}
 console.log('\n' + (fail ? '✗ ' : '✓ ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
