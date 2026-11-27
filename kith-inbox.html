@@ -792,7 +792,7 @@ function aiBlock(l) {
   else { tag = 'go'; txt = 'AI is replying' + (a.mode === 'test' ? ' (test mode: drafts only)' : '') + (a.replies ? ' · ' + a.replies + ' repl' + (a.replies === 1 ? 'y' : 'ies') : ''); }
   const sum = a.handover && a.handover.summary ? '<div style="opacity:.8;margin-top:4px">' + esc(a.handover.summary) + '</div>' : '';
   return '<div style="border:1px solid var(--border,#333A44);border-radius:4px;padding:8px 10px;margin:6px 0;font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
-    '<div><span class="tag ' + tag + '">🤖 ' + txt + '</span>' + sum + '</div>' +
+    '<div style="flex:1;min-width:0"><span class="tag ' + tag + '" style="white-space:normal;line-height:1.4;display:inline-block;max-width:100%">🤖 ' + txt + '</span>' + sum + '</div>' +
     (a.paused || a.optedOut
       ? '<button class="btn sm" data-aion="' + esc(l.id) + '">Let AI reply</button>'
       : '<button class="btn sm stop" data-aioff="' + esc(l.id) + '">Take over</button>') +
