@@ -407,5 +407,23 @@ const waLead = (o) => lead(Object.assign({ id: 'W1', channel: 'whatsapp', name: 
   ok(L('RX').agent && L('RX').agent.hash && !L('RX').agent.replies, 'reaction marked as seen, no reply');
   ok(!(L('ST').agent && L('ST').agent.replies), 'staff number left to the normal flow');
 }
+{
+  // quotes already sent by hand / said no are cancelled, not sent twice
+  const w = world({ props: { AUTOPILOT: 'on' }, window: ['447700900456'] });
+  w.put('__msgcfg__', {}); w.put('__leads__', { leads: [] });
+  w.put('JH', job({ id: 'JH', stage: 'contacted', quote: 400, estimateSentAt: '27 Nov 2026, 18:24', estimateSentVia: 'sent by hand', msgOutbox: [{ id: 'QH', status: 'queued' }] }));
+  w.put('JN', job({ id: 'JN', stage: 'lost', saidNo: true, quote: 800 }));
+  w.put('JS', job({ id: 'JS', stage: 'contacted', quote: 660 }));
+  w.put('__outbox__', { msgs: [
+    { id: 'QH', kind: 'quote', jobId: 'JH', to: '447700900456', route: ['whatsapp'], text: 'q1', status: 'queued', t: NOW - 60e3 },
+    { id: 'QN', kind: 'quote', jobId: 'JN', to: '447700900456', route: ['whatsapp'], text: 'q2', status: 'queued', t: NOW - 60e3 },
+    { id: 'QS', kind: 'quote', jobId: 'JS', to: '447700900456', route: ['whatsapp'], text: 'q3', status: 'queued', t: NOW - 60e3 }] });
+  w.run();
+  const box = w.get('__outbox__').msgs, M = id => box.find(m => m.id === id);
+  ok(M('QH').status === 'cancelled' && /already sent/.test(M('QH').error), 'quote sent by hand: cancelled');
+  ok(M('QN').status === 'cancelled' && /said no/.test(M('QN').error), 'customer said no: cancelled');
+  ok(M('QS').status === 'sent' && w.calls.meta.filter(x => x.to === '447700900456').length === 1, 'unsent quote goes out once');
+  ok(/did not send the queued quote/.test(w.get('JH').log.slice(-1)[0].s) && w.get('JH').msgOutbox[0].status === 'cancelled', 'job log says why');
+}
 console.log('\n' + (fail ? '✗ ' : '✓ ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
