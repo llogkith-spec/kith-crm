@@ -171,9 +171,19 @@ var AP_AGENT_MAX_REPLIES = 12;     // then a person takes over
 var AP_AGENT_MAX_ERRORS = 3;       // then the normal triage reply takes over
 
 // Is this a chat the AI adviser looks after?
+// WhatsApp placeholders that are not something to answer (deleted, edited, emoji reaction)
+var AP_NOISE_RE = /^\s*\[(revoke|edit|reaction|deleted)\]\s*$/i;
+// Staff numbers never get the AI (anyone in AP_STAFF_BY_ROLE, plus AP_STAFF_NUMBERS e.g. "447...,447...")
+function apIsStaff(phone) {
+  var n = apIntl(phone); if (!n) return false;
+  var all = String(apProp('AP_STAFF_NUMBERS', '')).split(/[\s,]+/).map(apIntl);
+  Object.keys(AP_STAFF_BY_ROLE).forEach(function (r) { AP_STAFF_BY_ROLE[r].forEach(function (p) { if (p.wa) all.push(p.wa); }); });
+  return all.indexOf(n) >= 0;
+}
 function apAgentOwns(l) {
   if (!l || !apOn('AP_AGENT') || l.deleted || l.junk) return false;
   if (l.channel !== 'whatsapp' || !apIntl(l.phone)) return false;
+  if (apIsStaff(l.phone)) return false;
   var a = l.agent || {};
   if (a.paused) return false;                               // staff pressed "Take over"
   if (a.fallback && a.fallback === apTriageHash(l)) return false;   // adviser kept failing on this message
@@ -212,8 +222,11 @@ function apStepAgent(out, now) {
     var a = l.agent || {};
     var plan = { hash: hash, msgs: [], thread: [], agent: {}, fields: {} };
 
+    var lastIn = apLastIn(l);
     if (apIsStopReply(l)) {
       plan.agent = { optedOut: new Date().toISOString() };
+    } else if (lastIn && AP_NOISE_RE.test(String(lastIn.text || ''))) {
+      // a deleted/edited message or an emoji reaction — nothing to say
     } else if ((a.replies || 0) >= AP_AGENT_MAX_REPLIES) {
       apAgentHandover(l, plan, { to: 'adviser', reason: 'long chat — over ' + AP_AGENT_MAX_REPLIES + ' AI replies', summary: apOneLine(l.what || '', 200), priority: 'normal' });
     } else {
