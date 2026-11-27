@@ -394,5 +394,18 @@ const waLead = (o) => lead(Object.assign({ id: 'W1', channel: 'whatsapp', name: 
   w.run();
   ok(w.calls.adviser.length === 1, 'after "Let AI reply", older staff messages no longer keep it quiet');
 }
+{
+  // staff numbers and [reaction]/[revoke] get no AI reply
+  const w = world();
+  w.put('__leads__', { leads: [
+    waLead({ id: 'ST', phone: '+447514422991', messages: [{ dir: 'in', text: 'https://ebay.io/x', t: NOW - 60e3 }] }),
+    waLead({ id: 'RX', phone: '+447700900555', messages: [{ dir: 'in', text: '[reaction]', t: NOW - 60e3 }] })
+  ] }); w.put('__outbox__', { msgs: [] });
+  w.run();
+  const L = id => w.get('__leads__').leads.find(x => x.id === id);
+  ok(w.calls.adviser.length === 0, 'no adviser call for a staff number or a reaction');
+  ok(L('RX').agent && L('RX').agent.hash && !L('RX').agent.replies, 'reaction marked as seen, no reply');
+  ok(!(L('ST').agent && L('ST').agent.replies), 'staff number left to the normal flow');
+}
 console.log('\n' + (fail ? '✗ ' : '✓ ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

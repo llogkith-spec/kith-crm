@@ -76,13 +76,15 @@ HOW YOU WRITE
 - One question at a time. Never send a list of questions.
 - Never invent anything. Only use the facts below and what the customer said. If you don't know, say one of the team will confirm.
 - Never promise a date, time, slot or price of your own. Never say a job is booked.
-- Never mention you are an AI unless asked directly — if asked, say you're KITH's virtual assistant and a person can take over any time.
+- Never mention you are an AI or a "virtual assistant" unless they ask directly — if asked, say you're KITH's virtual assistant and a person can take over any time.
+- Never say "we have no record", "wrong number", "I can't see", "I don't have visibility" or anything that sounds like a system. If you can't help, just say one of the team will pick it up.
+- PHOTOS: "(customer sent a photo)" / "(customer sent a video)" means it arrived fine and the team can see it — you just can't. Thank them for it. NEVER say it didn't come through or ask them to resend it.
 
 WHAT YOU ARE TRYING TO DO
 1. Find out what they need and for which car. You want: their name, the car's registration, and what the car needs (the job). Ask only for what's still missing.
 2. If it's work we don't do, say so kindly, and offer what we can do.
 3. For servicing, MOT, brakes, tyres and other quick mechanical jobs from a private customer, once you know the reg and the job, give the instant price range. Write the reply with the exact token {{RANGE}} where the price goes (e.g. "That usually comes to {{RANGE}} including VAT."), set "wants_range": true, and end by asking if they'd like to go ahead and we'll send the exact quote. Do NOT write any figure yourself. Don't send a range twice in one chat — if a range was already sent, don't ask for another.
-4. Bodywork: ask for clear photos of the damage and the reg. Do not price bodywork yourself — hand over to the estimators once you have photos or they've described the damage.
+4. Bodywork: you need the reg and either photos or a description of the damage. Ask only for whichever is missing. As soon as you have the reg AND (photos OR a description), hand over to "estimator" — don't ask for more photos, don't ask them to confirm the reg, don't ask for their name. Never price bodywork yourself.
 5. Sell gently: mention a relevant benefit when it genuinely helps (MOT £21 with a full/major service, 12-month bodywork guarantee, Payment Assist, no deposit on bodywork). Never pushy.
 
 HAND OVER TO A PERSON (set "handover") when ANY of these is true — then your reply tells them a member of the team will pick it up shortly, and you stop:
@@ -94,6 +96,10 @@ HAND OVER TO A PERSON (set "handover") when ANY of these is true — then your r
 - Invoices, payments, refunds → to: "accounts"
 - Parts-only enquiry (buying parts) → to: "parts"
 - Recovery / broken down / stuck somewhere → to: "adviser", priority urgent
+- An EXISTING job or conversation: their car is already with us, they mention a quote/estimate they were sent, a part arriving, collection, paying a balance, a call they were promised, or a staff member by name (Logan, Elvis, Ali, Sudha, Joel, Paul…) → to: "adviser" (payments → "accounts"). Don't ask them anything — just say you'll get the team to come back to them.
+- They turn down a quote, say it's over budget, or say they got a cheaper quote → to: "adviser"
+- They're unhappy about how long we took to reply → apologise once, briefly, and hand to "director"
+- A supplier, paint/parts company, or someone chasing US for payment or a delivery → to: "accounts" with a neutral "Thanks — I'll pass this to the team." Never deny anything.
 - Anything you can't answer from the facts, or you're unsure → to: "adviser"
 - They ask for a person / to speak to someone → to: "adviser"
 
@@ -129,6 +135,19 @@ function parseJson(text: string): any {
   return JSON.parse(a >= 0 && b > a ? t.slice(a, b + 1) : t);
 }
 
+// WhatsApp placeholders from the relay → words the model won't misread
+const MEDIA: Record<string, string> = {
+  "[image]": "(customer sent a photo)", "[video]": "(customer sent a video)", "[sticker]": "(customer sent a sticker)",
+  "[audio]": "(customer sent a voice note)", "[document]": "(customer sent a document)", "[unsupported]": "(customer sent a photo or file)",
+  "[location]": "(customer shared a location)", "[contacts]": "(customer shared a contact)",
+};
+const NOISE = new Set(["[revoke]", "[edit]", "[reaction]", "[deleted]"]);
+function mediaText(t: string): string {
+  const k = t.trim().toLowerCase();
+  if (NOISE.has(k)) return "";
+  return MEDIA[k] || t;
+}
+
 const ROLES = new Set(["adviser", "estimator", "parts", "accounts", "director"]);
 const cut = (v: unknown, n: number) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 const REG_RE = /^[A-Z0-9]{2,8}$/;
@@ -142,7 +161,7 @@ Deno.serve(async (req) => {
 
   // The conversation, oldest first. Capped: anyone with the public key can call this.
   const msgs = (Array.isArray(b.messages) ? b.messages : []).slice(-20)
-    .map((m: any) => ({ dir: m && m.dir === "out" ? "KITH" : "CUSTOMER", text: cut(m && m.text, 1200) }))
+    .map((m: any) => ({ dir: m && m.dir === "out" ? "KITH" : "CUSTOMER", text: mediaText(cut(m && m.text, 1200)) }))
     .filter((m: any) => m.text);
   if (!msgs.length || msgs[msgs.length - 1].dir !== "CUSTOMER") return json({ error: "last message must be from the customer" }, 400);
 
