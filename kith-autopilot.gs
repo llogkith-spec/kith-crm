@@ -170,6 +170,18 @@ var AP_AGENT_WAIT_MS = 30e3;
 var AP_AGENT_MAX_REPLIES = 12;     // then a person takes over
 var AP_AGENT_MAX_ERRORS = 3;       // then the normal triage reply takes over
 
+// Does this look like a person's name? (WhatsApp profile names are often
+// "Boomboom 😎", ".", "~Sudha" or "ALHAMDULILAH THANKS TO ALLAH")
+function apRealName(n) {
+  var t = String(n == null ? '' : n).trim();
+  return /^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]{1,19}( [A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]{0,19}){0,2}$/.test(t);
+}
+// The name the AI may greet them by ('' = just "Hi")
+function apGreetName(l) {
+  if (!l || !l.name) return '';
+  return l.nameFrom === 'customer' || apRealName(l.name) ? String(l.name).trim() : '';
+}
+
 // Is this a chat the AI adviser looks after?
 // WhatsApp placeholders that are not something to answer (deleted, edited, emoji reaction)
 var AP_NOISE_RE = /^\s*\[(revoke|edit|reaction|deleted)\]\s*$/i;
@@ -232,7 +244,7 @@ function apStepAgent(out, now) {
     } else {
       var r = apPost(apFn('adviser'), {
         now: apTs(),
-        lead: { name: l.name || '', reg: l.reg || '', vehicle: [l.year, l.make, l.model].filter(Boolean).join(' '),
+        lead: { name: apGreetName(l), reg: l.reg || '', vehicle: [l.year, l.make, l.model].filter(Boolean).join(' '),
                 what: l.what || '', returning: !!l.returningJobId, range_sent: a.rangeSent || '' },
         messages: (l.messages || []).slice(-20).map(function (m) { return { dir: m.dir, text: m.text }; })
       });
@@ -287,7 +299,11 @@ function apStepAgent(out, now) {
       if (apTriageHash(fresh) !== hash && !plan.failed) return null; // a new message came in — answer that next run
       if (fa.hash === hash) return null;                            // another run already did this one
       var f = plan.fields || {};
-      if (f.name && !fresh.name) fresh.name = f.name;
+      // A name the customer typed beats their WhatsApp profile name
+      if (f.name && fresh.nameFrom !== 'customer' && apRealName(f.name)) {
+        if (fresh.name && fresh.name !== f.name && !fresh.waName) fresh.waName = fresh.name;
+        fresh.name = f.name; fresh.nameFrom = 'customer';
+      }
       if (f.reg && !fresh.reg) fresh.reg = String(f.reg).toUpperCase();
       if (f.what && !fresh.what) fresh.what = f.what;
       var na = {}; Object.keys(fa).forEach(function (k) { na[k] = fa[k]; });
